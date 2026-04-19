@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Task, TaskStatus, COLUMNS, AGENTS, Agent } from '../types';
-import { useFakeSession } from '../hooks/useFakeSession';
+import { Task, TaskStatus, COLUMNS, AGENTS, Agent, Session } from '../types';
 import AgentBadge from './AgentBadge';
 import Terminal, { type TerminalHandle } from './Terminal';
 
@@ -55,15 +54,42 @@ export default function TaskDetailPanel({
 }: TaskDetailPanelProps) {
   const titleArea = useAutosizeTextArea(task?.title ?? '');
   const descriptionArea = useAutosizeTextArea(task?.description ?? '', 120);
-  const [isFakeSessionActive, setIsFakeSessionActive] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
 
-  const fakeSessionId = isFakeSessionActive ? 'fake-session' : null;
-  useFakeSession(terminalRef, fakeSessionId);
+  useEffect(() => {
+    if (!task) return;
+    setSessionError(null);
+    let cancelled = false;
+    setSession(null);
+    void window.electronAPI.sessions.get(task.id).then((existingSession) => {
+      if (cancelled) return;
+      if (existingSession && existingSession.status === 'running') {
+        setSession(existingSession);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id]);
 
   useEffect(() => {
-    setIsFakeSessionActive(false);
-  }, [task?.id]);
+    if (!session) return;
+    const unsub = window.electronAPI.sessions.onData(session.id, (data) => {
+      terminalRef.current?.write(data);
+    });
+    const unsubExit = window.electronAPI.sessions.onExit((exitedSession) => {
+      if (exitedSession.id === session.id) {
+        setSession((prev) => (prev ? { ...prev, status: exitedSession.status } : null));
+      }
+    });
+    return () => {
+      unsub();
+      unsubExit();
+    };
+  }, [session?.id]);
 
   useEffect(() => {
     if (!task) return;
@@ -74,8 +100,41 @@ export default function TaskDetailPanel({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [task, onClose]);
 
-  const handleStartSession = () => {
-    setIsFakeSessionActive(true);
+  const handleStartSession = async () => {
+    if (!task) return;
+    setSessionLoading(true);
+    setSessionError(null);
+    try {
+      const result = await window.electronAPI.sessions.start(task);
+      if ('error' in result) {
+        setSessionError(result.message ?? result.error);
+        return;
+      }
+      setSession(result);
+      onUpdate(task.id, { status: 'in-progress' });
+    } catch {
+      setSessionError('Failed to start session');
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleStopSession = async () => {
+    if (!session) return;
+    await window.electronAPI.sessions.stop(session.id);
+    setSession(null);
+  };
+
+  const handleTerminalData = (data: string) => {
+    if (session?.status === 'running') {
+      window.electronAPI.sessions.write(session.id, data);
+    }
+  };
+
+  const handleTerminalResize = (cols: number, rows: number) => {
+    if (session?.status === 'running') {
+      window.electronAPI.sessions.resize(session.id, cols, rows);
+    }
   };
 
   const handleDelete = () => {
@@ -90,6 +149,14 @@ export default function TaskDetailPanel({
   }
 
   const statusLabel = COLUMNS.find((c) => c.id === task.status)?.label ?? task.status;
+  const sessionRunning = session?.status === 'running';
+
+  const startButtonLabel = sessionLoading ? 'Starting...' : sessionError ? 'Retry' : 'Start session';
+  const startButtonClass = sessionError
+    ? 'rounded-md bg-red-950 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-900'
+    : sessionLoading
+      ? 'cursor-not-allowed rounded-md bg-gray-800 px-3 py-1.5 text-xs text-gray-500'
+      : 'rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800';
 
   return (
     <>
@@ -116,24 +183,32 @@ export default function TaskDetailPanel({
               </span>
               <p className="mt-1.5 text-xs text-gray-500">{formatCreatedLabel(task.createdAt)}</p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={handleStartSession}
-                className="rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800"
-              >
-                Start session
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="shrink-0 rounded p-1 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200"
-                aria-label="Close"
-              >
-                <span className="text-lg leading-none" aria-hidden>
-                  ×
-                </span>
-              </button>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                {!sessionRunning ? (
+                  <button
+                    type="button"
+                    onClick={handleStartSession}
+                    disabled={sessionLoading}
+                    className={startButtonClass}
+                  >
+                    {startButtonLabel}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="shrink-0 rounded p-1 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200"
+                  aria-label="Close"
+                >
+                  <span className="text-lg leading-none" aria-hidden>
+                    ×
+                  </span>
+                </button>
+              </div>
+              {sessionError && !sessionRunning ? (
+                <p className="max-w-[220px] text-right text-xs text-red-400 mt-1">{sessionError}</p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -212,21 +287,22 @@ export default function TaskDetailPanel({
           <div className="flex min-h-[200px] flex-1 flex-col border-t border-gray-800">
             <div className="flex items-center justify-between px-4 py-2">
               <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Session</span>
-              {isFakeSessionActive && (
+              {sessionRunning ? (
                 <button
                   type="button"
-                  onClick={() => setIsFakeSessionActive(false)}
+                  onClick={() => void handleStopSession()}
                   className="text-xs text-red-500 hover:text-red-400"
                 >
                   Stop
                 </button>
-              )}
+              ) : null}
             </div>
             <div className="min-h-0 flex-1 px-2 pb-2">
               <Terminal
                 ref={terminalRef}
-                sessionId={fakeSessionId}
-                onData={(data) => console.log('Terminal input:', data)}
+                sessionId={session?.id ?? null}
+                onData={handleTerminalData}
+                onResize={handleTerminalResize}
               />
             </div>
           </div>

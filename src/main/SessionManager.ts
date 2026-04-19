@@ -107,6 +107,10 @@ export class SessionManager {
       liveSession.status = exitCode === 0 ? 'stopped' : 'error';
       liveSession.stoppedAt = new Date().toISOString();
       win.webContents.send('session:exited', liveSession);
+      if (entry) {
+        this.sessions.delete(session.id);
+        void this.worktreeService.remove(entry.session.worktreePath);
+      }
     });
 
     this.sessions.set(session.id, { pty: ptyProcess, session });
