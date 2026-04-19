@@ -1,0 +1,62 @@
+src/App.tsx
+  b8b2595c47228e20 68,74-82
+  ccfe28ff0378628f 7-9,16,49-54,56,63-67,69-73,83-91
+src/main/TaskStore.ts
+  3d4ca908e1f9e405 1-112
+src/main.ts
+  3d4ca908e1f9e405 1,4,49,56-66
+src/preload.ts
+  3d4ca908e1f9e405 1-2,6-16
+src/env.d.ts
+  3d4ca908e1f9e405 1-18,20-21
+src/components/TopBar.tsx
+  ccfe28ff0378628f 1-13
+src/components/AppShell.tsx
+  ccfe28ff0378628f 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "482a83d29b939d5a84b807e0b98cd80c48cd27f8",
+  "prompts": {
+    "3d4ca908e1f9e405": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7f644700-d400-4adc-a2c9-a753a14005c1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 159,
+      "overriden_lines": 0
+    },
+    "b8b2595c47228e20": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d2a5dd7d-3b8e-4b89-8eef-b4ef086b64ca",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    },
+    "ccfe28ff0378628f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0c26afda-a470-4285-be80-ef25f02bc863",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 62,
+      "overriden_lines": 0
+    }
+  }
+}
