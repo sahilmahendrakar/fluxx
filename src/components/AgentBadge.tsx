@@ -1,16 +1,17 @@
 import { Agent, AGENTS } from '../types';
 
 const AGENT_STYLES: Record<Agent, string> = {
-  'claude-code': 'bg-purple-900 text-purple-300',
-  'codex': 'bg-teal-900 text-teal-300',
-  'cursor': 'bg-amber-900 text-amber-300',
+  'claude-code':
+    'border-violet-500/20 bg-violet-500/[0.08] text-violet-200/90 ring-1 ring-inset ring-violet-500/10',
+  codex: 'border-teal-500/20 bg-teal-500/[0.08] text-teal-200/90 ring-1 ring-inset ring-teal-500/10',
+  cursor: 'border-amber-500/20 bg-amber-500/[0.08] text-amber-200/90 ring-1 ring-inset ring-amber-500/10',
 };
 
 export default function AgentBadge({ agent }: { agent: Agent }) {
   const label = AGENTS.find((a) => a.id === agent)?.label ?? agent;
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${AGENT_STYLES[agent]}`}
+      className={`inline-flex max-w-full items-center truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium tracking-tight ${AGENT_STYLES[agent]}`}
     >
       {label}
     </span>

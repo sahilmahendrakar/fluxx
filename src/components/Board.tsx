@@ -35,7 +35,7 @@ export default function Board({
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full w-full gap-3 overflow-x-auto p-3">
+      <div className="flex h-full w-full gap-3 overflow-x-auto p-4">
         {COLUMNS.map((col) => (
           <Column
             key={col.id}
@@ -47,7 +47,7 @@ export default function Board({
             onCardClick={onCardClick}
             emptyState={
               col.id === 'backlog' && boardIsEmpty
-                ? 'No tasks yet. Click + New task to get started.'
+                ? 'No tasks yet. Create one to get started.'
                 : undefined
             }
           />

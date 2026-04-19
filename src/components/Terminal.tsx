@@ -47,12 +47,12 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
     const term = new XTerm({
       theme: {
-        background: '#0a0a0a',
-        foreground: '#e5e5e5',
-        cursor: '#e5e5e5',
-        selectionBackground: '#444444',
-        black: '#1a1a1a',
-        brightBlack: '#444444',
+        background: '#09090b',
+        foreground: '#d4d4d8',
+        cursor: '#a1a1aa',
+        selectionBackground: 'rgba(255,255,255,0.12)',
+        black: '#09090b',
+        brightBlack: '#52525b',
       },
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: 13,
@@ -93,8 +93,8 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
   if (!sessionId) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-gray-600">
-        {'No active session — click "Start session" to begin'}
+      <div className="flex h-full items-center justify-center px-4 text-center text-[13px] leading-relaxed text-zinc-600">
+        No active session — start a session to use the terminal.
       </div>
     );
   }
@@ -102,7 +102,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   return (
     <div
       ref={containerRef}
-      className="h-full w-full min-h-0 overflow-hidden"
+      className="h-full w-full min-h-0 overflow-hidden rounded-md border border-white/[0.06] bg-[#09090b]"
     />
   );
 });

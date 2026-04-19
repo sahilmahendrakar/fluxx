@@ -39,10 +39,12 @@ function readStoredDetailWidth(): number | null {
 }
 
 const STATUS_BADGE: Record<TaskStatus, string> = {
-  backlog: 'bg-gray-700 text-gray-300',
-  'in-progress': 'bg-green-900/60 text-green-300',
-  'needs-input': 'bg-amber-900/60 text-amber-300',
-  done: 'bg-gray-700 text-gray-400',
+  backlog: 'border-white/[0.08] bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.04]',
+  'in-progress':
+    'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-200/90 ring-1 ring-inset ring-emerald-500/10',
+  'needs-input':
+    'border-amber-500/25 bg-amber-500/[0.1] text-amber-200/90 ring-1 ring-inset ring-amber-500/12',
+  done: 'border-white/[0.06] bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.04]',
 };
 
 function formatCreatedLabel(iso: string): string {
@@ -265,12 +267,12 @@ export default function TaskDetailPanel({
   const statusLabel = COLUMNS.find((c) => c.id === task.status)?.label ?? task.status;
   const sessionRunning = session?.status === 'running';
 
-  const startButtonLabel = sessionLoading ? 'Starting...' : sessionError ? 'Retry' : 'Start session';
+  const startButtonLabel = sessionLoading ? 'Starting…' : sessionError ? 'Retry' : 'Start session';
   const startButtonClass = sessionError
-    ? 'rounded-md bg-red-950 px-3 py-1.5 text-xs text-red-300 transition-colors hover:bg-red-900'
+    ? 'rounded-md border border-red-500/25 bg-red-500/[0.08] px-3 py-1.5 text-[12px] font-medium text-red-200/90 transition hover:bg-red-500/[0.12]'
     : sessionLoading
-      ? 'cursor-not-allowed rounded-md bg-gray-800 px-3 py-1.5 text-xs text-gray-500'
-      : 'rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800';
+      ? 'cursor-not-allowed rounded-md border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-zinc-600'
+      : 'rounded-md border border-emerald-500/25 bg-emerald-500/[0.1] px-3 py-1.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-500/[0.14]';
 
   return (
     <>
@@ -278,13 +280,13 @@ export default function TaskDetailPanel({
         type="button"
         tabIndex={-1}
         aria-label="Close task details"
-        className="absolute inset-0 z-10 bg-black/30"
+        className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[1px]"
         onClick={onClose}
       />
       <aside
         ref={asideRef}
         style={{ width: detailWidth }}
-        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-gray-800 bg-gray-900 shadow-xl"
+        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.06] bg-[#0c0c0e] shadow-2xl shadow-black/50"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-detail-title"
@@ -294,19 +296,19 @@ export default function TaskDetailPanel({
           aria-orientation="vertical"
           aria-label="Resize task details"
           title="Drag to resize. Double-click to reset."
-          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-gray-600 before:content-[''] hover:before:bg-purple-500/80 focus-visible:ring-2 focus-visible:ring-purple-500/50"
+          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
-        <div className="flex shrink-0 flex-col gap-3 border-b border-gray-800 p-4">
+        <div className="flex shrink-0 flex-col gap-3 border-b border-white/[0.06] p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[task.status]}`}
+                className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.06em] ${STATUS_BADGE[task.status]}`}
               >
                 {statusLabel}
               </span>
-              <p className="mt-1.5 text-xs text-gray-500">{formatCreatedLabel(task.createdAt)}</p>
+              <p className="mt-1.5 text-[11px] text-zinc-600">{formatCreatedLabel(task.createdAt)}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <div className="flex items-center gap-2">
@@ -323,7 +325,7 @@ export default function TaskDetailPanel({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="shrink-0 rounded p-1 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200"
+                  className="shrink-0 rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
                   aria-label="Close"
                 >
                   <span className="text-lg leading-none" aria-hidden>
@@ -332,7 +334,7 @@ export default function TaskDetailPanel({
                 </button>
               </div>
               {sessionError && !sessionRunning ? (
-                <p className="max-w-[220px] text-right text-xs text-red-400 mt-1">{sessionError}</p>
+                <p className="mt-1 max-w-[220px] text-right text-[11px] text-red-300/90">{sessionError}</p>
               ) : null}
             </div>
           </div>
@@ -349,13 +351,13 @@ export default function TaskDetailPanel({
                 onUpdate(task.id, { title: e.target.value });
                 titleArea.resize();
               }}
-              className="w-full resize-none bg-transparent text-2xl font-semibold leading-snug text-white outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
+              className="w-full resize-none bg-transparent text-xl font-semibold leading-snug tracking-tight text-zinc-100 outline-none focus:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
               placeholder="Title"
             />
 
             <div>
-              <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2 text-sm">
-                <dt className="text-gray-500">Agent</dt>
+              <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2 text-[13px]">
+                <dt className="text-zinc-600">Agent</dt>
                 <dd className="min-w-0">
                   <div className="relative inline-flex max-w-full">
                     <select
@@ -373,12 +375,12 @@ export default function TaskDetailPanel({
                     <AgentBadge agent={task.agent} />
                   </div>
                 </dd>
-                <dt className="text-gray-500">Status</dt>
+                <dt className="text-zinc-600">Status</dt>
                 <dd>
                   <select
                     value={task.status}
                     onChange={(e) => onUpdate(task.id, { status: e.target.value as TaskStatus })}
-                    className="w-full max-w-[220px] cursor-pointer rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-200 outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50"
+                    className="w-full max-w-[220px] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] px-2 py-1.5 text-[13px] text-zinc-200 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
                     aria-label="Change status"
                   >
                     {COLUMNS.map((c) => (
@@ -392,7 +394,10 @@ export default function TaskDetailPanel({
             </div>
 
             <div className="flex flex-col">
-              <label htmlFor="task-detail-description" className="mb-1.5 text-xs text-gray-500">
+              <label
+                htmlFor="task-detail-description"
+                className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
+              >
                 Description
               </label>
               <textarea
@@ -404,19 +409,21 @@ export default function TaskDetailPanel({
                   descriptionArea.resize();
                 }}
                 placeholder="Add a description..."
-                className="min-h-[120px] w-full resize-none rounded-md border border-gray-700 bg-gray-800 p-3 text-sm leading-relaxed text-gray-100 outline-none placeholder:text-gray-600 focus-visible:ring-2 focus-visible:ring-purple-500/50"
+                className="min-h-[120px] w-full resize-none rounded-md border border-white/[0.08] bg-[#09090b] p-3 text-[13px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
               />
             </div>
           </div>
 
-          <div className="flex min-h-[200px] flex-1 flex-col border-t border-gray-800">
+          <div className="flex min-h-[200px] flex-1 flex-col border-t border-white/[0.06]">
             <div className="flex items-center justify-between px-4 py-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Session</span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+                Session
+              </span>
               {sessionRunning ? (
                 <button
                   type="button"
                   onClick={() => void handleStopSession()}
-                  className="text-xs text-red-500 hover:text-red-400"
+                  className="text-[11px] font-medium text-red-400/90 transition hover:text-red-300"
                 >
                   Stop
                 </button>
@@ -433,11 +440,11 @@ export default function TaskDetailPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-gray-800 p-4">
+        <div className="shrink-0 border-t border-white/[0.06] p-4">
           <button
             type="button"
             onClick={handleDelete}
-            className="text-sm text-red-400 transition hover:text-red-300"
+            className="text-[13px] text-zinc-500 transition hover:text-red-400/90"
           >
             Delete task
           </button>

@@ -174,10 +174,10 @@ export default function App() {
 
   if (projectLoading) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-950 text-white">
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
         {isMac ? (
           <div
-            className="app-window-drag h-10 w-full shrink-0 bg-gray-950"
+            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
             aria-hidden
           />
         ) : null}
@@ -190,10 +190,10 @@ export default function App() {
 
   if (!project) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-950 text-white">
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
         {isMac ? (
           <div
-            className="app-window-drag h-10 w-full shrink-0 bg-gray-950"
+            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
             aria-hidden
           />
         ) : null}
@@ -205,10 +205,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-950 text-white">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
       {isMac ? (
         <div
-          className="app-window-drag h-10 w-full shrink-0 bg-gray-950"
+          className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
           aria-hidden
         />
       ) : null}
@@ -238,8 +238,11 @@ export default function App() {
                 />
               </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center px-6 text-sm text-gray-500">
-                Planning assistant coming soon
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                <p className="text-sm font-medium text-zinc-300">Plan</p>
+                <p className="max-w-sm text-sm text-zinc-500">
+                  Planning assistant coming soon.
+                </p>
               </div>
             )}
           </div>

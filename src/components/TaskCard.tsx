@@ -3,10 +3,10 @@ import { Task } from '../types';
 import AgentBadge from './AgentBadge';
 
 const STATUS_DOT: Record<Task['status'], string> = {
-  'in-progress': 'bg-green-500',
-  'needs-input': 'bg-amber-400',
-  'backlog': 'bg-gray-500',
-  'done': 'bg-gray-500',
+  'in-progress': 'bg-emerald-400/80',
+  'needs-input': 'bg-amber-400/80',
+  backlog: 'bg-zinc-600',
+  done: 'bg-zinc-600',
 };
 
 interface Props {
@@ -26,10 +26,12 @@ export default function TaskCard({ task, index, onDelete, onCardClick }: Props) 
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group rounded-md bg-gray-800 shadow-sm transition hover:brightness-110 ${
-            isNeedsInput ? 'border-l-2 border-amber-400' : ''
-          } ${isDone ? 'opacity-50' : ''} ${
-            snapshot.isDragging ? 'ring-2 ring-purple-500/60' : ''
+          className={`group rounded-md border border-white/[0.06] bg-[#141416] shadow-sm transition-colors ${
+            isNeedsInput ? 'border-l-[3px] border-l-amber-400/65' : ''
+          } ${isDone ? 'opacity-55' : ''} ${
+            snapshot.isDragging
+              ? 'border-white/[0.12] bg-[#18181b] shadow-lg ring-1 ring-white/[0.08]'
+              : 'hover:border-white/[0.1] hover:bg-[#161618]'
           }`}
         >
           <div
@@ -42,7 +44,11 @@ export default function TaskCard({ task, index, onDelete, onCardClick }: Props) 
               className="cursor-grab"
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium leading-snug text-gray-100 break-words">
+                <p
+                  className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
+                    isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
+                  }`}
+                >
                   {task.title}
                 </p>
                 <button
@@ -52,16 +58,16 @@ export default function TaskCard({ task, index, onDelete, onCardClick }: Props) 
                     e.stopPropagation();
                     onDelete(task.id);
                   }}
-                  className="shrink-0 cursor-pointer rounded px-1 text-xs text-gray-500 opacity-0 transition hover:bg-gray-700 hover:text-gray-200 group-hover:opacity-100"
+                  className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[13px] leading-none text-zinc-600 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-300 group-hover:opacity-100"
                   aria-label="Delete task"
                 >
                   ×
                 </button>
               </div>
-              <div className="mt-3 flex items-center justify-between">
+              <div className="mt-3 flex items-center justify-between gap-2">
                 <AgentBadge agent={task.agent} />
                 <span
-                  className={`h-2 w-2 rounded-full ${STATUS_DOT[task.status]}`}
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[task.status]}`}
                   aria-hidden
                 />
               </div>
