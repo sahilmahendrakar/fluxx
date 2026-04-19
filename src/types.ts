@@ -19,6 +19,19 @@ export interface Task {
   projectId: string;
 }
 
+export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
+
+export interface Session {
+  id: string;
+  taskId: string;
+  projectId: string;
+  worktreePath: string;
+  branch: string;
+  status: SessionStatus;
+  startedAt: string;
+  stoppedAt?: string;
+}
+
 export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
   { id: 'in-progress', label: 'In progress' },

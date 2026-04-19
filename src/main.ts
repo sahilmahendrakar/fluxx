@@ -5,7 +5,9 @@ import { createHash } from 'node:crypto';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
-import type { Agent, Project } from './types';
+import { WorktreeService } from './main/WorktreeService';
+import { SessionManager } from './main/SessionManager';
+import type { Agent, Project, Task } from './types';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -89,6 +91,9 @@ app.whenReady().then(async () => {
     await taskStore.remapProjectId(previousProjectIdForRemap, projectAfterInit.id);
   }
 
+  const worktreeService = new WorktreeService(projectStore.get()?.rootPath ?? '');
+  const sessionManager = new SessionManager(worktreeService);
+
   ipcMain.handle('project:get', () => projectStore.get());
 
   ipcMain.handle('project:open', async () => {
@@ -121,6 +126,7 @@ app.whenReady().then(async () => {
       addedAt: new Date().toISOString(),
     };
     await projectStore.set(project);
+    worktreeService.setRootPath(project.rootPath);
     await taskStore.migrateMissingProjectIds(project.id);
     return project;
   });
@@ -148,6 +154,41 @@ app.whenReady().then(async () => {
     taskStore.update(id, patch),
   );
   ipcMain.handle('tasks:delete', async (_e, id) => taskStore.delete(id));
+
+  ipcMain.handle('session:start', async (_e, task: Task) => {
+    const project = projectStore.get();
+    if (!project) {
+      throw new Error('No project open');
+    }
+    const win =
+      mainWindow ??
+      BrowserWindow.getFocusedWindow() ??
+      BrowserWindow.getAllWindows()[0];
+    if (!win) {
+      throw new Error('No browser window');
+    }
+    return sessionManager.startSession(task, project, win);
+  });
+
+  ipcMain.handle('session:stop', async (_e, sessionId: string) => {
+    return sessionManager.stopSession(sessionId);
+  });
+
+  ipcMain.handle('session:get', async (_e, taskId: string) => {
+    return sessionManager.getSession(taskId);
+  });
+
+  ipcMain.handle('session:getAll', async () => {
+    return sessionManager.getAllSessions();
+  });
+
+  ipcMain.on('session:write', (_e, sessionId: string, data: string) => {
+    sessionManager.write(sessionId, data);
+  });
+
+  ipcMain.on('session:resize', (_e, sessionId: string, cols: number, rows: number) => {
+    sessionManager.resize(sessionId, cols, rows);
+  });
 
   createWindow();
 });
