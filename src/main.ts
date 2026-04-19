@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeTheme } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
@@ -7,11 +7,21 @@ if (started) {
   app.quit();
 }
 
+// Matches renderer `bg-gray-950` (Tailwind default palette) so native chrome
+// and any pre-paint window surface are not a contrasting light color.
+const WINDOW_BACKGROUND = '#030712';
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     title: 'Flux',
+    backgroundColor: WINDOW_BACKGROUND,
+    ...(process.platform === 'darwin'
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+        }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -35,7 +45,15 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+app.on('ready', () => {
+  if (process.platform === 'darwin') {
+    // With `hiddenInset`, a light system appearance can leave a 1px bright seam on
+    // the top edge (macOS + Electron; see electron/electron#51015). Dark window chrome
+    // matches this app and removes that line.
+    nativeTheme.themeSource = 'dark';
+  }
+  createWindow();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
