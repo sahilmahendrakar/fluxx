@@ -64,8 +64,8 @@ export default function TerminalWindowPage({ sessionId }: TerminalWindowPageProp
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
       {isMac ? (
-        <div className="app-window-drag flex h-10 shrink-0 items-center border-b border-white/[0.06] bg-[#09090b] px-3">
-          <span className="app-window-no-drag truncate text-[13px] text-zinc-400">
+        <div className="app-window-drag flex h-10 shrink-0 items-center border-b border-white/[0.06] bg-[#09090b] pl-20 pr-3">
+          <span className="app-window-no-drag min-w-0 flex-1 truncate text-[13px] text-zinc-400">
             {taskTitle || 'Session terminal'}
           </span>
         </div>

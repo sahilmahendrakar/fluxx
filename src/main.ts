@@ -220,6 +220,7 @@ app.whenReady().then(async () => {
         height: 640,
         title: 'Session terminal · Flux',
         backgroundColor: WINDOW_BACKGROUND,
+        show: false,
         ...(process.platform === 'darwin'
           ? {
               titleBarStyle: 'hiddenInset' as const,
@@ -230,6 +231,11 @@ app.whenReady().then(async () => {
           contextIsolation: true,
           nodeIntegration: false,
         },
+      });
+      termWin.once('ready-to-show', () => {
+        if (!termWin.isDestroyed()) {
+          termWin.show();
+        }
       });
       dedicatedTerminalWindows.set(sessionId, termWin);
       termWin.on('closed', () => {

@@ -19,7 +19,6 @@ export interface TerminalHandle {
 }
 
 const MIN_CONTAINER_PX = 8;
-const MAX_LAYOUT_RETRY_FRAMES = 60;
 
 function containerHasUsableSize(el: HTMLElement): boolean {
   return (
@@ -77,88 +76,71 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     term.loadAddon(webLinksAddon);
 
     term.open(container);
+    termRef.current = term;
 
     let cancelled = false;
     let resizeRaf = 0;
-    let layoutRetryFrame = 0;
-    let layoutRetryRaf = 0;
-    let didFirstGoodFit = false;
 
-    const runFit = () => {
-      if (cancelled || !containerHasUsableSize(container)) {
-        return false;
-      }
+    const doFit = () => {
+      if (cancelled) return;
+      if (!containerHasUsableSize(container)) return;
       try {
         fitAddon.fit();
       } catch {
-        return false;
+        // noop
       }
-      return true;
     };
 
-    const schedulePostLayoutRefits = () => {
+    const scheduleResizeFit = () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        doFit();
+      });
+    };
+
+    // xterm measures the rendered font to compute cols/rows. If the
+    // configured fonts ("JetBrains Mono" etc.) haven't loaded yet the
+    // cell metrics are wrong and fit() produces a garbled layout.
+    // Wait for fonts + two rAF ticks (browser needs a
+    // layout pass after fonts swap) before the first fit.
+    const initFit = async () => {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // fonts.ready not supported — fall through
+      }
+      if (cancelled) return;
+      // Double-rAF: first rAF gets us to after layout, second ensures
+      // the browser has actually painted with the loaded font metrics.
       requestAnimationFrame(() => {
         if (cancelled) return;
-        runFit();
         requestAnimationFrame(() => {
           if (cancelled) return;
-          if (runFit() && term.rows > 0) {
+          doFit();
+          if (term.rows > 0) {
             term.refresh(0, term.rows - 1);
           }
         });
       });
     };
 
-    const tryInitialFit = () => {
-      if (cancelled) return;
-      if (runFit()) {
-        didFirstGoodFit = true;
-        termRef.current = term;
-        schedulePostLayoutRefits();
-        if (term.rows > 0) {
-          term.refresh(0, term.rows - 1);
-        }
-        return;
-      }
-      layoutRetryFrame += 1;
-      if (layoutRetryFrame >= MAX_LAYOUT_RETRY_FRAMES) {
-        didFirstGoodFit = true;
-        termRef.current = term;
-        return;
-      }
-      layoutRetryRaf = requestAnimationFrame(tryInitialFit);
-    };
-
-    termRef.current = term;
-    tryInitialFit();
+    void initFit();
 
     const d1 = term.onData((data) => onDataRef.current?.(data));
     const d2 = term.onResize(({ cols, rows }) =>
       onResizeRef.current?.(cols, rows),
     );
 
-    const scheduleResizeFit = () => {
-      if (resizeRaf) {
-        cancelAnimationFrame(resizeRaf);
-      }
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = 0;
-        if (cancelled) return;
-        if (!containerHasUsableSize(container)) return;
-        if (runFit() && didFirstGoodFit && term.rows > 0) {
-          term.refresh(0, term.rows - 1);
-        }
-      });
-    };
+    const onWindowResize = () => scheduleResizeFit();
+    window.addEventListener('resize', onWindowResize);
 
-    const ro = new ResizeObserver(() => {
-      scheduleResizeFit();
-    });
+    const ro = new ResizeObserver(() => scheduleResizeFit());
     ro.observe(container);
 
     return () => {
       cancelled = true;
-      if (layoutRetryRaf) cancelAnimationFrame(layoutRetryRaf);
+      window.removeEventListener('resize', onWindowResize);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       d1.dispose();
