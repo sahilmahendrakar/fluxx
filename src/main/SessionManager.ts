@@ -9,14 +9,19 @@ export type SessionStartError =
   | { error: 'AGENT_NOT_FOUND'; message: string }
   | { error: 'WORKTREE_FAILED'; message: string };
 
-function agentSpawnSpec(agent: Agent): { command: string; args: string[] } {
+function taskInitialPrompt(task: Task): string {
+  const desc = (task.description ?? '').trim();
+  return desc ? `${task.title}\n\n${desc}` : task.title;
+}
+
+function agentSpawnSpec(agent: Agent, initialPrompt: string): { command: string; args: string[] } {
   switch (agent) {
     case 'claude-code':
-      return { command: 'claude', args: [] };
+      return { command: 'claude', args: [initialPrompt] };
     case 'codex':
       return { command: 'codex', args: [] };
     case 'cursor':
-      return { command: 'agent', args: ['--model', 'auto'] };
+      return { command: 'agent', args: ['--model', 'auto', initialPrompt] };
   }
 }
 
@@ -61,7 +66,8 @@ export class SessionManager {
       return { error: 'WORKTREE_FAILED', message };
     }
 
-    const { command, args } = agentSpawnSpec(task.agent);
+    const initialPrompt = taskInitialPrompt(task);
+    const { command, args } = agentSpawnSpec(task.agent, initialPrompt);
     let ptyProcess: IPty;
     try {
       ptyProcess = pty.spawn(command, args, {
