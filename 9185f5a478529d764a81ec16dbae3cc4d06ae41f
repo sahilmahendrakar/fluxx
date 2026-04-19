@@ -1,0 +1,37 @@
+src/App.tsx
+  bf87783ded25bf5e 1-6,9-39,45,49-61
+src/components/NewTaskModal.tsx
+  bf87783ded25bf5e 1-103
+src/components/TaskCard.tsx
+  bf87783ded25bf5e 1-59
+src/components/AgentBadge.tsx
+  bf87783ded25bf5e 1-18
+src/components/Board.tsx
+  bf87783ded25bf5e 1-52
+src/seed.ts
+  bf87783ded25bf5e 1-12
+src/components/Column.tsx
+  bf87783ded25bf5e 1-70
+src/types.ts
+  bf87783ded25bf5e 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "9185f5a478529d764a81ec16dbae3cc4d06ae41f",
+  "prompts": {
+    "bf87783ded25bf5e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "75249b9a-6680-4f61-8a20-64642b0c9701",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 389,
+      "total_deletions": 7,
+      "accepted_lines": 389,
+      "overriden_lines": 0
+    }
+  }
+}
