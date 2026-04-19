@@ -4,12 +4,16 @@ import { Task, TaskStatus, Agent } from './types';
 import { SEED_TASKS } from './seed';
 import Board from './components/Board';
 import TaskDetailPanel from './components/TaskDetailPanel';
+import { AppShell } from './components/AppShell';
+import { TopBar } from './components/TopBar';
+import type { WorkspaceNavView } from './components/Sidebar';
 
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
   const [tasks, setTasks] = useState<Task[]>(SEED_TASKS);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceNavView>('board');
 
   const handleDragEnd = (result: DropResult) => {
     const { source, destination, draggableId } = result;
@@ -42,36 +46,49 @@ export default function App() {
     setSelectedTaskId((sid) => (sid === id ? null : sid));
   };
 
+  const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
+  const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
+  const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
+
+  const topBarTitle = workspaceView === 'board' ? 'Board' : 'Plan';
+
   return (
-    <div className="flex h-screen w-screen flex-col bg-gray-950 text-white">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-gray-950 text-white">
       {isMac ? (
         <div
           className="app-window-drag h-10 w-full shrink-0 bg-gray-950"
           aria-hidden
         />
       ) : null}
-      <div className="app-window-no-drag flex flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 items-center justify-between px-4 pb-2">
-          <h1 className="text-lg font-semibold tracking-tight">Flux</h1>
-          <span className="text-xs text-gray-500">AI agent task manager</span>
-        </header>
-        <div className="relative flex-1 overflow-hidden">
-          <Board
-            tasks={tasks}
-            onDragEnd={handleDragEnd}
-            onCreateTask={handleCreateTask}
-            onDeleteTask={handleDeleteTask}
-            onCardClick={(id) => setSelectedTaskId(id)}
-          />
-          <TaskDetailPanel
-            task={selectedTask}
-            onClose={() => setSelectedTaskId(null)}
-            onUpdate={(id, patch) =>
-              setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
-            }
-            onDelete={handleDeleteTask}
-          />
-        </div>
+      <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
+        <AppShell workspaceView={workspaceView} onWorkspaceViewChange={setWorkspaceView}>
+          <TopBar title={topBarTitle} statusLine={statusLine} />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {workspaceView === 'board' ? (
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <Board
+                  tasks={tasks}
+                  onDragEnd={handleDragEnd}
+                  onCreateTask={handleCreateTask}
+                  onDeleteTask={handleDeleteTask}
+                  onCardClick={(id) => setSelectedTaskId(id)}
+                />
+                <TaskDetailPanel
+                  task={selectedTask}
+                  onClose={() => setSelectedTaskId(null)}
+                  onUpdate={(id, patch) =>
+                    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
+                  }
+                  onDelete={handleDeleteTask}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-6 text-sm text-gray-500">
+                Planning assistant coming soon
+              </div>
+            )}
+          </div>
+        </AppShell>
       </div>
     </div>
   );
