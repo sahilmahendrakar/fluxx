@@ -5,6 +5,17 @@ import { BrowserWindow } from 'electron';
 import type { Agent, Project, Session, Task } from '../types';
 import { WorktreeService } from './WorktreeService';
 
+function broadcastSessionChannel(channel: string, payload?: unknown): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    if (payload === undefined) {
+      win.webContents.send(channel);
+    } else {
+      win.webContents.send(channel, payload);
+    }
+  }
+}
+
 export type SessionStartError =
   | { error: 'AGENT_NOT_FOUND'; message: string }
   | { error: 'WORKTREE_FAILED'; message: string };
@@ -40,11 +51,7 @@ export class SessionManager {
 
   constructor(private worktreeService: WorktreeService) {}
 
-  async startSession(
-    task: Task,
-    project: Project,
-    win: BrowserWindow,
-  ): Promise<Session | SessionStartError> {
+  async startSession(task: Task, project: Project): Promise<Session | SessionStartError> {
     const existing = this.getSession(task.id);
     if (existing) {
       return existing;
@@ -72,8 +79,8 @@ export class SessionManager {
     try {
       ptyProcess = pty.spawn(command, args, {
         name: 'xterm-color',
-        cols: 220,
-        rows: 50,
+        cols: 80,
+        rows: 24,
         cwd: worktreePath,
         env: { ...process.env },
       });
@@ -108,7 +115,7 @@ export class SessionManager {
     };
 
     ptyProcess.onData((data) => {
-      win.webContents.send(`session:data:${session.id}`, data);
+      broadcastSessionChannel(`session:data:${session.id}`, data);
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -116,7 +123,7 @@ export class SessionManager {
       const liveSession = entry?.session ?? session;
       liveSession.status = exitCode === 0 ? 'stopped' : 'error';
       liveSession.stoppedAt = new Date().toISOString();
-      win.webContents.send('session:exited', liveSession);
+      broadcastSessionChannel('session:exited', liveSession);
       if (entry) {
         this.sessions.delete(session.id);
         void this.worktreeService.remove(entry.session.worktreePath);
@@ -153,6 +160,10 @@ export class SessionManager {
       }
     }
     return null;
+  }
+
+  getSessionBySessionId(sessionId: string): Session | null {
+    return this.sessions.get(sessionId)?.session ?? null;
   }
 
   getAllSessions(): Session[] {

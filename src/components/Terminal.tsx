@@ -18,6 +18,15 @@ export interface TerminalHandle {
   write: (data: string) => void;
 }
 
+const MIN_CONTAINER_PX = 8;
+const MAX_LAYOUT_RETRY_FRAMES = 60;
+
+function containerHasUsableSize(el: HTMLElement): boolean {
+  return (
+    el.clientWidth >= MIN_CONTAINER_PX && el.clientHeight >= MIN_CONTAINER_PX
+  );
+}
+
 const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   { sessionId, onData, onResize },
   ref,
@@ -68,21 +77,89 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     term.loadAddon(webLinksAddon);
 
     term.open(container);
-    fitAddon.fit();
+
+    let cancelled = false;
+    let resizeRaf = 0;
+    let layoutRetryFrame = 0;
+    let layoutRetryRaf = 0;
+    let didFirstGoodFit = false;
+
+    const runFit = () => {
+      if (cancelled || !containerHasUsableSize(container)) {
+        return false;
+      }
+      try {
+        fitAddon.fit();
+      } catch {
+        return false;
+      }
+      return true;
+    };
+
+    const schedulePostLayoutRefits = () => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        runFit();
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          if (runFit() && term.rows > 0) {
+            term.refresh(0, term.rows - 1);
+          }
+        });
+      });
+    };
+
+    const tryInitialFit = () => {
+      if (cancelled) return;
+      if (runFit()) {
+        didFirstGoodFit = true;
+        termRef.current = term;
+        schedulePostLayoutRefits();
+        if (term.rows > 0) {
+          term.refresh(0, term.rows - 1);
+        }
+        return;
+      }
+      layoutRetryFrame += 1;
+      if (layoutRetryFrame >= MAX_LAYOUT_RETRY_FRAMES) {
+        didFirstGoodFit = true;
+        termRef.current = term;
+        return;
+      }
+      layoutRetryRaf = requestAnimationFrame(tryInitialFit);
+    };
 
     termRef.current = term;
+    tryInitialFit();
 
     const d1 = term.onData((data) => onDataRef.current?.(data));
     const d2 = term.onResize(({ cols, rows }) =>
       onResizeRef.current?.(cols, rows),
     );
 
+    const scheduleResizeFit = () => {
+      if (resizeRaf) {
+        cancelAnimationFrame(resizeRaf);
+      }
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        if (cancelled) return;
+        if (!containerHasUsableSize(container)) return;
+        if (runFit() && didFirstGoodFit && term.rows > 0) {
+          term.refresh(0, term.rows - 1);
+        }
+      });
+    };
+
     const ro = new ResizeObserver(() => {
-      fitAddon.fit();
+      scheduleResizeFit();
     });
     ro.observe(container);
 
     return () => {
+      cancelled = true;
+      if (layoutRetryRaf) cancelAnimationFrame(layoutRetryRaf);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       d1.dispose();
       d2.dispose();
@@ -102,7 +179,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   return (
     <div
       ref={containerRef}
-      className="h-full w-full min-h-0 overflow-hidden rounded-md border border-white/[0.06] bg-[#09090b]"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-md border border-white/[0.06] bg-[#09090b]"
     />
   );
 });

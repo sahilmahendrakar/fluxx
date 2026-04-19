@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { Agent, Project, Session, Task } from './types';
 
 type SessionStartResult =
@@ -46,6 +46,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onExit: (cb: (session: Session) => void) => {
       ipcRenderer.on('session:exited', (_event, session: Session) => cb(session));
       return () => ipcRenderer.removeAllListeners('session:exited');
+    },
+    openDedicatedWindow: (sessionId: string) =>
+      ipcRenderer.invoke('session:openDedicatedWindow', sessionId) as Promise<
+        { ok: true } | { ok: false; error: 'NO_SESSION' }
+      >,
+    isDedicatedOpen: (sessionId: string) =>
+      ipcRenderer.invoke('session:isDedicatedOpen', sessionId) as Promise<boolean>,
+    focusDedicatedWindow: (sessionId: string) =>
+      ipcRenderer.invoke('session:focusDedicatedWindow', sessionId) as Promise<void>,
+    onTerminalWindowClosed: (cb: (sessionId: string) => void) => {
+      const handler = (_event: IpcRendererEvent, id: string) => cb(id);
+      ipcRenderer.on('session:terminalWindowClosed', handler);
+      return () => ipcRenderer.removeListener('session:terminalWindowClosed', handler);
     },
   },
 });

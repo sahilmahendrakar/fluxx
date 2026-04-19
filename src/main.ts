@@ -25,6 +25,29 @@ const WINDOW_BACKGROUND = '#030712';
 
 let mainWindow: BrowserWindow | null = null;
 
+/** Session id → dedicated terminal `BrowserWindow` (not the main app window). */
+const dedicatedTerminalWindows = new Map<string, BrowserWindow>();
+
+function broadcastTerminalWindowClosed(sessionId: string): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    win.webContents.send('session:terminalWindowClosed', sessionId);
+  }
+}
+
+function loadUrlWithTerminalHash(win: BrowserWindow, sessionId: string): void {
+  const fragment = `terminal=${sessionId}`;
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const base = MAIN_WINDOW_VITE_DEV_SERVER_URL.replace(/#.*$/, '');
+    void win.loadURL(`${base}#${fragment}`);
+  } else {
+    void win.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      { hash: fragment },
+    );
+  }
+}
+
 const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -160,17 +183,15 @@ app.whenReady().then(async () => {
     if (!project) {
       throw new Error('No project open');
     }
-    const win =
-      mainWindow ??
-      BrowserWindow.getFocusedWindow() ??
-      BrowserWindow.getAllWindows()[0];
-    if (!win) {
-      throw new Error('No browser window');
-    }
-    return sessionManager.startSession(task, project, win);
+    return sessionManager.startSession(task, project);
   });
 
   ipcMain.handle('session:stop', async (_e, sessionId: string) => {
+    const termWin = dedicatedTerminalWindows.get(sessionId);
+    if (termWin && !termWin.isDestroyed()) {
+      termWin.close();
+    }
+    dedicatedTerminalWindows.delete(sessionId);
     return sessionManager.stopSession(sessionId);
   });
 
@@ -180,6 +201,56 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:getAll', async () => {
     return sessionManager.getAllSessions();
+  });
+
+  ipcMain.handle(
+    'session:openDedicatedWindow',
+    (_e, sessionId: string): { ok: true } | { ok: false; error: 'NO_SESSION' } => {
+      const session = sessionManager.getSessionBySessionId(sessionId);
+      if (!session || session.status !== 'running') {
+        return { ok: false, error: 'NO_SESSION' };
+      }
+      const existing = dedicatedTerminalWindows.get(sessionId);
+      if (existing && !existing.isDestroyed()) {
+        existing.focus();
+        return { ok: true };
+      }
+      const termWin = new BrowserWindow({
+        width: 920,
+        height: 640,
+        title: 'Session terminal · Flux',
+        backgroundColor: WINDOW_BACKGROUND,
+        ...(process.platform === 'darwin'
+          ? {
+              titleBarStyle: 'hiddenInset' as const,
+            }
+          : {}),
+        webPreferences: {
+          preload: path.join(__dirname, 'preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+      dedicatedTerminalWindows.set(sessionId, termWin);
+      termWin.on('closed', () => {
+        dedicatedTerminalWindows.delete(sessionId);
+        broadcastTerminalWindowClosed(sessionId);
+      });
+      loadUrlWithTerminalHash(termWin, sessionId);
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle('session:isDedicatedOpen', (_e, sessionId: string) => {
+    const w = dedicatedTerminalWindows.get(sessionId);
+    return Boolean(w && !w.isDestroyed());
+  });
+
+  ipcMain.handle('session:focusDedicatedWindow', (_e, sessionId: string) => {
+    const w = dedicatedTerminalWindows.get(sessionId);
+    if (w && !w.isDestroyed()) {
+      w.focus();
+    }
   });
 
   ipcMain.on('session:write', (_e, sessionId: string, data: string) => {
