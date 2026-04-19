@@ -1,6 +1,7 @@
-import { app, BrowserWindow, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { TaskStore } from './main/TaskStore';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -45,13 +46,24 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', () => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     // With `hiddenInset`, a light system appearance can leave a 1px bright seam on
     // the top edge (macOS + Electron; see electron/electron#51015). Dark window chrome
     // matches this app and removes that line.
     nativeTheme.themeSource = 'dark';
   }
+
+  const store = new TaskStore();
+  await store.init();
+
+  ipcMain.handle('tasks:getAll', async () => store.getAll());
+  ipcMain.handle('tasks:create', async (_e, input) => store.create(input));
+  ipcMain.handle('tasks:update', async (_e, id, patch) =>
+    store.update(id, patch),
+  );
+  ipcMain.handle('tasks:delete', async (_e, id) => store.delete(id));
+
   createWindow();
 });
 
