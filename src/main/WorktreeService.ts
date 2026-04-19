@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -11,6 +12,12 @@ function sanitiseTaskId(taskId: string): string {
 
 function branchForTaskId(taskId: string): string {
   return `flux/task-${sanitiseTaskId(taskId)}`;
+}
+
+/** Safe directory name under ~/.flux/worktrees/<name>/ */
+function projectWorktreesDirName(rootPath: string): string {
+  const base = path.basename(path.resolve(rootPath));
+  return base.replace(/[^a-zA-Z0-9._-]/g, '-') || 'project';
 }
 
 export class WorktreeService {
@@ -30,7 +37,12 @@ export class WorktreeService {
     }
 
     const branch = branchForTaskId(taskId);
-    const worktreesParent = path.join(this.rootPath, '..', '.flux-worktrees');
+    const worktreesParent = path.join(
+      os.homedir(),
+      '.flux',
+      'worktrees',
+      projectWorktreesDirName(this.rootPath),
+    );
     await fs.mkdir(worktreesParent, { recursive: true });
     const worktreePath = path.join(worktreesParent, taskId);
 
