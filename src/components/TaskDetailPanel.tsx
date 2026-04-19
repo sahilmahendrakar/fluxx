@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { Task, TaskStatus, COLUMNS, AGENTS, Agent, Session } from '../types';
 import AgentBadge from './AgentBadge';
 import Terminal, { type TerminalHandle } from './Terminal';
@@ -8,6 +16,26 @@ interface TaskDetailPanelProps {
   onClose: () => void;
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
+}
+
+const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
+const DEFAULT_DETAIL_WIDTH = 420;
+const MIN_DETAIL_WIDTH = 280;
+const MIN_BOARD_REMAINING_PX = 200;
+
+function clampDetailWidth(width: number, maxWidth: number): number {
+  return Math.min(maxWidth, Math.max(MIN_DETAIL_WIDTH, Math.round(width)));
+}
+
+function readStoredDetailWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(TASK_DETAIL_WIDTH_KEY);
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 const STATUS_BADGE: Record<TaskStatus, string> = {
@@ -52,12 +80,93 @@ export default function TaskDetailPanel({
   onUpdate,
   onDelete,
 }: TaskDetailPanelProps) {
+  const asideRef = useRef<HTMLElement>(null);
+  const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
   const descriptionArea = useAutosizeTextArea(task?.description ?? '', 120);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
+
+  const maxDetailWidthForParent = useCallback(() => {
+    const parent = asideRef.current?.parentElement;
+    const w = parent?.getBoundingClientRect().width ?? window.innerWidth;
+    return Math.max(MIN_DETAIL_WIDTH, w - MIN_BOARD_REMAINING_PX);
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredDetailWidth();
+    if (stored != null) {
+      setDetailWidth(clampDetailWidth(stored, maxDetailWidthForParent()));
+    }
+  }, [maxDetailWidthForParent]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [maxDetailWidthForParent]);
+
+  const persistDetailWidth = useCallback((w: number) => {
+    try {
+      localStorage.setItem(TASK_DETAIL_WIDTH_KEY, String(w));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, []);
+
+  const handleResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = e.currentTarget;
+      const startX = e.clientX;
+      const startW = detailWidth;
+      const maxW = maxDetailWidthForParent();
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev: globalThis.PointerEvent) => {
+        const next = startW + (startX - ev.clientX);
+        setDetailWidth(clampDetailWidth(next, maxW));
+      };
+
+      const onUp = (ev: globalThis.PointerEvent) => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        setDetailWidth((prev) => {
+          const capped = clampDetailWidth(prev, maxDetailWidthForParent());
+          persistDetailWidth(capped);
+          return capped;
+        });
+      };
+
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    },
+    [detailWidth, maxDetailWidthForParent, persistDetailWidth],
+  );
+
+  const handleResizeDoubleClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const maxW = maxDetailWidthForParent();
+      const next = clampDetailWidth(DEFAULT_DETAIL_WIDTH, maxW);
+      setDetailWidth(next);
+      persistDetailWidth(next);
+    },
+    [maxDetailWidthForParent, persistDetailWidth],
+  );
 
   useEffect(() => {
     if (!task) return;
@@ -99,6 +208,11 @@ export default function TaskDetailPanel({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [task, onClose]);
+
+  useLayoutEffect(() => {
+    if (task == null) return;
+    setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
+  }, [task?.id, maxDetailWidthForParent]);
 
   const handleStartSession = async () => {
     if (!task) return;
@@ -168,11 +282,22 @@ export default function TaskDetailPanel({
         onClick={onClose}
       />
       <aside
-        className="absolute inset-y-0 right-0 z-20 flex w-[420px] flex-col border-l border-gray-800 bg-gray-900 shadow-xl"
+        ref={asideRef}
+        style={{ width: detailWidth }}
+        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-gray-800 bg-gray-900 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-detail-title"
       >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize task details"
+          title="Drag to resize. Double-click to reset."
+          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-gray-600 before:content-[''] hover:before:bg-purple-500/80 focus-visible:ring-2 focus-visible:ring-purple-500/50"
+          onPointerDown={handleResizePointerDown}
+          onDoubleClick={handleResizeDoubleClick}
+        />
         <div className="flex shrink-0 flex-col gap-3 border-b border-gray-800 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
