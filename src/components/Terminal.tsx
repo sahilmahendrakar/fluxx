@@ -18,6 +18,14 @@ export interface TerminalHandle {
   write: (data: string) => void;
 }
 
+const MIN_CONTAINER_PX = 8;
+
+function containerHasUsableSize(el: HTMLElement): boolean {
+  return (
+    el.clientWidth >= MIN_CONTAINER_PX && el.clientHeight >= MIN_CONTAINER_PX
+  );
+}
+
 const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   { sessionId, onData, onResize },
   ref,
@@ -68,21 +76,72 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     term.loadAddon(webLinksAddon);
 
     term.open(container);
-    fitAddon.fit();
-
     termRef.current = term;
+
+    let cancelled = false;
+    let resizeRaf = 0;
+
+    const doFit = () => {
+      if (cancelled) return;
+      if (!containerHasUsableSize(container)) return;
+      try {
+        fitAddon.fit();
+      } catch {
+        // noop
+      }
+    };
+
+    const scheduleResizeFit = () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        doFit();
+      });
+    };
+
+    // xterm measures the rendered font to compute cols/rows. If the
+    // configured fonts ("JetBrains Mono" etc.) haven't loaded yet the
+    // cell metrics are wrong and fit() produces a garbled layout.
+    // Wait for fonts + two rAF ticks (browser needs a
+    // layout pass after fonts swap) before the first fit.
+    const initFit = async () => {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // fonts.ready not supported — fall through
+      }
+      if (cancelled) return;
+      // Double-rAF: first rAF gets us to after layout, second ensures
+      // the browser has actually painted with the loaded font metrics.
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          doFit();
+          if (term.rows > 0) {
+            term.refresh(0, term.rows - 1);
+          }
+        });
+      });
+    };
+
+    void initFit();
 
     const d1 = term.onData((data) => onDataRef.current?.(data));
     const d2 = term.onResize(({ cols, rows }) =>
       onResizeRef.current?.(cols, rows),
     );
 
-    const ro = new ResizeObserver(() => {
-      fitAddon.fit();
-    });
+    const onWindowResize = () => scheduleResizeFit();
+    window.addEventListener('resize', onWindowResize);
+
+    const ro = new ResizeObserver(() => scheduleResizeFit());
     ro.observe(container);
 
     return () => {
+      cancelled = true;
+      window.removeEventListener('resize', onWindowResize);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
       d1.dispose();
       d2.dispose();
@@ -102,7 +161,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   return (
     <div
       ref={containerRef}
-      className="h-full w-full min-h-0 overflow-hidden rounded-md border border-white/[0.06] bg-[#09090b]"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-md border border-white/[0.06] bg-[#09090b]"
     />
   );
 });

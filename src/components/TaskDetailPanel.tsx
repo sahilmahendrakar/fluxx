@@ -89,7 +89,10 @@ export default function TaskDetailPanel({
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [terminalPoppedOut, setTerminalPoppedOut] = useState(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  sessionRef.current = session;
 
   const maxDetailWidthForParent = useCallback(() => {
     const parent = asideRef.current?.parentElement;
@@ -187,20 +190,48 @@ export default function TaskDetailPanel({
   }, [task?.id]);
 
   useEffect(() => {
-    if (!session) return;
-    const unsub = window.electronAPI.sessions.onData(session.id, (data) => {
-      terminalRef.current?.write(data);
+    if (!session?.id || session.status !== 'running') {
+      setTerminalPoppedOut(false);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.sessions.isDedicatedOpen(session.id).then((open) => {
+      if (!cancelled) setTerminalPoppedOut(open);
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id, session?.status]);
+
+  useEffect(() => {
+    return window.electronAPI.sessions.onTerminalWindowClosed((sessionId) => {
+      if (sessionId === sessionRef.current?.id) {
+        setTerminalPoppedOut(false);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
     const unsubExit = window.electronAPI.sessions.onExit((exitedSession) => {
       if (exitedSession.id === session.id) {
         setSession((prev) => (prev ? { ...prev, status: exitedSession.status } : null));
       }
     });
     return () => {
-      unsub();
       unsubExit();
     };
   }, [session?.id]);
+
+  useEffect(() => {
+    if (!session || terminalPoppedOut) return;
+    const unsub = window.electronAPI.sessions.onData(session.id, (data) => {
+      terminalRef.current?.write(data);
+    });
+    return () => {
+      unsub();
+    };
+  }, [session?.id, terminalPoppedOut]);
 
   useEffect(() => {
     if (!task) return;
@@ -239,6 +270,20 @@ export default function TaskDetailPanel({
     if (!session) return;
     await window.electronAPI.sessions.stop(session.id);
     setSession(null);
+    setTerminalPoppedOut(false);
+  };
+
+  const handleOpenDedicatedTerminal = async () => {
+    if (!session) return;
+    const result = await window.electronAPI.sessions.openDedicatedWindow(session.id);
+    if (result.ok) {
+      setTerminalPoppedOut(true);
+    }
+  };
+
+  const handleFocusDedicatedTerminal = () => {
+    if (!session) return;
+    void window.electronAPI.sessions.focusDedicatedWindow(session.id);
   };
 
   const handleTerminalData = (data: string) => {
@@ -420,22 +465,54 @@ export default function TaskDetailPanel({
                 Session
               </span>
               {sessionRunning ? (
-                <button
-                  type="button"
-                  onClick={() => void handleStopSession()}
-                  className="text-[11px] font-medium text-red-400/90 transition hover:text-red-300"
-                >
-                  Stop
-                </button>
+                <div className="flex items-center gap-2">
+                  {terminalPoppedOut ? (
+                    <button
+                      type="button"
+                      onClick={handleFocusDedicatedTerminal}
+                      className="text-[11px] font-medium text-zinc-400 transition hover:text-zinc-200"
+                    >
+                      Focus window
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenDedicatedTerminal()}
+                      className="text-[11px] font-medium text-zinc-400 transition hover:text-zinc-200"
+                    >
+                      Open in window
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleStopSession()}
+                    className="text-[11px] font-medium text-red-400/90 transition hover:text-red-300"
+                  >
+                    Stop
+                  </button>
+                </div>
               ) : null}
             </div>
             <div className="min-h-0 flex-1 px-2 pb-2">
-              <Terminal
-                ref={terminalRef}
-                sessionId={session?.id ?? null}
-                onData={handleTerminalData}
-                onResize={handleTerminalResize}
-              />
+              {terminalPoppedOut && sessionRunning ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-3 text-center text-[13px] leading-relaxed text-zinc-500">
+                  <p>Terminal is open in a separate window.</p>
+                  <button
+                    type="button"
+                    onClick={handleFocusDedicatedTerminal}
+                    className="rounded-md border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.08]"
+                  >
+                    Focus terminal window
+                  </button>
+                </div>
+              ) : (
+                <Terminal
+                  ref={terminalRef}
+                  sessionId={session?.id ?? null}
+                  onData={handleTerminalData}
+                  onResize={handleTerminalResize}
+                />
+              )}
             </div>
           </div>
         </div>

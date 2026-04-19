@@ -32,6 +32,12 @@ declare global {
         resize: (sessionId: string, cols: number, rows: number) => void;
         onData: (sessionId: string, cb: (data: string) => void) => () => void;
         onExit: (cb: (session: Session) => void) => () => void;
+        openDedicatedWindow: (
+          sessionId: string,
+        ) => Promise<{ ok: true } | { ok: false; error: 'NO_SESSION' }>;
+        isDedicatedOpen: (sessionId: string) => Promise<boolean>;
+        focusDedicatedWindow: (sessionId: string) => Promise<void>;
+        onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
       };
     };
   }
