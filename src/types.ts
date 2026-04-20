@@ -4,6 +4,7 @@ export type Agent = 'claude-code' | 'codex' | 'cursor';
 
 export interface Project {
   id: string;
+  kind: 'local';
   name: string;
   rootPath: string;
   addedAt: string;

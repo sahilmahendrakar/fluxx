@@ -6,7 +6,8 @@ import TaskDetailPanel from './components/TaskDetailPanel';
 import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
 import { LoadingScreen } from './components/LoadingScreen';
-import { WelcomeScreen } from './components/WelcomeScreen';
+import { ProjectsListView } from './components/ProjectsListView';
+import { SignInCard } from './components/SignInCard';
 import type { WorkspaceNavView } from './components/Sidebar';
 
 type TaskPatch = Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description'>>;
@@ -148,8 +149,9 @@ export default function App() {
     }
   }, []);
 
-  const handleProjectOpened = useCallback(async (p: Project) => {
+  const handleProjectActivated = useCallback(async (p: Project) => {
     setProject(p);
+    setSelectedTaskId(null);
     try {
       const all = await window.electronAPI.tasks.getAll();
       setTasks(all);
@@ -160,7 +162,7 @@ export default function App() {
   }, []);
 
   const handleClearProject = useCallback(async () => {
-    await window.electronAPI.project.clear();
+    await window.electronAPI.projects.activate(null);
     setProject(null);
     setTasks([]);
     setSelectedTaskId(null);
@@ -198,7 +200,10 @@ export default function App() {
           />
         ) : null}
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
-          <WelcomeScreen onProjectOpened={(p) => void handleProjectOpened(p)} />
+          <ProjectsListView
+            onProjectActivated={(p) => void handleProjectActivated(p)}
+            authSlot={<SignInCard />}
+          />
         </div>
       </div>
     );

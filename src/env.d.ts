@@ -1,5 +1,13 @@
+/// <reference types="vite/client" />
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- mirrors shared Task shape (status uses TaskStatus)
 import type { Task, Agent, TaskStatus, Project, Session } from './types';
+
+interface ImportMetaEnv {
+  readonly VITE_FIREBASE_API_KEY?: string;
+  readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
+  readonly VITE_FIREBASE_PROJECT_ID?: string;
+  readonly VITE_FIREBASE_APP_ID?: string;
+}
 
 type SessionStartResult =
   | Session
@@ -13,6 +21,15 @@ declare global {
         get: () => Promise<Project | null>;
         open: () => Promise<Project | { error: string } | null>;
         clear: () => Promise<void>;
+      };
+      projects: {
+        list: () => Promise<Project[]>;
+        add: () => Promise<Project | { error: string } | null>;
+        activate: (id: string | null) => Promise<Project | null>;
+        remove: (id: string) => Promise<void>;
+      };
+      auth: {
+        startGoogleLogin: () => Promise<{ idToken: string }>;
       };
       tasks: {
         getAll: () => Promise<Task[]>;

@@ -7,6 +7,7 @@ import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
 import { WorktreeService } from './main/WorktreeService';
 import { SessionManager } from './main/SessionManager';
+import { AuthServer } from './main/AuthServer';
 import type { Agent, Project, Task } from './types';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -97,29 +98,17 @@ app.whenReady().then(async () => {
   const projectStore = new ProjectStore();
   await projectStore.init();
 
-  let previousProjectIdForRemap: string | null = null;
-  const openProject = projectStore.get();
-  if (openProject) {
-    const canonicalId = stableProjectIdForPath(openProject.rootPath);
-    if (openProject.id !== canonicalId) {
-      previousProjectIdForRemap = openProject.id;
-      await projectStore.set({ ...openProject, id: canonicalId });
-    }
-  }
-
   const taskStore = new TaskStore();
-  await taskStore.init(projectStore.get()?.id ?? null);
-  const projectAfterInit = projectStore.get();
-  if (previousProjectIdForRemap && projectAfterInit) {
-    await taskStore.remapProjectId(previousProjectIdForRemap, projectAfterInit.id);
-  }
+  await taskStore.init(projectStore.getActive()?.id ?? null);
 
-  const worktreeService = new WorktreeService(projectStore.get()?.rootPath ?? '');
+  const worktreeService = new WorktreeService(
+    projectStore.getActive()?.rootPath ?? '',
+  );
   const sessionManager = new SessionManager(worktreeService);
 
-  ipcMain.handle('project:get', () => projectStore.get());
+  const authServer = new AuthServer();
 
-  ipcMain.handle('project:open', async () => {
+  async function pickAndAddProject(): Promise<Project | { error: string } | null> {
     const win = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
       properties: ['openDirectory' as const],
@@ -129,9 +118,7 @@ app.whenReady().then(async () => {
     const result = win
       ? await dialog.showOpenDialog(win, dialogOpts)
       : await dialog.showOpenDialog(dialogOpts);
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
+    if (result.canceled || result.filePaths.length === 0) return null;
 
     const rootPath = result.filePaths[0];
     const gitDir = path.join(rootPath, '.git');
@@ -141,33 +128,60 @@ app.whenReady().then(async () => {
       return { error: 'NOT_GIT_REPO' as const };
     }
 
-    const name = path.basename(rootPath);
-    const project: Project = {
-      id: stableProjectIdForPath(rootPath),
-      name,
+    const id = stableProjectIdForPath(rootPath);
+    const existing = projectStore.getById(id);
+    const project: Project = existing ?? {
+      id,
+      kind: 'local',
+      name: path.basename(rootPath),
       rootPath,
       addedAt: new Date().toISOString(),
     };
-    await projectStore.set(project);
+    await projectStore.upsert(project);
+    await projectStore.setActive(project.id);
     worktreeService.setRootPath(project.rootPath);
     await taskStore.migrateMissingProjectIds(project.id);
     return project;
-  });
+  }
 
+  // ---- Project (legacy single-project API; returns the active project) ----
+  ipcMain.handle('project:get', () => projectStore.getActive());
+  ipcMain.handle('project:open', () => pickAndAddProject());
   ipcMain.handle('project:clear', async () => {
-    await projectStore.clear();
+    await projectStore.setActive(null);
+    worktreeService.setRootPath('');
   });
 
+  // ---- Projects (multi-project API) ----
+  ipcMain.handle('projects:list', () => projectStore.list());
+  ipcMain.handle('projects:add', () => pickAndAddProject());
+  ipcMain.handle(
+    'projects:activate',
+    async (_e, id: string | null): Promise<Project | null> => {
+      const active = await projectStore.setActive(id);
+      worktreeService.setRootPath(active?.rootPath ?? '');
+      if (active) await taskStore.migrateMissingProjectIds(active.id);
+      return active;
+    },
+  );
+  ipcMain.handle('projects:remove', async (_e, id: string) => {
+    await projectStore.remove(id);
+    const active = projectStore.getActive();
+    worktreeService.setRootPath(active?.rootPath ?? '');
+  });
+
+  // ---- Auth ----
+  ipcMain.handle('auth:startGoogleLogin', async () => authServer.startGoogleLogin());
+
+  // ---- Tasks ----
   ipcMain.handle('tasks:getAll', async () => {
-    const project = projectStore.get();
-    if (!project) {
-      return [];
-    }
+    const project = projectStore.getActive();
+    if (!project) return [];
     return taskStore.getAll(project.id);
   });
 
   ipcMain.handle('tasks:create', async (_e, input: { title: string; agent: Agent }) => {
-    const project = projectStore.get();
+    const project = projectStore.getActive();
     if (!project) {
       throw new Error('No project open');
     }
@@ -179,7 +193,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('tasks:delete', async (_e, id) => taskStore.delete(id));
 
   ipcMain.handle('session:start', async (_e, task: Task) => {
-    const project = projectStore.get();
+    const project = projectStore.getActive();
     if (!project) {
       throw new Error('No project open');
     }

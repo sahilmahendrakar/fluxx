@@ -15,6 +15,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     clear: () => ipcRenderer.invoke('project:clear') as Promise<void>,
   },
+  projects: {
+    list: () => ipcRenderer.invoke('projects:list') as Promise<Project[]>,
+    add: () =>
+      ipcRenderer.invoke('projects:add') as Promise<
+        Project | { error: string } | null
+      >,
+    activate: (id: string | null) =>
+      ipcRenderer.invoke('projects:activate', id) as Promise<Project | null>,
+    remove: (id: string) =>
+      ipcRenderer.invoke('projects:remove', id) as Promise<void>,
+  },
+  auth: {
+    startGoogleLogin: () =>
+      ipcRenderer.invoke('auth:startGoogleLogin') as Promise<{
+        idToken: string;
+      }>,
+  },
   tasks: {
     getAll: () => ipcRenderer.invoke('tasks:getAll') as Promise<Task[]>,
     create: (input: { title: string; agent: Agent }) =>
