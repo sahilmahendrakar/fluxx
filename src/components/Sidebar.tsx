@@ -1,12 +1,41 @@
 import type { Project } from '../types';
 
-export type WorkspaceNavView = 'board' | 'plan';
+export type WorkspaceNavView = 'board' | 'plan' | 'team';
 
 interface SidebarProps {
   project: Project;
   workspaceView: WorkspaceNavView;
   onWorkspaceViewChange: (view: WorkspaceNavView) => void;
   onClearProject: () => void;
+}
+
+function TeamIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <circle cx="5.75" cy="6" r="2" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="11" cy="6.5" r="1.6" stroke="currentColor" strokeWidth="1.2" />
+      <path
+        d="M2 13c0-1.66 1.68-3 3.75-3s3.75 1.34 3.75 3"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.5 13c0-1.33 1.34-2.4 3-2.4s3 1.07 3 2.4"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function BoardIcon({ className }: { className?: string }) {
@@ -118,6 +147,16 @@ export function Sidebar({
             <PlanIcon className="shrink-0 opacity-80" />
             <span>Plan</span>
           </button>
+          {project.kind === 'cloud' ? (
+            <button
+              type="button"
+              className={navItemClass(workspaceView === 'team')}
+              onClick={() => onWorkspaceViewChange('team')}
+            >
+              <TeamIcon className="shrink-0 opacity-80" />
+              <span>Team</span>
+            </button>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1" aria-hidden />
         <div className="border-t border-white/[0.06] pt-2">

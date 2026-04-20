@@ -1,21 +1,35 @@
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Project } from '../types';
+import type { LocalProject } from '../types';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+export type ActiveProjectKind = 'local' | 'cloud';
+
+export interface ActiveProjectKey {
+  kind: ActiveProjectKind;
+  id: string;
+}
 
 interface StoreFile {
   schemaVersion: number;
-  projects: Project[];
-  activeProjectId: string | null;
+  projects: LocalProject[];
+  activeProjectKey: ActiveProjectKey | null;
+  /** legacy v1 field; read for migration, never written */
+  activeProjectId?: string | null;
 }
 
+/**
+ * Persists the local project list and a pointer to the active project. The
+ * active pointer is {kind, id} because cloud projects live in Firestore and
+ * are not stored here — only their id is remembered across launches.
+ */
 export class ProjectStore {
   private filePath: string;
   private legacyFilePath: string;
-  private projects: Project[] = [];
-  private activeProjectId: string | null = null;
+  private projects: LocalProject[] = [];
+  private activeProjectKey: ActiveProjectKey | null = null;
 
   constructor() {
     this.filePath = path.join(app.getPath('userData'), 'projects.json');
@@ -48,12 +62,28 @@ export class ProjectStore {
     if (!Array.isArray(p.projects)) return true;
 
     this.projects = p.projects
-      .map(normalizeProject)
-      .filter((proj): proj is Project => proj !== null);
-    const active =
-      typeof p.activeProjectId === 'string' ? p.activeProjectId : null;
-    this.activeProjectId =
-      active && this.projects.some((proj) => proj.id === active) ? active : null;
+      .map(normalizeLocalProject)
+      .filter((proj): proj is LocalProject => proj !== null);
+
+    const key = normalizeActiveKey(p.activeProjectKey);
+    if (key) {
+      this.activeProjectKey = key;
+    } else if (typeof p.activeProjectId === 'string' && p.activeProjectId) {
+      // v1 → v2: the legacy id always referred to a local project.
+      this.activeProjectKey = { kind: 'local', id: p.activeProjectId };
+    }
+
+    // Drop stale local pointer if the project was removed out-of-band.
+    const activeKey = this.activeProjectKey;
+    if (
+      activeKey?.kind === 'local' &&
+      !this.projects.some((proj) => proj.id === activeKey.id)
+    ) {
+      this.activeProjectKey = null;
+    }
+
+    // If we migrated from v1, persist the new schema shape.
+    if (p.schemaVersion !== SCHEMA_VERSION) await this.save();
     return true;
   }
 
@@ -73,7 +103,7 @@ export class ProjectStore {
       return;
     }
     if (!parsed || typeof parsed !== 'object') return;
-    const p = parsed as Partial<Project> & { kind?: unknown };
+    const p = parsed as Partial<LocalProject>;
     if (
       typeof p.id !== 'string' ||
       typeof p.name !== 'string' ||
@@ -82,7 +112,7 @@ export class ProjectStore {
     ) {
       return;
     }
-    const migrated: Project = {
+    const migrated: LocalProject = {
       id: p.id,
       kind: 'local',
       name: p.name,
@@ -90,7 +120,7 @@ export class ProjectStore {
       addedAt: p.addedAt,
     };
     this.projects = [migrated];
-    this.activeProjectId = migrated.id;
+    this.activeProjectKey = { kind: 'local', id: migrated.id };
     await this.save();
     try {
       await fs.unlink(this.legacyFilePath);
@@ -99,20 +129,25 @@ export class ProjectStore {
     }
   }
 
-  list(): Project[] {
+  listLocal(): LocalProject[] {
     return this.projects.slice();
   }
 
-  getActive(): Project | null {
-    if (!this.activeProjectId) return null;
-    return this.projects.find((p) => p.id === this.activeProjectId) ?? null;
+  getActiveKey(): ActiveProjectKey | null {
+    return this.activeProjectKey ? { ...this.activeProjectKey } : null;
   }
 
-  getById(id: string): Project | null {
+  getActiveLocal(): LocalProject | null {
+    const key = this.activeProjectKey;
+    if (key?.kind !== 'local') return null;
+    return this.projects.find((p) => p.id === key.id) ?? null;
+  }
+
+  getLocalById(id: string): LocalProject | null {
     return this.projects.find((p) => p.id === id) ?? null;
   }
 
-  async upsert(project: Project): Promise<Project> {
+  async upsertLocal(project: LocalProject): Promise<LocalProject> {
     const index = this.projects.findIndex((p) => p.id === project.id);
     if (index === -1) {
       this.projects.push(project);
@@ -123,20 +158,22 @@ export class ProjectStore {
     return project;
   }
 
-  async setActive(id: string | null): Promise<Project | null> {
-    if (id && !this.projects.some((p) => p.id === id)) {
-      throw new Error(`Project not found: ${id}`);
+  async setActiveKey(key: ActiveProjectKey | null): Promise<ActiveProjectKey | null> {
+    if (key?.kind === 'local' && !this.projects.some((p) => p.id === key.id)) {
+      throw new Error(`Local project not found: ${key.id}`);
     }
-    this.activeProjectId = id;
+    this.activeProjectKey = key;
     await this.save();
-    return this.getActive();
+    return this.getActiveKey();
   }
 
-  async remove(id: string): Promise<void> {
+  async removeLocal(id: string): Promise<void> {
     const before = this.projects.length;
     this.projects = this.projects.filter((p) => p.id !== id);
     if (this.projects.length === before) return;
-    if (this.activeProjectId === id) this.activeProjectId = null;
+    if (this.activeProjectKey?.kind === 'local' && this.activeProjectKey.id === id) {
+      this.activeProjectKey = null;
+    }
     await this.save();
   }
 
@@ -144,7 +181,7 @@ export class ProjectStore {
     const data: StoreFile = {
       schemaVersion: SCHEMA_VERSION,
       projects: this.projects,
-      activeProjectId: this.activeProjectId,
+      activeProjectKey: this.activeProjectKey,
     };
     const tmpPath = `${this.filePath}.tmp`;
     const payload = `${JSON.stringify(data, null, 2)}\n`;
@@ -160,9 +197,9 @@ export class ProjectStore {
   }
 }
 
-function normalizeProject(value: unknown): Project | null {
+function normalizeLocalProject(value: unknown): LocalProject | null {
   if (!value || typeof value !== 'object') return null;
-  const p = value as Partial<Project>;
+  const p = value as Partial<LocalProject>;
   if (
     typeof p.id !== 'string' ||
     typeof p.name !== 'string' ||
@@ -178,6 +215,14 @@ function normalizeProject(value: unknown): Project | null {
     rootPath: p.rootPath,
     addedAt: p.addedAt,
   };
+}
+
+function normalizeActiveKey(value: unknown): ActiveProjectKey | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Partial<ActiveProjectKey>;
+  if (typeof v.id !== 'string' || !v.id) return null;
+  if (v.kind !== 'local' && v.kind !== 'cloud') return null;
+  return { kind: v.kind, id: v.id };
 }
 
 function errnoCode(err: unknown): string | undefined {

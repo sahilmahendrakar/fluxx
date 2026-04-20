@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DropResult } from '@hello-pangea/dnd';
-import { Task, TaskStatus, Agent, Project } from './types';
+import {
+  Task,
+  TaskStatus,
+  Agent,
+  CloudProject,
+  LocalProject,
+} from './types';
 import Board from './components/Board';
 import TaskDetailPanel from './components/TaskDetailPanel';
 import { AppShell } from './components/AppShell';
@@ -8,42 +14,175 @@ import { TopBar } from './components/TopBar';
 import { LoadingScreen } from './components/LoadingScreen';
 import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
+import { TeamView } from './components/TeamView';
 import type { WorkspaceNavView } from './components/Sidebar';
+import { useAuth } from './renderer/auth/useAuth';
+import { useCloudProjects } from './renderer/projects/useCloudProjects';
+import { useInvites } from './renderer/invites/useInvites';
+import {
+  useAgentHeartbeat,
+  useRunners,
+} from './renderer/runners/useRunners';
+import type { TaskProvider } from './renderer/tasks/TaskProvider';
+import { LocalTaskProvider } from './renderer/tasks/LocalTaskProvider';
+import { FirestoreTaskProvider } from './renderer/tasks/FirestoreTaskProvider';
+import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 
-type TaskPatch = Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description'>>;
+type TaskPatch = Partial<
+  Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey'>
+>;
+type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
 
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
-  const [project, setProject] = useState<Project | null>(null);
-  const [projectLoading, setProjectLoading] = useState(true);
+  const [project, setProject] = useState<ActiveProject | null>(null);
+  const [activationLoading, setActivationLoading] = useState(true);
+  const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceNavView>('board');
 
+  const auth = useAuth();
+  const uid = auth.user?.uid ?? null;
+  const userEmail = auth.user?.email ?? null;
+  const displayName = auth.user?.displayName ?? undefined;
+  const cloudProjectsState = useCloudProjects(uid);
+  const invitesState = useInvites(userEmail);
+
+  const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
+  const runners = useRunners(cloudProjectId);
+  useAgentHeartbeat({ projectId: cloudProjectId, uid, displayName });
+
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
+  // ----- Task provider per active project -----
+  const provider = useMemo<TaskProvider | null>(() => {
+    if (!project) return null;
+    if (project.kind === 'local') return new LocalTaskProvider();
+    if (!uid) return null;
+    return new FirestoreTaskProvider(project.id, uid);
+  }, [project?.kind, project?.id, uid]);
+
+  useEffect(() => {
+    if (!provider) {
+      setTasks([]);
+      return;
+    }
+    const unsub = provider.subscribe((all) => setTasks(all));
+    return () => unsub();
+  }, [provider]);
+
+  // ----- Initial active-project hydration -----
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      window.electronAPI.project.get(),
-      window.electronAPI.tasks.getAll(),
-    ])
-      .then(([proj, taskList]) => {
+    void (async () => {
+      const key = await window.electronAPI.projects.getActiveKey();
+      if (cancelled) return;
+      if (!key) {
+        setActivationLoading(false);
+        return;
+      }
+      if (key.kind === 'local') {
+        const list = await window.electronAPI.projects.listLocal();
+        const local = list.find((p) => p.id === key.id) ?? null;
         if (cancelled) return;
-        setProject(proj);
-        setTasks(taskList);
-        setProjectLoading(false);
-      })
-      .catch((err) => {
-        console.error('[initial load] failed', err);
-        if (!cancelled) setProjectLoading(false);
-      });
+        setProject(local);
+        setActivationLoading(false);
+        return;
+      }
+      // Cloud: wait for auth + Firestore snapshot in the effect below.
+      setPendingCloudActive(key.id);
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Resolve a pending cloud active once auth + Firestore have loaded.
+  useEffect(() => {
+    if (!pendingCloudActive) return;
+    if (auth.status === 'loading') return;
+    let cancelled = false;
+    void (async () => {
+      if (auth.status !== 'signedIn') {
+        await window.electronAPI.projects.clearActive();
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        return;
+      }
+      if (cloudProjectsState.status !== 'ready') return;
+      const match = cloudProjectsState.projects.find(
+        (p) => p.id === pendingCloudActive,
+      );
+      if (!match) {
+        await window.electronAPI.projects.clearActive();
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        return;
+      }
+      const binding = await window.electronAPI.projects.getLocalBinding(match.id);
+      if (!binding) {
+        await window.electronAPI.projects.clearActive();
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        return;
+      }
+      const result = await window.electronAPI.projects.activateCloud({
+        id: match.id,
+        rootPath: binding.rootPath,
+      });
+      if (cancelled) return;
+      if (!result || 'error' in result) {
+        await window.electronAPI.projects.clearLocalBinding(match.id);
+        await window.electronAPI.projects.clearActive();
+        setPendingCloudActive(null);
+        setActivationLoading(false);
+        return;
+      }
+      setProject({
+        id: match.id,
+        kind: 'cloud',
+        name: match.name,
+        ownerId: match.ownerId,
+        memberIds: match.memberIds,
+        createdAt: match.createdAt,
+        rootPath: binding.rootPath,
+      });
+      setPendingCloudActive(null);
+      setActivationLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pendingCloudActive,
+    auth.status,
+    cloudProjectsState.status,
+    cloudProjectsState.projects,
+  ]);
+
+  // Keep cloud project's Firestore-side fields fresh when the snapshot updates.
+  useEffect(() => {
+    if (!project || project.kind !== 'cloud') return;
+    if (cloudProjectsState.status !== 'ready') return;
+    const fresh = cloudProjectsState.projects.find((p) => p.id === project.id);
+    if (!fresh) return;
+    const changed =
+      fresh.name !== project.name ||
+      fresh.ownerId !== project.ownerId ||
+      fresh.memberIds.join(',') !== project.memberIds.join(',') ||
+      fresh.createdAt !== project.createdAt;
+    if (!changed) return;
+    setProject({ ...project, ...fresh });
+  }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
 
   const pendingRef = useRef<
     Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
@@ -57,21 +196,26 @@ export default function App() {
     };
   }, []);
 
-  const flushUpdate = useCallback(async (id: string) => {
-    const pending = pendingRef.current.get(id);
-    if (!pending) return;
-    pendingRef.current.delete(id);
-    try {
-      const updated = await window.electronAPI.tasks.update(id, pending.patch);
-      // Preserve any newer pending edits so a stale server result doesn't clobber them.
-      const newer = pendingRef.current.get(id);
-      setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...updated, ...(newer?.patch ?? {}) } : t)),
-      );
-    } catch (err) {
-      console.error('[tasks.update] failed', err);
-    }
-  }, []);
+  const flushUpdate = useCallback(
+    async (id: string) => {
+      if (!provider) return;
+      const pending = pendingRef.current.get(id);
+      if (!pending) return;
+      pendingRef.current.delete(id);
+      try {
+        const updated = await provider.update(id, pending.patch);
+        const newer = pendingRef.current.get(id);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id ? { ...updated, ...(newer?.patch ?? {}) } : t,
+          ),
+        );
+      } catch (err) {
+        console.error('[tasks.update] failed', err);
+      }
+    },
+    [provider],
+  );
 
   const handleUpdateTask = useCallback(
     (id: string, patch: Partial<Task>) => {
@@ -82,6 +226,7 @@ export default function App() {
       if (patch.description !== undefined) persistable.description = patch.description;
       if (patch.status !== undefined) persistable.status = patch.status;
       if (patch.agent !== undefined) persistable.agent = patch.agent;
+      if (patch.orderKey !== undefined) persistable.orderKey = patch.orderKey;
       if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
@@ -95,74 +240,112 @@ export default function App() {
     [flushUpdate],
   );
 
-  const handleDragEnd = useCallback(async (result: DropResult) => {
-    const { source, destination, draggableId } = result;
-    if (!destination) return;
-    if (
-      source.droppableId === destination.droppableId &&
-      source.index === destination.index
-    ) {
-      return;
-    }
-    const nextStatus = destination.droppableId as TaskStatus;
+  const handleDragEnd = useCallback(
+    async (result: DropResult) => {
+      if (!provider) return;
+      const { source, destination, draggableId } = result;
+      if (!destination) return;
+      if (
+        source.droppableId === destination.droppableId &&
+        source.index === destination.index
+      ) {
+        return;
+      }
+      const nextStatus = destination.droppableId as TaskStatus;
 
-    setTasks((prev) =>
-      prev.map((t) => (t.id === draggableId ? { ...t, status: nextStatus } : t)),
-    );
+      // Compute new orderKey for the destination position using the CURRENT
+      // task list excluding the dragged item. This keeps the destination
+      // column stable whether the move is intra- or inter-column.
+      const destCol = sortColumn(
+        tasks.filter((t) => t.id !== draggableId),
+        nextStatus,
+      );
+      let nextOrderKey: string;
+      try {
+        nextOrderKey = keyForInsert(destCol, destination.index);
+      } catch (err) {
+        console.error('[dragEnd] keyForInsert failed; using fallback', err);
+        nextOrderKey = String(Date.now());
+      }
 
-    try {
-      const updated = await window.electronAPI.tasks.update(draggableId, {
-        status: nextStatus,
-      });
-      const pending = pendingRef.current.get(draggableId);
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === draggableId ? { ...updated, ...(pending?.patch ?? {}) } : t,
+          t.id === draggableId
+            ? { ...t, status: nextStatus, orderKey: nextOrderKey }
+            : t,
         ),
       );
-    } catch (err) {
-      console.error('[tasks.update] drag-end failed', err);
-    }
-  }, []);
 
-  const handleCreateTask = useCallback(async (title: string, agent: Agent) => {
-    try {
-      const task = await window.electronAPI.tasks.create({ title, agent });
-      setTasks((prev) => [...prev, task]);
-    } catch (err) {
-      console.error('[tasks.create] failed', err);
-    }
-  }, []);
+      try {
+        const updated = await provider.update(draggableId, {
+          status: nextStatus,
+          orderKey: nextOrderKey,
+        });
+        const pending = pendingRef.current.get(draggableId);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === draggableId
+              ? { ...updated, ...(pending?.patch ?? {}) }
+              : t,
+          ),
+        );
+      } catch (err) {
+        console.error('[tasks.update] drag-end failed', err);
+      }
+    },
+    [provider, tasks],
+  );
 
-  const handleDeleteTask = useCallback(async (id: string) => {
-    const pending = pendingRef.current.get(id);
-    if (pending) {
-      clearTimeout(pending.timer);
-      pendingRef.current.delete(id);
-    }
-    try {
-      await window.electronAPI.tasks.delete(id);
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      setSelectedTaskId((sid) => (sid === id ? null : sid));
-    } catch (err) {
-      console.error('[tasks.delete] failed', err);
-    }
-  }, []);
+  const handleCreateTask = useCallback(
+    async (title: string, agent: Agent) => {
+      if (!provider) return;
+      try {
+        // Append to the bottom of the backlog column.
+        const backlog = sortColumn(tasks, 'backlog');
+        let orderKey: string | undefined;
+        try {
+          orderKey = keyForInsert(backlog, backlog.length);
+        } catch {
+          orderKey = undefined;
+        }
+        const task = await provider.create({ title, agent, orderKey });
+        setTasks((prev) => {
+          if (prev.some((t) => t.id === task.id)) return prev;
+          return [...prev, task];
+        });
+      } catch (err) {
+        console.error('[tasks.create] failed', err);
+      }
+    },
+    [provider, tasks],
+  );
 
-  const handleProjectActivated = useCallback(async (p: Project) => {
+  const handleDeleteTask = useCallback(
+    async (id: string) => {
+      if (!provider) return;
+      const pending = pendingRef.current.get(id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingRef.current.delete(id);
+      }
+      try {
+        await provider.delete(id);
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+        setSelectedTaskId((sid) => (sid === id ? null : sid));
+      } catch (err) {
+        console.error('[tasks.delete] failed', err);
+      }
+    },
+    [provider],
+  );
+
+  const handleProjectActivated = useCallback((p: ActiveProject) => {
     setProject(p);
     setSelectedTaskId(null);
-    try {
-      const all = await window.electronAPI.tasks.getAll();
-      setTasks(all);
-    } catch (err) {
-      console.error('[tasks.getAll] after open failed', err);
-      setTasks([]);
-    }
   }, []);
 
   const handleClearProject = useCallback(async () => {
-    await window.electronAPI.projects.activate(null);
+    await window.electronAPI.projects.clearActive();
     setProject(null);
     setTasks([]);
     setSelectedTaskId(null);
@@ -172,9 +355,26 @@ export default function App() {
   const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
   const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
 
-  const topBarTitle = workspaceView === 'board' ? 'Board' : 'Plan';
+  const topBarTitle =
+    workspaceView === 'board' ? 'Board' : workspaceView === 'team' ? 'Team' : 'Plan';
 
-  if (projectLoading) {
+  // Sort tasks per column for the board (orderKey-aware). Falls back to
+  // createdAt/id for rows without a key.
+  const sortedTasks = useMemo(() => {
+    return [
+      ...sortColumn(tasks, 'backlog'),
+      ...sortColumn(tasks, 'in-progress'),
+      ...sortColumn(tasks, 'needs-input'),
+      ...sortColumn(tasks, 'done'),
+    ];
+  }, [tasks]);
+
+  const remoteRunnerForSelected =
+    selectedTask && cloudProjectId
+      ? findRemoteRunner(runners.byTask.get(selectedTask.id), uid)
+      : null;
+
+  if (activationLoading || auth.status === 'loading') {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
         {isMac ? (
@@ -201,7 +401,10 @@ export default function App() {
         ) : null}
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <ProjectsListView
-            onProjectActivated={(p) => void handleProjectActivated(p)}
+            onProjectActivated={handleProjectActivated}
+            auth={auth}
+            cloudProjects={cloudProjectsState}
+            invites={invitesState}
             authSlot={<SignInCard />}
           />
         </div>
@@ -229,7 +432,7 @@ export default function App() {
             {workspaceView === 'board' ? (
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 <Board
-                  tasks={tasks}
+                  tasks={sortedTasks}
                   onDragEnd={handleDragEnd}
                   onCreateTask={handleCreateTask}
                   onDeleteTask={handleDeleteTask}
@@ -240,8 +443,16 @@ export default function App() {
                   onClose={() => setSelectedTaskId(null)}
                   onUpdate={handleUpdateTask}
                   onDelete={handleDeleteTask}
+                  remoteRunner={remoteRunnerForSelected}
                 />
               </div>
+            ) : workspaceView === 'team' && project.kind === 'cloud' && uid ? (
+              <TeamView
+                project={project}
+                currentUid={uid}
+                currentUserDisplayName={displayName}
+                currentUserEmail={userEmail ?? undefined}
+              />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
                 <p className="text-sm font-medium text-zinc-300">Plan</p>
@@ -255,4 +466,21 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function findRemoteRunner(
+  byUid: Map<string, { uid: string; status: string; lastSeen: string; displayName?: string }> | undefined,
+  selfUid: string | null,
+): { displayName?: string } | null {
+  if (!byUid) return null;
+  const STALE_MS = 2 * 60 * 1000;
+  const now = Date.now();
+  for (const entry of byUid.values()) {
+    if (entry.status !== 'running') continue;
+    if (selfUid && entry.uid === selfUid) continue;
+    const seen = Date.parse(entry.lastSeen);
+    if (Number.isFinite(seen) && now - seen > STALE_MS) continue;
+    return { displayName: entry.displayName };
+  }
+  return null;
 }

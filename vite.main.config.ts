@@ -18,6 +18,10 @@ export default defineConfig(({ mode }) => {
     define: Object.fromEntries([
       inline('VITE_GOOGLE_DESKTOP_CLIENT_ID'),
       inline('VITE_GOOGLE_DESKTOP_CLIENT_SECRET'),
+      inline('RESEND_API_KEY'),
+      inline('RESEND_FROM_DOMAIN'),
+      inline('RESEND_FROM_NAME'),
+      inline('FLUX_APP_URL'),
     ]),
   };
 });

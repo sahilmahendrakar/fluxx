@@ -5,6 +5,13 @@ import {
   setPersistence,
   type Auth,
 } from 'firebase/auth';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from 'firebase/firestore';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -20,17 +27,23 @@ export function isFirebaseConfigured(): boolean {
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
+let firestore: Firestore | null = null;
 let persistencePromise: Promise<void> | null = null;
 
-export function getFirebaseAuth(): Auth {
+function getApp(): FirebaseApp {
   if (!isFirebaseConfigured()) {
     throw new Error(
       'Firebase is not configured. Set VITE_FIREBASE_* in .env and restart.',
     );
   }
   if (!app) app = initializeApp(config);
+  return app;
+}
+
+export function getFirebaseAuth(): Auth {
+  const a = getApp();
   if (!auth) {
-    auth = getAuth(app);
+    auth = getAuth(a);
     persistencePromise = setPersistence(auth, browserLocalPersistence).catch(
       (err) => {
         console.error('[firebase] setPersistence failed', err);
@@ -38,6 +51,24 @@ export function getFirebaseAuth(): Auth {
     );
   }
   return auth;
+}
+
+export function getFirebaseFirestore(): Firestore {
+  const a = getApp();
+  if (!firestore) {
+    try {
+      firestore = initializeFirestore(a, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      });
+    } catch (err) {
+      // initializeFirestore throws if called after getFirestore, so fall back.
+      console.warn('[firebase] initializeFirestore failed, falling back', err);
+      firestore = getFirestore(a);
+    }
+  }
+  return firestore;
 }
 
 export function whenAuthReady(): Promise<void> {

@@ -1,30 +1,59 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { Agent, Project, Session, Task } from './types';
+import type { Agent, LocalProject, Session, Task } from './types';
 
 type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
 
+type ActiveProjectKey = { kind: 'local' | 'cloud'; id: string };
+
+type DirPickResult =
+  | { rootPath: string }
+  | { error: 'NOT_GIT_REPO' }
+  | null;
+
+type ActivateCloudResult =
+  | { ok: true }
+  | { error: 'NOT_GIT_REPO' }
+  | null;
+
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   project: {
-    get: () => ipcRenderer.invoke('project:get') as Promise<Project | null>,
+    get: () => ipcRenderer.invoke('project:get') as Promise<LocalProject | null>,
     open: () =>
       ipcRenderer.invoke('project:open') as Promise<
-        Project | { error: string } | null
+        LocalProject | { error: string } | null
       >,
     clear: () => ipcRenderer.invoke('project:clear') as Promise<void>,
   },
   projects: {
-    list: () => ipcRenderer.invoke('projects:list') as Promise<Project[]>,
-    add: () =>
-      ipcRenderer.invoke('projects:add') as Promise<
-        Project | { error: string } | null
+    listLocal: () =>
+      ipcRenderer.invoke('projects:listLocal') as Promise<LocalProject[]>,
+    addLocal: () =>
+      ipcRenderer.invoke('projects:addLocal') as Promise<
+        LocalProject | { error: string } | null
       >,
-    activate: (id: string | null) =>
-      ipcRenderer.invoke('projects:activate', id) as Promise<Project | null>,
-    remove: (id: string) =>
-      ipcRenderer.invoke('projects:remove', id) as Promise<void>,
+    activateLocal: (id: string | null) =>
+      ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
+    removeLocal: (id: string) =>
+      ipcRenderer.invoke('projects:removeLocal', id) as Promise<void>,
+    getActiveKey: () =>
+      ipcRenderer.invoke('projects:getActiveKey') as Promise<ActiveProjectKey | null>,
+    clearActive: () => ipcRenderer.invoke('projects:clearActive') as Promise<void>,
+    getLocalBinding: (cloudProjectId: string) =>
+      ipcRenderer.invoke('projects:getLocalBinding', cloudProjectId) as Promise<
+        { rootPath: string; lastOpenedAt: string } | null
+      >,
+    pickDirectoryForCloud: (cloudProjectId: string) =>
+      ipcRenderer.invoke(
+        'projects:pickDirectoryForCloud',
+        cloudProjectId,
+      ) as Promise<DirPickResult>,
+    activateCloud: (payload: { id: string; rootPath: string }) =>
+      ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
+    clearLocalBinding: (cloudProjectId: string) =>
+      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
   },
   auth: {
     startGoogleLogin: () =>
@@ -32,13 +61,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
         idToken: string;
       }>,
   },
+  email: {
+    isConfigured: () =>
+      ipcRenderer.invoke('email:isConfigured') as Promise<boolean>,
+    sendInvite: (input: {
+      to: string;
+      projectName: string;
+      inviterName?: string;
+      inviterEmail?: string;
+    }) =>
+      ipcRenderer.invoke('email:sendInvite', input) as Promise<
+        { ok: true } | { error: string }
+      >,
+  },
   tasks: {
     getAll: () => ipcRenderer.invoke('tasks:getAll') as Promise<Task[]>,
     create: (input: { title: string; agent: Agent }) =>
       ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
-      patch: Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description'>>,
+      patch: Partial<
+        Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey'>
+      >,
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
