@@ -2,12 +2,31 @@ export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'done';
 
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
-export interface Project {
+export interface LocalProject {
   id: string;
+  kind: 'local';
   name: string;
   rootPath: string;
   addedAt: string;
 }
+
+/**
+ * Cloud project as returned to the renderer for the **active** project: the
+ * Firestore document plus the per-user local rootPath from LocalBindingStore.
+ * Cloud projects in the projects list (not yet activated) don't carry rootPath
+ * — see `CloudProjectSummary` in renderer code.
+ */
+export interface CloudProject {
+  id: string;
+  kind: 'cloud';
+  name: string;
+  ownerId: string;
+  memberIds: string[];
+  createdAt: string;
+  rootPath: string;
+}
+
+export type Project = LocalProject | CloudProject;
 
 export interface Task {
   id: string;
@@ -17,6 +36,14 @@ export interface Task {
   description?: string;
   createdAt: string;
   projectId: string;
+  /** Fractional ranking key for stable drag ordering within a column. */
+  orderKey?: string;
+  /** Cloud-only: uid of the user who created the task. */
+  createdBy?: string;
+  /** Cloud-only. */
+  updatedAt?: string;
+  /** Cloud-only: uid of the user who last updated the task. */
+  updatedBy?: string;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
@@ -30,6 +57,16 @@ export interface Session {
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;
+}
+
+export type RunnerStatus = 'running' | 'idle' | 'errored';
+
+/** Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}. */
+export interface RunnerDoc {
+  status: RunnerStatus;
+  lastSeen: string;
+  updatedAt: string;
+  displayName?: string;
 }
 
 export const COLUMNS: { id: TaskStatus; label: string }[] = [

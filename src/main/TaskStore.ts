@@ -107,7 +107,7 @@ export class TaskStore {
 
   async update(
     id: string,
-    patch: Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description'>>,
+    patch: Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey'>>,
   ): Promise<Task> {
     const index = this.tasks.findIndex((t) => t.id === id);
     if (index === -1) {

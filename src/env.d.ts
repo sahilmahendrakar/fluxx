@@ -1,25 +1,76 @@
+/// <reference types="vite/client" />
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- mirrors shared Task shape (status uses TaskStatus)
-import type { Task, Agent, TaskStatus, Project, Session } from './types';
+import type { Task, Agent, TaskStatus, LocalProject, Session } from './types';
+
+interface ImportMetaEnv {
+  readonly VITE_FIREBASE_API_KEY?: string;
+  readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
+  readonly VITE_FIREBASE_PROJECT_ID?: string;
+  readonly VITE_FIREBASE_APP_ID?: string;
+}
 
 type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
+
+type ActiveProjectKey = { kind: 'local' | 'cloud'; id: string };
+
+type DirPickResult =
+  | { rootPath: string }
+  | { error: 'NOT_GIT_REPO' }
+  | null;
+
+type ActivateCloudResult =
+  | { ok: true }
+  | { error: 'NOT_GIT_REPO' }
+  | null;
 
 declare global {
   interface Window {
     electronAPI: {
       platform: string;
       project: {
-        get: () => Promise<Project | null>;
-        open: () => Promise<Project | { error: string } | null>;
+        get: () => Promise<LocalProject | null>;
+        open: () => Promise<LocalProject | { error: string } | null>;
         clear: () => Promise<void>;
+      };
+      projects: {
+        listLocal: () => Promise<LocalProject[]>;
+        addLocal: () => Promise<LocalProject | { error: string } | null>;
+        activateLocal: (id: string | null) => Promise<LocalProject | null>;
+        removeLocal: (id: string) => Promise<void>;
+        getActiveKey: () => Promise<ActiveProjectKey | null>;
+        clearActive: () => Promise<void>;
+        getLocalBinding: (
+          cloudProjectId: string,
+        ) => Promise<{ rootPath: string; lastOpenedAt: string } | null>;
+        pickDirectoryForCloud: (cloudProjectId: string) => Promise<DirPickResult>;
+        activateCloud: (payload: {
+          id: string;
+          rootPath: string;
+        }) => Promise<ActivateCloudResult>;
+        clearLocalBinding: (cloudProjectId: string) => Promise<void>;
+      };
+      auth: {
+        startGoogleLogin: () => Promise<{ idToken: string }>;
+      };
+      email: {
+        isConfigured: () => Promise<boolean>;
+        sendInvite: (input: {
+          to: string;
+          projectName: string;
+          inviterName?: string;
+          inviterEmail?: string;
+        }) => Promise<{ ok: true } | { error: string }>;
       };
       tasks: {
         getAll: () => Promise<Task[]>;
         create: (input: { title: string; agent: Agent }) => Promise<Task>;
         update: (
           id: string,
-          patch: Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description'>>,
+          patch: Partial<
+            Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey'>
+          >,
         ) => Promise<Task>;
         delete: (id: string) => Promise<void>;
       };

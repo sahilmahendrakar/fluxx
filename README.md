@@ -68,6 +68,18 @@ Each agent runs as a child process inside its own git worktree directory. Flux d
 
 ---
 
+## Development
+
+```
+pnpm install
+cp .env.example .env   # optional — only needed to enable Google sign-in
+pnpm start
+```
+
+Sign-in is optional. Without the env vars set, Flux runs fully local (open local projects, run agents). To enable Google sign-in, create a Firebase project + a Google OAuth "Desktop app" client and fill in the `.env` values documented in `.env.example`.
+
+---
+
 ## License
 
 MIT

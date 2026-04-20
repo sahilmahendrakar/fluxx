@@ -16,6 +16,8 @@ interface TaskDetailPanelProps {
   onClose: () => void;
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
+  /** Present when a teammate (not the current user) is running an agent on this task. */
+  remoteRunner?: { displayName?: string } | null;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -81,6 +83,7 @@ export default function TaskDetailPanel({
   onClose,
   onUpdate,
   onDelete,
+  remoteRunner,
 }: TaskDetailPanelProps) {
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
@@ -504,6 +507,19 @@ export default function TaskDetailPanel({
                   >
                     Focus terminal window
                   </button>
+                </div>
+              ) : remoteRunner && !session ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[13px] leading-relaxed text-zinc-500">
+                  <div className="flex items-center gap-2 text-zinc-300">
+                    <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                    <span className="font-medium">
+                      {remoteRunner.displayName ?? 'A teammate'} is running an agent
+                    </span>
+                  </div>
+                  <p className="max-w-xs text-zinc-500">
+                    Terminal output stays on their machine for now. You'll see
+                    status updates here as they work.
+                  </p>
                 </div>
               ) : (
                 <Terminal
