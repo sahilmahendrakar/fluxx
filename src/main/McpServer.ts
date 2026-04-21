@@ -4,6 +4,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 /* eslint-enable import/no-unresolved */
 import http from 'node:http';
 import { URL } from 'node:url';
+import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import type { TaskStore } from './TaskStore';
 import type { ProjectStore } from './ProjectStore';
@@ -35,12 +36,20 @@ export class McpServer {
   constructor(
     private taskStore: TaskStore,
     private projectStore: ProjectStore,
+    private getMainWindow: () => BrowserWindow | null,
   ) {
     this.mcpServer = new BaseMcpServer(
       { name: 'flux', version: '0.1.0' },
       { capabilities: { tools: {} } },
     );
     this.registerTools();
+  }
+
+  private notifyTasksChanged(): void {
+    const win = this.getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('tasks:changed');
+    }
   }
 
   private registerTools(): void {
@@ -90,6 +99,7 @@ export class McpServer {
           if (input.description != null && input.description !== '') {
             task = await this.taskStore.update(task.id, { description: input.description });
           }
+          this.notifyTasksChanged();
           return jsonToolPayload(task);
         } catch (err) {
           return toolError(err);
@@ -117,6 +127,7 @@ export class McpServer {
           if (input.status !== undefined) patch.status = input.status;
           if (input.agent !== undefined) patch.agent = input.agent;
           const updated = await this.taskStore.update(input.id, patch);
+          this.notifyTasksChanged();
           return jsonToolPayload(updated);
         } catch (err) {
           return toolError(err);

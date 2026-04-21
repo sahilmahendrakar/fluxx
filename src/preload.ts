@@ -1,4 +1,8 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import {
+  contextBridge,
+  ipcRenderer,
+  type IpcRendererEvent,
+} from 'electron';
 import type { ActiveProjectKey, Agent, LocalProject, PlanningSession, Session, Task } from './types';
 
 type SessionStartResult =
@@ -87,6 +91,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('tasks:changed', handler);
+      return () => ipcRenderer.removeListener('tasks:changed', handler);
+    },
   },
   sessions: {
     start: (task: Task) =>
@@ -130,12 +139,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     write: (data: string) => ipcRenderer.send('planning:write', data),
     resize: (cols: number, rows: number) => ipcRenderer.send('planning:resize', cols, rows),
     onData: (cb: (data: string) => void) => {
-      ipcRenderer.on('planning:data', (_e, data) => cb(data));
-      return () => ipcRenderer.removeAllListeners('planning:data');
+      const handler = (_e: IpcRendererEvent, data: string) => cb(data);
+      ipcRenderer.on('planning:data', handler);
+      return () => ipcRenderer.removeListener('planning:data', handler);
     },
     onExit: (cb: (session: PlanningSession) => void) => {
-      ipcRenderer.on('planning:exited', (_e, session) => cb(session));
-      return () => ipcRenderer.removeAllListeners('planning:exited');
+      const handler = (_e: IpcRendererEvent, session: PlanningSession) =>
+        cb(session);
+      ipcRenderer.on('planning:exited', handler);
+      return () => ipcRenderer.removeListener('planning:exited', handler);
     },
   },
 });

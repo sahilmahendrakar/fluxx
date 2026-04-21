@@ -107,6 +107,17 @@ export default function App() {
     return () => unsub();
   }, [provider]);
 
+  useEffect(() => {
+    if (!provider?.reloadFromMain) return;
+    const reload = provider.reloadFromMain;
+    const unsub = window.electronAPI.tasks.onChanged(() => {
+      void reload().catch((err) => {
+        console.error('[tasks.onChanged] reloadFromMain failed', err);
+      });
+    });
+    return unsub;
+  }, [provider]);
+
   // ----- Initial active-project hydration -----
   useEffect(() => {
     let cancelled = false;

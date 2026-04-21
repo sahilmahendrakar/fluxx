@@ -54,13 +54,10 @@ function planningSpawnSpec(
       return {
         command: 'claude',
         args: [
-          '--allowedTools',
-          'Read,Glob,Grep,LS,mcp__flux__list_tasks,mcp__flux__create_task,mcp__flux__update_task,mcp__flux__get_project_info',
           '--mcp-config',
           mcpConfigPath,
           '--append-system-prompt',
           'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools. Do not write application code.',
-          '-p',
           `You are helping plan the ${name} project located at ${rootPath}. Start by reading the codebase structure and any existing planning documents in this directory, then ask how you can help.`,
         ],
       };
@@ -68,15 +65,15 @@ function planningSpawnSpec(
       return {
         command: 'codex',
         args: [
-          '-p',
           `You are a planning assistant for the ${name} project at ${rootPath}. You have access to flux MCP tools for task management. Do not write application code — focus on planning, documentation, and task creation.`,
         ],
       };
     case 'cursor':
       return {
-        command: 'cursor',
+        command: 'agent',
         args: [
-          '-p',
+          '--model',
+          'auto',
           `You are a planning assistant for the ${name} project at ${rootPath}. Focus on planning, documentation, and task management. Do not write application code.`,
         ],
       };
@@ -247,6 +244,23 @@ export class SessionManager {
     const planningDir = path.join(projectDir, 'planning');
     const mcpConfigPath = path.join(projectDir, 'mcp.json');
     await fs.mkdir(planningDir, { recursive: true });
+    try {
+      await fs.access(mcpConfigPath);
+    } catch {
+      await fs.writeFile(
+        mcpConfigPath,
+        `${JSON.stringify(
+          {
+            mcpServers: {
+              flux: { type: 'sse', url: 'http://localhost:47432/sse' },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      );
+    }
 
     const agent = planningAgentForProject(project);
     const { command, args } = planningSpawnSpec(agent, project, mcpConfigPath);
@@ -289,7 +303,9 @@ export class SessionManager {
     this.planningSession = planningSession;
 
     ptyProcess.onData((data) => {
-      win.webContents.send('planning:data', data);
+      if (!win.isDestroyed()) {
+        win.webContents.send('planning:data', data);
+      }
     });
 
     ptyProcess.onExit(({ exitCode }) => {
@@ -298,7 +314,9 @@ export class SessionManager {
       }
       planningSession.status = exitCode === 0 ? 'stopped' : 'error';
       planningSession.stoppedAt = new Date().toISOString();
-      win.webContents.send('planning:exited', planningSession);
+      if (!win.isDestroyed()) {
+        win.webContents.send('planning:exited', planningSession);
+      }
       this.planningPty = null;
       this.planningSession = null;
     });
