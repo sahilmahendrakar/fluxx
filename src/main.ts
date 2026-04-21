@@ -662,7 +662,7 @@ app.whenReady().then(async () => {
     sessionManager.resize(sessionId, cols, rows);
   });
 
-  fluxMcpServer = new McpServer(taskStore, projectStore);
+  fluxMcpServer = new McpServer(taskStore, projectStore, () => mainWindow);
   fluxMcpServer.start();
 
   ipcMain.handle('planning:start', async () => {

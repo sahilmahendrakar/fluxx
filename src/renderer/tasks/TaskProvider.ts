@@ -21,4 +21,6 @@ export interface TaskProvider {
   create(input: TaskCreateInput): Promise<Task>;
   update(id: string, patch: TaskPatch): Promise<Task>;
   delete(id: string): Promise<void>;
+  /** Local disk tasks: reload after main-process mutations (e.g. MCP). */
+  reloadFromMain?: () => Promise<void>;
 }

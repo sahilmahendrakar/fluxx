@@ -141,6 +141,22 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
     }
   };
 
+  const handleStop = async () => {
+    if (!planningApi) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await planningApi.stop();
+      setPlanningSession(null);
+      setNeedsInput(false);
+      outputBufferRef.current = '';
+    } catch {
+      setError('Failed to stop session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSend = () => {
     const s = planningSessionRef.current;
     if (!planningApi || !s || s.status !== 'running' || !inputValue.trim()) {
@@ -188,6 +204,16 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
+          {sessionRunning ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleStop()}
+              className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-300 transition hover:bg-gray-800 disabled:opacity-50"
+            >
+              Stop
+            </button>
+          ) : null}
           <select
             aria-label="Planning agent"
             title={
@@ -274,13 +300,13 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
           placeholder={
             planningSession ? 'Message the planning assistant…' : 'Start a session first'
           }
-          disabled={!planningApi || !planningSession}
+          disabled={!planningApi || !sessionRunning}
           className="flex-1 rounded-md border border-gray-700 bg-gray-900 px-2.5 py-1.5 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-gray-600 focus:outline-none disabled:opacity-40"
         />
         <button
           type="button"
           onClick={handleSend}
-          disabled={!planningApi || !planningSession || !inputValue.trim()}
+          disabled={!planningApi || !sessionRunning || !inputValue.trim()}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-green-800 bg-green-900 transition-colors hover:bg-green-800 disabled:opacity-30"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>

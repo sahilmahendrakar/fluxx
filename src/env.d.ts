@@ -81,6 +81,7 @@ declare global {
           >,
         ) => Promise<Task>;
         delete: (id: string) => Promise<void>;
+        onChanged: (cb: () => void) => () => void;
       };
       sessions: {
         start: (task: Task) => Promise<SessionStartResult>;
@@ -98,8 +99,7 @@ declare global {
         focusDedicatedWindow: (sessionId: string) => Promise<void>;
         onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
       };
-      /** Omitted until preload exposes planning (defensive for older builds). */
-      planning?: {
+      planning: {
         start: () => Promise<PlanningStartResult>;
         stop: () => Promise<void>;
         get: () => Promise<PlanningSession | null>;
