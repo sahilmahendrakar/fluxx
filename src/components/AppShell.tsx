@@ -8,6 +8,8 @@ interface AppShellProps {
   onClearProject: () => void;
   workspaceView: WorkspaceNavView;
   onWorkspaceViewChange: (view: WorkspaceNavView) => void;
+  onPlanNavClick: () => void;
+  planPanelOpen: boolean;
 }
 
 export function AppShell({
@@ -16,6 +18,8 @@ export function AppShell({
   onClearProject,
   workspaceView,
   onWorkspaceViewChange,
+  onPlanNavClick,
+  planPanelOpen,
 }: AppShellProps) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-[#09090b] text-zinc-100">
@@ -23,6 +27,8 @@ export function AppShell({
         project={project}
         workspaceView={workspaceView}
         onWorkspaceViewChange={onWorkspaceViewChange}
+        onPlanNavClick={onPlanNavClick}
+        planPanelOpen={planPanelOpen}
         onClearProject={onClearProject}
       />
       <main className="flex min-h-0 flex-1 flex flex-col overflow-hidden">

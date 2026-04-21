@@ -1,11 +1,13 @@
 import type { Project } from '../types';
 
-export type WorkspaceNavView = 'board' | 'plan' | 'team';
+export type WorkspaceNavView = 'board' | 'team';
 
 interface SidebarProps {
   project: Project;
   workspaceView: WorkspaceNavView;
   onWorkspaceViewChange: (view: WorkspaceNavView) => void;
+  onPlanNavClick: () => void;
+  planPanelOpen: boolean;
   onClearProject: () => void;
 }
 
@@ -101,6 +103,8 @@ export function Sidebar({
   project,
   workspaceView,
   onWorkspaceViewChange,
+  onPlanNavClick,
+  planPanelOpen,
   onClearProject,
 }: SidebarProps) {
   const navItemClass = (active: boolean) =>
@@ -141,8 +145,10 @@ export function Sidebar({
           </button>
           <button
             type="button"
-            className={navItemClass(workspaceView === 'plan')}
-            onClick={() => onWorkspaceViewChange('plan')}
+            className={navItemClass(
+              workspaceView === 'board' && planPanelOpen,
+            )}
+            onClick={onPlanNavClick}
           >
             <PlanIcon className="shrink-0 opacity-80" />
             <span>Plan</span>

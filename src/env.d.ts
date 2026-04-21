@@ -5,6 +5,7 @@ import type {
   Agent,
   LocalProject,
   Session,
+  PlanningSession,
   ActiveProjectKey,
 } from './types';
 
@@ -94,6 +95,18 @@ declare global {
         isDedicatedOpen: (sessionId: string) => Promise<boolean>;
         focusDedicatedWindow: (sessionId: string) => Promise<void>;
         onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
+      };
+      /** Present once main + preload expose planning IPC. */
+      planning?: {
+        start: (input: {
+          agent: Agent;
+        }) => Promise<PlanningSession | { error: string; message?: string }>;
+        stop: () => Promise<void>;
+        get: () => Promise<PlanningSession | null>;
+        write: (data: string) => void;
+        resize: (cols: number, rows: number) => void;
+        onData: (cb: (data: string) => void) => () => void;
+        onExit: (cb: (session: PlanningSession) => void) => () => void;
       };
     };
   }

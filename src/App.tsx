@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { DropResult } from '@hello-pangea/dnd';
 import {
   Task,
@@ -8,6 +17,7 @@ import {
   LocalProject,
 } from './types';
 import Board from './components/Board';
+import { PlanningPanel } from './components/PlanningPanel';
 import TaskDetailPanel from './components/TaskDetailPanel';
 import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
@@ -35,6 +45,26 @@ type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
 
+const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
+const DEFAULT_PLANNING_PANEL_WIDTH = 288;
+const MIN_PLANNING_PANEL_WIDTH = 260;
+const MIN_BOARD_REMAINING_PX = 200;
+
+function clampPlanningWidth(width: number, maxWidth: number): number {
+  return Math.min(maxWidth, Math.max(MIN_PLANNING_PANEL_WIDTH, Math.round(width)));
+}
+
+function readStoredPlanningWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(PLANNING_PANEL_WIDTH_KEY);
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
   const [project, setProject] = useState<ActiveProject | null>(null);
@@ -43,6 +73,9 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceNavView>('board');
+  const [planPanelOpen, setPlanPanelOpen] = useState(false);
+  const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
+  const boardRowRef = useRef<HTMLDivElement>(null);
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -342,6 +375,7 @@ export default function App() {
   const handleProjectActivated = useCallback((p: ActiveProject) => {
     setProject(p);
     setSelectedTaskId(null);
+    setPlanPanelOpen(false);
   }, []);
 
   const handleClearProject = useCallback(async () => {
@@ -349,14 +383,120 @@ export default function App() {
     setProject(null);
     setTasks([]);
     setSelectedTaskId(null);
+    setPlanPanelOpen(false);
   }, []);
+
+  const handlePlanNav = useCallback(() => {
+    if (workspaceView !== 'board') {
+      setWorkspaceView('board');
+      setPlanPanelOpen(true);
+    } else {
+      setPlanPanelOpen((v) => !v);
+    }
+  }, [workspaceView]);
+
+  useEffect(() => {
+    if (workspaceView === 'team') {
+      setPlanPanelOpen(false);
+    }
+  }, [workspaceView]);
+
+  const maxPlanningWidthForRow = useCallback(() => {
+    const row = boardRowRef.current;
+    const w = row?.getBoundingClientRect().width ?? window.innerWidth;
+    return Math.max(MIN_PLANNING_PANEL_WIDTH, w - MIN_BOARD_REMAINING_PX);
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredPlanningWidth();
+    if (stored != null) {
+      setPlanPanelWidth(clampPlanningWidth(stored, maxPlanningWidthForRow()));
+    }
+  }, [maxPlanningWidthForRow]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPlanPanelWidth((prev) =>
+        clampPlanningWidth(prev, maxPlanningWidthForRow()),
+      );
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [maxPlanningWidthForRow]);
+
+  useLayoutEffect(() => {
+    if (!planPanelOpen) return;
+    setPlanPanelWidth((prev) =>
+      clampPlanningWidth(prev, maxPlanningWidthForRow()),
+    );
+  }, [planPanelOpen, maxPlanningWidthForRow]);
+
+  const persistPlanningWidth = useCallback((w: number) => {
+    try {
+      localStorage.setItem(PLANNING_PANEL_WIDTH_KEY, String(w));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, []);
+
+  const handlePlanningResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!planPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = e.currentTarget;
+      const startX = e.clientX;
+      const startW = planPanelWidth;
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev: globalThis.PointerEvent) => {
+        const next = startW + (startX - ev.clientX);
+        setPlanPanelWidth(
+          clampPlanningWidth(next, maxPlanningWidthForRow()),
+        );
+      };
+
+      const onUp = (ev: globalThis.PointerEvent) => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        setPlanPanelWidth((prev) => {
+          const capped = clampPlanningWidth(prev, maxPlanningWidthForRow());
+          persistPlanningWidth(capped);
+          return capped;
+        });
+      };
+
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    },
+    [planPanelOpen, planPanelWidth, maxPlanningWidthForRow, persistPlanningWidth],
+  );
+
+  const handlePlanningResizeDoubleClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!planPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const maxW = maxPlanningWidthForRow();
+      const next = clampPlanningWidth(DEFAULT_PLANNING_PANEL_WIDTH, maxW);
+      setPlanPanelWidth(next);
+      persistPlanningWidth(next);
+    },
+    [planPanelOpen, maxPlanningWidthForRow, persistPlanningWidth],
+  );
 
   const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
   const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
   const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
 
-  const topBarTitle =
-    workspaceView === 'board' ? 'Board' : workspaceView === 'team' ? 'Team' : 'Plan';
+  const topBarTitle = workspaceView === 'board' ? 'Board' : 'Team';
 
   // Sort tasks per column for the board (orderKey-aware). Falls back to
   // createdAt/id for rows without a key.
@@ -426,25 +566,63 @@ export default function App() {
           onClearProject={() => void handleClearProject()}
           workspaceView={workspaceView}
           onWorkspaceViewChange={setWorkspaceView}
+          onPlanNavClick={handlePlanNav}
+          planPanelOpen={planPanelOpen}
         >
           <TopBar project={project} title={topBarTitle} statusLine={statusLine} />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {workspaceView === 'board' ? (
-              <div className="relative min-h-0 flex-1 overflow-hidden">
-                <Board
-                  tasks={sortedTasks}
-                  onDragEnd={handleDragEnd}
-                  onCreateTask={handleCreateTask}
-                  onDeleteTask={handleDeleteTask}
-                  onCardClick={(id) => setSelectedTaskId(id)}
-                />
-                <TaskDetailPanel
-                  task={selectedTask}
-                  onClose={() => setSelectedTaskId(null)}
-                  onUpdate={handleUpdateTask}
-                  onDelete={handleDeleteTask}
-                  remoteRunner={remoteRunnerForSelected}
-                />
+              <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                <div
+                  ref={boardRowRef}
+                  className="flex min-h-0 flex-1 overflow-hidden"
+                >
+                  <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    <Board
+                      tasks={sortedTasks}
+                      onDragEnd={handleDragEnd}
+                      onCreateTask={handleCreateTask}
+                      onDeleteTask={handleDeleteTask}
+                      onCardClick={(id) => setSelectedTaskId(id)}
+                      planPanelOpen={planPanelOpen}
+                      onTogglePlanPanel={() => setPlanPanelOpen((v) => !v)}
+                    />
+                    <TaskDetailPanel
+                      task={selectedTask}
+                      onClose={() => setSelectedTaskId(null)}
+                      onUpdate={handleUpdateTask}
+                      onDelete={handleDeleteTask}
+                      remoteRunner={remoteRunnerForSelected}
+                    />
+                  </div>
+                  <div
+                    className={`relative flex shrink-0 flex-col overflow-hidden ${
+                      planPanelOpen ? '' : 'pointer-events-none'
+                    }`}
+                    style={{ width: planPanelOpen ? planPanelWidth : 0 }}
+                  >
+                    {planPanelOpen ? (
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize planning panel"
+                        title="Drag to resize. Double-click to reset."
+                        className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
+                        onPointerDown={handlePlanningResizePointerDown}
+                        onDoubleClick={handlePlanningResizeDoubleClick}
+                      />
+                    ) : null}
+                    <div
+                      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+                      style={{ width: planPanelWidth }}
+                    >
+                      <PlanningPanel
+                        project={project}
+                        onClose={() => setPlanPanelOpen(false)}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : workspaceView === 'team' && project.kind === 'cloud' && uid ? (
               <TeamView
@@ -453,14 +631,7 @@ export default function App() {
                 currentUserDisplayName={displayName}
                 currentUserEmail={userEmail ?? undefined}
               />
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-                <p className="text-sm font-medium text-zinc-300">Plan</p>
-                <p className="max-w-sm text-sm text-zinc-500">
-                  Planning assistant coming soon.
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
         </AppShell>
       </div>
