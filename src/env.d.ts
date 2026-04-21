@@ -4,6 +4,7 @@ import type {
   Task,
   Agent,
   LocalProject,
+  PlanningSession,
   Session,
   ActiveProjectKey,
 } from './types';
@@ -18,6 +19,8 @@ interface ImportMetaEnv {
 type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
+
+type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
 type DirPickResult =
   | { rootPath: string }
@@ -94,6 +97,15 @@ declare global {
         isDedicatedOpen: (sessionId: string) => Promise<boolean>;
         focusDedicatedWindow: (sessionId: string) => Promise<void>;
         onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
+      };
+      planning: {
+        start: () => Promise<PlanningStartResult>;
+        stop: () => Promise<void>;
+        get: () => Promise<PlanningSession | null>;
+        write: (data: string) => void;
+        resize: (cols: number, rows: number) => void;
+        onData: (cb: (data: string) => void) => () => void;
+        onExit: (cb: (session: PlanningSession) => void) => () => void;
       };
     };
   }

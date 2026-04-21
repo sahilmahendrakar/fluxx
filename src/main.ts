@@ -659,6 +659,35 @@ app.whenReady().then(async () => {
     sessionManager.resize(sessionId, cols, rows);
   });
 
+  ipcMain.handle('planning:start', async () => {
+    const project = projectStore.get();
+    const projectDir = projectStore.getProjectDir();
+    if (!project || !projectDir) {
+      return { error: 'No project open' };
+    }
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+      return { error: 'NO_WINDOW', message: 'Main window is not available' };
+    }
+    return sessionManager.startPlanningSession(project, projectDir, win);
+  });
+
+  ipcMain.handle('planning:stop', async () => {
+    return sessionManager.stopPlanningSession();
+  });
+
+  ipcMain.handle('planning:get', async () => {
+    return sessionManager.getPlanningSession();
+  });
+
+  ipcMain.on('planning:write', (_e, data: string) => {
+    sessionManager.writePlanning(data);
+  });
+
+  ipcMain.on('planning:resize', (_e, cols: number, rows: number) => {
+    sessionManager.resizePlanning(cols, rows);
+  });
+
   createWindow();
 });
 

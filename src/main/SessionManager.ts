@@ -1,8 +1,10 @@
 import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { BrowserWindow } from 'electron';
-import type { Agent, Project, Session, Task } from '../types';
+import type { Agent, PlanningSession, Project, Session, Task } from '../types';
 import { WorktreeService } from './WorktreeService';
 
 function broadcastSessionChannel(channel: string, payload?: unknown): void {
@@ -36,6 +38,51 @@ function agentSpawnSpec(agent: Agent, initialPrompt: string): { command: string;
   }
 }
 
+function planningAgentForProject(project: Project): Agent {
+  return project.kind === 'local' ? project.planningAgent : 'claude-code';
+}
+
+function planningSpawnSpec(
+  agent: Agent,
+  project: Project,
+  mcpConfigPath: string,
+): { command: string; args: string[] } {
+  const name = project.name;
+  const rootPath = project.rootPath;
+  switch (agent) {
+    case 'claude-code':
+      return {
+        command: 'claude',
+        args: [
+          '--allowedTools',
+          'Read,Glob,Grep,LS,mcp__flux__list_tasks,mcp__flux__create_task,mcp__flux__update_task,mcp__flux__get_project_info',
+          '--mcp-config',
+          mcpConfigPath,
+          '--append-system-prompt',
+          'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools. Do not write application code.',
+          '-p',
+          `You are helping plan the ${name} project located at ${rootPath}. Start by reading the codebase structure and any existing planning documents in this directory, then ask how you can help.`,
+        ],
+      };
+    case 'codex':
+      return {
+        command: 'codex',
+        args: [
+          '-p',
+          `You are a planning assistant for the ${name} project at ${rootPath}. You have access to flux MCP tools for task management. Do not write application code — focus on planning, documentation, and task creation.`,
+        ],
+      };
+    case 'cursor':
+      return {
+        command: 'cursor',
+        args: [
+          '-p',
+          `You are a planning assistant for the ${name} project at ${rootPath}. Focus on planning, documentation, and task management. Do not write application code.`,
+        ],
+      };
+  }
+}
+
 function agentNotFoundMessage(agent: Agent, command: string): string {
   if (agent === 'claude-code') {
     return `${command} not found on PATH. Install with: npm install -g @anthropic-ai/claude-code`;
@@ -48,6 +95,8 @@ function agentNotFoundMessage(agent: Agent, command: string): string {
 
 export class SessionManager {
   private sessions = new Map<string, { pty: IPty; session: Session }>();
+  private planningPty: IPty | null = null;
+  private planningSession: PlanningSession | null = null;
 
   constructor(private worktreeService: WorktreeService) {}
 
@@ -184,5 +233,107 @@ export class SessionManager {
       return;
     }
     entry.pty.resize(cols, rows);
+  }
+
+  async startPlanningSession(
+    project: Project,
+    projectDir: string,
+    win: BrowserWindow,
+  ): Promise<PlanningSession | { error: string; message?: string }> {
+    if (this.planningPty && this.planningSession) {
+      return this.planningSession;
+    }
+
+    const planningDir = path.join(projectDir, 'planning');
+    const mcpConfigPath = path.join(projectDir, 'mcp.json');
+    await fs.mkdir(planningDir, { recursive: true });
+
+    const agent = planningAgentForProject(project);
+    const { command, args } = planningSpawnSpec(agent, project, mcpConfigPath);
+    const sessionId = randomUUID();
+
+    let ptyProcess: IPty;
+    try {
+      ptyProcess = pty.spawn(command, args, {
+        name: 'xterm-color',
+        cols: 220,
+        rows: 50,
+        cwd: planningDir,
+        env: { ...process.env },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[SessionManager.startPlanningSession] PTY spawn failed', {
+        projectId: project.id,
+        command,
+        args,
+        message,
+        err,
+      });
+      return {
+        error: 'AGENT_NOT_FOUND',
+        message: agentNotFoundMessage(agent, command),
+      };
+    }
+
+    const planningSession: PlanningSession = {
+      id: sessionId,
+      projectId: project.id,
+      agent,
+      planningDir,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    };
+
+    this.planningPty = ptyProcess;
+    this.planningSession = planningSession;
+
+    ptyProcess.onData((data) => {
+      win.webContents.send('planning:data', data);
+    });
+
+    ptyProcess.onExit(({ exitCode }) => {
+      if (this.planningPty !== ptyProcess) {
+        return;
+      }
+      planningSession.status = exitCode === 0 ? 'stopped' : 'error';
+      planningSession.stoppedAt = new Date().toISOString();
+      win.webContents.send('planning:exited', planningSession);
+      this.planningPty = null;
+      this.planningSession = null;
+    });
+
+    return planningSession;
+  }
+
+  async stopPlanningSession(): Promise<void> {
+    if (!this.planningPty || !this.planningSession) {
+      return;
+    }
+    try {
+      this.planningPty.kill();
+    } catch (err: unknown) {
+      console.error('[SessionManager.stopPlanningSession] pty.kill failed', err);
+    }
+    this.planningPty = null;
+    this.planningSession = null;
+  }
+
+  getPlanningSession(): PlanningSession | null {
+    return this.planningSession;
+  }
+
+  writePlanning(data: string): void {
+    if (!this.planningPty) {
+      return;
+    }
+    this.planningPty.write(data);
+  }
+
+  resizePlanning(cols: number, rows: number): void {
+    if (!this.planningPty) {
+      return;
+    }
+    this.planningPty.resize(cols, rows);
   }
 }

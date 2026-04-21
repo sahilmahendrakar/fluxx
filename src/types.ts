@@ -69,6 +69,16 @@ export interface Session {
   stoppedAt?: string;
 }
 
+export interface PlanningSession {
+  id: string;
+  projectId: string;
+  agent: Agent;
+  planningDir: string;
+  status: SessionStatus;
+  startedAt: string;
+  stoppedAt?: string;
+}
+
 export type RunnerStatus = 'running' | 'idle' | 'errored';
 
 /** Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}. */

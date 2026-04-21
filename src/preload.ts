@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ActiveProjectKey, Agent, LocalProject, Session, Task } from './types';
+import type { ActiveProjectKey, Agent, LocalProject, PlanningSession, Session, Task } from './types';
 
 type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
+
+type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
 type DirPickResult =
   | { rootPath: string }
@@ -119,6 +121,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_event: IpcRendererEvent, id: string) => cb(id);
       ipcRenderer.on('session:terminalWindowClosed', handler);
       return () => ipcRenderer.removeListener('session:terminalWindowClosed', handler);
+    },
+  },
+  planning: {
+    start: () => ipcRenderer.invoke('planning:start') as Promise<PlanningStartResult>,
+    stop: () => ipcRenderer.invoke('planning:stop') as Promise<void>,
+    get: () => ipcRenderer.invoke('planning:get') as Promise<PlanningSession | null>,
+    write: (data: string) => ipcRenderer.send('planning:write', data),
+    resize: (cols: number, rows: number) => ipcRenderer.send('planning:resize', cols, rows),
+    onData: (cb: (data: string) => void) => {
+      ipcRenderer.on('planning:data', (_e, data) => cb(data));
+      return () => ipcRenderer.removeAllListeners('planning:data');
+    },
+    onExit: (cb: (session: PlanningSession) => void) => {
+      ipcRenderer.on('planning:exited', (_e, session) => cb(session));
+      return () => ipcRenderer.removeAllListeners('planning:exited');
     },
   },
 });
