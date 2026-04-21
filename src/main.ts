@@ -5,6 +5,7 @@ import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
+import { McpServer } from './main/McpServer';
 import { AppStateStore } from './main/AppStateStore';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
@@ -158,6 +159,8 @@ async function migrateLegacyProjectsJson(params: {
 const WINDOW_BACKGROUND = '#030712';
 
 let mainWindow: BrowserWindow | null = null;
+
+let fluxMcpServer: McpServer | null = null;
 
 /** Session id → dedicated terminal `BrowserWindow` (not the main app window). */
 const dedicatedTerminalWindows = new Map<string, BrowserWindow>();
@@ -659,6 +662,38 @@ app.whenReady().then(async () => {
     sessionManager.resize(sessionId, cols, rows);
   });
 
+  fluxMcpServer = new McpServer(taskStore, projectStore);
+  fluxMcpServer.start();
+
+  ipcMain.handle('planning:start', async () => {
+    const project = projectStore.get();
+    const projectDir = projectStore.getProjectDir();
+    if (!project || !projectDir) {
+      return { error: 'No project open' };
+    }
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+      return { error: 'NO_WINDOW', message: 'Main window is not available' };
+    }
+    return sessionManager.startPlanningSession(project, projectDir, win);
+  });
+
+  ipcMain.handle('planning:stop', async () => {
+    return sessionManager.stopPlanningSession();
+  });
+
+  ipcMain.handle('planning:get', async () => {
+    return sessionManager.getPlanningSession();
+  });
+
+  ipcMain.on('planning:write', (_e, data: string) => {
+    sessionManager.writePlanning(data);
+  });
+
+  ipcMain.on('planning:resize', (_e, cols: number, rows: number) => {
+    sessionManager.resizePlanning(cols, rows);
+  });
+
   createWindow();
 });
 
@@ -677,6 +712,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+app.on('before-quit', () => {
+  fluxMcpServer?.stop();
 });
 
 // In this file you can include the rest of your app's specific main process

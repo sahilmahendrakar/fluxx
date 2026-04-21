@@ -127,9 +127,7 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await planningApi.start({
-        agent: selectedAgent,
-      });
+      const result = await planningApi.start();
       if (result && typeof result === 'object' && 'error' in result) {
         const err = result as { error: string; message?: string };
         setError(err.message ?? err.error ?? 'Failed to start');
@@ -165,6 +163,10 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
   };
 
   const sessionRunning = planningSession?.status === 'running';
+  const agentSelectValue =
+    sessionRunning && planningSession
+      ? planningSession.agent
+      : selectedAgent;
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">
@@ -188,9 +190,13 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
         <div className="flex shrink-0 items-center gap-1.5">
           <select
             aria-label="Planning agent"
-            title="Agent for the next planning session"
+            title={
+              sessionRunning
+                ? 'Agent for this session'
+                : 'Shown for reference; the started session uses the project planning agent (local projects) or Claude Code (cloud).'
+            }
             disabled={sessionRunning}
-            value={selectedAgent}
+            value={agentSelectValue}
             onChange={(e) => setSelectedAgent(e.target.value as Agent)}
             className="min-w-0 max-w-[9.5rem] cursor-pointer rounded-md border border-gray-700 bg-gray-900 py-1 pl-2 pr-7 text-[11px] font-medium text-gray-200 focus:border-gray-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
           >

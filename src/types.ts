@@ -73,8 +73,10 @@ export interface Session {
 export interface PlanningSession {
   id: string;
   projectId: string;
+  agent: Agent;
+  planningDir: string;
   status: SessionStatus;
-  startedAt?: string;
+  startedAt: string;
   stoppedAt?: string;
 }
 

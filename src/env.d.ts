@@ -20,6 +20,8 @@ type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
 
+type PlanningStartResult = PlanningSession | { error: string; message?: string };
+
 type DirPickResult =
   | { rootPath: string }
   | { error: 'NOT_GIT_REPO' }
@@ -96,11 +98,9 @@ declare global {
         focusDedicatedWindow: (sessionId: string) => Promise<void>;
         onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
       };
-      /** Present once main + preload expose planning IPC. */
+      /** Omitted until preload exposes planning (defensive for older builds). */
       planning?: {
-        start: (input: {
-          agent: Agent;
-        }) => Promise<PlanningSession | { error: string; message?: string }>;
+        start: () => Promise<PlanningStartResult>;
         stop: () => Promise<void>;
         get: () => Promise<PlanningSession | null>;
         write: (data: string) => void;
