@@ -1,0 +1,23 @@
+src/components/PlanningPanel.tsx
+  2dac735e874a635c 7,188-202,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "ab71d116b6370e9d5c27c91bb85d2bdf96e1eda3",
+  "prompts": {
+    "2dac735e874a635c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "25548b4a-072a-4e48-9ebf-65994cefeb9a",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 28,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
