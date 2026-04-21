@@ -5,6 +5,7 @@ import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
+import { McpServer } from './main/McpServer';
 import { AppStateStore } from './main/AppStateStore';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
@@ -158,6 +159,8 @@ async function migrateLegacyProjectsJson(params: {
 const WINDOW_BACKGROUND = '#030712';
 
 let mainWindow: BrowserWindow | null = null;
+
+let fluxMcpServer: McpServer | null = null;
 
 /** Session id → dedicated terminal `BrowserWindow` (not the main app window). */
 const dedicatedTerminalWindows = new Map<string, BrowserWindow>();
@@ -659,6 +662,9 @@ app.whenReady().then(async () => {
     sessionManager.resize(sessionId, cols, rows);
   });
 
+  fluxMcpServer = new McpServer(taskStore, projectStore);
+  fluxMcpServer.start();
+
   createWindow();
 });
 
@@ -677,6 +683,10 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+app.on('before-quit', () => {
+  fluxMcpServer?.stop();
 });
 
 // In this file you can include the rest of your app's specific main process
