@@ -63,7 +63,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         brightBlack: '#52525b',
       },
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-      fontSize: 13,
+      fontSize: 12,
       lineHeight: 1.4,
       cursorBlink: true,
       scrollback: 1000,

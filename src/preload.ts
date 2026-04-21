@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { Agent, LocalProject, Session, Task } from './types';
+import { contextBridge, ipcRenderer } from 'electron';
+import type { Agent, LocalProject, Session, Shell, Task } from './types';
 
 type SessionStartResult =
   | Session
@@ -90,8 +90,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sessions: {
     start: (task: Task) =>
       ipcRenderer.invoke('session:start', task) as Promise<SessionStartResult>,
-    stop: (sessionId: string) =>
-      ipcRenderer.invoke('session:stop', sessionId) as Promise<void>,
+    archive: (sessionId: string) =>
+      ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
+    deleteWorkspace: (sessionId: string) =>
+      ipcRenderer.invoke('session:delete', sessionId) as Promise<void>,
     get: (taskId: string) =>
       ipcRenderer.invoke('session:get', taskId) as Promise<Session | null>,
     getAll: () => ipcRenderer.invoke('session:getAll') as Promise<Session[]>,
@@ -108,18 +110,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('session:exited', (_event, session: Session) => cb(session));
       return () => ipcRenderer.removeAllListeners('session:exited');
     },
-    openDedicatedWindow: (sessionId: string) =>
-      ipcRenderer.invoke('session:openDedicatedWindow', sessionId) as Promise<
-        { ok: true } | { ok: false; error: 'NO_SESSION' }
-      >,
-    isDedicatedOpen: (sessionId: string) =>
-      ipcRenderer.invoke('session:isDedicatedOpen', sessionId) as Promise<boolean>,
-    focusDedicatedWindow: (sessionId: string) =>
-      ipcRenderer.invoke('session:focusDedicatedWindow', sessionId) as Promise<void>,
-    onTerminalWindowClosed: (cb: (sessionId: string) => void) => {
-      const handler = (_event: IpcRendererEvent, id: string) => cb(id);
-      ipcRenderer.on('session:terminalWindowClosed', handler);
-      return () => ipcRenderer.removeListener('session:terminalWindowClosed', handler);
+  },
+  shells: {
+    open: (sessionId: string) =>
+      ipcRenderer.invoke('shell:open', sessionId) as Promise<Shell>,
+    close: (shellId: string) =>
+      ipcRenderer.invoke('shell:close', shellId) as Promise<void>,
+    list: (sessionId: string) =>
+      ipcRenderer.invoke('shell:list', sessionId) as Promise<Shell[]>,
+    write: (shellId: string, data: string) =>
+      ipcRenderer.send('shell:write', shellId, data),
+    resize: (shellId: string, cols: number, rows: number) =>
+      ipcRenderer.send('shell:resize', shellId, cols, rows),
+    onData: (shellId: string, cb: (data: string) => void) => {
+      const channel = `shell:data:${shellId}`;
+      ipcRenderer.on(channel, (_event, data: string) => cb(data));
+      return () => ipcRenderer.removeAllListeners(channel);
+    },
+    onExit: (cb: (shell: Shell) => void) => {
+      ipcRenderer.on('shell:exited', (_event, shell: Shell) => cb(shell));
+      return () => ipcRenderer.removeAllListeners('shell:exited');
     },
   },
 });

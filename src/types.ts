@@ -59,6 +59,17 @@ export interface Session {
   stoppedAt?: string;
 }
 
+export type ShellStatus = 'running' | 'stopped' | 'error';
+
+export interface Shell {
+  id: string;
+  sessionId: string;
+  worktreePath: string;
+  status: ShellStatus;
+  startedAt: string;
+  stoppedAt?: string;
+}
+
 export type RunnerStatus = 'running' | 'idle' | 'errored';
 
 /** Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}. */

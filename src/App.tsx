@@ -6,6 +6,7 @@ import {
   Agent,
   CloudProject,
   LocalProject,
+  Session,
 } from './types';
 import Board from './components/Board';
 import TaskDetailPanel from './components/TaskDetailPanel';
@@ -15,7 +16,9 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
 import { TeamView } from './components/TeamView';
-import type { WorkspaceNavView } from './components/Sidebar';
+import { TabBar, buildSessionTabs } from './components/TabBar';
+import { SessionTerminalView } from './components/SessionTerminalView';
+import ConfirmDialog from './components/ConfirmDialog';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
 import { useInvites } from './renderer/invites/useInvites';
@@ -34,6 +37,7 @@ type TaskPatch = Partial<
 type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
+const STATIC_TAB_IDS = new Set(['board', 'plan', 'team']);
 
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
@@ -42,7 +46,10 @@ export default function App() {
   const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceNavView>('board');
+  const [activeTabId, setActiveTabId] = useState<string>('board');
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [openTabIds, setOpenTabIds] = useState<Set<string>>(() => new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -183,6 +190,26 @@ export default function App() {
     if (!changed) return;
     setProject({ ...project, ...fresh });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
+
+  useEffect(() => {
+    const unsub = window.electronAPI.sessions.onExit((exited) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === exited.id ? { ...s, status: exited.status } : s)),
+      );
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!project) {
+      setSessions([]);
+      setOpenTabIds(new Set());
+      setActiveTabId('board');
+      return;
+    }
+    setSessions((prev) => prev.filter((s) => s.projectId === project.id));
+    setActiveTabId((prev) => (STATIC_TAB_IDS.has(prev) ? prev : 'board'));
+  }, [project?.id]);
 
   const pendingRef = useRef<
     Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
@@ -332,11 +359,22 @@ export default function App() {
         await provider.delete(id);
         setTasks((prev) => prev.filter((t) => t.id !== id));
         setSelectedTaskId((sid) => (sid === id ? null : sid));
+        const removed = sessions.find((s) => s.taskId === id);
+        if (removed) {
+          setSessions((prev) => prev.filter((s) => s.taskId !== id));
+          setOpenTabIds((prev) => {
+            if (!prev.has(removed.id)) return prev;
+            const next = new Set(prev);
+            next.delete(removed.id);
+            return next;
+          });
+          setActiveTabId((prev) => (prev === removed.id ? 'board' : prev));
+        }
       } catch (err) {
         console.error('[tasks.delete] failed', err);
       }
     },
-    [provider],
+    [provider, sessions],
   );
 
   const handleProjectActivated = useCallback((p: ActiveProject) => {
@@ -349,14 +387,125 @@ export default function App() {
     setProject(null);
     setTasks([]);
     setSelectedTaskId(null);
+    setSessions([]);
+    setOpenTabIds(new Set());
+    setActiveTabId('board');
   }, []);
+
+  const handleOpenSessionTab = useCallback((session: Session) => {
+    setSessions((prev) => {
+      const exists = prev.some((s) => s.id === session.id);
+      if (exists) {
+        return prev.map((s) => (s.id === session.id ? session : s));
+      }
+      return [...prev, session];
+    });
+    setOpenTabIds((prev) => {
+      if (prev.has(session.id)) return prev;
+      const next = new Set(prev);
+      next.add(session.id);
+      return next;
+    });
+    setActiveTabId(session.id);
+    setSelectedTaskId(null);
+  }, []);
+
+  const handleOpenSessionFromSidebar = useCallback(
+    (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      setOpenTabIds((prev) => {
+        if (prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.add(sessionId);
+        return next;
+      });
+      setActiveTabId(sessionId);
+      setSelectedTaskId(null);
+    },
+    [sessions],
+  );
+
+  const handleCloseSessionTab = useCallback((sessionId: string) => {
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const handleArchiveSession = useCallback(async (sessionId: string) => {
+    try {
+      await window.electronAPI.sessions.archive(sessionId);
+    } catch (err) {
+      console.error('[session.archive] failed', err);
+    }
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const handleDeleteWorkspace = useCallback(async (sessionId: string) => {
+    try {
+      await window.electronAPI.sessions.deleteWorkspace(sessionId);
+    } catch (err) {
+      console.error('[session.deleteWorkspace] failed', err);
+    }
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const requestDeleteWorkspace = useCallback((sessionId: string) => {
+    setDeleteConfirmId(sessionId);
+  }, []);
+
+  const cancelDeleteWorkspace = useCallback(() => {
+    setDeleteConfirmId(null);
+  }, []);
+
+  const confirmDeleteWorkspace = useCallback(async () => {
+    const id = deleteConfirmId;
+    if (!id) return;
+    setDeleteConfirmId(null);
+    await handleDeleteWorkspace(id);
+  }, [deleteConfirmId, handleDeleteWorkspace]);
 
   const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
   const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
   const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
 
-  const topBarTitle =
-    workspaceView === 'board' ? 'Board' : workspaceView === 'team' ? 'Team' : 'Plan';
+  const sessionItems = useMemo(
+    () => buildSessionTabs(sessions, tasks),
+    [sessions, tasks],
+  );
+
+  const openTabItems = useMemo(
+    () => sessionItems.filter((item) => openTabIds.has(item.session.id)),
+    [sessionItems, openTabIds],
+  );
+
+  const activeSessionTab = useMemo(() => {
+    if (STATIC_TAB_IDS.has(activeTabId)) return null;
+    return sessionItems.find((t) => t.session.id === activeTabId) ?? null;
+  }, [activeTabId, sessionItems]);
+
+  const deleteConfirmSession = useMemo(
+    () => (deleteConfirmId ? sessionItems.find((s) => s.session.id === deleteConfirmId) ?? null : null),
+    [deleteConfirmId, sessionItems],
+  );
 
   // Sort tasks per column for the board (orderKey-aware). Falls back to
   // createdAt/id for rows without a key.
@@ -424,12 +573,25 @@ export default function App() {
         <AppShell
           project={project}
           onClearProject={() => void handleClearProject()}
-          workspaceView={workspaceView}
-          onWorkspaceViewChange={setWorkspaceView}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          sessions={sessionItems}
+          onOpenSession={handleOpenSessionFromSidebar}
+          onArchiveSession={(id) => void handleArchiveSession(id)}
+          onDeleteWorkspace={requestDeleteWorkspace}
         >
-          <TopBar project={project} title={topBarTitle} statusLine={statusLine} />
+          <TopBar project={project} statusLine={statusLine}>
+            <TabBar
+              activeTabId={activeTabId}
+              openSessions={openTabItems}
+              onSelectTab={setActiveTabId}
+              onCloseSessionTab={handleCloseSessionTab}
+            />
+          </TopBar>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {workspaceView === 'board' ? (
+            {activeSessionTab ? (
+              <SessionTerminalView session={activeSessionTab.session} />
+            ) : activeTabId === 'board' ? (
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 <Board
                   tasks={sortedTasks}
@@ -444,9 +606,11 @@ export default function App() {
                   onUpdate={handleUpdateTask}
                   onDelete={handleDeleteTask}
                   remoteRunner={remoteRunnerForSelected}
+                  onOpenSessionTab={handleOpenSessionTab}
+                  onArchiveSession={(id) => void handleArchiveSession(id)}
                 />
               </div>
-            ) : workspaceView === 'team' && project.kind === 'cloud' && uid ? (
+            ) : activeTabId === 'team' && project.kind === 'cloud' && uid ? (
               <TeamView
                 project={project}
                 currentUid={uid}
@@ -464,6 +628,21 @@ export default function App() {
           </div>
         </AppShell>
       </div>
+      {deleteConfirmSession ? (
+        <ConfirmDialog
+          title="Delete task workspace?"
+          description={`This will permanently remove the workspace for "${deleteConfirmSession.title}". The task itself will remain on the board.`}
+          bullets={[
+            'Kill the running agent session',
+            'Close any terminals opened in this workspace',
+            'Remove the git worktree and its branch from disk',
+          ]}
+          confirmLabel="Delete workspace"
+          destructive
+          onConfirm={() => void confirmDeleteWorkspace()}
+          onCancel={cancelDeleteWorkspace}
+        />
+      ) : null}
     </div>
   );
 }

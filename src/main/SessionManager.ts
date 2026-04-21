@@ -52,9 +52,16 @@ export class SessionManager {
   constructor(private worktreeService: WorktreeService) {}
 
   async startSession(task: Task, project: Project): Promise<Session | SessionStartError> {
-    const existing = this.getSession(task.id);
-    if (existing) {
-      return existing;
+    const existingEntry = [...this.sessions.values()].find(
+      (e) => e.session.taskId === task.id,
+    );
+    if (existingEntry) {
+      if (existingEntry.session.status === 'running') {
+        return existingEntry.session;
+      }
+      // A stopped session for this task lingered; drop it so we can start
+      // anew. Its worktree (if any) will be reclaimed by WorktreeService.create.
+      this.sessions.delete(existingEntry.session.id);
     }
 
     let worktreePath = '';
@@ -124,10 +131,9 @@ export class SessionManager {
       liveSession.status = exitCode === 0 ? 'stopped' : 'error';
       liveSession.stoppedAt = new Date().toISOString();
       broadcastSessionChannel('session:exited', liveSession);
-      if (entry) {
-        this.sessions.delete(session.id);
-        void this.worktreeService.remove(entry.session.worktreePath);
-      }
+      // Keep the entry in the map and keep the worktree on disk so the
+      // workspace lingers in the sidebar as 'stopped' until the user
+      // explicitly archives or deletes it.
     });
 
     this.sessions.set(session.id, { pty: ptyProcess, session });
@@ -135,22 +141,37 @@ export class SessionManager {
     return session;
   }
 
-  async stopSession(sessionId: string): Promise<void> {
+  /** Kill agent PTY and forget the session. Leaves the worktree on disk. */
+  archiveSession(sessionId: string): void {
     const entry = this.sessions.get(sessionId);
-    if (!entry) {
-      return;
-    }
+    if (!entry) return;
     try {
       entry.pty.kill();
     } catch (err: unknown) {
-      console.error('[SessionManager.stopSession] pty.kill failed', { sessionId, err });
-    }
-    try {
-      await this.worktreeService.remove(entry.session.worktreePath);
-    } catch (err: unknown) {
-      console.error('[SessionManager.stopSession] worktree remove failed', { sessionId, err });
+      console.error('[SessionManager.archiveSession] pty.kill failed', { sessionId, err });
     }
     this.sessions.delete(sessionId);
+  }
+
+  /** Kill agent PTY, forget the session, and remove the worktree from disk. */
+  async deleteWorkspace(sessionId: string): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return;
+    try {
+      entry.pty.kill();
+    } catch (err: unknown) {
+      console.error('[SessionManager.deleteWorkspace] pty.kill failed', { sessionId, err });
+    }
+    const worktreePath = entry.session.worktreePath;
+    this.sessions.delete(sessionId);
+    try {
+      await this.worktreeService.remove(worktreePath);
+    } catch (err: unknown) {
+      console.error('[SessionManager.deleteWorkspace] worktree remove failed', {
+        sessionId,
+        err,
+      });
+    }
   }
 
   getSession(taskId: string): Session | null {
@@ -160,10 +181,6 @@ export class SessionManager {
       }
     }
     return null;
-  }
-
-  getSessionBySessionId(sessionId: string): Session | null {
-    return this.sessions.get(sessionId)?.session ?? null;
   }
 
   getAllSessions(): Session[] {
