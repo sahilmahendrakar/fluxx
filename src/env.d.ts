@@ -108,6 +108,16 @@ declare global {
         onData: (cb: (data: string) => void) => () => void;
         onExit: (cb: (session: PlanningSession) => void) => () => void;
       };
+      planningDocs: {
+        list: () => Promise<
+          | { files: { relativePath: string }[] }
+          | { error: 'NO_PROJECT' | 'IO_ERROR' }
+        >;
+        read: (relativePath: string) => Promise<
+          { content: string } | { error: string }
+        >;
+        onChanged: (cb: () => void) => () => void;
+      };
     };
   }
 }

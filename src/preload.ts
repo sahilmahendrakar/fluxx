@@ -150,4 +150,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('planning:exited', handler);
     },
   },
+  planningDocs: {
+    list: () =>
+      ipcRenderer.invoke('planningDocs:list') as Promise<
+        | { files: { relativePath: string }[] }
+        | { error: 'NO_PROJECT' | 'IO_ERROR' }
+      >,
+    read: (relativePath: string) =>
+      ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
+        { content: string } | { error: string }
+      >,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('planningDocs:changed', handler);
+      return () => ipcRenderer.removeListener('planningDocs:changed', handler);
+    },
+  },
 });

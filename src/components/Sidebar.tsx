@@ -1,12 +1,22 @@
 import type { Project } from '../types';
 
-export type WorkspaceNavView = 'board' | 'team';
+export type WorkspaceNavView = 'board' | 'team' | 'docs';
+
+export type PlanningDocFile = { relativePath: string };
 
 interface SidebarProps {
   project: Project;
   workspaceView: WorkspaceNavView;
   onWorkspaceViewChange: (view: WorkspaceNavView) => void;
   onPlanNavClick: () => void;
+  onDocsNavClick: () => void;
+  docsSidebarExpanded: boolean;
+  onDocsSidebarExpandToggle: () => void;
+  planningDocFiles: PlanningDocFile[];
+  planningDocsListLoading: boolean;
+  planningDocsListError: string | null;
+  selectedPlanningDocPath: string | null;
+  onSelectPlanningDoc: (relativePath: string) => void;
   planPanelOpen: boolean;
   onClearProject: () => void;
 }
@@ -59,6 +69,29 @@ function BoardIcon({ className }: { className?: string }) {
   );
 }
 
+function DocsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M4 2.5h5.5L12.5 5v8.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M9 2.5V5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M5 8.5h6M5 11h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PlanIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -99,17 +132,63 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
+function ChevronIcon({ expanded, className }: { expanded: boolean; className?: string }) {
+  return (
+    <svg
+      className={[className, expanded ? 'rotate-180' : ''].filter(Boolean).join(' ')}
+      width={14}
+      height={14}
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M3.5 5.25 7 8.75l3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Sidebar({
   project,
   workspaceView,
   onWorkspaceViewChange,
   onPlanNavClick,
+  onDocsNavClick,
+  docsSidebarExpanded,
+  onDocsSidebarExpandToggle,
+  planningDocFiles,
+  planningDocsListLoading,
+  planningDocsListError,
+  selectedPlanningDocPath,
+  onSelectPlanningDoc,
   planPanelOpen,
   onClearProject,
 }: SidebarProps) {
   const navItemClass = (active: boolean) =>
     [
       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
+      active
+        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+    ].join(' ');
+
+  const docsMainNavClass = (active: boolean) =>
+    [
+      'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
+      active
+        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+    ].join(' ');
+
+  const fileRowClass = (active: boolean) =>
+    [
+      'w-full truncate rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
       active
         ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
@@ -134,37 +213,96 @@ export function Sidebar({
         <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
           Workspace
         </div>
-        <div className="flex flex-col gap-0.5">
-          <button
-            type="button"
-            className={navItemClass(workspaceView === 'board')}
-            onClick={() => onWorkspaceViewChange('board')}
-          >
-            <BoardIcon className="shrink-0 opacity-80" />
-            <span>Board</span>
-          </button>
-          <button
-            type="button"
-            className={navItemClass(
-              workspaceView === 'board' && planPanelOpen,
-            )}
-            onClick={onPlanNavClick}
-          >
-            <PlanIcon className="shrink-0 opacity-80" />
-            <span>Plan</span>
-          </button>
-          {project.kind === 'cloud' ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+          <div className="flex flex-col gap-0.5">
             <button
               type="button"
-              className={navItemClass(workspaceView === 'team')}
-              onClick={() => onWorkspaceViewChange('team')}
+              className={navItemClass(workspaceView === 'board')}
+              onClick={() => onWorkspaceViewChange('board')}
             >
-              <TeamIcon className="shrink-0 opacity-80" />
-              <span>Team</span>
+              <BoardIcon className="shrink-0 opacity-80" />
+              <span>Board</span>
             </button>
-          ) : null}
+            <button
+              type="button"
+              className={navItemClass(workspaceView === 'board' && planPanelOpen)}
+              onClick={onPlanNavClick}
+            >
+              <PlanIcon className="shrink-0 opacity-80" />
+              <span>Plan</span>
+            </button>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex w-full min-w-0 items-stretch gap-0.5">
+                <button
+                  type="button"
+                  className={docsMainNavClass(workspaceView === 'docs')}
+                  onClick={() => onDocsNavClick()}
+                >
+                  <DocsIcon className="shrink-0 opacity-80" />
+                  <span className="min-w-0 truncate">Docs</span>
+                </button>
+                <button
+                  type="button"
+                  className={[
+                    'flex w-7 shrink-0 items-center justify-center rounded-md transition-colors',
+                    docsSidebarExpanded
+                      ? 'bg-white/[0.06] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                      : 'text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300',
+                  ].join(' ')}
+                  aria-expanded={docsSidebarExpanded}
+                  aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
+                  title={docsSidebarExpanded ? 'Hide file list' : 'Show file list'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDocsSidebarExpandToggle();
+                  }}
+                >
+                  <ChevronIcon expanded={docsSidebarExpanded} className="opacity-90 transition-transform" />
+                </button>
+              </div>
+              {docsSidebarExpanded ? (
+                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+                  {planningDocsListError ? (
+                    <p className="py-1 text-[10px] leading-snug text-red-400/90">{planningDocsListError}</p>
+                  ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
+                    <p className="py-1 text-[10px] text-zinc-600">Loading…</p>
+                  ) : planningDocFiles.length === 0 ? (
+                    <p className="py-1 text-[10px] leading-snug text-zinc-600">No .md files yet.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5 pb-1">
+                      {planningDocFiles.map((f) => (
+                        <li key={f.relativePath}>
+                          <button
+                            type="button"
+                            title={f.relativePath}
+                            onClick={() => onSelectPlanningDoc(f.relativePath)}
+                            className={fileRowClass(
+                              workspaceView === 'docs' &&
+                                f.relativePath === selectedPlanningDocPath,
+                            )}
+                          >
+                            {f.relativePath}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {project.kind === 'cloud' ? (
+              <button
+                type="button"
+                className={navItemClass(workspaceView === 'team')}
+                onClick={() => onWorkspaceViewChange('team')}
+              >
+                <TeamIcon className="shrink-0 opacity-80" />
+                <span>Team</span>
+              </button>
+            ) : null}
+          </div>
+          <div className="min-h-0 flex-1" aria-hidden />
         </div>
-        <div className="min-h-0 flex-1" aria-hidden />
         <div className="border-t border-white/[0.06] pt-2">
           <button
             type="button"
