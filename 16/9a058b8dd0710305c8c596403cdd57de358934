@@ -1,0 +1,58 @@
+src/preload.ts
+  341528f1ece4606c 18-21,61-70,132-134,156-157,177-178
+src/App.tsx
+  341528f1ece4606c 19,338-388
+src/components/SessionTerminalView.tsx
+  341528f1ece4606c 5-25,73-88,90-123,125-126,167-179,181-214,216-217,344
+src/daemon/SessionRuntime.ts
+  341528f1ece4606c 1-156
+src/daemon/protocol.ts
+  341528f1ece4606c 1-139
+src/components/PlanningPanel.tsx
+  341528f1ece4606c 17-23,94,118-123,125,127-131,133-170,172
+src/daemon/daemon.ts
+  341528f1ece4606c 22-115
+.gitignore
+  h_d2c1d28943b3a6 95-98
+forge.config.ts
+  341528f1ece4606c 34-39,57-59
+vite.daemon.config.ts
+  341528f1ece4606c 1-17
+src/main/agentSpawn.ts
+  341528f1ece4606c 3,5-6,11-14,31,61-64,89
+src/daemon/DaemonCore.ts
+  341528f1ece4606c 3-25,28-35,45-56,58-64,66-75,80-117,119-127,129-191,195-215,217-220,224-228,231,234-286,289-294,297-355
+src/main/DaemonClient.ts
+  341528f1ece4606c 1-580
+src/main.ts
+  341528f1ece4606c 12-19,23-31,244-249,486-502,595,601,605,613-657,659-683,686-687,691-704,708-709,712-716,719,723,776-784,786-838,842,844-857,860,864,955-956,961-966,969-970,973-979,982,986,1013-1015
+src/env.d.ts
+  341528f1ece4606c 35-43,64-68,109,119,129
+src/main/AppStateStore.ts
+  341528f1ece4606c 6-16,21-26,40,79-96,100-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "169a058b8dd0710305c8c596403cdd57de358934",
+  "prompts": {
+    "341528f1ece4606c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d4b7e2b3-b1d3-4947-b51d-9c21f9dbd768",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 2692,
+      "total_deletions": 565,
+      "accepted_lines": 1981,
+      "overriden_lines": 156
+    }
+  },
+  "humans": {
+    "h_d2c1d28943b3a6": {
+      "author": "Sahil Mahendrakar"
+    }
+  }
+}
