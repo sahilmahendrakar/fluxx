@@ -41,6 +41,9 @@ declare global {
         getDir: () => Promise<string | null>;
         open: () => Promise<LocalProject | { error: 'NOT_GIT_REPO' } | null>;
         clear: () => Promise<void>;
+        setPlanningAgent: (
+          agent: Agent,
+        ) => Promise<{ ok: true } | { error: string }>;
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;
@@ -100,7 +103,7 @@ declare global {
         onTerminalWindowClosed: (cb: (sessionId: string) => void) => () => void;
       };
       planning: {
-        start: () => Promise<PlanningStartResult>;
+        start: (agent: Agent) => Promise<PlanningStartResult>;
         stop: () => Promise<void>;
         get: () => Promise<PlanningSession | null>;
         write: (data: string) => void;

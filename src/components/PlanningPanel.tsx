@@ -10,6 +10,8 @@ import Terminal, { type TerminalHandle } from './Terminal';
 interface PlanningPanelProps {
   project: Project;
   onClose: () => void;
+  /** After planning agent is saved locally, reload `project` from the main process. */
+  onLocalProjectRefresh?: () => void | Promise<void>;
 }
 
 const OUTPUT_TAIL_MAX = 12_000;
@@ -32,7 +34,11 @@ function tailNeedsInputHint(text: string): boolean {
   );
 }
 
-export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
+export function PlanningPanel({
+  project,
+  onClose,
+  onLocalProjectRefresh,
+}: PlanningPanelProps) {
   const planningApi = window.electronAPI.planning;
 
   const [planningSession, setPlanningSession] = useState<PlanningSession | null>(
@@ -127,13 +133,18 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await planningApi.start();
+      const agentForStart =
+        project.kind === 'local' ? selectedAgent : 'claude-code';
+      const result = await planningApi.start(agentForStart);
       if (result && typeof result === 'object' && 'error' in result) {
         const err = result as { error: string; message?: string };
         setError(err.message ?? err.error ?? 'Failed to start');
         return;
       }
       setPlanningSession(result);
+      if (project.kind === 'local') {
+        await onLocalProjectRefresh?.();
+      }
     } catch {
       setError('Failed to start session');
     } finally {
@@ -219,11 +230,27 @@ export function PlanningPanel({ project, onClose }: PlanningPanelProps) {
             title={
               sessionRunning
                 ? 'Agent for this session'
-                : 'Shown for reference; the started session uses the project planning agent (local projects) or Claude Code (cloud).'
+                : project.kind === 'local'
+                  ? 'Planning agent for the next session (saved when you change it or start).'
+                  : 'Cloud planning uses Claude Code.'
             }
-            disabled={sessionRunning}
+            disabled={sessionRunning || project.kind === 'cloud'}
             value={agentSelectValue}
-            onChange={(e) => setSelectedAgent(e.target.value as Agent)}
+            onChange={(e) => {
+              const next = e.target.value as Agent;
+              setSelectedAgent(next);
+              if (project.kind !== 'local') return;
+              void (async () => {
+                const res = await window.electronAPI.project.setPlanningAgent(next);
+                if ('error' in res) {
+                  setError(res.error);
+                  setSelectedAgent(project.planningAgent);
+                  return;
+                }
+                setError(null);
+                await onLocalProjectRefresh?.();
+              })();
+            }}
             className="min-w-0 max-w-[9.5rem] cursor-pointer rounded-md border border-gray-700 bg-gray-900 py-1 pl-2 pr-7 text-[11px] font-medium text-gray-200 focus:border-gray-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
           >
             {AGENTS.map((a) => (

@@ -630,6 +630,14 @@ export default function App() {
                       <PlanningPanel
                         project={project}
                         onClose={() => setPlanPanelOpen(false)}
+                        onLocalProjectRefresh={
+                          project.kind === 'local'
+                            ? async () => {
+                                const p = await window.electronAPI.project.get();
+                                if (p) setProject(p);
+                              }
+                            : undefined
+                        }
                       />
                     </div>
                   </div>
