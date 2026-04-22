@@ -1,0 +1,231 @@
+src/components/Board.tsx
+  2dac735e874a635c 13-14,23-24,42-63,80
+src/components/PlanningDocsView.tsx
+  fedb122041cdf43f 1-94
+src/App.tsx
+  728124383a31f77d 199-209
+  c48f948b0254d3b0 994-995
+  fedb122041cdf43f 22,87-98,114-181,510-515,524-528,552-567,569,850-857,992-993,996
+  2dac735e874a635c 1-10,18,21,54-72,81-86,99,509,523,534-551,568,570-664,849,899-950,959-962,997
+  90ff70245b7f6b92 772-778,989
+  cf1277bc3d9dac19 951-958
+src/main/TaskStore.ts
+  7f6bd4470626cd32 9-14,16,19-44,47-52,74,84,99,116-118,126-128,146-148,164-166,176-178,186
+src/main/WorktreeService.ts
+  7f6bd4470626cd32 17-20,26-29,42-44,47-49
+  cf1277bc3d9dac19 30-37
+src/main/McpServer.ts
+  2eac0672a1395d6d 140
+  728124383a31f77d 7,39,48-54,102,130
+  bb488c7d66300cec 1-6,8-38,40-47,55-101,103-129,131-139,141-275
+src/main.ts
+  cf1277bc3d9dac19 17-21,381-395,618-622,624-626,628-637,639-673
+  bb488c7d66300cec 8,169-170,615-616,826-827,830-831
+  7f6bd4470626cd32 4,7,9,28-31,34-39,41-46,48-95,97-102,105-137,139-160,222-243,245-300,305-307,318-327,354-356,358-363,367-377,379-380,396-417,419-423,427-432,437,440-447,449-450,452-457,462-464,468-470,472-477,479,505-507,509-512,546,552,567,570,833
+  fedb122041cdf43f 16,171-172,693-746,748-750,753-779,828-829
+  c48f948b0254d3b0 244
+  728124383a31f77d 614
+  3fcf42cdaf74d1e1 677-690
+src/preload.ts
+  7f6bd4470626cd32 36,39,52
+  fedb122041cdf43f 176-184,186-189
+  728124383a31f77d 106-110,165-167,170-173
+  3fcf42cdaf74d1e1 2-10,16,157,160-164,168-169,174-175
+  cf1277bc3d9dac19 42-45,158-159
+src/types.ts
+  2dac735e874a635c 72-75,78,80-82
+  3fcf42cdaf74d1e1 76-77,79
+  7f6bd4470626cd32 5-12,19-20
+src/components/Sidebar.tsx
+  fedb122041cdf43f 13-24,26-44,95-117,158-179,248-259,261,263-264,273-288,324-325,328-329,331-332,334-477
+  c48f948b0254d3b0 295-302
+  90ff70245b7f6b92 5,482-483
+  2dac735e874a635c 12,247
+src/components/AppShell.tsx
+  fedb122041cdf43f 3,16-23,56-63,94-101
+  2dac735e874a635c 15,41-45,52-55,92-93
+src/components/TaskDetailPanel.tsx
+  90ff70245b7f6b92 448
+  c48f948b0254d3b0 455
+src/components/Terminal.tsx
+  c48f948b0254d3b0 87-91,93,95-97,153-155,183
+src/components/TopBar.tsx
+  c48f948b0254d3b0 13
+src/main/ProjectStore.ts
+  7f6bd4470626cd32 3-4,6,8-16,18,20-24,27-28,31-47,49-64,66-84,86-89,91-93,95-97,101,105,118-123,126-131,133-135,137-142,165-167,169-176,178-180,182-183,186-187,209-214,217-221,224-229,231-233,235-241,244-259,262-272,280-281,284-295,297-302,305-306,309-326,330-333
+  2eac0672a1395d6d 99-100,103,107-116,124,132,136,143-152,154-160,162-164,275-279
+  cf1277bc3d9dac19 190-193,195-196,198-202,204-206
+src/main/SessionManager.ts
+  cf1277bc3d9dac19 42-74,276,304-307,331,338
+  2eac0672a1395d6d 8,77-78,93,95,98,285,308
+  520318724bb4ca2a 97,348
+  3fcf42cdaf74d1e1 4-5,7,75-76,79-92,94,96,99-102,115-116,121-130,200-202,210-211,213,217,219-225,227,229,231,233-240,271-275,277-284,303,309-330,332-337,339-347,351-358,362-398
+  728124383a31f77d 286-302,349-350,359-361
+src/renderer/tasks/TaskProvider.ts
+  728124383a31f77d 24-25
+src/env.d.ts
+  728124383a31f77d 90,94-95,102-112
+  fedb122041cdf43f 121-129
+  7f6bd4470626cd32 2-6,9-10,44-45,53
+  3fcf42cdaf74d1e1 23
+  2dac735e874a635c 8,114-120
+  cf1277bc3d9dac19 47-49,113
+src/components/PlanningPanel.tsx
+  728124383a31f77d 155-170,218-227,330,336
+  2dac735e874a635c 1-12,15-36,42-135,139-144,148-154,171-217,228-232,236,238,254-329,331-335,337-352
+  cf1277bc3d9dac19 13-14,37-41,136-138,145-147,233-235,237,239-253
+src/renderer/tasks/LocalTaskProvider.ts
+  728124383a31f77d 10-12,48-53
+src/main/AppStateStore.ts
+  7f6bd4470626cd32 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "e9f179726868dc2bbc76fb6ab63f64c75489f74f",
+  "prompts": {
+    "2dac735e874a635c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "25548b4a-072a-4e48-9ebf-65994cefeb9a",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 549,
+      "overriden_lines": 0
+    },
+    "2eac0672a1395d6d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a0dc214b-7b7e-49d7-99df-62253f232eee",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 52,
+      "overriden_lines": 0
+    },
+    "3fcf42cdaf74d1e1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5277e0e2-387f-4397-b805-0cd9cba5e56f",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 166,
+      "overriden_lines": 0
+    },
+    "520318724bb4ca2a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "04680570-bd3c-429b-acac-f940e9bc493d",
+        "model": "claude-opus-4-7-thinking-high"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "728124383a31f77d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "52f9c0ad-fcdc-45ee-b64a-d846b0329663",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 99,
+      "overriden_lines": 0
+    },
+    "7f6bd4470626cd32": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6b4fe518-4e06-4356-a7c9-74421766c50a",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 724,
+      "overriden_lines": 0
+    },
+    "90ff70245b7f6b92": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "27c71bde-a0e3-43f8-b016-8012d7b0d0fd",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 21,
+      "overriden_lines": 0
+    },
+    "bb488c7d66300cec": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d651ad3b-ec05-4de3-94eb-f483b42d6f71",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 272,
+      "overriden_lines": 0
+    },
+    "c48f948b0254d3b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "79d74071-bc91-49a0-b1f8-f2398e3048e3",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 93,
+      "overriden_lines": 0
+    },
+    "cf1277bc3d9dac19": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ff237db1-72c1-42f6-b88f-1a05b6942193",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 196,
+      "overriden_lines": 0
+    },
+    "fedb122041cdf43f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "99431860-61eb-44be-b2f0-7c997b76c89b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 580,
+      "overriden_lines": 0
+    }
+  }
+}
