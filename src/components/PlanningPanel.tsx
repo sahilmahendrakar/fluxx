@@ -54,12 +54,10 @@ export function PlanningPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsInput, setNeedsInput] = useState(false);
-  const [inputValue, setInputValue] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<Agent>(() =>
     project.kind === 'local' ? project.planningAgent : 'claude-code',
   );
   const terminalRef = useRef<TerminalHandle | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const outputBufferRef = useRef('');
   const planningSessionRef = useRef<PlanningSession | null>(null);
   planningSessionRef.current = planningSession;
@@ -180,7 +178,7 @@ export function PlanningPanel({
   ]);
 
   useEffect(() => {
-    if (needsInput) inputRef.current?.focus();
+    if (needsInput) terminalRef.current?.focus();
   }, [needsInput]);
 
   const handleStart = async () => {
@@ -224,18 +222,6 @@ export function PlanningPanel({
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSend = () => {
-    const s = planningSessionRef.current;
-    if (!planningApi || !s || s.status !== 'running' || !inputValue.trim()) {
-      return;
-    }
-    const line = inputValue;
-    planningApi.write(`${line}\n`);
-    setInputValue('');
-    setNeedsInput(false);
-    terminalRef.current?.write(`${line}\r\n`);
   };
 
   const handleTerminalData = (data: string) => {
@@ -373,37 +359,6 @@ export function PlanningPanel({
             </button>
           </div>
         )}
-      </div>
-
-      <div className="flex h-[52px] shrink-0 items-center gap-2 border-t border-gray-800 px-3 py-2">
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={
-            planningSession ? 'Message the planning assistant…' : 'Start a session first'
-          }
-          disabled={!planningApi || !sessionRunning}
-          className="flex-1 rounded-md border border-gray-700 bg-gray-900 px-2.5 py-1.5 font-mono text-xs text-gray-200 placeholder-gray-600 focus:border-gray-600 focus:outline-none disabled:opacity-40"
-        />
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!planningApi || !sessionRunning || !inputValue.trim()}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-green-800 bg-green-900 transition-colors hover:bg-green-800 disabled:opacity-30"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-            <path
-              d="M5 8V2M2 5l3-3 3 3"
-              stroke="#86efac"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
       </div>
     </div>
   );

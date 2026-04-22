@@ -23,6 +23,7 @@ export interface TerminalProps {
 
 export interface TerminalHandle {
   write: (data: string) => void;
+  focus: () => void;
 }
 
 const MIN_CONTAINER_PX = 8;
@@ -47,6 +48,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   useImperativeHandle(ref, () => ({
     write: (data: string) => {
       termRef.current?.write(data);
+    },
+    focus: () => {
+      termRef.current?.focus();
     },
   }));
 
