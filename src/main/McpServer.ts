@@ -137,7 +137,7 @@ export class McpServer {
 
     this.mcpServer.tool(
       'flux__get_project_info',
-      'Get a summary of the current Flux project and task counts',
+      'Get the current Flux project name, canonical rootPath (git repo / application code location), and task status counts',
       {},
       async () => {
         try {

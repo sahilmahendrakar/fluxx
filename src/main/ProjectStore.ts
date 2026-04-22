@@ -96,14 +96,24 @@ async function atomicWriteFile(filePath: string, payload: string): Promise<void>
   await fs.rename(tmpPath, filePath);
 }
 
-function claudeMdContent(projectName: string, rootPath: string): string {
+/** Shared body for \`planning/CLAUDE.md\` and \`planning/AGENTS.md\` (same text, two filenames). */
+function planningAssistantMarkdown(projectName: string, rootPath: string): string {
   return `# Planning workspace — ${projectName}
 
-This is the planning workspace for the \`${projectName}\` project (located at \`${rootPath}\`).
+This directory is the Flux **planning** workspace for \`${projectName}\`. Application code lives in the git repository at \`${rootPath}\` (embedded here when these files were created). The **canonical** path for reading code is the \`rootPath\` field returned by \`flux__get_project_info\` — prefer that after you call the tool. Planning sessions use this directory as the process working directory.
 
 ## Your role
 
-You are a planning assistant. Your job is to help the developer think through features, maintain project documentation, and manage tasks on the Flux board.
+You are a planning assistant. Help the developer think through features, maintain documentation in this directory, and manage tasks on the Flux board.
+
+## Turn-taking
+
+- Do **not** start a substantive planning pass, repository exploration, or tool use until the user has asked a question or given a concrete task.
+- **After they do**, gather context **before** you give substantive answers, update planning docs, or call \`flux__create_task\` / \`flux__update_task\`, unless the request is purely meta and needs no repository or board context. Follow this order:
+  1. Call \`flux__get_project_info\` once (unless you already have the current \`rootPath\` and project name from a call in this turn). Use the returned \`rootPath\` as the application codebase location.
+  2. Read planning documents in **this** directory (\`vision.md\`, \`architecture.md\`, sprint files, etc.).
+  3. Explore the repository under that \`rootPath\` as needed for the user’s question.
+  4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.
 
 ## Available tools
 
@@ -111,7 +121,7 @@ You have access to the following Flux tools for task management:
 - \`flux__list_tasks\` — list all current tasks on the board
 - \`flux__create_task\` — create a new task with title, description, and agent
 - \`flux__update_task\` — update an existing task's title, description, status, or agent
-- \`flux__get_project_info\` — get information about the current project
+- \`flux__get_project_info\` — returns project \`name\`, canonical \`rootPath\` (read application code here), and \`taskCounts\`; call early after the user engages so task and planning work targets the correct repo
 
 ## Files in this directory
 
@@ -119,14 +129,37 @@ Maintain these files as living documents:
 - \`vision.md\` — long-term project goals and direction
 - \`architecture.md\` — technical decisions and system design
 - \`YYYY-MM-sprint.md\` — time-boxed planning (create as needed)
+- \`CLAUDE.md\` and \`AGENTS.md\` — agent instructions for this workspace (keep them aligned if you edit one)
 
 ## Guidelines
 
-- Read the codebase before making suggestions
+- Do not create or update tasks until the context pass above is done (when the question touches the codebase or board).
 - Update planning documents when decisions are made
 - Create tasks for concrete, actionable work items
 - Keep vision.md and architecture.md up to date as the project evolves
 `;
+}
+
+/** Creates \`CLAUDE.md\` and/or \`AGENTS.md\` only when missing (does not overwrite user edits). */
+export async function ensurePlanningAssistantMarkdownFiles(
+  planningDir: string,
+  projectName: string,
+  rootPath: string,
+): Promise<void> {
+  const resolvedRoot = path.resolve(rootPath);
+  const md = planningAssistantMarkdown(projectName, resolvedRoot);
+  for (const fileName of ['CLAUDE.md', 'AGENTS.md'] as const) {
+    const filePath = path.join(planningDir, fileName);
+    try {
+      await fs.access(filePath);
+    } catch (err: unknown) {
+      if (errnoCode(err) === 'ENOENT') {
+        await fs.writeFile(filePath, md, 'utf8');
+      } else {
+        throw err;
+      }
+    }
+  }
 }
 
 export class ProjectStore {
@@ -239,16 +272,11 @@ export class ProjectStore {
       }
     }
 
-    const claudePath = path.join(projectDir, 'planning', 'CLAUDE.md');
-    try {
-      await fs.access(claudePath);
-    } catch (err: unknown) {
-      if (errnoCode(err) === 'ENOENT') {
-        await fs.writeFile(claudePath, claudeMdContent(projectName, resolvedRoot), 'utf8');
-      } else {
-        throw err;
-      }
-    }
+    await ensurePlanningAssistantMarkdownFiles(
+      path.join(projectDir, 'planning'),
+      projectName,
+      resolvedRoot,
+    );
 
     return { projectDir, project: configToLocalProject(config) };
   }

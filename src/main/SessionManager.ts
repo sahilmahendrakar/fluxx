@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
 import type { Agent, PlanningSession, Project, Session, Task } from '../types';
+import { ensurePlanningAssistantMarkdownFiles } from './ProjectStore';
 import { WorktreeService } from './WorktreeService';
 
 function broadcastSessionChannel(channel: string, payload?: unknown): void {
@@ -73,13 +74,8 @@ async function ensurePlanningDirCursorMcp(planningDir: string): Promise<void> {
   await fs.writeFile(mcpPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
 }
 
-function planningSpawnSpec(
-  agent: Agent,
-  project: Project,
-  mcpConfigPath: string,
-): { command: string; args: string[] } {
-  const name = project.name;
-  const rootPath = project.rootPath;
+/** Planning agents read scope from CLAUDE.md / AGENTS.md; no initial user prompt so the PTY stays idle until the user types. */
+function planningSpawnSpec(agent: Agent, mcpConfigPath: string): { command: string; args: string[] } {
   switch (agent) {
     case 'claude-code':
       return {
@@ -89,29 +85,18 @@ function planningSpawnSpec(
           mcpConfigPath,
           '--append-system-prompt',
           'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools. Do not write application code.',
-          `You are helping plan the ${name} project located at ${rootPath}. Start by reading the codebase structure and any existing planning documents in this directory, then ask how you can help.`,
         ],
       };
     case 'codex':
       return {
         command: 'codex',
-        args: [
-          `You are a planning assistant for the ${name} project at ${rootPath}. You have access to flux MCP tools for task management. Do not write application code — focus on planning, documentation, and task creation.`,
-        ],
+        args: [],
       };
-    case 'cursor': {
-      const cursorPrompt =
-        `You are a planning assistant for the software project "${name}". ` +
-        `The git repository (read code here) is at ${rootPath}. ` +
-        `Your process cwd is the Flux planning folder (markdown docs like CLAUDE.md live here). ` +
-        `You have Flux MCP tools (flux__list_tasks, flux__create_task, flux__update_task, flux__get_project_info) to manage the board. ` +
-        `Do not write application code — plan, document, and maintain tasks only. ` +
-        `Start by skimming the repo and any planning docs, then ask how you can help.`;
+    case 'cursor':
       return {
         command: 'agent',
-        args: ['--model', 'auto', '--approve-mcps', cursorPrompt],
+        args: ['--model', 'auto', '--approve-mcps'],
       };
-    }
   }
 }
 
@@ -280,6 +265,7 @@ export class SessionManager {
     const planningDir = path.join(projectDir, 'planning');
     const mcpConfigPath = path.join(projectDir, 'mcp.json');
     await fs.mkdir(planningDir, { recursive: true });
+    await ensurePlanningAssistantMarkdownFiles(planningDir, project.name, project.rootPath);
     try {
       await fs.access(mcpConfigPath);
     } catch {
@@ -302,7 +288,7 @@ export class SessionManager {
       await ensurePlanningDirCursorMcp(planningDir);
     }
 
-    const { command, args } = planningSpawnSpec(planningAgent, project, mcpConfigPath);
+    const { command, args } = planningSpawnSpec(planningAgent, mcpConfigPath);
     const sessionId = randomUUID();
 
     let ptyProcess: IPty;
