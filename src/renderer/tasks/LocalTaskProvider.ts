@@ -7,8 +7,9 @@ import type {
 
 /**
  * Wraps `window.electronAPI.tasks.*`. Holds an in-memory copy of the task list
- * and re-notifies subscribers on every local mutation. There's no realtime
- * channel — another window/process editing tasks.json won't push updates.
+ * and re-notifies subscribers on every local mutation. The host calls
+ * `reloadFromMain()` when main emits `tasks:changed` (for example after MCP
+ * tool calls).
  */
 export class LocalTaskProvider implements TaskProvider {
   private tasks: Task[] = [];
@@ -43,6 +44,12 @@ export class LocalTaskProvider implements TaskProvider {
     const snapshot = this.tasks.slice();
     for (const cb of this.subscribers) cb(snapshot);
   }
+
+  reloadFromMain = async (): Promise<void> => {
+    const all = await window.electronAPI.tasks.getAll();
+    this.tasks = all;
+    this.emit();
+  };
 
   async create(input: TaskCreateInput): Promise<Task> {
     const task = await window.electronAPI.tasks.create({

@@ -13,6 +13,13 @@ export interface TerminalProps {
   sessionId: string | null;
   onData?: (data: string) => void;
   onResize?: (cols: number, rows: number) => void;
+  // Claude Code draws its own prompt/cursor; xterm's cursor ends up below
+  // the visible input box and reads as a stray second caret. Hide it there.
+  hideCursor?: boolean;
+  // Drives "became-visible" side effects (repaint, scroll-to-bottom, focus).
+  // Parents set this to false when the pane/tab is hidden so we can re-focus
+  // and repaint when it returns without ever reflowing the xterm container.
+  visible?: boolean;
 }
 
 export interface TerminalHandle {
@@ -42,7 +49,7 @@ function readXtermTheme() {
 }
 
 const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
-  { sessionId, onData, onResize },
+  { sessionId, onData, onResize, hideCursor = false, visible = true },
   ref,
 ) {
   const [themeEpoch, bumpThemeEpoch] = useReducer((n: number) => n + 1, 0);
@@ -75,12 +82,19 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       return;
     }
 
+    const baseTheme = readXtermTheme();
     const term = new XTerm({
-      theme: readXtermTheme(),
+      theme: {
+        ...baseTheme,
+        cursor: hideCursor ? 'rgba(0,0,0,0)' : baseTheme.cursor,
+        cursorAccent: hideCursor ? 'rgba(0,0,0,0)' : baseTheme.background,
+      },
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
-      fontSize: 13,
+      fontSize: 12,
       lineHeight: 1.4,
-      cursorBlink: true,
+      cursorBlink: !hideCursor,
+      cursorStyle: 'block',
+      cursorInactiveStyle: 'none',
       scrollback: 1000,
       convertEol: true,
     });
@@ -136,6 +150,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
           if (term.rows > 0) {
             term.refresh(0, term.rows - 1);
           }
+          // Focus here too so a remount (e.g. sessionId change) that doesn't
+          // flip the `visible` prop still picks up keystrokes immediately.
+          term.focus();
         });
       });
     };
@@ -163,7 +180,26 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       term.dispose();
       termRef.current = null;
     };
-  }, [sessionId, themeEpoch]);
+  }, [sessionId, themeEpoch, hideCursor]);
+
+  // Parents mark the pane/tab hidden by passing visible=false. We don't toggle
+  // display on the container (that would reflow xterm and wipe the rendered
+  // history); instead the wrapper flips CSS visibility. When visible flips
+  // back to true we repaint, scroll to latest output, and take focus so the
+  // user can immediately resume typing without clicking in.
+  const prevVisibleRef = useRef(false);
+  useEffect(() => {
+    const term = termRef.current;
+    const wasVisible = prevVisibleRef.current;
+    prevVisibleRef.current = visible;
+    if (!term) return;
+    if (!visible || wasVisible) return;
+    if (term.rows > 0) {
+      term.refresh(0, term.rows - 1);
+    }
+    term.scrollToBottom();
+    term.focus();
+  }, [visible]);
 
   if (!sessionId) {
     return (

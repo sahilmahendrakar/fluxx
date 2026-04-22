@@ -1,5 +1,4 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -14,37 +13,40 @@ function branchForTaskId(taskId: string): string {
   return `flux/task-${sanitiseTaskId(taskId)}`;
 }
 
-/** Safe directory name under ~/.flux/worktrees/<name>/ */
-function projectWorktreesDirName(rootPath: string): string {
-  const base = path.basename(path.resolve(rootPath));
-  return base.replace(/[^a-zA-Z0-9._-]/g, '-') || 'project';
-}
-
 export class WorktreeService {
-  private rootPath: string;
-
-  constructor(rootPath: string) {
-    this.rootPath = rootPath;
-  }
+  constructor(
+    private rootPath: string,
+    private projectDir: string,
+  ) {}
 
   setRootPath(nextPath: string): void {
     this.rootPath = nextPath;
+  }
+
+  setProjectDir(nextDir: string): void {
+    this.projectDir = nextDir;
+  }
+
+  getProjectDir(): string {
+    return this.projectDir;
+  }
+
+  getRootPath(): string {
+    return this.rootPath;
   }
 
   async create(taskId: string): Promise<{ worktreePath: string; branch: string }> {
     if (!this.rootPath) {
       throw new Error('WorktreeService: no project root path set');
     }
+    if (!this.projectDir) {
+      throw new Error('WorktreeService: no project directory set');
+    }
 
     const branch = branchForTaskId(taskId);
-    const worktreesParent = path.join(
-      os.homedir(),
-      '.flux',
-      'worktrees',
-      projectWorktreesDirName(this.rootPath),
-    );
-    await fs.mkdir(worktreesParent, { recursive: true });
-    const worktreePath = path.join(worktreesParent, taskId);
+    const worktreesRoot = path.join(this.projectDir, 'worktrees');
+    await fs.mkdir(worktreesRoot, { recursive: true });
+    const worktreePath = path.join(worktreesRoot, taskId);
 
     await this.reclaimStaleWorktree(worktreePath);
 
@@ -64,9 +66,11 @@ export class WorktreeService {
           cwd: this.rootPath,
         });
       } else {
-        await execFile('git', ['worktree', 'add', worktreePath, '-b', branch], {
-          cwd: this.rootPath,
-        });
+        const baseRef = await this.resolveBaseRef();
+        const addArgs = baseRef
+          ? ['worktree', 'add', worktreePath, '-b', branch, baseRef]
+          : ['worktree', 'add', worktreePath, '-b', branch];
+        await execFile('git', addArgs, { cwd: this.rootPath });
       }
     } catch (err: unknown) {
       const message =
@@ -140,6 +144,53 @@ export class WorktreeService {
           : '';
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[WorktreeService.remove] git branch -D failed for ${branch}:`, stderr || message);
+    }
+  }
+
+  /**
+   * Resolve the base ref for a brand-new task branch. Detects the remote's
+   * default branch via `origin/HEAD`, fetches it best-effort so the worktree
+   * starts from up-to-date code, and returns `origin/<branch>`. Returns null
+   * when there is no usable remote ref so the caller falls back to local HEAD
+   * (e.g. offline, no `origin`, or `origin/HEAD` unset and no `origin/main`).
+   */
+  private async resolveBaseRef(): Promise<string | null> {
+    let defaultBranch = 'main';
+    try {
+      const { stdout } = await execFile(
+        'git',
+        ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+        { cwd: this.rootPath, encoding: 'utf8' },
+      );
+      const ref = stdout.trim();
+      if (ref.startsWith('origin/')) {
+        defaultBranch = ref.slice('origin/'.length);
+      }
+    } catch {
+      // origin/HEAD not set; fall through with 'main' as a best guess.
+    }
+
+    try {
+      await execFile('git', ['fetch', 'origin', defaultBranch], {
+        cwd: this.rootPath,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[WorktreeService.create] git fetch origin ${defaultBranch} failed; using local ref`,
+        message,
+      );
+    }
+
+    try {
+      await execFile(
+        'git',
+        ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${defaultBranch}`],
+        { cwd: this.rootPath },
+      );
+      return `origin/${defaultBranch}`;
+    } catch {
+      return null;
     }
   }
 

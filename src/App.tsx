@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { DropResult } from '@hello-pangea/dnd';
 import {
   Task,
@@ -6,8 +15,11 @@ import {
   Agent,
   CloudProject,
   LocalProject,
+  Session,
 } from './types';
 import Board from './components/Board';
+import { PlanningPanel } from './components/PlanningPanel';
+import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
 import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
@@ -16,7 +28,9 @@ import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
 import { TeamView } from './components/TeamView';
 import { SettingsView } from './components/SettingsView';
-import type { WorkspaceNavView } from './components/Sidebar';
+import { TabBar, buildSessionTabs } from './components/TabBar';
+import { SessionTerminalView } from './components/SessionTerminalView';
+import ConfirmDialog from './components/ConfirmDialog';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
 import { useInvites } from './renderer/invites/useInvites';
@@ -35,6 +49,27 @@ type TaskPatch = Partial<
 type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
+const STATIC_TAB_IDS = new Set(['board', 'plan', 'team', 'docs', 'settings']);
+
+const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
+const DEFAULT_PLANNING_PANEL_WIDTH = 288;
+const MIN_PLANNING_PANEL_WIDTH = 260;
+const MIN_BOARD_REMAINING_PX = 200;
+
+function clampPlanningWidth(width: number, maxWidth: number): number {
+  return Math.min(maxWidth, Math.max(MIN_PLANNING_PANEL_WIDTH, Math.round(width)));
+}
+
+function readStoredPlanningWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(PLANNING_PANEL_WIDTH_KEY);
+    if (raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
@@ -43,7 +78,25 @@ export default function App() {
   const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceNavView>('board');
+  const [activeTabId, setActiveTabId] = useState<string>('board');
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [openTabIds, setOpenTabIds] = useState<Set<string>>(() => new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [planPanelOpen, setPlanPanelOpen] = useState(false);
+  const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
+  const [docsSidebarExpanded, setDocsSidebarExpanded] = useState(false);
+  const [planningDocFiles, setPlanningDocFiles] = useState<{ relativePath: string }[]>(
+    [],
+  );
+  const [planningDocsListLoading, setPlanningDocsListLoading] = useState(false);
+  const [planningDocsListError, setPlanningDocsListError] = useState<string | null>(
+    null,
+  );
+  const [selectedPlanningDocPath, setSelectedPlanningDocPath] = useState<
+    string | null
+  >(null);
+  const [planningDocFileRevision, setPlanningDocFileRevision] = useState(0);
+  const boardRowRef = useRef<HTMLDivElement>(null);
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -57,6 +110,74 @@ export default function App() {
   useAgentHeartbeat({ projectId: cloudProjectId, uid, displayName });
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+
+  const refreshPlanningDocList = useCallback(async () => {
+    const api = window.electronAPI.planningDocs;
+    setPlanningDocsListLoading(true);
+    setPlanningDocsListError(null);
+    try {
+      const result = await api.list();
+      if ('error' in result) {
+        setPlanningDocFiles([]);
+        setPlanningDocsListError(
+          result.error === 'NO_PROJECT'
+            ? 'No workspace open.'
+            : 'Could not read the planning folder.',
+        );
+        return;
+      }
+      setPlanningDocFiles(result.files);
+    } catch {
+      setPlanningDocFiles([]);
+      setPlanningDocsListError('Failed to load documents.');
+    } finally {
+      setPlanningDocsListLoading(false);
+    }
+  }, []);
+
+  const shouldLoadPlanningDocs = docsSidebarExpanded || activeTabId === 'docs';
+
+  useEffect(() => {
+    if (!project || !shouldLoadPlanningDocs) return;
+    void refreshPlanningDocList();
+  }, [project?.id, shouldLoadPlanningDocs, refreshPlanningDocList]);
+
+  useEffect(() => {
+    if (activeTabId !== 'docs') return;
+    if (selectedPlanningDocPath != null) return;
+    if (planningDocFiles.length > 0) {
+      setSelectedPlanningDocPath(planningDocFiles[0].relativePath);
+    }
+  }, [activeTabId, selectedPlanningDocPath, planningDocFiles]);
+
+  useEffect(() => {
+    if (selectedPlanningDocPath == null) return;
+    if (planningDocsListLoading) return;
+    if (planningDocFiles.length === 0) {
+      setSelectedPlanningDocPath(null);
+      return;
+    }
+    if (!planningDocFiles.some((f) => f.relativePath === selectedPlanningDocPath)) {
+      setSelectedPlanningDocPath(planningDocFiles[0]?.relativePath ?? null);
+    }
+  }, [planningDocFiles, selectedPlanningDocPath, planningDocsListLoading]);
+
+  useEffect(() => {
+    if (!project) return;
+    if (!docsSidebarExpanded && activeTabId !== 'docs') return;
+    const unsub = window.electronAPI.planningDocs.onChanged(() => {
+      void refreshPlanningDocList();
+      if (activeTabId === 'docs') {
+        setPlanningDocFileRevision((n) => n + 1);
+      }
+    });
+    return unsub;
+  }, [
+    project?.id,
+    docsSidebarExpanded,
+    activeTabId,
+    refreshPlanningDocList,
+  ]);
 
   // ----- Task provider per active project -----
   const provider = useMemo<TaskProvider | null>(() => {
@@ -73,6 +194,17 @@ export default function App() {
     }
     const unsub = provider.subscribe((all) => setTasks(all));
     return () => unsub();
+  }, [provider]);
+
+  useEffect(() => {
+    if (!provider?.reloadFromMain) return;
+    const reload = provider.reloadFromMain;
+    const unsub = window.electronAPI.tasks.onChanged(() => {
+      void reload().catch((err) => {
+        console.error('[tasks.onChanged] reloadFromMain failed', err);
+      });
+    });
+    return unsub;
   }, [provider]);
 
   // ----- Initial active-project hydration -----
@@ -184,6 +316,26 @@ export default function App() {
     if (!changed) return;
     setProject({ ...project, ...fresh });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
+
+  useEffect(() => {
+    const unsub = window.electronAPI.sessions.onExit((exited) => {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === exited.id ? { ...s, status: exited.status } : s)),
+      );
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!project) {
+      setSessions([]);
+      setOpenTabIds(new Set());
+      setActiveTabId('board');
+      return;
+    }
+    setSessions((prev) => prev.filter((s) => s.projectId === project.id));
+    setActiveTabId((prev) => (STATIC_TAB_IDS.has(prev) ? prev : 'board'));
+  }, [project?.id]);
 
   const pendingRef = useRef<
     Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
@@ -333,16 +485,34 @@ export default function App() {
         await provider.delete(id);
         setTasks((prev) => prev.filter((t) => t.id !== id));
         setSelectedTaskId((sid) => (sid === id ? null : sid));
+        const removed = sessions.find((s) => s.taskId === id);
+        if (removed) {
+          setSessions((prev) => prev.filter((s) => s.taskId !== id));
+          setOpenTabIds((prev) => {
+            if (!prev.has(removed.id)) return prev;
+            const next = new Set(prev);
+            next.delete(removed.id);
+            return next;
+          });
+          setActiveTabId((prev) => (prev === removed.id ? 'board' : prev));
+        }
       } catch (err) {
         console.error('[tasks.delete] failed', err);
       }
     },
-    [provider],
+    [provider, sessions],
   );
 
   const handleProjectActivated = useCallback((p: ActiveProject) => {
     setProject(p);
     setSelectedTaskId(null);
+    setPlanPanelOpen(false);
+    setActiveTabId('board');
+    setDocsSidebarExpanded(false);
+    setPlanningDocFiles([]);
+    setPlanningDocsListError(null);
+    setSelectedPlanningDocPath(null);
+    setPlanningDocFileRevision(0);
   }, []);
 
   const handleClearProject = useCallback(async () => {
@@ -350,20 +520,262 @@ export default function App() {
     setProject(null);
     setTasks([]);
     setSelectedTaskId(null);
+    setPlanPanelOpen(false);
+    setDocsSidebarExpanded(false);
+    setPlanningDocFiles([]);
+    setPlanningDocsListError(null);
+    setSelectedPlanningDocPath(null);
+    setPlanningDocFileRevision(0);
+    setSessions([]);
+    setOpenTabIds(new Set());
+    setActiveTabId('board');
   }, []);
+
+  const handlePlanNav = useCallback(() => {
+    if (activeTabId === 'plan') {
+      setActiveTabId('board');
+      return;
+    }
+    if (activeTabId !== 'board') {
+      setActiveTabId('board');
+      setPlanPanelOpen(true);
+      return;
+    }
+    if (!planPanelOpen) {
+      setPlanPanelOpen(true);
+    } else {
+      setActiveTabId('plan');
+      setPlanPanelOpen(false);
+    }
+  }, [activeTabId, planPanelOpen]);
+
+  const handleDocsNav = useCallback(() => {
+    setActiveTabId('docs');
+    setPlanPanelOpen(false);
+    setDocsSidebarExpanded(true);
+  }, []);
+
+  const handleDocsSidebarExpandToggle = useCallback(() => {
+    setDocsSidebarExpanded((v) => !v);
+  }, []);
+
+  const handleSelectPlanningDoc = useCallback((relativePath: string) => {
+    setSelectedPlanningDocPath(relativePath);
+    setActiveTabId('docs');
+    setPlanPanelOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTabId === 'team' || activeTabId === 'docs' || activeTabId === 'settings') {
+      setPlanPanelOpen(false);
+    }
+  }, [activeTabId]);
+
+  const maxPlanningWidthForRow = useCallback(() => {
+    const row = boardRowRef.current;
+    const w = row?.getBoundingClientRect().width ?? window.innerWidth;
+    return Math.max(MIN_PLANNING_PANEL_WIDTH, w - MIN_BOARD_REMAINING_PX);
+  }, []);
+
+  useEffect(() => {
+    const stored = readStoredPlanningWidth();
+    if (stored != null) {
+      setPlanPanelWidth(clampPlanningWidth(stored, maxPlanningWidthForRow()));
+    }
+  }, [maxPlanningWidthForRow]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPlanPanelWidth((prev) =>
+        clampPlanningWidth(prev, maxPlanningWidthForRow()),
+      );
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [maxPlanningWidthForRow]);
+
+  useLayoutEffect(() => {
+    if (!planPanelOpen) return;
+    setPlanPanelWidth((prev) =>
+      clampPlanningWidth(prev, maxPlanningWidthForRow()),
+    );
+  }, [planPanelOpen, maxPlanningWidthForRow]);
+
+  const persistPlanningWidth = useCallback((w: number) => {
+    try {
+      localStorage.setItem(PLANNING_PANEL_WIDTH_KEY, String(w));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, []);
+
+  const handlePlanningResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!planPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = e.currentTarget;
+      const startX = e.clientX;
+      const startW = planPanelWidth;
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev: globalThis.PointerEvent) => {
+        const next = startW + (startX - ev.clientX);
+        setPlanPanelWidth(
+          clampPlanningWidth(next, maxPlanningWidthForRow()),
+        );
+      };
+
+      const onUp = (ev: globalThis.PointerEvent) => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        setPlanPanelWidth((prev) => {
+          const capped = clampPlanningWidth(prev, maxPlanningWidthForRow());
+          persistPlanningWidth(capped);
+          return capped;
+        });
+      };
+
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    },
+    [planPanelOpen, planPanelWidth, maxPlanningWidthForRow, persistPlanningWidth],
+  );
+
+  const handlePlanningResizeDoubleClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!planPanelOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const maxW = maxPlanningWidthForRow();
+      const next = clampPlanningWidth(DEFAULT_PLANNING_PANEL_WIDTH, maxW);
+      setPlanPanelWidth(next);
+      persistPlanningWidth(next);
+    },
+    [planPanelOpen, maxPlanningWidthForRow, persistPlanningWidth],
+  );
+
+  const handleOpenSessionTab = useCallback((session: Session) => {
+    setSessions((prev) => {
+      const exists = prev.some((s) => s.id === session.id);
+      if (exists) {
+        return prev.map((s) => (s.id === session.id ? session : s));
+      }
+      return [...prev, session];
+    });
+    setOpenTabIds((prev) => {
+      if (prev.has(session.id)) return prev;
+      const next = new Set(prev);
+      next.add(session.id);
+      return next;
+    });
+    setActiveTabId(session.id);
+    setSelectedTaskId(null);
+  }, []);
+
+  const handleOpenSessionFromSidebar = useCallback(
+    (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return;
+      setOpenTabIds((prev) => {
+        if (prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.add(sessionId);
+        return next;
+      });
+      setActiveTabId(sessionId);
+      setSelectedTaskId(null);
+    },
+    [sessions],
+  );
+
+  const handleCloseSessionTab = useCallback((sessionId: string) => {
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const handleArchiveSession = useCallback(async (sessionId: string) => {
+    try {
+      await window.electronAPI.sessions.archive(sessionId);
+    } catch (err) {
+      console.error('[session.archive] failed', err);
+    }
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const handleDeleteWorkspace = useCallback(async (sessionId: string) => {
+    try {
+      await window.electronAPI.sessions.deleteWorkspace(sessionId);
+    } catch (err) {
+      console.error('[session.deleteWorkspace] failed', err);
+    }
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    setOpenTabIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
+    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+  }, []);
+
+  const requestDeleteWorkspace = useCallback((sessionId: string) => {
+    setDeleteConfirmId(sessionId);
+  }, []);
+
+  const cancelDeleteWorkspace = useCallback(() => {
+    setDeleteConfirmId(null);
+  }, []);
+
+  const confirmDeleteWorkspace = useCallback(async () => {
+    const id = deleteConfirmId;
+    if (!id) return;
+    setDeleteConfirmId(null);
+    await handleDeleteWorkspace(id);
+  }, [deleteConfirmId, handleDeleteWorkspace]);
 
   const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
   const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
   const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
 
-  const topBarTitle =
-    workspaceView === 'board'
-      ? 'Board'
-      : workspaceView === 'team'
-        ? 'Team'
-        : workspaceView === 'settings'
-          ? 'Settings'
-          : 'Plan';
+  const sessionItems = useMemo(
+    () => buildSessionTabs(sessions, tasks),
+    [sessions, tasks],
+  );
+
+  const openTabItems = useMemo(
+    () => sessionItems.filter((item) => openTabIds.has(item.session.id)),
+    [sessionItems, openTabIds],
+  );
+
+  const activeSessionTab = useMemo(() => {
+    if (STATIC_TAB_IDS.has(activeTabId)) return null;
+    return sessionItems.find((t) => t.session.id === activeTabId) ?? null;
+  }, [activeTabId, sessionItems]);
+
+  const deleteConfirmSession = useMemo(
+    () => (deleteConfirmId ? sessionItems.find((s) => s.session.id === deleteConfirmId) ?? null : null),
+    [deleteConfirmId, sessionItems],
+  );
 
   // Sort tasks per column for the board (orderKey-aware). Falls back to
   // createdAt/id for rows without a key.
@@ -431,48 +843,176 @@ export default function App() {
         <AppShell
           project={project}
           onClearProject={() => void handleClearProject()}
-          workspaceView={workspaceView}
-          onWorkspaceViewChange={setWorkspaceView}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          planPanelOpen={planPanelOpen}
+          onPlanNavClick={handlePlanNav}
+          onDocsNavClick={handleDocsNav}
+          docsSidebarExpanded={docsSidebarExpanded}
+          onDocsSidebarExpandToggle={handleDocsSidebarExpandToggle}
+          planningDocFiles={planningDocFiles}
+          planningDocsListLoading={planningDocsListLoading}
+          planningDocsListError={planningDocsListError}
+          selectedPlanningDocPath={selectedPlanningDocPath}
+          onSelectPlanningDoc={handleSelectPlanningDoc}
+          sessions={sessionItems}
+          onOpenSession={handleOpenSessionFromSidebar}
+          onArchiveSession={(id) => void handleArchiveSession(id)}
+          onDeleteWorkspace={requestDeleteWorkspace}
         >
-          <TopBar project={project} title={topBarTitle} statusLine={statusLine} />
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {workspaceView === 'board' ? (
-              <div className="relative min-h-0 flex-1 overflow-hidden">
-                <Board
-                  tasks={sortedTasks}
-                  onDragEnd={handleDragEnd}
-                  onCreateTask={handleCreateTask}
-                  onDeleteTask={handleDeleteTask}
-                  onCardClick={(id) => setSelectedTaskId(id)}
-                />
-                <TaskDetailPanel
-                  task={selectedTask}
-                  onClose={() => setSelectedTaskId(null)}
-                  onUpdate={handleUpdateTask}
-                  onDelete={handleDeleteTask}
-                  remoteRunner={remoteRunnerForSelected}
+          <TopBar project={project} statusLine={statusLine}>
+            <TabBar
+              activeTabId={activeTabId}
+              openSessions={openTabItems}
+              onSelectTab={setActiveTabId}
+              onCloseSessionTab={handleCloseSessionTab}
+            />
+          </TopBar>
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/*
+              Keep every open session's terminal mounted across tab switches so
+              the xterm buffer (scrollback, TUI state) survives when the user
+              flips to the board or another workspace. We stack all tabs at
+              inset-0 and flip `visibility` rather than `display`: display:none
+              would reflow the xterm container on every tab switch, which
+              wipes the canvas/DOM and makes Claude's render history vanish.
+              visibility:hidden keeps the layout stable, so buffers persist.
+            */}
+            {openTabItems.map((item) => {
+              const isActive = activeTabId === item.session.id;
+              return (
+                <div
+                  key={item.session.id}
+                  aria-hidden={!isActive}
+                  className="absolute inset-0 flex min-h-0 flex-col"
+                  style={{
+                    visibility: isActive ? 'visible' : 'hidden',
+                    pointerEvents: isActive ? 'auto' : 'none',
+                    zIndex: isActive ? 1 : 0,
+                  }}
+                >
+                  <SessionTerminalView session={item.session} visible={isActive} />
+                </div>
+              );
+            })}
+            {!activeSessionTab && activeTabId === 'board' ? (
+              <div className="relative flex min-h-0 flex-1 overflow-hidden">
+                <div
+                  ref={boardRowRef}
+                  className="flex min-h-0 flex-1 overflow-hidden"
+                >
+                  <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                    <Board
+                      tasks={sortedTasks}
+                      onDragEnd={handleDragEnd}
+                      onCreateTask={handleCreateTask}
+                      onDeleteTask={handleDeleteTask}
+                      onCardClick={(id) => setSelectedTaskId(id)}
+                      planPanelOpen={planPanelOpen}
+                      onTogglePlanPanel={() => {
+                        setActiveTabId('board');
+                        setPlanPanelOpen((v) => !v);
+                      }}
+                    />
+                    <TaskDetailPanel
+                      task={selectedTask}
+                      onClose={() => setSelectedTaskId(null)}
+                      onUpdate={handleUpdateTask}
+                      onDelete={handleDeleteTask}
+                      remoteRunner={remoteRunnerForSelected}
+                      onOpenSessionTab={handleOpenSessionTab}
+                      onArchiveSession={(id) => void handleArchiveSession(id)}
+                    />
+                  </div>
+                  <div
+                    className={`relative flex shrink-0 flex-col overflow-hidden ${
+                      planPanelOpen ? '' : 'pointer-events-none'
+                    }`}
+                    style={{ width: planPanelOpen ? planPanelWidth : 0 }}
+                  >
+                    {planPanelOpen ? (
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label="Resize planning panel"
+                        title="Drag to resize. Double-click to reset."
+                        className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
+                        onPointerDown={handlePlanningResizePointerDown}
+                        onDoubleClick={handlePlanningResizeDoubleClick}
+                      />
+                    ) : null}
+                    <div
+                      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+                      style={{ width: planPanelWidth }}
+                    >
+                      <PlanningPanel
+                        project={project}
+                        onClose={() => setPlanPanelOpen(false)}
+                        onLocalProjectRefresh={
+                          project.kind === 'local'
+                            ? async () => {
+                                const p = await window.electronAPI.project.get();
+                                if (p) setProject(p);
+                              }
+                            : undefined
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : !activeSessionTab && activeTabId === 'plan' ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <PlanningPanel
+                  project={project}
+                  onClose={() => {
+                    setActiveTabId('board');
+                    setPlanPanelOpen(false);
+                  }}
+                  onLocalProjectRefresh={
+                    project.kind === 'local'
+                      ? async () => {
+                          const p = await window.electronAPI.project.get();
+                          if (p) setProject(p);
+                        }
+                      : undefined
+                  }
                 />
               </div>
-            ) : workspaceView === 'team' && project.kind === 'cloud' && uid ? (
+            ) : !activeSessionTab && activeTabId === 'team' && project.kind === 'cloud' && uid ? (
               <TeamView
                 project={project}
                 currentUid={uid}
                 currentUserDisplayName={displayName}
                 currentUserEmail={userEmail ?? undefined}
               />
-            ) : workspaceView === 'settings' ? (
+            ) : !activeSessionTab && activeTabId === 'settings' ? (
               <SettingsView />
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-                <p className="text-sm font-medium text-flux-fg-soft">Plan</p>
-                <p className="max-w-sm text-sm text-flux-muted">
-                  Planning assistant coming soon.
-                </p>
-              </div>
-            )}
+            ) : !activeSessionTab && activeTabId === 'docs' ? (
+              <PlanningDocsView
+                key={project.id}
+                selectedPath={selectedPlanningDocPath}
+                fileRevision={planningDocFileRevision}
+              />
+            ) : null}
           </div>
         </AppShell>
       </div>
+      {deleteConfirmSession ? (
+        <ConfirmDialog
+          title="Delete task workspace?"
+          description={`This will permanently remove the workspace for "${deleteConfirmSession.title}". The task itself will remain on the board.`}
+          bullets={[
+            'Kill the running agent session',
+            'Close any terminals opened in this workspace',
+            'Remove the git worktree and its branch from disk',
+          ]}
+          confirmLabel="Delete workspace"
+          destructive
+          onConfirm={() => void confirmDeleteWorkspace()}
+          onCancel={cancelDeleteWorkspace}
+        />
+      ) : null}
     </div>
   );
 }
