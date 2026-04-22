@@ -31,6 +31,10 @@ export class WorktreeService {
     return this.projectDir;
   }
 
+  getRootPath(): string {
+    return this.rootPath;
+  }
+
   async create(taskId: string): Promise<{ worktreePath: string; branch: string }> {
     if (!this.rootPath) {
       throw new Error('WorktreeService: no project root path set');

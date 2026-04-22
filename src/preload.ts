@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         LocalProject | { error: 'NOT_GIT_REPO' } | null
       >,
     clear: () => ipcRenderer.invoke('project:clear') as Promise<void>,
+    setPlanningAgent: (agent: Agent) =>
+      ipcRenderer.invoke('project:setPlanningAgent', agent) as Promise<
+        { ok: true } | { error: string }
+      >,
   },
   projects: {
     listLocal: () =>
@@ -133,7 +137,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   planning: {
-    start: () => ipcRenderer.invoke('planning:start') as Promise<PlanningStartResult>,
+    start: (agent: Agent) =>
+      ipcRenderer.invoke('planning:start', agent) as Promise<PlanningStartResult>,
     stop: () => ipcRenderer.invoke('planning:stop') as Promise<void>,
     get: () => ipcRenderer.invoke('planning:get') as Promise<PlanningSession | null>,
     write: (data: string) => ipcRenderer.send('planning:write', data),

@@ -38,8 +38,39 @@ function agentSpawnSpec(agent: Agent, initialPrompt: string): { command: string;
   }
 }
 
-function planningAgentForProject(project: Project): Agent {
-  return project.kind === 'local' ? project.planningAgent : 'claude-code';
+const FLUX_SSE_MCP_ENTRY = {
+  type: 'sse' as const,
+  url: 'http://localhost:47432/sse',
+};
+
+/** Cursor CLI loads project MCP from planningDir/.cursor/mcp.json (cwd is planningDir). */
+async function ensurePlanningDirCursorMcp(planningDir: string): Promise<void> {
+  const cursorDir = path.join(planningDir, '.cursor');
+  await fs.mkdir(cursorDir, { recursive: true });
+  const mcpPath = path.join(cursorDir, 'mcp.json');
+  let merged: { mcpServers: Record<string, unknown> };
+  try {
+    const raw = await fs.readFile(mcpPath, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'mcpServers' in parsed &&
+      typeof (parsed as { mcpServers: unknown }).mcpServers === 'object' &&
+      (parsed as { mcpServers: unknown }).mcpServers !== null
+    ) {
+      const servers = {
+        ...((parsed as { mcpServers: Record<string, unknown> }).mcpServers),
+      };
+      servers.flux = FLUX_SSE_MCP_ENTRY;
+      merged = { mcpServers: servers };
+    } else {
+      merged = { mcpServers: { flux: FLUX_SSE_MCP_ENTRY } };
+    }
+  } catch {
+    merged = { mcpServers: { flux: FLUX_SSE_MCP_ENTRY } };
+  }
+  await fs.writeFile(mcpPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
 }
 
 function planningSpawnSpec(
@@ -68,15 +99,19 @@ function planningSpawnSpec(
           `You are a planning assistant for the ${name} project at ${rootPath}. You have access to flux MCP tools for task management. Do not write application code — focus on planning, documentation, and task creation.`,
         ],
       };
-    case 'cursor':
+    case 'cursor': {
+      const cursorPrompt =
+        `You are a planning assistant for the software project "${name}". ` +
+        `The git repository (read code here) is at ${rootPath}. ` +
+        `Your process cwd is the Flux planning folder (markdown docs like CLAUDE.md live here). ` +
+        `You have Flux MCP tools (flux__list_tasks, flux__create_task, flux__update_task, flux__get_project_info) to manage the board. ` +
+        `Do not write application code — plan, document, and maintain tasks only. ` +
+        `Start by skimming the repo and any planning docs, then ask how you can help.`;
       return {
         command: 'agent',
-        args: [
-          '--model',
-          'auto',
-          `You are a planning assistant for the ${name} project at ${rootPath}. Focus on planning, documentation, and task management. Do not write application code.`,
-        ],
+        args: ['--model', 'auto', '--approve-mcps', cursorPrompt],
       };
+    }
   }
 }
 
@@ -236,6 +271,7 @@ export class SessionManager {
     project: Project,
     projectDir: string,
     win: BrowserWindow,
+    planningAgent: Agent,
   ): Promise<PlanningSession | { error: string; message?: string }> {
     if (this.planningPty && this.planningSession) {
       return this.planningSession;
@@ -262,8 +298,11 @@ export class SessionManager {
       );
     }
 
-    const agent = planningAgentForProject(project);
-    const { command, args } = planningSpawnSpec(agent, project, mcpConfigPath);
+    if (planningAgent === 'cursor') {
+      await ensurePlanningDirCursorMcp(planningDir);
+    }
+
+    const { command, args } = planningSpawnSpec(planningAgent, project, mcpConfigPath);
     const sessionId = randomUUID();
 
     let ptyProcess: IPty;
@@ -286,14 +325,14 @@ export class SessionManager {
       });
       return {
         error: 'AGENT_NOT_FOUND',
-        message: agentNotFoundMessage(agent, command),
+        message: agentNotFoundMessage(planningAgent, command),
       };
     }
 
     const planningSession: PlanningSession = {
       id: sessionId,
       projectId: project.id,
-      agent,
+      agent: planningAgent,
       planningDir,
       status: 'running',
       startedAt: new Date().toISOString(),

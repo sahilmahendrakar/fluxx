@@ -154,6 +154,25 @@ export class ProjectStore {
     return this.projectDir;
   }
 
+  /** Updates `planningAgent` in config.json and the in-memory active project. */
+  async setPlanningAgent(agent: Agent): Promise<void> {
+    if (!this.projectDir || !this.project) {
+      throw new Error('ProjectStore: no active local project');
+    }
+    if (agent !== 'claude-code' && agent !== 'codex' && agent !== 'cursor') {
+      throw new Error('ProjectStore: invalid planning agent');
+    }
+    const configPath = path.join(this.projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) {
+      throw new Error(`Invalid config.json at ${configPath}`);
+    }
+    const next: ConfigFile = { ...parsed, planningAgent: agent };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    this.project = configToLocalProject(next);
+  }
+
   /**
    * Ensures ~/.flux/<basename>/ layout and config exist for a repo root.
    * Does not update the store's active project — use for cloud worktrees.

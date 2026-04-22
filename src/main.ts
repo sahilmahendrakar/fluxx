@@ -13,7 +13,11 @@ import { SessionManager } from './main/SessionManager';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
-import type { ActiveProjectKey, Agent, LocalProject, Task } from './types';
+import type { ActiveProjectKey, Agent, LocalProject, Project, Task } from './types';
+
+function isPlanningAgent(value: unknown): value is Agent {
+  return value === 'claude-code' || value === 'codex' || value === 'cursor';
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -392,6 +396,21 @@ app.whenReady().then(async () => {
   // ---- Project (legacy single-project API; returns the active LOCAL project) ----
   ipcMain.handle('project:get', () => projectStore.get());
   ipcMain.handle('project:getDir', () => projectStore.getProjectDir());
+  ipcMain.handle(
+    'project:setPlanningAgent',
+    async (_e, agent: unknown): Promise<{ ok: true } | { error: string }> => {
+      if (!isPlanningAgent(agent)) {
+        return { error: 'INVALID_AGENT' };
+      }
+      try {
+        await projectStore.setPlanningAgent(agent);
+        return { ok: true };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle('project:open', async () => {
     const parent = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
@@ -668,18 +687,65 @@ app.whenReady().then(async () => {
   fluxMcpServer = new McpServer(taskStore, projectStore, () => mainWindow);
   fluxMcpServer.start();
 
-  ipcMain.handle('planning:start', async () => {
-    const project = projectStore.get();
-    const projectDir = projectStore.getProjectDir();
-    if (!project || !projectDir) {
-      return { error: 'No project open' };
-    }
-    const win = mainWindow;
-    if (!win || win.isDestroyed()) {
-      return { error: 'NO_WINDOW', message: 'Main window is not available' };
-    }
-    return sessionManager.startPlanningSession(project, projectDir, win);
-  });
+  ipcMain.handle(
+    'planning:start',
+    async (_e, requestedAgent: unknown) => {
+      const activeKey = appStateStore.get().activeProjectKey;
+      if (!activeKey) {
+        return { error: 'No project open' };
+      }
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) {
+        return { error: 'NO_WINDOW', message: 'Main window is not available' };
+      }
+
+      let project: Project;
+      let projectDir: string;
+      let planningAgent: Agent;
+
+      if (activeKey.kind === 'local') {
+        const local = projectStore.get();
+        projectDir = projectStore.getProjectDir() ?? '';
+        if (!local || !projectDir) {
+          return { error: 'No project open' };
+        }
+        planningAgent = isPlanningAgent(requestedAgent)
+          ? requestedAgent
+          : local.planningAgent;
+        try {
+          await projectStore.setPlanningAgent(planningAgent);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { error: 'CONFIG_WRITE_FAILED', message };
+        }
+        const updated = projectStore.get();
+        project = updated ?? local;
+      } else {
+        const binding = bindingStore.get(activeKey.id);
+        projectDir = worktreeService.getProjectDir();
+        if (!binding || !projectDir) {
+          return { error: 'No project open' };
+        }
+        project = {
+          id: activeKey.id,
+          kind: 'cloud',
+          name: path.basename(binding.rootPath),
+          rootPath: binding.rootPath,
+          ownerId: '',
+          memberIds: [],
+          createdAt: '',
+        };
+        planningAgent = 'claude-code';
+      }
+
+      return sessionManager.startPlanningSession(
+        project,
+        projectDir,
+        win,
+        planningAgent,
+      );
+    },
+  );
 
   ipcMain.handle('planning:stop', async () => {
     return sessionManager.stopPlanningSession();
