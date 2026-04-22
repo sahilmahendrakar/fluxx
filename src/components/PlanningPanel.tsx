@@ -14,13 +14,6 @@ interface PlanningPanelProps {
   onLocalProjectRefresh?: () => void | Promise<void>;
 }
 
-// Planning replay snapshot cache — keyed by planning session id, same
-// StrictMode-defusing trick as the agent/shell caches.
-const planningAttachCache = new Map<
-  string,
-  { replay: string; cols: number; rows: number }
->();
-
 const OUTPUT_TAIL_MAX = 12_000;
 
 const ESC = String.fromCharCode(27);
@@ -89,7 +82,6 @@ export function PlanningPanel({
   useEffect(() => {
     if (!planningApi) return;
     return planningApi.onExit((exited) => {
-      planningAttachCache.delete(exited.id);
       setPlanningSession((prev) => (prev?.id === exited.id ? null : prev));
       setNeedsInput(false);
       outputBufferRef.current = '';
@@ -141,30 +133,25 @@ export function PlanningPanel({
       }
     };
 
-    const cached = planningAttachCache.get(id);
-    if (cached) {
-      writeReplayAndFlush(cached.replay);
-    } else {
-      void (async () => {
-        try {
-          const result = await planningApi.attach();
-          if (cancelled) return;
-          if (result) {
-            planningAttachCache.set(id, {
-              replay: result.replay,
-              cols: result.cols,
-              rows: result.rows,
-            });
-            writeReplayAndFlush(result.replay);
-          } else {
-            writeReplayAndFlush('');
-          }
-        } catch (err) {
-          console.error('[PlanningPanel] attach failed', err);
+    // Always attach for a fresh daemon replay buffer. Unlike session/shell
+    // panes (which stay mounted and flip visibility), this panel unmounts when
+    // leaving the board — a module-level "first attach only" cache would replay
+    // stale output. SessionRuntime.snapshot() is authoritative and includes
+    // everything emitted while the renderer had no listener.
+    void (async () => {
+      try {
+        const result = await planningApi.attach();
+        if (cancelled) return;
+        if (result) {
+          writeReplayAndFlush(result.replay);
+        } else {
           writeReplayAndFlush('');
         }
-      })();
-    }
+      } catch (err) {
+        console.error('[PlanningPanel] attach failed', err);
+        writeReplayAndFlush('');
+      }
+    })();
 
     return () => {
       cancelled = true;
