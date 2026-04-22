@@ -2,12 +2,22 @@ export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'done';
 
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
+export type ActiveProjectKind = 'local' | 'cloud';
+
+/** Remembered active workspace (local folder vs cloud Firestore project). */
+export interface ActiveProjectKey {
+  kind: ActiveProjectKind;
+  id: string;
+}
+
 export interface LocalProject {
   id: string;
   kind: 'local';
   name: string;
   rootPath: string;
   addedAt: string;
+  planningAgent: Agent;
+  defaultTaskAgent: Agent;
 }
 
 /**
@@ -54,6 +64,17 @@ export interface Session {
   projectId: string;
   worktreePath: string;
   branch: string;
+  status: SessionStatus;
+  startedAt: string;
+  stoppedAt?: string;
+}
+
+/** Planning assistant PTY session (singleton in the main process). */
+export interface PlanningSession {
+  id: string;
+  projectId: string;
+  agent: Agent;
+  planningDir: string;
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;

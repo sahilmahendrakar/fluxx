@@ -2,10 +2,22 @@ import { useState } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
 
+export type PlanningDocFile = { relativePath: string };
+
 interface SidebarProps {
   project: Project;
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
+  planPanelOpen: boolean;
+  onPlanNavClick: () => void;
+  onDocsNavClick: () => void;
+  docsSidebarExpanded: boolean;
+  onDocsSidebarExpandToggle: () => void;
+  planningDocFiles: PlanningDocFile[];
+  planningDocsListLoading: boolean;
+  planningDocsListError: string | null;
+  selectedPlanningDocPath: string | null;
+  onSelectPlanningDoc: (relativePath: string) => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
@@ -80,6 +92,29 @@ function BoardIcon({ className }: { className?: string }) {
   );
 }
 
+function DocsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M4 2.5h5.5L12.5 5v8.5a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M9 2.5V5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M5 8.5h6M5 11h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function PlanIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -120,7 +155,29 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+function ChevronIcon({ expanded, className }: { expanded: boolean; className?: string }) {
+  return (
+    <svg
+      className={[className, expanded ? 'rotate-180' : ''].filter(Boolean).join(' ')}
+      width={14}
+      height={14}
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M3.5 5.25 7 8.75l3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
       width={10}
@@ -186,6 +243,16 @@ export function Sidebar({
   project,
   activeTabId,
   onSelectTab,
+  planPanelOpen,
+  onPlanNavClick,
+  onDocsNavClick,
+  docsSidebarExpanded,
+  onDocsSidebarExpandToggle,
+  planningDocFiles,
+  planningDocsListLoading,
+  planningDocsListError,
+  selectedPlanningDocPath,
+  onSelectPlanningDoc,
   sessions,
   onOpenSession,
   onArchiveSession,
@@ -202,6 +269,25 @@ export function Sidebar({
         ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
+
+  const docsMainNavClass = (active: boolean) =>
+    [
+      'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
+      active
+        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+    ].join(' ');
+
+  const fileRowClass = (active: boolean) =>
+    [
+      'w-full truncate rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
+      active
+        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+    ].join(' ');
+
+  const planNavActive =
+    activeTabId === 'plan' || (activeTabId === 'board' && planPanelOpen);
 
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">
@@ -232,115 +318,164 @@ export function Sidebar({
       </div>
       <div className="mx-3 border-t border-white/[0.06]" />
       <div className="flex min-h-0 flex-1 flex-col px-2 py-3">
-        <div className="flex flex-col gap-0.5">
-          <button
-            type="button"
-            className={navItemClass(activeTabId === 'board')}
-            onClick={() => onSelectTab('board')}
-          >
-            <BoardIcon className="shrink-0 opacity-80" />
-            <span>Board</span>
-          </button>
-          <button
-            type="button"
-            className={navItemClass(activeTabId === 'plan')}
-            onClick={() => onSelectTab('plan')}
-          >
-            <PlanIcon className="shrink-0 opacity-80" />
-            <span>Plan</span>
-          </button>
-          {project.kind === 'cloud' ? (
+        <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+          Workspace
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+          <div className="flex flex-col gap-0.5">
             <button
               type="button"
-              className={navItemClass(activeTabId === 'team')}
-              onClick={() => onSelectTab('team')}
+              className={navItemClass(activeTabId === 'board')}
+              onClick={() => onSelectTab('board')}
             >
-              <TeamIcon className="shrink-0 opacity-80" />
-              <span>Team</span>
+              <BoardIcon className="shrink-0 opacity-80" />
+              <span>Board</span>
             </button>
-          ) : null}
-        </div>
-
-        <div className="mt-5 flex min-h-0 flex-col">
-          <button
-            type="button"
-            onClick={() => setWorkspacesExpanded((v) => !v)}
-            className="flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600 transition hover:text-zinc-400"
-            aria-expanded={workspacesExpanded}
-          >
-            <ChevronIcon expanded={workspacesExpanded} />
-            <span>Task Workspaces</span>
-          </button>
-          {workspacesExpanded ? (
-            <div className="flex flex-col gap-0.5 overflow-y-auto">
-              {sessions.length === 0 ? (
-                <p className="px-2 py-1 text-[11px] italic text-zinc-600">
-                  No open sessions
-                </p>
-              ) : (
-                sessions.map(({ session, title }) => {
-                  const active = activeTabId === session.id;
-                  const running = session.status === 'running';
-                  return (
-                    <div
-                      key={session.id}
-                      className={[
-                        'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
-                        active
-                          ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-                      ].join(' ')}
-                    >
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 pr-11 text-left"
-                        onClick={() => onOpenSession(session.id)}
-                        title={title}
-                      >
-                        <span
-                          className={[
-                            'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                            running ? 'bg-emerald-400' : 'bg-zinc-600',
-                          ].join(' ')}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1 truncate">{title}</span>
-                      </button>
-                      <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onArchiveSession(session.id);
-                          }}
-                          aria-label={`Archive ${title}`}
-                          title="Archive — kill agent and terminals (keep worktree)"
-                          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
-                        >
-                          <ArchiveIcon />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteWorkspace(session.id);
-                          }}
-                          aria-label={`Delete workspace ${title}`}
-                          title="Delete workspace — kill agent, terminals, and remove worktree"
-                          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+            <button type="button" className={navItemClass(planNavActive)} onClick={onPlanNavClick}>
+              <PlanIcon className="shrink-0 opacity-80" />
+              <span>Plan</span>
+            </button>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex w-full min-w-0 items-stretch gap-0.5">
+                <button type="button" className={docsMainNavClass(activeTabId === 'docs')} onClick={onDocsNavClick}>
+                  <DocsIcon className="shrink-0 opacity-80" />
+                  <span className="min-w-0 truncate">Docs</span>
+                </button>
+                <button
+                  type="button"
+                  className={[
+                    'flex w-7 shrink-0 items-center justify-center rounded-md transition-colors',
+                    docsSidebarExpanded
+                      ? 'bg-white/[0.06] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                      : 'text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300',
+                  ].join(' ')}
+                  aria-expanded={docsSidebarExpanded}
+                  aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
+                  title={docsSidebarExpanded ? 'Hide file list' : 'Show file list'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDocsSidebarExpandToggle();
+                  }}
+                >
+                  <ChevronIcon expanded={docsSidebarExpanded} className="opacity-90 transition-transform" />
+                </button>
+              </div>
+              {docsSidebarExpanded ? (
+                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+                  {planningDocsListError ? (
+                    <p className="py-1 text-[10px] leading-snug text-red-400/90">{planningDocsListError}</p>
+                  ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
+                    <p className="py-1 text-[10px] text-zinc-600">Loading…</p>
+                  ) : planningDocFiles.length === 0 ? (
+                    <p className="py-1 text-[10px] leading-snug text-zinc-600">No .md files yet.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5 pb-1">
+                      {planningDocFiles.map((f) => (
+                        <li key={f.relativePath}>
+                          <button
+                            type="button"
+                            title={f.relativePath}
+                            onClick={() => onSelectPlanningDoc(f.relativePath)}
+                            className={fileRowClass(
+                              activeTabId === 'docs' && f.relativePath === selectedPlanningDocPath,
+                            )}
+                          >
+                            {f.relativePath}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
+            {project.kind === 'cloud' ? (
+              <button type="button" className={navItemClass(activeTabId === 'team')} onClick={() => onSelectTab('team')}>
+                <TeamIcon className="shrink-0 opacity-80" />
+                <span>Team</span>
+              </button>
+            ) : null}
+          </div>
 
-        <div className="min-h-0 flex-1" aria-hidden />
+          <div className="mt-5 flex min-h-0 flex-col">
+            <button
+              type="button"
+              onClick={() => setWorkspacesExpanded((v) => !v)}
+              className="flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600 transition hover:text-zinc-400"
+              aria-expanded={workspacesExpanded}
+            >
+              <ChevronWorkspacesIcon expanded={workspacesExpanded} />
+              <span>Task Workspaces</span>
+            </button>
+            {workspacesExpanded ? (
+              <div className="flex flex-col gap-0.5 overflow-y-auto">
+                {sessions.length === 0 ? (
+                  <p className="px-2 py-1 text-[11px] italic text-zinc-600">No open sessions</p>
+                ) : (
+                  sessions.map(({ session, title }) => {
+                    const active = activeTabId === session.id;
+                    const running = session.status === 'running';
+                    return (
+                      <div
+                        key={session.id}
+                        className={[
+                          'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
+                          active
+                            ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                            : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+                        ].join(' ')}
+                      >
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 pr-11 text-left"
+                          onClick={() => onOpenSession(session.id)}
+                          title={title}
+                        >
+                          <span
+                            className={[
+                              'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                              running ? 'bg-emerald-400' : 'bg-zinc-600',
+                            ].join(' ')}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate">{title}</span>
+                        </button>
+                        <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onArchiveSession(session.id);
+                            }}
+                            aria-label={`Archive ${title}`}
+                            title="Archive — kill agent and terminals (keep worktree)"
+                            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
+                          >
+                            <ArchiveIcon />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteWorkspace(session.id);
+                            }}
+                            aria-label={`Delete workspace ${title}`}
+                            title="Delete workspace — kill agent, terminals, and remove worktree"
+                            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="min-h-0 flex-1" aria-hidden />
+        </div>
         <div className="border-t border-white/[0.06] pt-2">
           <button
             type="button"

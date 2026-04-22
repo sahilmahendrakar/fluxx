@@ -6,15 +6,50 @@ import type { Agent, Task } from '../types';
 
 type TaskInput = { title: string; agent: Agent; projectId: string };
 
+function errnoCode(err: unknown): string | undefined {
+  return err && typeof err === 'object' && 'code' in err
+    ? (err as NodeJS.ErrnoException).code
+    : undefined;
+}
+
 export class TaskStore {
-  private filePath: string;
+  private filePath: string | null;
   private tasks: Task[] = [];
 
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'tasks.json');
+  constructor(private projectDir: string) {
+    this.filePath = projectDir ? path.join(projectDir, 'tasks.json') : null;
   }
 
-  async init(currentProjectId: string | null): Promise<void> {
+  async reinit(projectDir: string): Promise<void> {
+    this.projectDir = projectDir;
+    this.filePath = projectDir ? path.join(projectDir, 'tasks.json') : null;
+
+    // One-time migration from userData
+    const oldPath = path.join(app.getPath('userData'), 'tasks.json');
+    if (this.filePath) {
+      try {
+        await fs.access(oldPath);
+        try {
+          await fs.access(this.filePath);
+          // new file already exists, skip migration
+        } catch {
+          await fs.copyFile(oldPath, this.filePath);
+          console.log('Migrated tasks.json to', this.filePath);
+        }
+      } catch {
+        // no old file, nothing to migrate
+      }
+    }
+
+    await this.init();
+  }
+
+  async init(): Promise<void> {
+    if (!this.filePath) {
+      this.tasks = [];
+      return;
+    }
+
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
       let parsed: unknown;
@@ -36,24 +71,17 @@ export class TaskStore {
       }
       this.tasks = parsed as Task[];
     } catch (err: unknown) {
-      const code =
-        err && typeof err === 'object' && 'code' in err
-          ? (err as NodeJS.ErrnoException).code
-          : undefined;
-      if (code === 'ENOENT') {
+      if (errnoCode(err) === 'ENOENT') {
         this.tasks = [];
         return;
       }
       throw err;
     }
-
-    if (currentProjectId) {
-      await this.migrateMissingProjectIds(currentProjectId);
-    }
   }
 
   /** Assign `projectId` to tasks missing it (e.g. legacy data), then persist if needed. */
   async migrateMissingProjectIds(projectId: string): Promise<void> {
+    if (!this.filePath) return;
     let changed = false;
     this.tasks = this.tasks.map((t) => {
       if (t.projectId == null || t.projectId === '') {
@@ -68,7 +96,7 @@ export class TaskStore {
   }
 
   async remapProjectId(from: string, to: string): Promise<void> {
-    if (from === to) {
+    if (!this.filePath || from === to) {
       return;
     }
     let changed = false;
@@ -85,6 +113,9 @@ export class TaskStore {
   }
 
   getAll(projectId?: string): Task[] {
+    if (!this.filePath) {
+      return [];
+    }
     if (!projectId) {
       return this.tasks;
     }
@@ -92,6 +123,9 @@ export class TaskStore {
   }
 
   async create(input: TaskInput): Promise<Task> {
+    if (!this.filePath) {
+      throw new Error('No project directory open for tasks');
+    }
     const task: Task = {
       id: randomUUID(),
       title: input.title,
@@ -109,6 +143,9 @@ export class TaskStore {
     id: string,
     patch: Partial<Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey'>>,
   ): Promise<Task> {
+    if (!this.filePath) {
+      throw new Error('No project directory open for tasks');
+    }
     const index = this.tasks.findIndex((t) => t.id === id);
     if (index === -1) {
       throw new Error(`Task not found: ${id}`);
@@ -124,6 +161,9 @@ export class TaskStore {
   }
 
   async delete(id: string): Promise<void> {
+    if (!this.filePath) {
+      return;
+    }
     const next = this.tasks.filter((t) => t.id !== id);
     if (next.length === this.tasks.length) {
       return;
@@ -133,6 +173,9 @@ export class TaskStore {
   }
 
   private async save(): Promise<void> {
+    if (!this.filePath) {
+      return;
+    }
     const tmpPath = `${this.filePath}.tmp`;
     const payload = `${JSON.stringify(this.tasks, null, 2)}\n`;
     await fs.writeFile(tmpPath, payload, 'utf8');
@@ -140,10 +183,7 @@ export class TaskStore {
       try {
         await fs.unlink(this.filePath);
       } catch (err: unknown) {
-        const code =
-          err && typeof err === 'object' && 'code' in err
-            ? (err as NodeJS.ErrnoException).code
-            : undefined;
+        const code = errnoCode(err);
         if (code !== 'ENOENT') {
           throw err;
         }

@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import type { Project } from '../types';
-import { Sidebar } from './Sidebar';
+import { Sidebar, type PlanningDocFile } from './Sidebar';
 import type { SessionTabMeta } from './TabBar';
 
 const SIDEBAR_COLLAPSED_KEY = 'flux.sidebarCollapsed';
@@ -11,6 +11,16 @@ interface AppShellProps {
   onClearProject: () => void;
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
+  planPanelOpen: boolean;
+  onPlanNavClick: () => void;
+  onDocsNavClick: () => void;
+  docsSidebarExpanded: boolean;
+  onDocsSidebarExpandToggle: () => void;
+  planningDocFiles: PlanningDocFile[];
+  planningDocsListLoading: boolean;
+  planningDocsListError: string | null;
+  selectedPlanningDocPath: string | null;
+  onSelectPlanningDoc: (relativePath: string) => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
@@ -28,7 +38,7 @@ function SidebarExpandIcon({ className }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.5" y="2.5" width={13} height={11} rx="1.5" stroke="currentColor" strokeWidth="1.2" />
       <path d="M5.5 2.5v11" stroke="currentColor" strokeWidth="1.2" />
       <path d="M8 6l2.5 2L8 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -41,6 +51,16 @@ export function AppShell({
   onClearProject,
   activeTabId,
   onSelectTab,
+  planPanelOpen,
+  onPlanNavClick,
+  onDocsNavClick,
+  docsSidebarExpanded,
+  onDocsSidebarExpandToggle,
+  planningDocFiles,
+  planningDocsListLoading,
+  planningDocsListError,
+  selectedPlanningDocPath,
+  onSelectPlanningDoc,
   sessions,
   onOpenSession,
   onArchiveSession,
@@ -69,6 +89,16 @@ export function AppShell({
           project={project}
           activeTabId={activeTabId}
           onSelectTab={onSelectTab}
+          planPanelOpen={planPanelOpen}
+          onPlanNavClick={onPlanNavClick}
+          onDocsNavClick={onDocsNavClick}
+          docsSidebarExpanded={docsSidebarExpanded}
+          onDocsSidebarExpandToggle={onDocsSidebarExpandToggle}
+          planningDocFiles={planningDocFiles}
+          planningDocsListLoading={planningDocsListLoading}
+          planningDocsListError={planningDocsListError}
+          selectedPlanningDocPath={selectedPlanningDocPath}
+          onSelectPlanningDoc={onSelectPlanningDoc}
           sessions={sessions}
           onOpenSession={onOpenSession}
           onArchiveSession={onArchiveSession}

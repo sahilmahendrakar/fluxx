@@ -1,5 +1,4 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -14,37 +13,40 @@ function branchForTaskId(taskId: string): string {
   return `flux/task-${sanitiseTaskId(taskId)}`;
 }
 
-/** Safe directory name under ~/.flux/worktrees/<name>/ */
-function projectWorktreesDirName(rootPath: string): string {
-  const base = path.basename(path.resolve(rootPath));
-  return base.replace(/[^a-zA-Z0-9._-]/g, '-') || 'project';
-}
-
 export class WorktreeService {
-  private rootPath: string;
-
-  constructor(rootPath: string) {
-    this.rootPath = rootPath;
-  }
+  constructor(
+    private rootPath: string,
+    private projectDir: string,
+  ) {}
 
   setRootPath(nextPath: string): void {
     this.rootPath = nextPath;
+  }
+
+  setProjectDir(nextDir: string): void {
+    this.projectDir = nextDir;
+  }
+
+  getProjectDir(): string {
+    return this.projectDir;
+  }
+
+  getRootPath(): string {
+    return this.rootPath;
   }
 
   async create(taskId: string): Promise<{ worktreePath: string; branch: string }> {
     if (!this.rootPath) {
       throw new Error('WorktreeService: no project root path set');
     }
+    if (!this.projectDir) {
+      throw new Error('WorktreeService: no project directory set');
+    }
 
     const branch = branchForTaskId(taskId);
-    const worktreesParent = path.join(
-      os.homedir(),
-      '.flux',
-      'worktrees',
-      projectWorktreesDirName(this.rootPath),
-    );
-    await fs.mkdir(worktreesParent, { recursive: true });
-    const worktreePath = path.join(worktreesParent, taskId);
+    const worktreesRoot = path.join(this.projectDir, 'worktrees');
+    await fs.mkdir(worktreesRoot, { recursive: true });
+    const worktreePath = path.join(worktreesRoot, taskId);
 
     await this.reclaimStaleWorktree(worktreePath);
 

@@ -1,11 +1,19 @@
-import { contextBridge, ipcRenderer } from 'electron';
-import type { Agent, LocalProject, Session, Shell, Task } from './types';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type {
+  ActiveProjectKey,
+  Agent,
+  LocalProject,
+  PlanningSession,
+  Session,
+  Shell,
+  Task,
+} from './types';
 
 type SessionStartResult =
   | Session
   | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
 
-type ActiveProjectKey = { kind: 'local' | 'cloud'; id: string };
+type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
 type DirPickResult =
   | { rootPath: string }
@@ -21,18 +29,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   project: {
     get: () => ipcRenderer.invoke('project:get') as Promise<LocalProject | null>,
+    getDir: () => ipcRenderer.invoke('project:getDir') as Promise<string | null>,
     open: () =>
       ipcRenderer.invoke('project:open') as Promise<
-        LocalProject | { error: string } | null
+        LocalProject | { error: 'NOT_GIT_REPO' } | null
       >,
     clear: () => ipcRenderer.invoke('project:clear') as Promise<void>,
+    setPlanningAgent: (agent: Agent) =>
+      ipcRenderer.invoke('project:setPlanningAgent', agent) as Promise<
+        { ok: true } | { error: string }
+      >,
   },
   projects: {
     listLocal: () =>
       ipcRenderer.invoke('projects:listLocal') as Promise<LocalProject[]>,
     addLocal: () =>
       ipcRenderer.invoke('projects:addLocal') as Promise<
-        LocalProject | { error: string } | null
+        LocalProject | { error: 'NOT_GIT_REPO' } | null
       >,
     activateLocal: (id: string | null) =>
       ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
@@ -86,6 +99,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('tasks:changed', handler);
+      return () => ipcRenderer.removeListener('tasks:changed', handler);
+    },
   },
   sessions: {
     start: (task: Task) =>
@@ -130,6 +148,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onExit: (cb: (shell: Shell) => void) => {
       ipcRenderer.on('shell:exited', (_event, shell: Shell) => cb(shell));
       return () => ipcRenderer.removeAllListeners('shell:exited');
+    },
+  },
+  planning: {
+    start: (agent: Agent) =>
+      ipcRenderer.invoke('planning:start', agent) as Promise<PlanningStartResult>,
+    stop: () => ipcRenderer.invoke('planning:stop') as Promise<void>,
+    get: () => ipcRenderer.invoke('planning:get') as Promise<PlanningSession | null>,
+    write: (data: string) => ipcRenderer.send('planning:write', data),
+    resize: (cols: number, rows: number) => ipcRenderer.send('planning:resize', cols, rows),
+    onData: (cb: (data: string) => void) => {
+      const handler = (_e: IpcRendererEvent, data: string) => cb(data);
+      ipcRenderer.on('planning:data', handler);
+      return () => ipcRenderer.removeListener('planning:data', handler);
+    },
+    onExit: (cb: (session: PlanningSession) => void) => {
+      const handler = (_e: IpcRendererEvent, session: PlanningSession) =>
+        cb(session);
+      ipcRenderer.on('planning:exited', handler);
+      return () => ipcRenderer.removeListener('planning:exited', handler);
+    },
+  },
+  planningDocs: {
+    list: () =>
+      ipcRenderer.invoke('planningDocs:list') as Promise<
+        | { files: { relativePath: string }[] }
+        | { error: 'NO_PROJECT' | 'IO_ERROR' }
+      >,
+    read: (relativePath: string) =>
+      ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
+        { content: string } | { error: string }
+      >,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('planningDocs:changed', handler);
+      return () => ipcRenderer.removeListener('planningDocs:changed', handler);
     },
   },
 });
