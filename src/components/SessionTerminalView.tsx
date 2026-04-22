@@ -26,9 +26,22 @@ function BotIcon({ className }: { className?: string }) {
 
 interface SessionTerminalViewProps {
   session: Session;
+  visible?: boolean;
 }
 
 type PaneId = 'agent' | `shell:${string}`;
+
+// We stack every pane at inset-0 and flip `visibility` instead of `display`
+// so the xterm container keeps the same size across pane switches. Reflowing
+// the container (as display:none would) wipes the rendered buffer, which
+// reads as "history disappeared" when the user flips tabs and back.
+function paneVisibilityStyle(visible: boolean): React.CSSProperties {
+  return {
+    visibility: visible ? 'visible' : 'hidden',
+    pointerEvents: visible ? 'auto' : 'none',
+    zIndex: visible ? 1 : 0,
+  };
+}
 
 function AgentPane({ session, visible }: { session: Session; visible: boolean }) {
   const terminalRef = useRef<TerminalHandle | null>(null);
@@ -52,13 +65,19 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
   };
 
   return (
-    <div className={['h-full w-full', visible ? 'block' : 'hidden'].join(' ')}>
+    <div
+      aria-hidden={!visible}
+      className="absolute inset-0 p-3"
+      style={paneVisibilityStyle(visible)}
+    >
       {running ? (
         <Terminal
           ref={terminalRef}
           sessionId={session.id}
           onData={handleData}
           onResize={handleResize}
+          visible={visible}
+          hideCursor
         />
       ) : (
         <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
@@ -91,13 +110,18 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
   };
 
   return (
-    <div className={['h-full w-full', visible ? 'block' : 'hidden'].join(' ')}>
+    <div
+      aria-hidden={!visible}
+      className="absolute inset-0 p-3"
+      style={paneVisibilityStyle(visible)}
+    >
       {running ? (
         <Terminal
           ref={terminalRef}
           sessionId={shell.id}
           onData={handleData}
           onResize={handleResize}
+          visible={visible}
         />
       ) : (
         <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
@@ -166,7 +190,7 @@ function PaneTab({
   );
 }
 
-export function SessionTerminalView({ session }: SessionTerminalViewProps) {
+export function SessionTerminalView({ session, visible = true }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
   const running = session.status === 'running';
@@ -242,13 +266,16 @@ export function SessionTerminalView({ session }: SessionTerminalViewProps) {
           +
         </button>
       </div>
-      <div className="min-h-0 flex-1 p-3">
-        <AgentPane session={session} visible={activePane === 'agent'} />
+      <div className="relative min-h-0 flex-1">
+        <AgentPane
+          session={session}
+          visible={visible && activePane === 'agent'}
+        />
         {shells.map((shell) => (
           <ShellPane
             key={shell.id}
             shell={shell}
-            visible={activePane === `shell:${shell.id}`}
+            visible={visible && activePane === `shell:${shell.id}`}
           />
         ))}
       </div>

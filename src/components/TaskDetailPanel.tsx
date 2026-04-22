@@ -477,6 +477,7 @@ export default function TaskDetailPanel({
                   sessionId={session?.id ?? null}
                   onData={handleTerminalData}
                   onResize={handleTerminalResize}
+                  hideCursor
                 />
               )}
             </div>

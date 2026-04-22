@@ -867,10 +867,34 @@ export default function App() {
               onCloseSessionTab={handleCloseSessionTab}
             />
           </TopBar>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {activeSessionTab ? (
-              <SessionTerminalView session={activeSessionTab.session} />
-            ) : activeTabId === 'board' ? (
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/*
+              Keep every open session's terminal mounted across tab switches so
+              the xterm buffer (scrollback, TUI state) survives when the user
+              flips to the board or another workspace. We stack all tabs at
+              inset-0 and flip `visibility` rather than `display`: display:none
+              would reflow the xterm container on every tab switch, which
+              wipes the canvas/DOM and makes Claude's render history vanish.
+              visibility:hidden keeps the layout stable, so buffers persist.
+            */}
+            {openTabItems.map((item) => {
+              const isActive = activeTabId === item.session.id;
+              return (
+                <div
+                  key={item.session.id}
+                  aria-hidden={!isActive}
+                  className="absolute inset-0 flex min-h-0 flex-col"
+                  style={{
+                    visibility: isActive ? 'visible' : 'hidden',
+                    pointerEvents: isActive ? 'auto' : 'none',
+                    zIndex: isActive ? 1 : 0,
+                  }}
+                >
+                  <SessionTerminalView session={item.session} visible={isActive} />
+                </div>
+              );
+            })}
+            {!activeSessionTab && activeTabId === 'board' ? (
               <div className="relative flex min-h-0 flex-1 overflow-hidden">
                 <div
                   ref={boardRowRef}
@@ -936,7 +960,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            ) : activeTabId === 'plan' ? (
+            ) : !activeSessionTab && activeTabId === 'plan' ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <PlanningPanel
                   project={project}
@@ -954,14 +978,14 @@ export default function App() {
                   }
                 />
               </div>
-            ) : activeTabId === 'team' && project.kind === 'cloud' && uid ? (
+            ) : !activeSessionTab && activeTabId === 'team' && project.kind === 'cloud' && uid ? (
               <TeamView
                 project={project}
                 currentUid={uid}
                 currentUserDisplayName={displayName}
                 currentUserEmail={userEmail ?? undefined}
               />
-            ) : activeTabId === 'docs' ? (
+            ) : !activeSessionTab && activeTabId === 'docs' ? (
               <PlanningDocsView
                 key={project.id}
                 selectedPath={selectedPlanningDocPath}
