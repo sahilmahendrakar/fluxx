@@ -207,10 +207,51 @@ export default function TaskDetailPanel({
 
   useEffect(() => {
     if (!session) return;
-    const unsub = window.electronAPI.sessions.onData(session.id, (data) => {
-      terminalRef.current?.write(data);
+    const id = session.id;
+
+    // Mirror SessionTerminalView.AgentPane: on (re)mount we need to write
+    // the daemon's replay buffer into the fresh xterm before live chunks,
+    // otherwise closing + reopening this pane shows an empty terminal.
+    // Buffer any early live chunks that arrive before replay lands so we
+    // preserve ordering.
+    let replayWritten = false;
+    const earlyBuffer: string[] = [];
+    let cancelled = false;
+
+    const unsub = window.electronAPI.sessions.onData(id, (data) => {
+      if (cancelled) return;
+      if (!replayWritten) {
+        earlyBuffer.push(data);
+      } else {
+        terminalRef.current?.write(data);
+      }
     });
+
+    const writeReplayAndFlush = (replay: string) => {
+      if (cancelled) return;
+      if (replay.length > 0) {
+        terminalRef.current?.write(replay);
+      }
+      replayWritten = true;
+      if (earlyBuffer.length > 0) {
+        for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
+        earlyBuffer.length = 0;
+      }
+    };
+
+    void (async () => {
+      try {
+        const result = await window.electronAPI.sessions.attach(id);
+        if (cancelled) return;
+        writeReplayAndFlush(result?.replay ?? '');
+      } catch (err) {
+        console.error('[TaskDetailPanel] attach failed', err);
+        writeReplayAndFlush('');
+      }
+    })();
+
     return () => {
+      cancelled = true;
       unsub();
     };
   }, [session?.id]);
