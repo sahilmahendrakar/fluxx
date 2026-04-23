@@ -1,9 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Agent, LocalProject } from '../types';
+import type { Agent, LocalProject, RepoConfig } from '../types';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
+const DEFAULT_BASE_BRANCH = 'main';
 
 const MCP_JSON = `{
   "mcpServers": {
@@ -22,6 +23,7 @@ interface ConfigFile {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  repos: RepoConfig[];
 }
 
 function stableProjectIdForPath(rootPath: string): string {
@@ -43,6 +45,21 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     addedAt: c.addedAt,
     planningAgent: c.planningAgent ?? DEFAULT_AGENT,
     defaultTaskAgent: c.defaultTaskAgent ?? DEFAULT_AGENT,
+    repos: c.repos,
+  };
+}
+
+function parseRepoConfig(value: unknown): RepoConfig | null {
+  if (!value || typeof value !== 'object') return null;
+  const r = value as Partial<RepoConfig>;
+  if (typeof r.rootPath !== 'string') return null;
+  return {
+    rootPath: r.rootPath,
+    baseBranch: typeof r.baseBranch === 'string' && r.baseBranch.length > 0
+      ? r.baseBranch
+      : DEFAULT_BASE_BRANCH,
+    setupScript: typeof r.setupScript === 'string' ? r.setupScript : undefined,
+    env: typeof r.env === 'string' ? r.env : undefined,
   };
 }
 
@@ -54,7 +71,7 @@ function parseConfig(raw: string): ConfigFile | null {
     return null;
   }
   if (!parsed || typeof parsed !== 'object') return null;
-  const p = parsed as Partial<ConfigFile>;
+  const p = parsed as Partial<ConfigFile> & { repos?: unknown };
   if (
     typeof p.id !== 'string' ||
     typeof p.name !== 'string' ||
@@ -62,6 +79,14 @@ function parseConfig(raw: string): ConfigFile | null {
     typeof p.addedAt !== 'string'
   ) {
     return null;
+  }
+  const repos: RepoConfig[] = Array.isArray(p.repos)
+    ? p.repos.map(parseRepoConfig).filter((r): r is RepoConfig => r !== null)
+    : [];
+  if (repos.length === 0) {
+    repos.push({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+  } else if (!repos.some((r) => r.rootPath === p.rootPath)) {
+    repos.unshift({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
   }
   return {
     id: p.id,
@@ -80,6 +105,7 @@ function parseConfig(raw: string): ConfigFile | null {
       p.defaultTaskAgent === 'cursor'
         ? p.defaultTaskAgent
         : DEFAULT_AGENT,
+    repos,
   };
 }
 
@@ -195,13 +221,72 @@ export class ProjectStore {
     if (agent !== 'claude-code' && agent !== 'codex' && agent !== 'cursor') {
       throw new Error('ProjectStore: invalid planning agent');
     }
+    await this.mutateConfig((c) => ({ ...c, planningAgent: agent }));
+  }
+
+  /**
+   * Returns repos[] for the project living at `projectDir` by reading config.json.
+   * Works for both local projects and cloud-project bindings (both materialise
+   * a local config via `ensureLayoutForRoot` / `create`).
+   */
+  async getReposAt(projectDir: string): Promise<RepoConfig[]> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.repos;
+  }
+
+  /**
+   * Persist a patch to the repo identified by `rootPath` inside `projectDir`.
+   * Updates the in-memory active project only when `projectDir` matches.
+   */
+  async updateRepoAt(
+    projectDir: string,
+    rootPath: string,
+    patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>,
+  ): Promise<RepoConfig[]> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const repos = parsed.repos.map((r) => {
+      if (r.rootPath !== rootPath) return r;
+      const next: RepoConfig = { ...r };
+      if (patch.baseBranch !== undefined) {
+        const trimmed = patch.baseBranch.trim();
+        next.baseBranch = trimmed.length > 0 ? trimmed : DEFAULT_BASE_BRANCH;
+      }
+      if (patch.setupScript !== undefined) {
+        next.setupScript =
+          patch.setupScript.length > 0 ? patch.setupScript : undefined;
+      }
+      if (patch.env !== undefined) {
+        next.env = patch.env.length > 0 ? patch.env : undefined;
+      }
+      return next;
+    });
+    const next: ConfigFile = { ...parsed, repos };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return repos;
+  }
+
+  private async mutateConfig(
+    fn: (c: ConfigFile) => ConfigFile,
+  ): Promise<void> {
+    if (!this.projectDir || !this.project) {
+      throw new Error('ProjectStore: no active local project');
+    }
     const configPath = path.join(this.projectDir, 'config.json');
     const raw = await fs.readFile(configPath, 'utf8');
     const parsed = parseConfig(raw);
     if (!parsed) {
       throw new Error(`Invalid config.json at ${configPath}`);
     }
-    const next: ConfigFile = { ...parsed, planningAgent: agent };
+    const next = fn(parsed);
     await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
     this.project = configToLocalProject(next);
   }
@@ -250,12 +335,21 @@ export class ProjectStore {
         addedAt: now,
         planningAgent: DEFAULT_AGENT,
         defaultTaskAgent: DEFAULT_AGENT,
+        repos: [{ rootPath: resolvedRoot, baseBranch: DEFAULT_BASE_BRANCH }],
       };
     } else {
+      const previousRootPath = config.rootPath;
+      const repos = config.repos.map((r) =>
+        r.rootPath === previousRootPath ? { ...r, rootPath: resolvedRoot } : r,
+      );
+      if (!repos.some((r) => r.rootPath === resolvedRoot)) {
+        repos.unshift({ rootPath: resolvedRoot, baseBranch: DEFAULT_BASE_BRANCH });
+      }
       config = {
         ...config,
         rootPath: resolvedRoot,
         name: projectName,
+        repos,
       };
     }
 

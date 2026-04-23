@@ -27,7 +27,7 @@ import { TopBar } from './components/TopBar';
 import { LoadingScreen } from './components/LoadingScreen';
 import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
-import { TeamView } from './components/TeamView';
+import { ProjectSettingsView } from './components/ProjectSettingsView';
 import { TabBar, buildSessionTabs } from './components/TabBar';
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -49,7 +49,7 @@ type TaskPatch = Partial<
 type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
-const STATIC_TAB_IDS = new Set(['board', 'plan', 'team', 'docs']);
+const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs', 'settings']);
 
 const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
 const DEFAULT_PLANNING_PANEL_WIDTH = 288;
@@ -81,6 +81,14 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string>('board');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [openTabIds, setOpenTabIds] = useState<Set<string>>(() => new Set());
+  const [settingsTabOpen, setSettingsTabOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('flux.sidebarCollapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
@@ -616,7 +624,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTabId === 'team' || activeTabId === 'docs') {
+    if (activeTabId === 'docs' || activeTabId === 'settings') {
       setPlanPanelOpen(false);
     }
   }, [activeTabId]);
@@ -755,6 +763,27 @@ export default function App() {
     });
     setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
   }, []);
+
+  const handleOpenSettingsTab = useCallback(() => {
+    setSettingsTabOpen(true);
+    setActiveTabId('settings');
+  }, []);
+
+  const handleCloseSettingsTab = useCallback(() => {
+    setSettingsTabOpen(false);
+    setActiveTabId((prev) => (prev === 'settings' ? 'board' : prev));
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flux.sidebarCollapsed', sidebarCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [sidebarCollapsed]);
+
+  const handleCollapseSidebar = useCallback(() => setSidebarCollapsed(true), []);
+  const handleExpandSidebar = useCallback(() => setSidebarCollapsed(false), []);
 
   const handleArchiveSession = useCallback(async (sessionId: string) => {
     try {
@@ -895,6 +924,10 @@ export default function App() {
           onClearProject={() => void handleClearProject()}
           activeTabId={activeTabId}
           onSelectTab={setActiveTabId}
+          onOpenSettings={handleOpenSettingsTab}
+          collapsed={sidebarCollapsed}
+          onCollapse={handleCollapseSidebar}
+          onExpand={handleExpandSidebar}
           planPanelOpen={planPanelOpen}
           onPlanNavClick={handlePlanNav}
           onDocsNavClick={handleDocsNav}
@@ -910,12 +943,18 @@ export default function App() {
           onArchiveSession={(id) => void handleArchiveSession(id)}
           onDeleteWorkspace={requestDeleteWorkspace}
         >
-          <TopBar project={project} statusLine={statusLine}>
+          <TopBar
+            project={project}
+            statusLine={statusLine}
+            leadingInset={sidebarCollapsed}
+          >
             <TabBar
               activeTabId={activeTabId}
               openSessions={openTabItems}
+              settingsTabOpen={settingsTabOpen}
               onSelectTab={setActiveTabId}
               onCloseSessionTab={handleCloseSessionTab}
+              onCloseSettingsTab={handleCloseSettingsTab}
             />
           </TopBar>
           <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1029,18 +1068,18 @@ export default function App() {
                   }
                 />
               </div>
-            ) : !activeSessionTab && activeTabId === 'team' && project.kind === 'cloud' && uid ? (
-              <TeamView
-                project={project}
-                currentUid={uid}
-                currentUserDisplayName={displayName}
-                currentUserEmail={userEmail ?? undefined}
-              />
             ) : !activeSessionTab && activeTabId === 'docs' ? (
               <PlanningDocsView
                 key={project.id}
                 selectedPath={selectedPlanningDocPath}
                 fileRevision={planningDocFileRevision}
+              />
+            ) : !activeSessionTab && activeTabId === 'settings' ? (
+              <ProjectSettingsView
+                project={project}
+                currentUid={uid}
+                currentUserDisplayName={displayName}
+                currentUserEmail={userEmail ?? undefined}
               />
             ) : null}
           </div>

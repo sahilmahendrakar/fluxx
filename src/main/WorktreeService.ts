@@ -1,7 +1,8 @@
-import { execFile as execFileCallback } from 'node:child_process';
+import { execFile as execFileCallback, spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { promisify } from 'node:util';
+import type { RepoConfig } from '../types';
 
 const execFile = promisify(execFileCallback);
 
@@ -13,7 +14,16 @@ function branchForTaskId(taskId: string): string {
   return `flux/task-${sanitiseTaskId(taskId)}`;
 }
 
+/**
+ * Async getter that returns the per-repo config for the given rootPath, or
+ * null if none is configured yet. Injected so the service stays decoupled
+ * from ProjectStore (which it shares a circular boot relationship with).
+ */
+export type RepoConfigGetter = (rootPath: string) => Promise<RepoConfig | null>;
+
 export class WorktreeService {
+  private repoConfigGetter: RepoConfigGetter | null = null;
+
   constructor(
     private rootPath: string,
     private projectDir: string,
@@ -25,6 +35,10 @@ export class WorktreeService {
 
   setProjectDir(nextDir: string): void {
     this.projectDir = nextDir;
+  }
+
+  setRepoConfigGetter(getter: RepoConfigGetter | null): void {
+    this.repoConfigGetter = getter;
   }
 
   getProjectDir(): string {
@@ -60,13 +74,17 @@ export class WorktreeService {
       branchExists = false;
     }
 
+    const repoConfig = this.repoConfigGetter
+      ? await this.repoConfigGetter(this.rootPath).catch(() => null)
+      : null;
+
     try {
       if (branchExists) {
         await execFile('git', ['worktree', 'add', worktreePath, branch], {
           cwd: this.rootPath,
         });
       } else {
-        const baseRef = await this.resolveBaseRef();
+        const baseRef = await this.resolveBaseRef(repoConfig?.baseBranch);
         const addArgs = baseRef
           ? ['worktree', 'add', worktreePath, '-b', branch, baseRef]
           : ['worktree', 'add', worktreePath, '-b', branch];
@@ -82,7 +100,68 @@ export class WorktreeService {
       throw new Error(message.trim() || 'git worktree add failed');
     }
 
+    if (repoConfig?.env && repoConfig.env.length > 0) {
+      try {
+        await fs.writeFile(path.join(worktreePath, '.env'), repoConfig.env, 'utf8');
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[WorktreeService.create] failed to write .env at ${worktreePath}: ${message}`,
+        );
+      }
+    }
+
+    if (repoConfig?.setupScript && repoConfig.setupScript.trim().length > 0) {
+      await this.runSetupScript(worktreePath, repoConfig.setupScript);
+    }
+
     return { worktreePath, branch };
+  }
+
+  /**
+   * Runs the project's per-repo setup script inside the new worktree. Output
+   * is appended to `<worktree>/.flux-setup.log` so users can inspect failures
+   * without blocking task launch. Non-zero exits are warned about, not thrown.
+   */
+  private async runSetupScript(worktreePath: string, script: string): Promise<void> {
+    const logPath = path.join(worktreePath, '.flux-setup.log');
+    try {
+      await fs.writeFile(
+        logPath,
+        `# flux setup script — ${new Date().toISOString()}\n`,
+        'utf8',
+      );
+    } catch {
+      // best-effort log header
+    }
+    await new Promise<void>((resolve) => {
+      const child = spawn('bash', ['-lc', script], {
+        cwd: worktreePath,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const append = (chunk: Buffer) => {
+        fs.appendFile(logPath, chunk).catch(() => {
+          /* best-effort */
+        });
+      };
+      child.stdout?.on('data', append);
+      child.stderr?.on('data', append);
+      child.on('error', (err) => {
+        console.warn(
+          `[WorktreeService.create] setup script spawn error: ${err.message}`,
+        );
+        resolve();
+      });
+      child.on('exit', (code) => {
+        if (code !== 0) {
+          console.warn(
+            `[WorktreeService.create] setup script exited with code ${code} (see ${logPath})`,
+          );
+        }
+        resolve();
+      });
+    });
   }
 
   async remove(worktreePath: string): Promise<void> {
@@ -148,26 +227,29 @@ export class WorktreeService {
   }
 
   /**
-   * Resolve the base ref for a brand-new task branch. Detects the remote's
-   * default branch via `origin/HEAD`, fetches it best-effort so the worktree
-   * starts from up-to-date code, and returns `origin/<branch>`. Returns null
-   * when there is no usable remote ref so the caller falls back to local HEAD
-   * (e.g. offline, no `origin`, or `origin/HEAD` unset and no `origin/main`).
+   * Resolve the base ref for a brand-new task branch. When `configuredBranch`
+   * is provided (from the project's RepoConfig), it takes precedence;
+   * otherwise we fall back to detecting the remote default via `origin/HEAD`.
+   * Either way we fetch the chosen branch best-effort so the worktree starts
+   * from up-to-date code and return `origin/<branch>`. Returns null when
+   * there is no usable remote ref so the caller falls back to local HEAD.
    */
-  private async resolveBaseRef(): Promise<string | null> {
-    let defaultBranch = 'main';
-    try {
-      const { stdout } = await execFile(
-        'git',
-        ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
-        { cwd: this.rootPath, encoding: 'utf8' },
-      );
-      const ref = stdout.trim();
-      if (ref.startsWith('origin/')) {
-        defaultBranch = ref.slice('origin/'.length);
+  private async resolveBaseRef(configuredBranch?: string): Promise<string | null> {
+    let defaultBranch = configuredBranch?.trim() || 'main';
+    if (!configuredBranch) {
+      try {
+        const { stdout } = await execFile(
+          'git',
+          ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+          { cwd: this.rootPath, encoding: 'utf8' },
+        );
+        const ref = stdout.trim();
+        if (ref.startsWith('origin/')) {
+          defaultBranch = ref.slice('origin/'.length);
+        }
+      } catch {
+        // origin/HEAD not set; fall through with 'main' as a best guess.
       }
-    } catch {
-      // origin/HEAD not set; fall through with 'main' as a best guess.
     }
 
     try {

@@ -10,6 +10,20 @@ export interface ActiveProjectKey {
   id: string;
 }
 
+/**
+ * Per-repo configuration stored locally. The schema supports multiple repos
+ * per project; today the list always has length 1 (matching `Project.rootPath`).
+ */
+export interface RepoConfig {
+  rootPath: string;
+  /** Branch fetched + used as base for new task worktrees. Default: 'main'. */
+  baseBranch: string;
+  /** Optional shell script run inside each new worktree after `git worktree add`. */
+  setupScript?: string;
+  /** Optional .env contents written to `<worktree>/.env` for each new task. */
+  env?: string;
+}
+
 export interface LocalProject {
   id: string;
   kind: 'local';
@@ -18,6 +32,7 @@ export interface LocalProject {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  repos: RepoConfig[];
 }
 
 /**

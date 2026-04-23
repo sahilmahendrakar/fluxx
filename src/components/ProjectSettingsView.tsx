@@ -1,0 +1,399 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { CloudProject, LocalProject, RepoConfig } from '../types';
+import { TeamView } from './TeamView';
+
+interface Props {
+  project: LocalProject | CloudProject;
+  currentUid: string | null;
+  currentUserDisplayName?: string;
+  currentUserEmail?: string;
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type Category = 'project' | 'team';
+
+export function ProjectSettingsView({
+  project,
+  currentUid,
+  currentUserDisplayName,
+  currentUserEmail,
+}: Props) {
+  const teamAvailable = project.kind === 'cloud' && !!currentUid;
+  const [category, setCategory] = useState<Category>('project');
+
+  useEffect(() => {
+    if (category === 'team' && !teamAvailable) {
+      setCategory('project');
+    }
+  }, [category, teamAvailable]);
+
+  return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <nav
+        className="flex w-[140px] shrink-0 flex-col gap-0.5 pl-6 pr-1 pt-24"
+        aria-label="Settings categories"
+      >
+        <CategoryButton
+          active={category === 'project'}
+          label="Project Config"
+          onClick={() => setCategory('project')}
+        />
+        {teamAvailable ? (
+          <CategoryButton
+            active={category === 'team'}
+            label="Team"
+            onClick={() => setCategory('team')}
+          />
+        ) : null}
+      </nav>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {category === 'project' ? (
+          <ProjectConfigPane project={project} />
+        ) : teamAvailable && project.kind === 'cloud' && currentUid ? (
+          <TeamView
+            project={project}
+            currentUid={currentUid}
+            currentUserDisplayName={currentUserDisplayName}
+            currentUserEmail={currentUserEmail}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CategoryButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        'w-full rounded-md px-2 py-1.5 text-left text-[13.5px] transition-colors',
+        active
+          ? 'bg-white/[0.04] text-zinc-300'
+          : 'text-zinc-600 hover:bg-white/[0.02] hover:text-zinc-400',
+      ].join(' ')}
+    >
+      {label}
+    </button>
+  );
+}
+
+interface ProjectConfigPaneProps {
+  project: LocalProject | CloudProject;
+}
+
+function ProjectConfigPane({ project }: ProjectConfigPaneProps) {
+  const [repos, setRepos] = useState<RepoConfig[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await window.electronAPI.project.getRepos();
+      setRepos(next);
+      setLoadError(null);
+      setExpanded((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        if (next.length === 1) return { [next[0].rootPath]: true };
+        return prev;
+      });
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, project.id]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto w-full max-w-2xl px-8 py-10">
+        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">
+          Project Config
+        </h1>
+        <p className="mt-1 text-[13px] text-zinc-500">
+          Configure how new task workspaces are created for {project.name}.
+        </p>
+
+        <section className="mt-8">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-[13px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              Repositories
+            </h2>
+            <span className="text-[11px] text-zinc-600">
+              {repos?.length ?? 0} {repos?.length === 1 ? 'repo' : 'repos'}
+            </span>
+          </div>
+
+          {loadError ? (
+            <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+              {loadError}
+            </p>
+          ) : null}
+
+          <div className="mt-3 flex flex-col gap-2">
+            {repos === null && !loadError ? (
+              <p className="px-3 py-4 text-[12px] text-zinc-600">Loading…</p>
+            ) : (
+              repos?.map((repo) => (
+                <RepoCard
+                  key={repo.rootPath}
+                  repo={repo}
+                  expanded={expanded[repo.rootPath] ?? false}
+                  onToggle={() =>
+                    setExpanded((prev) => ({
+                      ...prev,
+                      [repo.rootPath]: !(prev[repo.rootPath] ?? false),
+                    }))
+                  }
+                  onSaved={(repos) => setRepos(repos)}
+                />
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+interface RepoCardProps {
+  repo: RepoConfig;
+  expanded: boolean;
+  onToggle: () => void;
+  onSaved: (repos: RepoConfig[]) => void;
+}
+
+function RepoCard({ repo, expanded, onToggle, onSaved }: RepoCardProps) {
+  return (
+    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left"
+        aria-expanded={expanded}
+      >
+        <ChevronRight
+          className={`shrink-0 text-zinc-500 transition-transform ${
+            expanded ? 'rotate-90' : ''
+          }`}
+        />
+        <div className="min-w-0 flex-1">
+          <div
+            className="truncate font-mono text-[12px] text-zinc-200"
+            title={repo.rootPath}
+          >
+            {repo.rootPath}
+          </div>
+          <div className="mt-0.5 truncate text-[11px] text-zinc-600">
+            base: {repo.baseBranch}
+            {repo.setupScript ? ' · setup script' : ''}
+            {repo.env ? ' · .env' : ''}
+          </div>
+        </div>
+      </button>
+      {expanded ? (
+        <div className="border-t border-white/[0.06] px-4 py-4">
+          <RepoFields repo={repo} onSaved={onSaved} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface RepoFieldsProps {
+  repo: RepoConfig;
+  onSaved: (repos: RepoConfig[]) => void;
+}
+
+function RepoFields({ repo, onSaved }: RepoFieldsProps) {
+  return (
+    <div className="flex flex-col gap-5">
+      <FieldEditor
+        label="Base branch"
+        description="Branch fetched from origin and used as the base for new task worktrees."
+        rootPath={repo.rootPath}
+        field="baseBranch"
+        initialValue={repo.baseBranch}
+        placeholder="main"
+        onSaved={onSaved}
+      />
+      <FieldEditor
+        label="Setup script"
+        description="Bash script run inside each new worktree after creation. Output is logged to .flux-setup.log."
+        rootPath={repo.rootPath}
+        field="setupScript"
+        initialValue={repo.setupScript ?? ''}
+        placeholder={'# e.g.\nnpm install\n'}
+        multiline
+        onSaved={onSaved}
+      />
+      <FieldEditor
+        label=".env contents"
+        description="Written verbatim to .env in each new worktree. Stored locally in plaintext."
+        rootPath={repo.rootPath}
+        field="env"
+        initialValue={repo.env ?? ''}
+        placeholder={'KEY=value\n'}
+        multiline
+        sensitive
+        onSaved={onSaved}
+      />
+    </div>
+  );
+}
+
+interface FieldEditorProps {
+  label: string;
+  description: string;
+  rootPath: string;
+  field: 'baseBranch' | 'setupScript' | 'env';
+  initialValue: string;
+  placeholder?: string;
+  multiline?: boolean;
+  sensitive?: boolean;
+  onSaved: (repos: RepoConfig[]) => void;
+}
+
+function FieldEditor({
+  label,
+  description,
+  rootPath,
+  field,
+  initialValue,
+  placeholder,
+  multiline,
+  sensitive,
+  onSaved,
+}: FieldEditorProps) {
+  const [value, setValue] = useState(initialValue);
+  const [savedValue, setSavedValue] = useState(initialValue);
+  const [state, setState] = useState<SaveState>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(!sensitive || initialValue.length === 0);
+
+  useEffect(() => {
+    setValue(initialValue);
+    setSavedValue(initialValue);
+    setState('idle');
+    setError(null);
+  }, [initialValue]);
+
+  const dirty = value !== savedValue;
+
+  const handleSave = async () => {
+    if (!dirty) return;
+    setState('saving');
+    setError(null);
+    const result = await window.electronAPI.project.updateRepo({
+      rootPath,
+      patch: { [field]: value },
+    });
+    if ('error' in result) {
+      setState('error');
+      setError(result.error);
+      return;
+    }
+    setSavedValue(value);
+    setState('saved');
+    onSaved(result.repos);
+    window.setTimeout(() => {
+      setState((s) => (s === 'saved' ? 'idle' : s));
+    }, 1500);
+  };
+
+  const showMasked = sensitive && !revealed;
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="text-[12px] font-medium text-zinc-300">{label}</label>
+        {sensitive ? (
+          <button
+            type="button"
+            onClick={() => setRevealed((r) => !r)}
+            className="text-[11px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            {revealed ? 'Hide' : 'Reveal'}
+          </button>
+        ) : null}
+      </div>
+      <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">{description}</p>
+      <div className="mt-2">
+        {multiline ? (
+          <textarea
+            value={showMasked ? maskValue(value) : value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            disabled={showMasked}
+            rows={Math.min(10, Math.max(4, value.split('\n').length + 1))}
+            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12] disabled:opacity-60"
+          />
+        ) : (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+          />
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-end gap-3">
+        {state === 'error' && error ? (
+          <span className="text-[11px] text-red-400">{error}</span>
+        ) : state === 'saved' ? (
+          <span className="text-[11px] text-emerald-400">Saved</span>
+        ) : dirty ? (
+          <span className="text-[11px] text-zinc-500">Unsaved changes</span>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={!dirty || state === 'saving' || showMasked}
+          className="rounded-md bg-white px-3 py-1 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-40"
+        >
+          {state === 'saving' ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function maskValue(value: string): string {
+  if (!value) return '';
+  return value.replace(/[^\n]/g, '•');
+}
+
+function ChevronRight({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={12}
+      height={12}
+      viewBox="0 0 12 12"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <path
+        d="M4 2.5L7.5 6L4 9.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
