@@ -1,0 +1,53 @@
+src/main/TaskStore.ts
+  577ef11e7aa31bba 145-155
+src/env.d.ts
+  577ef11e7aa31bba 31-36,113-120,160-162
+src/preload.ts
+  577ef11e7aa31bba 28-33,129-139,223-226
+src/components/TaskCard.tsx
+  577ef11e7aa31bba 5,35,82
+src/components/AgentModelPicker.tsx
+  577ef11e7aa31bba 1-202
+src/components/TaskDetailPanel.tsx
+  577ef11e7aa31bba 10-23,113-131,454,457-468,476-571
+src/renderer/tasks/FirestoreTaskProvider.ts
+  577ef11e7aa31bba 108-109,148-152
+src/components/AgentBadge.tsx
+  577ef11e7aa31bba 3-4,11,15-16
+src/App.tsx
+  577ef11e7aa31bba 442-443
+src/renderer/tasks/TaskProvider.ts
+  577ef11e7aa31bba 4-14
+src/main/agentSpawn.ts
+  577ef11e7aa31bba 3-8,16-17,19,22-34,37-45,84-87
+src/main.ts
+  577ef11e7aa31bba 24,675-676,729-730
+src/main/listCursorAgentModels.ts
+  577ef11e7aa31bba 1-104
+src/types.ts
+  577ef11e7aa31bba 61-72,145-162
+src/agentModelUi.ts
+  577ef11e7aa31bba 1-145
+README.md
+  577ef11e7aa31bba 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "f135b20f9ce648b954570dbe2822a415f39acf5e",
+  "prompts": {
+    "577ef11e7aa31bba": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8bf33430-11ab-4579-9c5d-b0898f3f9d59",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 978,
+      "total_deletions": 261,
+      "accepted_lines": 742,
+      "overriden_lines": 0
+    }
+  }
+}
