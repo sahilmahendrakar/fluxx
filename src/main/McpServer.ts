@@ -52,6 +52,16 @@ export class McpServer {
     }
   }
 
+  /** Task belonging to the currently open local project, or null if missing / wrong project. */
+  private getTaskInCurrentProject(taskId: string): Task | null {
+    const project = this.projectStore.get();
+    if (!project) {
+      return null;
+    }
+    const task = this.taskStore.getAll(project.id).find((t) => t.id === taskId);
+    return task ?? null;
+  }
+
   private registerTools(): void {
     this.mcpServer.tool(
       'flux__list_tasks',
@@ -121,6 +131,17 @@ export class McpServer {
       },
       async (input) => {
         try {
+          const project = this.projectStore.get();
+          const projectDir = this.projectStore.getProjectDir();
+          if (!project || !projectDir) {
+            return jsonToolPayload({ error: 'No project open' });
+          }
+          const existing = this.getTaskInCurrentProject(input.id);
+          if (!existing) {
+            return jsonToolPayload({
+              error: 'Task not found or not part of the current project',
+            });
+          }
           const patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'agent'>> = {};
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
@@ -129,6 +150,65 @@ export class McpServer {
           const updated = await this.taskStore.update(input.id, patch);
           this.notifyTasksChanged();
           return jsonToolPayload(updated);
+        } catch (err) {
+          return toolError(err);
+        }
+      },
+    );
+
+    this.mcpServer.tool(
+      'flux__start_task',
+      'Move a task to In progress on the Flux board (sets status to in-progress for the current project)',
+      {
+        id: z.string().describe('Task id from flux__list_tasks'),
+      },
+      async (input) => {
+        try {
+          const project = this.projectStore.get();
+          const projectDir = this.projectStore.getProjectDir();
+          if (!project || !projectDir) {
+            return jsonToolPayload({ error: 'No project open' });
+          }
+          const existing = this.getTaskInCurrentProject(input.id);
+          if (!existing) {
+            return jsonToolPayload({
+              error: 'Task not found or not part of the current project',
+            });
+          }
+          const updated = await this.taskStore.update(input.id, { status: 'in-progress' });
+          this.notifyTasksChanged();
+          return jsonToolPayload(updated);
+        } catch (err) {
+          return toolError(err);
+        }
+      },
+    );
+
+    this.mcpServer.tool(
+      'flux__delete_task',
+      'Permanently remove a task from the Flux board for the current project. Requires confirm=true after the user explicitly asked to delete this task.',
+      {
+        id: z.string().describe('Task id from flux__list_tasks'),
+        confirm: z
+          .literal(true)
+          .describe('Must be true — only set after the user confirmed they want this task deleted'),
+      },
+      async (input) => {
+        try {
+          const project = this.projectStore.get();
+          const projectDir = this.projectStore.getProjectDir();
+          if (!project || !projectDir) {
+            return jsonToolPayload({ error: 'No project open' });
+          }
+          const existing = this.getTaskInCurrentProject(input.id);
+          if (!existing) {
+            return jsonToolPayload({
+              error: 'Task not found or not part of the current project',
+            });
+          }
+          await this.taskStore.delete(input.id);
+          this.notifyTasksChanged();
+          return jsonToolPayload({ ok: true, deletedId: input.id });
         } catch (err) {
           return toolError(err);
         }
