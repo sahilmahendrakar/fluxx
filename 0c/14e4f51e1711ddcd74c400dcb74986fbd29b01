@@ -1,0 +1,62 @@
+src/main/taskEphemeralTeardown.ts
+  8692aae491619ced 1-80
+src/env.d.ts
+  8692aae491619ced 104
+  5418aabfbec38bec 97-100
+src/components/TaskCard.tsx
+  5418aabfbec38bec 33,83-118
+  8692aae491619ced 2-3,18-19,23-30,60,81-82,119-124
+src/main/TaskStore.ts
+  5418aabfbec38bec 144-146
+src/components/Column.tsx
+  8692aae491619ced 12-13,24-25,84-85
+src/renderer/tasks/FirestoreTaskProvider.ts
+  5418aabfbec38bec 110-112,150-151
+src/renderer/tasks/TaskProvider.ts
+  8692aae491619ced 4-5
+src/main.ts
+  8692aae491619ced 14-16,597-608,707
+src/components/Board.tsx
+  8692aae491619ced 12-13,24-25,76-77
+src/types.ts
+  8692aae491619ced 51-52
+src/preload.ts
+  5418aabfbec38bec 111
+  8692aae491619ced 116-117
+src/App.tsx
+  8692aae491619ced 82-84,100-101,531-543,553-560,566-568,571-576,578-581,584-598,608-613,619-621,636-638,896-903,967-981,1049-1050,1155-1169
+  5418aabfbec38bec 41,435-437,577,599-607,614
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "0c14e4f51e1711ddcd74c400dcb74986fbd29b01",
+  "prompts": {
+    "5418aabfbec38bec": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d7179086-c66e-4bed-9c16-e08c0563e005",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 29,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    },
+    "8692aae491619ced": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e5816e31-7959-408b-b066-c664c137a31d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 349,
+      "total_deletions": 117,
+      "accepted_lines": 260,
+      "overriden_lines": 0
+    }
+  }
+}
