@@ -105,6 +105,8 @@ export class FirestoreTaskProvider implements TaskProvider {
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.agent !== undefined) updates.agent = patch.agent;
+    if (patch.agentModel !== undefined) updates.agentModel = patch.agentModel;
+    if (patch.agentYolo !== undefined) updates.agentYolo = patch.agentYolo;
     if (patch.description !== undefined) updates.description = patch.description;
     if (patch.orderKey !== undefined) updates.orderKey = patch.orderKey;
     if (patch.workspaceCleanedAt !== undefined) {
@@ -143,6 +145,11 @@ function toTask(
     title: typeof data.title === 'string' ? data.title : '',
     status,
     agent,
+    agentModel:
+      typeof data.agentModel === 'string' && data.agentModel.trim() !== ''
+        ? data.agentModel.trim()
+        : undefined,
+    agentYolo: typeof data.agentYolo === 'boolean' ? data.agentYolo : undefined,
     description: typeof data.description === 'string' ? data.description : undefined,
     createdAt: tsToIso(data.createdAt) ?? new Date().toISOString(),
     projectId,

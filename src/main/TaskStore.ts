@@ -142,7 +142,17 @@ export class TaskStore {
   async update(
     id: string,
     patch: Partial<
-      Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey' | 'workspaceCleanedAt'>
+      Pick<
+        Task,
+        | 'title'
+        | 'status'
+        | 'agent'
+        | 'agentModel'
+        | 'agentYolo'
+        | 'description'
+        | 'orderKey'
+        | 'workspaceCleanedAt'
+      >
     >,
   ): Promise<Task> {
     if (!this.filePath) {

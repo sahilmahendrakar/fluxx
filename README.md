@@ -32,6 +32,7 @@ Think of it as the project management layer that AI-assisted development has bee
 - Kanban board with four columns: Backlog, In Progress, Needs Input, Done
 - Create and edit tasks with title, description, and acceptance criteria
 - Assign an agent (Claude Code, Codex CLI, Cursor) per task
+- For **Cursor Agent** and **Claude Code** tasks, the task detail pane uses **friendly model presets** (still stored as real CLI model ids) plus **Add model…** to save extra ids in local storage; optional **YOLO** (Cursor) / **skip permission checks** (Claude) map to each CLI’s flags
 - Launch a native terminal session for each task inside an isolated git worktree
 - Manual "needs input" flagging to move tasks into the attention queue
 - Desktop notifications when tasks are flagged

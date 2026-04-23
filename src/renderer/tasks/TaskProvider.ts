@@ -1,7 +1,17 @@
 import type { Agent, Task, TaskStatus } from '../../types';
 
 export type TaskPatch = Partial<
-  Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey' | 'workspaceCleanedAt'>
+  Pick<
+    Task,
+    | 'title'
+    | 'status'
+    | 'agent'
+    | 'agentModel'
+    | 'agentYolo'
+    | 'description'
+    | 'orderKey'
+    | 'workspaceCleanedAt'
+  >
 > & { workspaceCleanedAt?: string | null };
 
 export type TaskCreateInput = {

@@ -7,8 +7,20 @@ import {
   type PointerEvent as ReactPointerEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Task, TaskStatus, COLUMNS, AGENTS, Agent, Session } from '../types';
-import AgentBadge from './AgentBadge';
+import { Settings } from 'lucide-react';
+import {
+  Task,
+  TaskStatus,
+  COLUMNS,
+  AGENTS,
+  Agent,
+  Session,
+  DEFAULT_CURSOR_AGENT_MODEL,
+  claudeCodeExplicitModel,
+  resolvedCursorAgentModel,
+} from '../types';
+import AgentModelPicker from './AgentModelPicker';
+import { AGENT_CHIP_STYLES } from './AgentBadge';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 interface TaskDetailPanelProps {
@@ -97,6 +109,25 @@ export default function TaskDetailPanel({
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const terminalRef = useRef<TerminalHandle | null>(null);
+
+  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
+  const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setAgentSettingsOpen(false);
+  }, [task?.id]);
+
+  useEffect(() => {
+    if (!agentSettingsOpen) return;
+    const onPointerDown = (e: globalThis.PointerEvent) => {
+      const root = agentSettingsWrapRef.current;
+      if (root && !root.contains(e.target as Node)) {
+        setAgentSettingsOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [agentSettingsOpen]);
 
   const maxDetailWidthForParent = useCallback(() => {
     const parent = asideRef.current?.parentElement;
@@ -420,12 +451,21 @@ export default function TaskDetailPanel({
               <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2 text-[13px]">
                 <dt className="text-zinc-600">Agent</dt>
                 <dd className="min-w-0">
-                  <div className="relative inline-flex max-w-full">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <select
                       value={task.agent}
-                      onChange={(e) => onUpdate(task.id, { agent: e.target.value as Agent })}
-                      className="absolute inset-0 z-10 h-full min-h-[1.75rem] w-full max-w-full cursor-pointer opacity-0"
-                      aria-label="Change agent"
+                      onChange={(e) => {
+                        const next = e.target.value as Agent;
+                        const patch: Partial<Task> = { agent: next };
+                        if (next !== task.agent) {
+                          patch.agentYolo = false;
+                          patch.agentModel =
+                            next === 'cursor' ? DEFAULT_CURSOR_AGENT_MODEL : '';
+                        }
+                        onUpdate(task.id, patch);
+                      }}
+                      className={`w-auto max-w-full shrink-0 cursor-pointer rounded-md border px-2.5 py-1 pr-8 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${AGENT_CHIP_STYLES[task.agent]}`}
+                      aria-label="Agent provider"
                     >
                       {AGENTS.map((a) => (
                         <option key={a.id} value={a.id}>
@@ -433,7 +473,102 @@ export default function TaskDetailPanel({
                         </option>
                       ))}
                     </select>
-                    <AgentBadge agent={task.agent} />
+                    {task.agent === 'cursor' ? (
+                      <AgentModelPicker
+                        kind="cursor"
+                        modelId={resolvedCursorAgentModel(task)}
+                        onModelIdChange={(id) =>
+                          onUpdate(task.id, {
+                            agentModel: id.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+                          })
+                        }
+                        aria-label="Cursor model"
+                      />
+                    ) : task.agent === 'claude-code' ? (
+                      <AgentModelPicker
+                        kind="claude-code"
+                        modelId={claudeCodeExplicitModel(task) ?? ''}
+                        onModelIdChange={(id) =>
+                          onUpdate(task.id, {
+                            agentModel: id.trim(),
+                          })
+                        }
+                        aria-label="Claude Code model"
+                      />
+                    ) : (
+                      <span
+                        className="truncate text-[12px] text-zinc-500"
+                        title="Model selection is not wired for Codex in this version."
+                      >
+                        Model: default
+                      </span>
+                    )}
+                    <div ref={agentSettingsWrapRef} className="relative shrink-0">
+                      <button
+                        type="button"
+                        aria-label="Agent spawn settings"
+                        aria-expanded={agentSettingsOpen}
+                        onClick={() => setAgentSettingsOpen((o) => !o)}
+                        className="rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+                      >
+                        <Settings className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                      </button>
+                      {agentSettingsOpen ? (
+                        <div
+                          className="absolute right-0 z-40 mt-1 w-[min(18rem,calc(100vw-2rem))] rounded-md border border-white/[0.1] bg-[#121214] p-3 text-[12px] shadow-xl shadow-black/40"
+                          role="dialog"
+                          aria-label="Agent settings"
+                        >
+                          {task.agent === 'cursor' ? (
+                            <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                checked={task.agentYolo === true}
+                                onChange={(e) =>
+                                  onUpdate(task.id, { agentYolo: e.target.checked })
+                                }
+                              />
+                              <span className="leading-snug">
+                                <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
+                                <span className="mt-1 block text-[11px] text-zinc-500">
+                                  Matches Cursor Agent{' '}
+                                  <code className="text-zinc-400">--yolo</code> /{' '}
+                                  <code className="text-zinc-400">--force</code>: fewer confirmation
+                                  prompts; tools and shell commands run more freely unless explicitly
+                                  denied.
+                                </span>
+                              </span>
+                            </label>
+                          ) : task.agent === 'claude-code' ? (
+                            <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                checked={task.agentYolo === true}
+                                onChange={(e) =>
+                                  onUpdate(task.id, { agentYolo: e.target.checked })
+                                }
+                              />
+                              <span className="leading-snug">
+                                <span className="font-medium text-zinc-100">
+                                  Skip permission checks
+                                </span>
+                                <span className="mt-1 block text-[11px] text-zinc-500">
+                                  Passes <code className="text-zinc-400">--dangerously-skip-permissions</code>{' '}
+                                  to Claude Code (bypasses permission prompts). Anthropic recommends
+                                  this only for trusted sandboxes; treat it like Cursor YOLO.
+                                </span>
+                              </span>
+                            </label>
+                          ) : (
+                            <p className="leading-relaxed text-zinc-500">
+                              No spawn toggles for Codex in this version.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </dd>
                 <dt className="text-zinc-600">Status</dt>

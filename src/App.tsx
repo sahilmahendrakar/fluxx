@@ -439,6 +439,8 @@ export default function App() {
       if (patch.description !== undefined) persistable.description = patch.description;
       if (patch.status !== undefined) persistable.status = patch.status;
       if (patch.agent !== undefined) persistable.agent = patch.agent;
+      if (patch.agentModel !== undefined) persistable.agentModel = patch.agentModel;
+      if (patch.agentYolo !== undefined) persistable.agentYolo = patch.agentYolo;
       if (patch.orderKey !== undefined) persistable.orderKey = patch.orderKey;
       if (patch.workspaceCleanedAt !== undefined) {
         persistable.workspaceCleanedAt = patch.workspaceCleanedAt;

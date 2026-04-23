@@ -1,6 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task } from '../types';
+import {
+  type Agent,
+  type Task,
+  claudeCodeExplicitModel,
+  resolvedCursorAgentModel,
+} from '../types';
 
 /** Compose the first prompt for an agent spawn from the task row. */
 export function taskInitialPrompt(task: Task): string {
@@ -8,17 +13,36 @@ export function taskInitialPrompt(task: Task): string {
   return desc ? `${task.title}\n\n${desc}` : task.title;
 }
 
+export type AgentSpawnTaskInput = Pick<Task, 'agent' | 'agentModel' | 'agentYolo'>;
+
 export function agentSpawnSpec(
-  agent: Agent,
+  task: AgentSpawnTaskInput,
   initialPrompt: string,
 ): { command: string; args: string[] } {
-  switch (agent) {
-    case 'claude-code':
-      return { command: 'claude', args: [initialPrompt] };
+  switch (task.agent) {
+    case 'claude-code': {
+      const args: string[] = [];
+      const model = claudeCodeExplicitModel(task);
+      if (model) {
+        args.push('--model', model);
+      }
+      if (task.agentYolo === true) {
+        args.push('--dangerously-skip-permissions');
+      }
+      args.push(initialPrompt);
+      return { command: 'claude', args };
+    }
     case 'codex':
       return { command: 'codex', args: [] };
-    case 'cursor':
-      return { command: 'agent', args: ['--model', 'auto', initialPrompt] };
+    case 'cursor': {
+      const model = resolvedCursorAgentModel(task);
+      const args: string[] = ['--model', model];
+      if (task.agentYolo === true) {
+        args.push('--yolo');
+      }
+      args.push(initialPrompt);
+      return { command: 'agent', args };
+    }
   }
 }
 
@@ -57,7 +81,10 @@ export async function ensurePlanningDirCursorMcp(planningDir: string): Promise<v
   await fs.writeFile(mcpPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
 }
 
-/** Planning agents read scope from CLAUDE.md / AGENTS.md; no initial user prompt so the PTY stays idle until the user types. */
+/**
+ * Planning PTY uses project-level defaults only (not per-task model / yolo).
+ * Task sessions use {@link agentSpawnSpec} with the task row.
+ */
 export function planningSpawnSpec(
   agent: Agent,
   mcpConfigPath: string,

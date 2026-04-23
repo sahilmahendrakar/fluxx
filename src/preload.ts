@@ -25,6 +25,12 @@ type DirPickResult =
   | { error: 'NOT_GIT_REPO' }
   | null;
 
+type ListCursorAgentModelsResult = {
+  models: string[];
+  source: 'cli' | 'fallback';
+  error?: string;
+};
+
 type ActivateCloudResult =
   | { ok: true }
   | { error: 'NOT_GIT_REPO' }
@@ -120,7 +126,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     update: (
       id: string,
       patch: Partial<
-        Pick<Task, 'title' | 'status' | 'agent' | 'description' | 'orderKey' | 'workspaceCleanedAt'>
+        Pick<
+          Task,
+          | 'title'
+          | 'status'
+          | 'agent'
+          | 'agentModel'
+          | 'agentYolo'
+          | 'description'
+          | 'orderKey'
+          | 'workspaceCleanedAt'
+        >
       >,
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     delete: (id: string) =>
@@ -203,6 +219,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('planning:exited', handler);
       return () => ipcRenderer.removeListener('planning:exited', handler);
     },
+  },
+  cursorAgent: {
+    listModels: () =>
+      ipcRenderer.invoke('cursor:listAgentModels') as Promise<ListCursorAgentModelsResult>,
   },
   planningDocs: {
     list: () =>

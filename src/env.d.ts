@@ -28,6 +28,12 @@ type DirPickResult =
   | { error: 'NOT_GIT_REPO' }
   | null;
 
+type ListCursorAgentModelsResult = {
+  models: string[];
+  source: 'cli' | 'fallback';
+  error?: string;
+};
+
 type ActivateCloudResult =
   | { ok: true }
   | { error: 'NOT_GIT_REPO' }
@@ -104,7 +110,14 @@ declare global {
           patch: Partial<
             Pick<
               Task,
-              'title' | 'status' | 'agent' | 'description' | 'orderKey' | 'workspaceCleanedAt'
+              | 'title'
+              | 'status'
+              | 'agent'
+              | 'agentModel'
+              | 'agentYolo'
+              | 'description'
+              | 'orderKey'
+              | 'workspaceCleanedAt'
             >
           >,
         ) => Promise<Task>;
@@ -143,6 +156,9 @@ declare global {
         resize: (cols: number, rows: number) => void;
         onData: (cb: (data: string) => void) => () => void;
         onExit: (cb: (session: PlanningSession) => void) => () => void;
+      };
+      cursorAgent: {
+        listModels: () => Promise<ListCursorAgentModelsResult>;
       };
       planningDocs: {
         list: () => Promise<

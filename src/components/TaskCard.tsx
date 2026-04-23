@@ -2,6 +2,7 @@ import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
 import { Icon } from 'lucide-react';
 import { Task } from '../types';
+import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
 
 const STATUS_DOT: Record<Task['status'], string> = {
@@ -31,6 +32,7 @@ export default function TaskCard({
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
+  const agentBadgeTitle = modelSummaryForTask(task);
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -77,7 +79,7 @@ export default function TaskCard({
                 </button>
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <AgentBadge agent={task.agent} />
+                <AgentBadge agent={task.agent} title={agentBadgeTitle} />
                 <div className="flex shrink-0 items-center gap-1.5">
                   {isDone && onRequestCleanupTask ? (
                     workspaceCleaned ? (

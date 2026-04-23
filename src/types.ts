@@ -58,6 +58,18 @@ export interface Task {
   title: string;
   status: TaskStatus;
   agent: Agent;
+  /**
+   * Model for the session: Cursor Agent (`agent --model`, default `auto` when
+   * unset), or Claude Code (`claude --model` — omitted when unset/empty so the
+   * CLI default applies). Ignored for Codex until supported.
+   */
+  agentModel?: string;
+  /**
+   * Fewer permission prompts for tools: Cursor Agent → `--yolo` / `--force`;
+   * Claude Code → `--dangerously-skip-permissions` (strong; see CLI help).
+   * Ignored for Codex until supported.
+   */
+  agentYolo?: boolean;
   description?: string;
   createdAt: string;
   projectId: string;
@@ -130,3 +142,21 @@ export const AGENTS: { id: Agent; label: string }[] = [
   { id: 'codex', label: 'Codex' },
   { id: 'cursor', label: 'Cursor Agent' },
 ];
+
+/** Cursor `--model` value when `task.agentModel` is absent or blank. */
+export const DEFAULT_CURSOR_AGENT_MODEL = 'auto';
+
+export function resolvedCursorAgentModel(task: Pick<Task, 'agent' | 'agentModel'>): string {
+  if (task.agent !== 'cursor') return DEFAULT_CURSOR_AGENT_MODEL;
+  const m = (task.agentModel ?? '').trim();
+  return m || DEFAULT_CURSOR_AGENT_MODEL;
+}
+
+/** Non-empty model id for `claude --model`, or `undefined` to omit the flag. */
+export function claudeCodeExplicitModel(
+  task: Pick<Task, 'agent' | 'agentModel'>,
+): string | undefined {
+  if (task.agent !== 'claude-code') return undefined;
+  const m = (task.agentModel ?? '').trim();
+  return m || undefined;
+}

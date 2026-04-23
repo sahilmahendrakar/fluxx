@@ -21,6 +21,7 @@ import {
   planningSpawnSpec,
   taskInitialPrompt,
 } from './main/agentSpawn';
+import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
@@ -671,6 +672,8 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('tasks:delete', async (_e, id) => taskStore.delete(id));
 
+  ipcMain.handle('cursor:listAgentModels', async () => listCursorAgentModels());
+
   async function resolveProjectForStart(): Promise<Project> {
     const activeKey = appStateStore.get().activeProjectKey;
     if (!activeKey) throw new Error('No project open');
@@ -723,7 +726,8 @@ app.whenReady().then(async () => {
     }
 
     const initialPrompt = taskInitialPrompt(task);
-    const { command, args } = agentSpawnSpec(task.agent, initialPrompt);
+    const { command, args } = agentSpawnSpec(task, initialPrompt);
+    console.log('[session:start] spawn', { taskId: task.id, command, args });
     const result = await daemonClient.createSession({
       worktreePath,
       branch,
