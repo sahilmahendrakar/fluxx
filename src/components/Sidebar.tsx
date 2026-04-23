@@ -8,6 +8,7 @@ interface SidebarProps {
   project: Project;
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
+  onOpenSettings: () => void;
   planPanelOpen: boolean;
   onPlanNavClick: () => void;
   onDocsNavClick: () => void;
@@ -40,35 +41,6 @@ function SidebarCollapseIcon({ className }: { className?: string }) {
       <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
       <path d="M5.5 2.5v11" stroke="currentColor" strokeWidth="1.2" />
       <path d="M10.5 6L8 8l2.5 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TeamIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <circle cx="5.75" cy="6" r="2" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="11" cy="6.5" r="1.6" stroke="currentColor" strokeWidth="1.2" />
-      <path
-        d="M2 13c0-1.66 1.68-3 3.75-3s3.75 1.34 3.75 3"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M9.5 13c0-1.33 1.34-2.4 3-2.4s3 1.07 3 2.4"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
     </svg>
   );
 }
@@ -139,17 +111,24 @@ function SettingsIcon({ className }: { className?: string }) {
       className={className}
       width={16}
       height={16}
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <circle cx="8" cy="8" r="2.25" stroke="currentColor" strokeWidth="1.2" />
       <path
-        d="M8 1.25v1.75M8 13v1.75M1.25 8h1.75M13 8h1.75M3.05 3.05l1.24 1.24M11.71 11.71l1.24 1.24M12.95 3.05l-1.24 1.24M4.29 11.71l-1.24 1.24"
+        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"
         stroke="currentColor"
-        strokeWidth="1.2"
+        strokeWidth="1.6"
         strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="3"
+        stroke="currentColor"
+        strokeWidth="1.6"
       />
     </svg>
   );
@@ -243,6 +222,7 @@ export function Sidebar({
   project,
   activeTabId,
   onSelectTab,
+  onOpenSettings,
   planPanelOpen,
   onPlanNavClick,
   onDocsNavClick,
@@ -292,27 +272,39 @@ export function Sidebar({
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">
       <div className="px-3 pb-3 pt-3.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">Flux</div>
-            <div className="mt-2 truncate text-[13px] font-medium tracking-tight text-zinc-100">
-              {project.name}
-            </div>
-            <div
-              className="mt-0.5 max-w-full truncate font-mono text-[11px] text-zinc-600"
-              title={project.rootPath}
-            >
-              {project.rootPath}
-            </div>
-          </div>
+        <div className="flex items-center justify-between">
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">Flux</div>
           <button
             type="button"
             onClick={onCollapse}
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
-            className="shrink-0 rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="-mr-1 shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
           >
             <SidebarCollapseIcon />
+          </button>
+        </div>
+        <div className="mt-1 flex items-center gap-1.5">
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-zinc-100"
+            title={project.rootPath}
+          >
+            {project.name}
+          </span>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            aria-label="Project settings"
+            title="Project settings"
+            aria-pressed={activeTabId === 'settings'}
+            className={[
+              '-mr-2 shrink-0 rounded p-1 transition',
+              activeTabId === 'settings'
+                ? 'bg-white/[0.06] text-zinc-200'
+                : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200',
+            ].join(' ')}
+          >
+            <SettingsIcon className="opacity-80" />
           </button>
         </div>
       </div>
@@ -389,12 +381,6 @@ export function Sidebar({
                 </div>
               ) : null}
             </div>
-            {project.kind === 'cloud' ? (
-              <button type="button" className={navItemClass(activeTabId === 'team')} onClick={() => onSelectTab('team')}>
-                <TeamIcon className="shrink-0 opacity-80" />
-                <span>Team</span>
-              </button>
-            ) : null}
           </div>
 
           <div className="mt-5 flex min-h-0 flex-col">
@@ -479,15 +465,8 @@ export function Sidebar({
         <div className="border-t border-white/[0.06] pt-2">
           <button
             type="button"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
-          >
-            <SettingsIcon className="shrink-0 opacity-80" />
-            <span>Settings</span>
-          </button>
-          <button
-            type="button"
             onClick={onClearProject}
-            className="mt-0.5 w-full rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-600 transition-colors hover:bg-white/[0.03] hover:text-zinc-400"
+            className="w-full rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-600 transition-colors hover:bg-white/[0.03] hover:text-zinc-400"
           >
             Close project
           </button>

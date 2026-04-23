@@ -3,6 +3,7 @@ import type {
   Task,
   Agent,
   LocalProject,
+  RepoConfig,
   Session,
   Shell,
   PlanningSession,
@@ -44,6 +45,11 @@ declare global {
         setPlanningAgent: (
           agent: Agent,
         ) => Promise<{ ok: true } | { error: string }>;
+        getRepos: () => Promise<RepoConfig[]>;
+        updateRepo: (payload: {
+          rootPath: string;
+          patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
+        }) => Promise<{ ok: true; repos: RepoConfig[] } | { error: string }>;
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;

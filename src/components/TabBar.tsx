@@ -8,8 +8,10 @@ export interface SessionTabMeta {
 interface TabBarProps {
   activeTabId: string;
   openSessions: SessionTabMeta[];
+  settingsTabOpen: boolean;
   onSelectTab: (tabId: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
+  onCloseSettingsTab: () => void;
 }
 
 export function buildSessionTabs(
@@ -25,8 +27,10 @@ export function buildSessionTabs(
 export function TabBar({
   activeTabId,
   openSessions,
+  settingsTabOpen,
   onSelectTab,
   onCloseSessionTab,
+  onCloseSettingsTab,
 }: TabBarProps) {
   const tabClass = (active: boolean) =>
     [
@@ -45,6 +49,30 @@ export function TabBar({
       >
         <span>Board</span>
       </button>
+      {settingsTabOpen ? (
+        <div className={tabClass(activeTabId === 'settings')}>
+          <button
+            type="button"
+            onClick={() => onSelectTab('settings')}
+            className="flex min-w-0 items-center"
+          >
+            <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Close Settings tab"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCloseSettingsTab();
+            }}
+            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+          >
+            <span className="text-[13px] leading-none" aria-hidden>
+              ×
+            </span>
+          </button>
+        </div>
+      ) : null}
       {openSessions.length > 0 ? (
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}

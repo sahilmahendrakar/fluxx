@@ -14,7 +14,14 @@ import { ShellManager } from './main/ShellManager';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
-import type { ActiveProjectKey, Agent, LocalProject, Project, Task } from './types';
+import type {
+  ActiveProjectKey,
+  Agent,
+  LocalProject,
+  Project,
+  RepoConfig,
+  Task,
+} from './types';
 
 function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
@@ -227,6 +234,16 @@ app.whenReady().then(async () => {
   await taskStore.init();
 
   const worktreeService = new WorktreeService('', '');
+  worktreeService.setRepoConfigGetter(async (rootPath) => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) return null;
+    try {
+      const repos = await projectStore.getReposAt(projectDir);
+      return repos.find((r) => r.rootPath === rootPath) ?? null;
+    } catch {
+      return null;
+    }
+  });
   const sessionManager = new SessionManager(worktreeService);
   const shellManager = new ShellManager();
 
@@ -419,6 +436,41 @@ app.whenReady().then(async () => {
       activeProjectKey: null,
     });
   });
+
+  // ---- Per-repo settings (works for both local and cloud projects) ----
+  function activeProjectDir(): string {
+    const local = projectStore.getProjectDir();
+    if (local) return local;
+    const fromWorktree = worktreeService.getProjectDir();
+    if (fromWorktree) return fromWorktree;
+    throw new Error('No active project');
+  }
+
+  ipcMain.handle('project:getRepos', async (): Promise<RepoConfig[]> => {
+    return projectStore.getReposAt(activeProjectDir());
+  });
+  ipcMain.handle(
+    'project:updateRepo',
+    async (
+      _e,
+      payload: {
+        rootPath: string;
+        patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
+      },
+    ): Promise<{ ok: true; repos: RepoConfig[] } | { error: string }> => {
+      try {
+        const repos = await projectStore.updateRepoAt(
+          activeProjectDir(),
+          payload.rootPath,
+          payload.patch,
+        );
+        return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
 
   // ---- Projects (multi-project API) ----
   ipcMain.handle('projects:listLocal', () => projectStore.listDiscovered());

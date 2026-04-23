@@ -4,6 +4,7 @@ import type {
   Agent,
   LocalProject,
   PlanningSession,
+  RepoConfig,
   Session,
   Shell,
   Task,
@@ -38,6 +39,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setPlanningAgent: (agent: Agent) =>
       ipcRenderer.invoke('project:setPlanningAgent', agent) as Promise<
         { ok: true } | { error: string }
+      >,
+    getRepos: () =>
+      ipcRenderer.invoke('project:getRepos') as Promise<RepoConfig[]>,
+    updateRepo: (payload: {
+      rootPath: string;
+      patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
+    }) =>
+      ipcRenderer.invoke('project:updateRepo', payload) as Promise<
+        { ok: true; repos: RepoConfig[] } | { error: string }
       >,
   },
   projects: {
