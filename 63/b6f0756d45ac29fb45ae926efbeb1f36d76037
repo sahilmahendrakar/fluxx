@@ -1,0 +1,62 @@
+src/main/TaskStore.ts
+  5418aabfbec38bec 144-146
+src/env.d.ts
+  5418aabfbec38bec 105-108
+  8692aae491619ced 112
+src/App.tsx
+  5418aabfbec38bec 41,443-445,585,607-615,622
+  8692aae491619ced 90-92,108-109,539-551,561-568,574-576,579-584,586-589,592-606,616-621,627-629,644-646,925-932,996-1010,1088-1089,1194-1208
+src/components/Board.tsx
+  8692aae491619ced 12-13,24-25,76-77
+src/components/Column.tsx
+  8692aae491619ced 12-13,24-25,84-85
+src/main/taskEphemeralTeardown.ts
+  8692aae491619ced 1-80
+src/renderer/tasks/FirestoreTaskProvider.ts
+  5418aabfbec38bec 110-112,150-151
+src/main.ts
+  8692aae491619ced 14-16,660-671,770
+src/preload.ts
+  5418aabfbec38bec 123
+  8692aae491619ced 128-129
+src/renderer/tasks/TaskProvider.ts
+  8692aae491619ced 4-5
+src/components/TaskCard.tsx
+  8692aae491619ced 2-3,18-19,23-30,60,81-82,119-124
+  5418aabfbec38bec 33,83-118
+src/types.ts
+  8692aae491619ced 66-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "63b6f0756d45ac29fb45ae926efbeb1f36d76037",
+  "prompts": {
+    "5418aabfbec38bec": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d7179086-c66e-4bed-9c16-e08c0563e005",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 29,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    },
+    "8692aae491619ced": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e5816e31-7959-408b-b066-c664c137a31d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 349,
+      "total_deletions": 117,
+      "accepted_lines": 242,
+      "overriden_lines": 0
+    }
+  }
+}
