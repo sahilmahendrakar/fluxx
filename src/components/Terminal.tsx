@@ -85,7 +85,11 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    // Default WebLinksAddon uses `window.open()`, which Electron turns into an
+    // in-app BrowserWindow. Delegate http(s) clicks to the main process instead.
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      void window.electronAPI.openExternalUrl(uri);
+    });
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
 

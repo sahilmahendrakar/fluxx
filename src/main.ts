@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -551,6 +551,23 @@ app.whenReady().then(async () => {
 
   // ---- Auth ----
   ipcMain.handle('auth:startGoogleLogin', async () => authServer.startGoogleLogin());
+
+  // ---- OS (external browser) ----
+  ipcMain.handle('openExternalUrl', async (_e, raw: unknown): Promise<void> => {
+    if (typeof raw !== 'string' || raw.length === 0) return;
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+    try {
+      await shell.openExternal(parsed.href);
+    } catch (err) {
+      console.error('[openExternalUrl]', err);
+    }
+  });
 
   // ---- Email (Resend) ----
   console.log(

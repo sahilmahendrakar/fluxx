@@ -45,6 +45,8 @@ declare global {
   interface Window {
     electronAPI: {
       platform: string;
+      /** Opens http(s) URLs in the system default browser (not an in-app window). */
+      openExternalUrl: (url: string) => Promise<void>;
       project: {
         get: () => Promise<LocalProject | null>;
         getDir: () => Promise<string | null>;
