@@ -37,6 +37,13 @@ export class McpServer {
     private taskStore: TaskStore,
     private projectStore: ProjectStore,
     private getMainWindow: () => BrowserWindow | null,
+    private taskActions: {
+      updateTask: (
+        id: string,
+        patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'agent'>>,
+      ) => Promise<Task>;
+      startTask: (id: string) => Promise<Task>;
+    },
   ) {
     this.mcpServer = new BaseMcpServer(
       { name: 'flux', version: '0.1.0' },
@@ -147,7 +154,7 @@ export class McpServer {
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
           if (input.agent !== undefined) patch.agent = input.agent;
-          const updated = await this.taskStore.update(input.id, patch);
+          const updated = await this.taskActions.updateTask(input.id, patch);
           this.notifyTasksChanged();
           return jsonToolPayload(updated);
         } catch (err) {
@@ -158,7 +165,7 @@ export class McpServer {
 
     this.mcpServer.tool(
       'flux__start_task',
-      'Move a task to In progress on the Flux board (sets status to in-progress for the current project)',
+      'Move a task to In progress on the Flux board and start its agent session',
       {
         id: z.string().describe('Task id from flux__list_tasks'),
       },
@@ -175,7 +182,7 @@ export class McpServer {
               error: 'Task not found or not part of the current project',
             });
           }
-          const updated = await this.taskStore.update(input.id, { status: 'in-progress' });
+          const updated = await this.taskActions.startTask(input.id);
           this.notifyTasksChanged();
           return jsonToolPayload(updated);
         } catch (err) {

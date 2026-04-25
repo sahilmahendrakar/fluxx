@@ -96,6 +96,10 @@ function ProjectConfigPane({ project }: ProjectConfigPaneProps) {
   const [repos, setRepos] = useState<RepoConfig[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [autoStartSaveState, setAutoStartSaveState] = useState<SaveState>('idle');
+  const [autoStartError, setAutoStartError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -116,6 +120,47 @@ function ProjectConfigPane({ project }: ProjectConfigPaneProps) {
     void refresh();
   }, [refresh, project.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setAutoStartLoading(true);
+    setAutoStartError(null);
+    void window.electronAPI.project
+      .getAutoStartSessionOnInProgress()
+      .then((enabled) => {
+        if (cancelled) return;
+        setAutoStartEnabled(enabled);
+        setAutoStartSaveState('idle');
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setAutoStartError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setAutoStartLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  const handleAutoStartChange = useCallback(async (enabled: boolean) => {
+    setAutoStartEnabled(enabled);
+    setAutoStartSaveState('saving');
+    setAutoStartError(null);
+    const result = await window.electronAPI.project.setAutoStartSessionOnInProgress(enabled);
+    if ('error' in result) {
+      setAutoStartSaveState('error');
+      setAutoStartError(result.error);
+      setAutoStartEnabled((prev) => !prev);
+      return;
+    }
+    setAutoStartEnabled(result.enabled);
+    setAutoStartSaveState('saved');
+    window.setTimeout(() => {
+      setAutoStartSaveState((state) => (state === 'saved' ? 'idle' : state));
+    }, 1500);
+  }, []);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
@@ -125,6 +170,41 @@ function ProjectConfigPane({ project }: ProjectConfigPaneProps) {
         <p className="mt-1 text-[13px] text-zinc-500">
           Configure how new task workspaces are created for {project.name}.
         </p>
+
+        <section className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-medium text-zinc-200">
+                Auto-start sessions when tasks enter In progress
+              </h2>
+              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                Applies to status transitions from board drag, task detail status updates,
+                and MCP <code className="text-zinc-400">flux__update_task</code>.
+                <code className="ml-1 text-zinc-400">flux__start_task</code> always starts
+                a session regardless of this setting.
+              </p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
+              <input
+                type="checkbox"
+                checked={autoStartEnabled}
+                disabled={autoStartLoading || autoStartSaveState === 'saving'}
+                onChange={(e) => void handleAutoStartChange(e.target.checked)}
+                className="h-4 w-4 rounded border-white/[0.2] bg-[#09090b]"
+              />
+              Enabled
+            </label>
+          </div>
+          <div className="mt-2 min-h-4 text-[11px]">
+            {autoStartSaveState === 'saving' ? (
+              <span className="text-zinc-500">Saving…</span>
+            ) : autoStartSaveState === 'saved' ? (
+              <span className="text-emerald-400">Saved</span>
+            ) : autoStartError ? (
+              <span className="text-red-400">{autoStartError}</span>
+            ) : null}
+          </div>
+        </section>
 
         <section className="mt-8">
           <div className="flex items-baseline justify-between">

@@ -23,6 +23,7 @@ interface ConfigFile {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  autoStartSessionOnInProgress: boolean;
   repos: RepoConfig[];
 }
 
@@ -45,6 +46,7 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     addedAt: c.addedAt,
     planningAgent: c.planningAgent ?? DEFAULT_AGENT,
     defaultTaskAgent: c.defaultTaskAgent ?? DEFAULT_AGENT,
+    autoStartSessionOnInProgress: c.autoStartSessionOnInProgress === true,
     repos: c.repos,
   };
 }
@@ -105,6 +107,7 @@ function parseConfig(raw: string): ConfigFile | null {
       p.defaultTaskAgent === 'cursor'
         ? p.defaultTaskAgent
         : DEFAULT_AGENT,
+    autoStartSessionOnInProgress: p.autoStartSessionOnInProgress === true,
     repos,
   };
 }
@@ -278,6 +281,33 @@ export class ProjectStore {
     return repos;
   }
 
+  async getAutoStartSessionOnInProgressAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.autoStartSessionOnInProgress;
+  }
+
+  async setAutoStartSessionOnInProgressAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      autoStartSessionOnInProgress: enabled === true,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return next.autoStartSessionOnInProgress;
+  }
+
   private async mutateConfig(
     fn: (c: ConfigFile) => ConfigFile,
   ): Promise<void> {
@@ -339,6 +369,7 @@ export class ProjectStore {
         addedAt: now,
         planningAgent: DEFAULT_AGENT,
         defaultTaskAgent: DEFAULT_AGENT,
+        autoStartSessionOnInProgress: false,
         repos: [{ rootPath: resolvedRoot, baseBranch: DEFAULT_BASE_BRANCH }],
       };
     } else {

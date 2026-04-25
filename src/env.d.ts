@@ -67,6 +67,10 @@ declare global {
           rootPath: string;
           patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
         }) => Promise<{ ok: true; repos: RepoConfig[] } | { error: string }>;
+        getAutoStartSessionOnInProgress: () => Promise<boolean>;
+        setAutoStartSessionOnInProgress: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;
