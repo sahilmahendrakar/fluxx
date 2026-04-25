@@ -11,6 +11,19 @@ export interface ActiveProjectKey {
 }
 
 /**
+ * Tab-strip restoration state — per project, remember which task tabs
+ * were open and which was active. Planning fields mirror task patterns.
+ */
+export interface ProjectTabState {
+  openTaskIds: string[];
+  activeTaskId: string | null;
+  /** Planning sessions that have a main-window tab (`plan:<sessionId>`). */
+  openPlanningTabIds?: string[];
+  /** Selected planning session in the board sidebar strip. */
+  planningSidebarActiveSessionId?: string | null;
+}
+
+/**
  * Per-repo configuration stored locally. The schema supports multiple repos
  * per project; today the list always has length 1 (matching `Project.rootPath`).
  */
@@ -100,7 +113,7 @@ export interface Session {
   stoppedAt?: string;
 }
 
-/** Planning assistant PTY session (singleton in the main process). */
+/** Planning assistant PTY session (one of many per project in the daemon). */
 export interface PlanningSession {
   id: string;
   projectId: string;

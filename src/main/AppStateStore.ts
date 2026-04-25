@@ -1,18 +1,9 @@
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ActiveProjectKey } from '../types';
+import type { ActiveProjectKey, ProjectTabState } from '../types';
 
-/**
- * Tab-strip restoration state — per project, remember which task tabs
- * were open and which was active. Written by the renderer on tab open /
- * close / switch so relaunching Flux after cmd-Q paints the same strip
- * before terminals warm-reattach to the daemon.
- */
-export interface ProjectTabState {
-  openTaskIds: string[];
-  activeTaskId: string | null;
-}
+export type { ProjectTabState };
 
 export interface AppState {
   lastOpenedProjectDir: string | null;
@@ -90,7 +81,24 @@ export class AppStateStore {
           typeof v.activeTaskId === 'string' && v.activeTaskId
             ? v.activeTaskId
             : null;
-        tabs[key] = { openTaskIds: ids, activeTaskId: active };
+        const openPlanning =
+          Array.isArray(v.openPlanningTabIds) && v.openPlanningTabIds.length > 0
+            ? v.openPlanningTabIds.filter((x): x is string => typeof x === 'string')
+            : undefined;
+        const planningSidebarActive =
+          typeof v.planningSidebarActiveSessionId === 'string'
+            ? v.planningSidebarActiveSessionId
+            : v.planningSidebarActiveSessionId === null
+              ? null
+              : undefined;
+        tabs[key] = {
+          openTaskIds: ids,
+          activeTaskId: active,
+          ...(openPlanning ? { openPlanningTabIds: openPlanning } : {}),
+          ...(planningSidebarActive !== undefined
+            ? { planningSidebarActiveSessionId: planningSidebarActive }
+            : {}),
+        };
       }
       this.state.projectTabs = tabs;
     }

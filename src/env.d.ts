@@ -8,6 +8,7 @@ import type {
   Shell,
   PlanningSession,
   ActiveProjectKey,
+  ProjectTabState,
 } from './types';
 
 interface ImportMetaEnv {
@@ -43,11 +44,6 @@ type ActivateCloudResult =
 type AttachResult = { replay: string; cols: number; rows: number };
 type PlanningAttachResult = AttachResult & { session: PlanningSession };
 
-type ProjectTabsState = {
-  openTaskIds: string[];
-  activeTaskId: string | null;
-};
-
 declare global {
   interface Window {
     electronAPI: {
@@ -79,11 +75,8 @@ declare global {
         removeLocal: (id: string) => Promise<void>;
         getActiveKey: () => Promise<ActiveProjectKey | null>;
         clearActive: () => Promise<void>;
-        getTabs: (key: ActiveProjectKey) => Promise<ProjectTabsState>;
-        setTabs: (
-          key: ActiveProjectKey,
-          tabs: ProjectTabsState,
-        ) => Promise<void>;
+        getTabs: (key: ActiveProjectKey) => Promise<ProjectTabState>;
+        setTabs: (key: ActiveProjectKey, tabs: ProjectTabState) => Promise<void>;
         getLocalBinding: (
           cloudProjectId: string,
         ) => Promise<{ rootPath: string; lastOpenedAt: string } | null>;
@@ -152,13 +145,14 @@ declare global {
         onExit: (cb: (shell: Shell) => void) => () => void;
       };
       planning: {
+        list: () => Promise<PlanningSession[]>;
         start: (agent: Agent) => Promise<PlanningStartResult>;
-        stop: () => Promise<void>;
-        get: () => Promise<PlanningSession | null>;
-        attach: () => Promise<PlanningAttachResult | null>;
-        write: (data: string) => void;
-        resize: (cols: number, rows: number) => void;
-        onData: (cb: (data: string) => void) => () => void;
+        stop: (sessionId: string) => Promise<void>;
+        get: (sessionId: string) => Promise<PlanningSession | null>;
+        attach: (sessionId: string) => Promise<PlanningAttachResult | null>;
+        write: (sessionId: string, data: string) => void;
+        resize: (sessionId: string, cols: number, rows: number) => void;
+        onData: (sessionId: string, cb: (data: string) => void) => () => void;
         onExit: (cb: (session: PlanningSession) => void) => () => void;
       };
       cursorAgent: {

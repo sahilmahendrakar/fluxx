@@ -5,12 +5,21 @@ export interface SessionTabMeta {
   title: string;
 }
 
+export interface PlanningTabMeta {
+  sessionId: string;
+  title: string;
+  running: boolean;
+}
+
 interface TabBarProps {
   activeTabId: string;
   openSessions: SessionTabMeta[];
+  openPlanningTabs: PlanningTabMeta[];
   settingsTabOpen: boolean;
   onSelectTab: (tabId: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
+  onSelectPlanningTab: (sessionId: string) => void;
+  onClosePlanningTab: (sessionId: string) => void;
   onCloseSettingsTab: () => void;
 }
 
@@ -24,12 +33,17 @@ export function buildSessionTabs(
   });
 }
 
+const PLAN_TAB_PREFIX = 'plan:';
+
 export function TabBar({
   activeTabId,
   openSessions,
+  openPlanningTabs,
   settingsTabOpen,
   onSelectTab,
   onCloseSessionTab,
+  onSelectPlanningTab,
+  onClosePlanningTab,
   onCloseSettingsTab,
 }: TabBarProps) {
   const tabClass = (active: boolean) =>
@@ -101,6 +115,44 @@ export function TabBar({
               onClick={(e) => {
                 e.stopPropagation();
                 onCloseSessionTab(session.id);
+              }}
+              className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+            >
+              <span className="text-[13px] leading-none" aria-hidden>
+                ×
+              </span>
+            </button>
+          </div>
+        );
+      })}
+      {openPlanningTabs.length > 0 ? (
+        <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
+      ) : null}
+      {openPlanningTabs.map(({ sessionId, title, running }) => {
+        const tabId = `${PLAN_TAB_PREFIX}${sessionId}`;
+        const active = activeTabId === tabId;
+        return (
+          <div key={tabId} className={tabClass(active)}>
+            <button
+              type="button"
+              onClick={() => onSelectPlanningTab(sessionId)}
+              className="flex min-w-0 items-center gap-1.5"
+            >
+              <span
+                className={[
+                  'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                  running ? 'bg-sky-400' : 'bg-zinc-600',
+                ].join(' ')}
+                aria-hidden
+              />
+              <span className="max-w-[180px] truncate">{title}</span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Close ${title} tab`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClosePlanningTab(sessionId);
               }}
               className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
             >

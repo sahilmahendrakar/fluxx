@@ -51,7 +51,7 @@ function defaultShellCommand(): { command: string; args: string[] } {
 export class DaemonCore {
   private sessions = new Map<string, SessionEntry>();
   private shells = new Map<string, ShellEntry>();
-  private planning: PlanningEntry | null = null;
+  private planning = new Map<string, PlanningEntry>();
   private idleTimer: NodeJS.Timeout | null = null;
   private readonly idleMs: number;
 
@@ -234,8 +234,6 @@ export class DaemonCore {
   // ------------------------------------------------------------------- planning
 
   startPlanning(params: StartPlanningParams): StartPlanningResult {
-    if (this.planning) return { ...this.planning.session };
-
     const id = randomUUID();
     const session: PlanningSession = {
       id,
@@ -261,17 +259,17 @@ export class DaemonCore {
             this.broadcast({ kind: 'data', target: 'planning', id, data });
           },
           onExit: ({ exitCode }) => {
-            const current = this.planning;
-            if (!current || current.session.id !== id) return;
-            current.session.status = exitCode === 0 ? 'stopped' : 'error';
-            current.session.stoppedAt = new Date().toISOString();
+            const entry = this.planning.get(id);
+            if (!entry) return;
+            entry.session.status = exitCode === 0 ? 'stopped' : 'error';
+            entry.session.stoppedAt = new Date().toISOString();
             this.broadcast({
               kind: 'planning-exit',
               id,
-              session: { ...current.session },
+              session: { ...entry.session },
             });
-            current.runtime.dispose();
-            this.planning = null;
+            // Match task sessions: keep the entry (and replay buffer) until
+            // `stopPlanning` archives it so attach/list stay coherent.
             this.armIdleTimer();
           },
         },
@@ -281,39 +279,47 @@ export class DaemonCore {
       return { error: 'AGENT_NOT_FOUND', message };
     }
 
-    this.planning = { runtime, session };
+    this.planning.set(id, { runtime, session });
     this.cancelIdleTimer();
     return { ...session };
   }
 
-  stopPlanning(): void {
-    if (!this.planning) return;
-    this.planning.runtime.kill();
-    this.planning.runtime.dispose();
-    this.planning = null;
+  listPlanning(): PlanningSession[] {
+    return [...this.planning.values()].map((e) => ({ ...e.session }));
+  }
+
+  /** Kill + forget. */
+  stopPlanning(id: string): void {
+    const entry = this.planning.get(id);
+    if (!entry) return;
+    entry.runtime.kill();
+    entry.runtime.dispose();
+    this.planning.delete(id);
     this.armIdleTimer();
   }
 
-  getPlanning(): PlanningSession | null {
-    return this.planning ? { ...this.planning.session } : null;
+  getPlanning(id: string): PlanningSession | null {
+    const entry = this.planning.get(id);
+    return entry ? { ...entry.session } : null;
   }
 
-  attachPlanning():
+  attachPlanning(id: string):
     | { replay: string; cols: number; rows: number; session: PlanningSession }
     | null {
-    if (!this.planning) return null;
+    const entry = this.planning.get(id);
+    if (!entry) return null;
     return {
-      ...this.planning.runtime.snapshot(),
-      session: { ...this.planning.session },
+      ...entry.runtime.snapshot(),
+      session: { ...entry.session },
     };
   }
 
-  writePlanning(data: string): void {
-    this.planning?.runtime.write(data);
+  writePlanning(id: string, data: string): void {
+    this.planning.get(id)?.runtime.write(data);
   }
 
-  resizePlanning(cols: number, rows: number): void {
-    this.planning?.runtime.resize(cols, rows);
+  resizePlanning(id: string, cols: number, rows: number): void {
+    this.planning.get(id)?.runtime.resize(cols, rows);
   }
 
   // -------------------------------------------------------------- lifecycle
@@ -322,11 +328,13 @@ export class DaemonCore {
   killAll(): void {
     for (const { runtime } of this.sessions.values()) runtime.kill();
     for (const { runtime } of this.shells.values()) runtime.kill();
-    this.planning?.runtime.kill();
+    for (const { runtime } of this.planning.values()) runtime.kill();
   }
 
   private isIdle(): boolean {
-    if (this.planning) return false;
+    for (const entry of this.planning.values()) {
+      if (!entry.runtime.isExited) return false;
+    }
     for (const entry of this.sessions.values()) {
       if (!entry.runtime.isExited) return false;
     }

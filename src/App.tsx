@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { DropResult } from '@hello-pangea/dnd';
 import {
+  AGENTS,
   Task,
   TaskStatus,
   Agent,
@@ -17,6 +18,8 @@ import {
   LocalProject,
   Session,
   type ActiveProjectKey,
+  type PlanningSession,
+  type ProjectTabState,
 } from './types';
 import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
@@ -47,6 +50,23 @@ type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
 const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs', 'settings']);
+const PLAN_TAB_PREFIX = 'plan:';
+
+function planTabId(sessionId: string): string {
+  return `${PLAN_TAB_PREFIX}${sessionId}`;
+}
+
+function parsePlanTabId(tabId: string): string | null {
+  if (!tabId.startsWith(PLAN_TAB_PREFIX)) return null;
+  const id = tabId.slice(PLAN_TAB_PREFIX.length);
+  return id.length > 0 ? id : null;
+}
+
+function isWorkspaceSessionTabId(tabId: string): boolean {
+  if (STATIC_TAB_IDS.has(tabId)) return false;
+  if (tabId.startsWith(PLAN_TAB_PREFIX)) return false;
+  return true;
+}
 
 const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
 const DEFAULT_PLANNING_PANEL_WIDTH = 288;
@@ -92,6 +112,13 @@ export default function App() {
   const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
+  const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
+  const [planningSidebarActiveId, setPlanningSidebarActiveId] = useState<string | null>(
+    null,
+  );
+  const [openPlanningMainTabIds, setOpenPlanningMainTabIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [docsSidebarExpanded, setDocsSidebarExpanded] = useState(false);
   const [planningDocFiles, setPlanningDocFiles] = useState<{ relativePath: string }[]>(
     [],
@@ -120,6 +147,17 @@ export default function App() {
   useAgentHeartbeat({ projectId: cloudProjectId, uid, displayName });
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+
+  const refreshPlanningSessions = useCallback(async () => {
+    const api = window.electronAPI.planning;
+    if (!api?.list) return;
+    try {
+      const list = await api.list();
+      setPlanningSessions(list);
+    } catch (err) {
+      console.error('[App] planning.list failed', err);
+    }
+  }, []);
 
   const refreshPlanningDocList = useCallback(async () => {
     const api = window.electronAPI.planningDocs;
@@ -337,10 +375,50 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!project) return;
+    void refreshPlanningSessions();
+  }, [project?.id, refreshPlanningSessions]);
+
+  useEffect(() => {
+    const api = window.electronAPI.planning;
+    if (!api?.onExit) return;
+    return api.onExit(() => {
+      void refreshPlanningSessions();
+    });
+  }, [refreshPlanningSessions]);
+
+  useEffect(() => {
+    const sid = parsePlanTabId(activeTabId);
+    if (!sid) return;
+    if (planningSessions.length === 0) return;
+    if (!planningSessions.some((s) => s.id === sid)) {
+      setActiveTabId('board');
+    }
+  }, [activeTabId, planningSessions]);
+
+  useEffect(() => {
+    if (planningSessions.length === 0) return;
+    setOpenPlanningMainTabIds((prev) => {
+      const alive = new Set(planningSessions.map((s) => s.id));
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size && [...prev].every((x) => next.has(x)) ? prev : next;
+    });
+  }, [planningSessions]);
+
+  useEffect(() => {
+    if (!planningSidebarActiveId) return;
+    if (planningSessions.some((s) => s.id === planningSidebarActiveId)) return;
+    setPlanningSidebarActiveId(planningSessions[0]?.id ?? null);
+  }, [planningSessions, planningSidebarActiveId]);
+
+  useEffect(() => {
     if (!project) {
       setSessions([]);
       setOpenTabIds(new Set());
       setActiveTabId('board');
+      setPlanningSessions([]);
+      setPlanningSidebarActiveId(null);
+      setOpenPlanningMainTabIds(new Set());
       return;
     }
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
@@ -366,9 +444,12 @@ export default function App() {
           aliveIds.has(id),
         );
         setOpenTabIds(new Set(restoredOpen));
+        setOpenPlanningMainTabIds(new Set(persisted.openPlanningTabIds ?? []));
+        setPlanningSidebarActiveId(persisted.planningSidebarActiveSessionId ?? null);
         if (
           persisted.activeTaskId &&
           (STATIC_TAB_IDS.has(persisted.activeTaskId) ||
+            persisted.activeTaskId.startsWith(PLAN_TAB_PREFIX) ||
             aliveIds.has(persisted.activeTaskId))
         ) {
           setActiveTabId(persisted.activeTaskId);
@@ -386,16 +467,25 @@ export default function App() {
   useEffect(() => {
     if (!project) return;
     const projectKey: ActiveProjectKey = { kind: project.kind, id: project.id };
-    const tabs = {
+    const tabs: ProjectTabState = {
       openTaskIds: Array.from(openTabIds),
       activeTaskId: activeTabId,
+      openPlanningTabIds: Array.from(openPlanningMainTabIds),
+      planningSidebarActiveSessionId: planningSidebarActiveId,
     };
     void window.electronAPI.projects
       .setTabs(projectKey, tabs)
       .catch((err) => {
         console.error('[App] persist tabs failed', err);
       });
-  }, [project?.id, project?.kind, openTabIds, activeTabId]);
+  }, [
+    project?.id,
+    project?.kind,
+    openTabIds,
+    activeTabId,
+    openPlanningMainTabIds,
+    planningSidebarActiveId,
+  ]);
 
   const pendingRef = useRef<
     Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
@@ -636,6 +726,9 @@ export default function App() {
     setPlanningDocsListError(null);
     setSelectedPlanningDocPath(null);
     setPlanningDocFileRevision(0);
+    setPlanningSessions([]);
+    setPlanningSidebarActiveId(null);
+    setOpenPlanningMainTabIds(new Set());
   }, []);
 
   const handleClearProject = useCallback(async () => {
@@ -652,12 +745,22 @@ export default function App() {
     setPlanningDocsListError(null);
     setSelectedPlanningDocPath(null);
     setPlanningDocFileRevision(0);
+    setPlanningSessions([]);
+    setPlanningSidebarActiveId(null);
+    setOpenPlanningMainTabIds(new Set());
     setSessions([]);
     setOpenTabIds(new Set());
     setActiveTabId('board');
   }, []);
 
   const handlePlanNav = useCallback(() => {
+    const routeSid = parsePlanTabId(activeTabId);
+    if (routeSid) {
+      setPlanningSidebarActiveId(routeSid);
+      setPlanPanelOpen(true);
+      setActiveTabId('board');
+      return;
+    }
     if (activeTabId === 'plan') {
       setActiveTabId('board');
       return;
@@ -832,6 +935,31 @@ export default function App() {
     setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
   }, []);
 
+  const handleOpenPlanningInMainTab = useCallback((sessionId: string) => {
+    setOpenPlanningMainTabIds((prev) => new Set(prev).add(sessionId));
+    setActiveTabId(planTabId(sessionId));
+  }, []);
+
+  const handleClosePlanningMainTab = useCallback(
+    async (sessionId: string) => {
+      try {
+        await window.electronAPI.planning.stop(sessionId);
+      } catch (err) {
+        console.error('[App] planning.stop (main tab) failed', err);
+      }
+      await refreshPlanningSessions();
+      setOpenPlanningMainTabIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      setActiveTabId((prev) => (prev === planTabId(sessionId) ? 'board' : prev));
+      setPlanningSidebarActiveId((cur) => (cur === sessionId ? null : cur));
+    },
+    [refreshPlanningSessions],
+  );
+
   const handleOpenSettingsTab = useCallback(() => {
     setSettingsTabOpen(true);
     setActiveTabId('settings');
@@ -915,9 +1043,31 @@ export default function App() {
   );
 
   const activeSessionTab = useMemo(() => {
-    if (STATIC_TAB_IDS.has(activeTabId)) return null;
+    if (!isWorkspaceSessionTabId(activeTabId)) return null;
     return sessionItems.find((t) => t.session.id === activeTabId) ?? null;
   }, [activeTabId, sessionItems]);
+
+  const openPlanningTabItems = useMemo(() => {
+    return [...openPlanningMainTabIds].map((sessionId) => {
+      const s = planningSessions.find((x) => x.id === sessionId);
+      const idx = planningSessions.findIndex((x) => x.id === sessionId);
+      const agentLabel = s
+        ? (AGENTS.find((a) => a.id === s.agent)?.label ?? s.agent)
+        : '';
+      const title =
+        s && idx >= 0 ? `Plan ${idx + 1} · ${agentLabel}` : 'Planning';
+      return {
+        sessionId,
+        title,
+        running: s?.status === 'running' ?? false,
+      };
+    });
+  }, [openPlanningMainTabIds, planningSessions]);
+
+  const fullscreenPlanningSessionId =
+    activeTabId === 'plan'
+      ? planningSidebarActiveId
+      : parsePlanTabId(activeTabId);
 
   const deleteConfirmSession = useMemo(
     () => (deleteConfirmId ? sessionItems.find((s) => s.session.id === deleteConfirmId) ?? null : null),
@@ -1042,9 +1192,12 @@ export default function App() {
             <TabBar
               activeTabId={activeTabId}
               openSessions={openTabItems}
+              openPlanningTabs={openPlanningTabItems}
               settingsTabOpen={settingsTabOpen}
               onSelectTab={setActiveTabId}
               onCloseSessionTab={handleCloseSessionTab}
+              onSelectPlanningTab={(sessionId) => setActiveTabId(planTabId(sessionId))}
+              onClosePlanningTab={(sessionId) => void handleClosePlanningMainTab(sessionId)}
               onCloseSettingsTab={handleCloseSettingsTab}
             />
           </TopBar>
@@ -1129,6 +1282,12 @@ export default function App() {
                     >
                       <PlanningPanel
                         project={project}
+                        layout="sidebar"
+                        sessions={planningSessions}
+                        activeSessionId={planningSidebarActiveId}
+                        onActiveSessionChange={setPlanningSidebarActiveId}
+                        onSessionsMutated={() => refreshPlanningSessions()}
+                        onOpenInMainTab={handleOpenPlanningInMainTab}
                         onClose={() => setPlanPanelOpen(false)}
                         onLocalProjectRefresh={
                           project.kind === 'local'
@@ -1143,11 +1302,37 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            ) : !activeSessionTab && activeTabId === 'plan' ? (
+            ) : !activeSessionTab &&
+              (activeTabId === 'plan' || parsePlanTabId(activeTabId) !== null) ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <PlanningPanel
                   project={project}
+                  layout="fullscreen"
+                  sessions={planningSessions}
+                  activeSessionId={fullscreenPlanningSessionId}
+                  onActiveSessionChange={(id) => {
+                    if (activeTabId === 'plan') {
+                      setPlanningSidebarActiveId(id);
+                      return;
+                    }
+                    const cur = parsePlanTabId(activeTabId);
+                    if (id && id !== cur) {
+                      setOpenPlanningMainTabIds((prev) => {
+                        const next = new Set(prev);
+                        if (cur) next.delete(cur);
+                        next.add(id);
+                        return next;
+                      });
+                      setActiveTabId(planTabId(id));
+                    }
+                  }}
+                  onSessionsMutated={() => refreshPlanningSessions()}
                   onClose={() => {
+                    const sid = parsePlanTabId(activeTabId);
+                    if (sid) {
+                      void handleClosePlanningMainTab(sid);
+                      return;
+                    }
                     setActiveTabId('board');
                     setPlanPanelOpen(false);
                   }}

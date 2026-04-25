@@ -4,6 +4,7 @@ import type {
   Agent,
   LocalProject,
   PlanningSession,
+  ProjectTabState,
   RepoConfig,
   Session,
   Shell,
@@ -84,14 +85,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearActive: () => ipcRenderer.invoke('projects:clearActive') as Promise<void>,
     /** Per-project tab strip state, for session-continuity restoration. */
     getTabs: (key: ActiveProjectKey) =>
-      ipcRenderer.invoke('projects:getTabs', key) as Promise<{
-        openTaskIds: string[];
-        activeTaskId: string | null;
-      }>,
-    setTabs: (
-      key: ActiveProjectKey,
-      tabs: { openTaskIds: string[]; activeTaskId: string | null },
-    ) => ipcRenderer.invoke('projects:setTabs', key, tabs) as Promise<void>,
+      ipcRenderer.invoke('projects:getTabs', key) as Promise<ProjectTabState>,
+    setTabs: (key: ActiveProjectKey, tabs: ProjectTabState) =>
+      ipcRenderer.invoke('projects:setTabs', key, tabs) as Promise<void>,
     getLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:getLocalBinding', cloudProjectId) as Promise<
         { rootPath: string; lastOpenedAt: string } | null
@@ -206,18 +202,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   planning: {
+    list: () =>
+      ipcRenderer.invoke('planning:list') as Promise<PlanningSession[]>,
     start: (agent: Agent) =>
       ipcRenderer.invoke('planning:start', agent) as Promise<PlanningStartResult>,
-    stop: () => ipcRenderer.invoke('planning:stop') as Promise<void>,
-    get: () => ipcRenderer.invoke('planning:get') as Promise<PlanningSession | null>,
-    attach: () =>
-      ipcRenderer.invoke('planning:attach') as Promise<PlanningAttachResult | null>,
-    write: (data: string) => ipcRenderer.send('planning:write', data),
-    resize: (cols: number, rows: number) => ipcRenderer.send('planning:resize', cols, rows),
-    onData: (cb: (data: string) => void) => {
+    stop: (sessionId: string) =>
+      ipcRenderer.invoke('planning:stop', sessionId) as Promise<void>,
+    get: (sessionId: string) =>
+      ipcRenderer.invoke('planning:get', sessionId) as Promise<PlanningSession | null>,
+    attach: (sessionId: string) =>
+      ipcRenderer.invoke('planning:attach', sessionId) as Promise<PlanningAttachResult | null>,
+    write: (sessionId: string, data: string) =>
+      ipcRenderer.send('planning:write', sessionId, data),
+    resize: (sessionId: string, cols: number, rows: number) =>
+      ipcRenderer.send('planning:resize', sessionId, cols, rows),
+    onData: (sessionId: string, cb: (data: string) => void) => {
+      const channel = `planning:data:${sessionId}`;
       const handler = (_e: IpcRendererEvent, data: string) => cb(data);
-      ipcRenderer.on('planning:data', handler);
-      return () => ipcRenderer.removeListener('planning:data', handler);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.removeAllListeners(channel);
     },
     onExit: (cb: (session: PlanningSession) => void) => {
       const handler = (_e: IpcRendererEvent, session: PlanningSession) =>

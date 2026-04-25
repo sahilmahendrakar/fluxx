@@ -28,6 +28,7 @@ import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
 import type {
   ActiveProjectKey,
   Agent,
+  ProjectTabState,
   LocalProject,
   PlanningSession,
   Project,
@@ -560,11 +561,7 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     'projects:setTabs',
-    async (
-      _e,
-      key: ActiveProjectKey,
-      tabs: { openTaskIds: string[]; activeTaskId: string | null },
-    ) => {
+    async (_e, key: ActiveProjectKey, tabs: ProjectTabState) => {
       await appStateStore.setProjectTabs(key, tabs);
     },
   );
@@ -920,6 +917,22 @@ app.whenReady().then(async () => {
   });
   fluxMcpServer.start();
 
+  async function activeProjectIdForPlanning(): Promise<string | null> {
+    const activeKey = appStateStore.get().activeProjectKey;
+    if (!activeKey) return null;
+    if (activeKey.kind === 'local') {
+      return projectStore.get()?.id ?? null;
+    }
+    return activeKey.id;
+  }
+
+  ipcMain.handle('planning:list', async () => {
+    const pid = await activeProjectIdForPlanning();
+    if (!pid) return [];
+    const all = await daemonClient.listPlanning();
+    return all.filter((s) => s.projectId === pid);
+  });
+
   ipcMain.handle(
     'planning:start',
     async (_e, requestedAgent: unknown) => {
@@ -966,10 +979,6 @@ app.whenReady().then(async () => {
         };
         planningAgent = 'claude-code';
       }
-
-      // If the daemon already has a planning session running, reuse it.
-      const existing = await daemonClient.getPlanning();
-      if (existing) return existing;
 
       const planningDir = path.join(projectDir, 'planning');
       const mcpConfigPath = path.join(projectDir, 'mcp.json');
@@ -1033,13 +1042,28 @@ app.whenReady().then(async () => {
     },
   );
 
-  ipcMain.handle('planning:stop', async () => daemonClient.stopPlanning());
+  ipcMain.handle('planning:stop', async (_e, sessionId: string) => {
+    const pid = await activeProjectIdForPlanning();
+    if (!pid) return;
+    const s = await daemonClient.getPlanning(sessionId);
+    if (!s || s.projectId !== pid) return;
+    await daemonClient.stopPlanning(sessionId);
+  });
 
-  ipcMain.handle('planning:get', async () => daemonClient.getPlanning());
+  ipcMain.handle('planning:get', async (_e, sessionId: string) => {
+    const pid = await activeProjectIdForPlanning();
+    if (!pid) return null;
+    const s = await daemonClient.getPlanning(sessionId);
+    if (!s || s.projectId !== pid) return null;
+    return s;
+  });
 
   ipcMain.handle(
     'planning:attach',
-    async (): Promise<
+    async (
+      _e,
+      sessionId: string,
+    ): Promise<
       | {
           replay: string;
           cols: number;
@@ -1047,16 +1071,37 @@ app.whenReady().then(async () => {
           session: PlanningSession;
         }
       | null
-    > => daemonClient.attachPlanning(),
+    > => {
+      const pid = await activeProjectIdForPlanning();
+      if (!pid) return null;
+      const s = await daemonClient.getPlanning(sessionId);
+      if (!s || s.projectId !== pid) return null;
+      return daemonClient.attachPlanning(sessionId);
+    },
   );
 
-  ipcMain.on('planning:write', (_e, data: string) => {
-    daemonClient.writePlanning(data);
+  ipcMain.on('planning:write', (_e, sessionId: string, data: string) => {
+    void (async () => {
+      const pid = await activeProjectIdForPlanning();
+      if (!pid) return;
+      const s = await daemonClient.getPlanning(sessionId);
+      if (!s || s.projectId !== pid) return;
+      daemonClient.writePlanning(sessionId, data);
+    })();
   });
 
-  ipcMain.on('planning:resize', (_e, cols: number, rows: number) => {
-    daemonClient.resizePlanning(cols, rows);
-  });
+  ipcMain.on(
+    'planning:resize',
+    (_e, sessionId: string, cols: number, rows: number) => {
+      void (async () => {
+        const pid = await activeProjectIdForPlanning();
+        if (!pid) return;
+        const s = await daemonClient.getPlanning(sessionId);
+        if (!s || s.projectId !== pid) return;
+        daemonClient.resizePlanning(sessionId, cols, rows);
+      })();
+    },
+  );
 
   function fluxProjectDirOrNull(): string | null {
     const fromStore = projectStore.getProjectDir();

@@ -10,7 +10,7 @@
 
 import type { Agent, PlanningSession, Session, Shell } from '../types';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** Unix socket / named pipe names inside Electron userData. */
 export const DAEMON_PID_FILE = 'flux-daemon.pid';

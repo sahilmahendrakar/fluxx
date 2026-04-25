@@ -75,7 +75,7 @@ function isPidAlive(pid: number): boolean {
  * Main-process client for the Flux daemon. Handles spawning / reconnecting
  * to the detached daemon process, correlation-id RPC, and fanning stream
  * frames back out to every renderer via existing broadcast channels
- * (`session:data:<id>`, `shell:data:<id>`, `planning:data`).
+ * (`session:data:<id>`, `shell:data:<id>`, `planning:data:<id>`).
  */
 export class DaemonClient {
   private rpc: net.Socket | null = null;
@@ -377,7 +377,7 @@ export class DaemonClient {
       } else if (frame.target === 'shell') {
         broadcast(`shell:data:${frame.id}`, frame.data);
       } else if (frame.target === 'planning') {
-        broadcast('planning:data', frame.data);
+        broadcast(`planning:data:${frame.id}`, frame.data);
       }
       return;
     }
@@ -525,34 +525,42 @@ export class DaemonClient {
     return this.request<StartPlanningResult>('startPlanning', params);
   }
 
-  async stopPlanning(): Promise<void> {
+  async listPlanning(): Promise<PlanningSession[]> {
     await this.ensureRunning();
-    await this.request<null>('stopPlanning');
+    return this.request<PlanningSession[]>('listPlanning');
   }
 
-  async getPlanning(): Promise<PlanningSession | null> {
+  async stopPlanning(id: string): Promise<void> {
     await this.ensureRunning();
-    return this.request<PlanningSession | null>('getPlanning');
+    await this.request<null>('stopPlanning', { id });
   }
 
-  async attachPlanning(): Promise<(AttachResult & { session: PlanningSession }) | null> {
+  async getPlanning(id: string): Promise<PlanningSession | null> {
+    await this.ensureRunning();
+    return this.request<PlanningSession | null>('getPlanning', { id });
+  }
+
+  async attachPlanning(
+    id: string,
+  ): Promise<(AttachResult & { session: PlanningSession }) | null> {
     await this.ensureRunning();
     return this.request<(AttachResult & { session: PlanningSession }) | null>(
       'attachPlanning',
+      { id },
     );
   }
 
-  writePlanning(data: string): void {
+  writePlanning(id: string, data: string): void {
     void this.ensureRunning().then(() =>
-      this.request<null>('writePlanning', { data }).catch(() => {
+      this.request<null>('writePlanning', { id, data }).catch(() => {
         // ignore
       }),
     );
   }
 
-  resizePlanning(cols: number, rows: number): void {
+  resizePlanning(id: string, cols: number, rows: number): void {
     void this.ensureRunning().then(() =>
-      this.request<null>('resizePlanning', { cols, rows }).catch(() => {
+      this.request<null>('resizePlanning', { id, cols, rows }).catch(() => {
         // ignore
       }),
     );

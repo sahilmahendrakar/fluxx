@@ -267,7 +267,9 @@ export function Sidebar({
     ].join(' ');
 
   const planNavActive =
-    activeTabId === 'plan' || (activeTabId === 'board' && planPanelOpen);
+    activeTabId === 'plan' ||
+    activeTabId.startsWith('plan:') ||
+    (activeTabId === 'board' && planPanelOpen);
 
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">

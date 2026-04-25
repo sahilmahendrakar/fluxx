@@ -187,21 +187,27 @@ function handleRpc(req: RpcRequest): RpcResponse {
 
       case 'startPlanning':
         return { id, result: daemon.startPlanning(req.params as StartPlanningParams) };
+      case 'listPlanning':
+        return { id, result: daemon.listPlanning() };
       case 'stopPlanning': {
-        daemon.stopPlanning();
+        daemon.stopPlanning((req.params as { id: string }).id);
         return { id, result: null };
       }
       case 'getPlanning':
-        return { id, result: daemon.getPlanning() };
+        return { id, result: daemon.getPlanning((req.params as { id: string }).id) };
       case 'attachPlanning':
-        return { id, result: daemon.attachPlanning() };
+        return {
+          id,
+          result: daemon.attachPlanning((req.params as { id: string }).id),
+        };
       case 'writePlanning': {
-        daemon.writePlanning((req.params as { data: string }).data);
+        const p = req.params as { id: string; data: string };
+        daemon.writePlanning(p.id, p.data);
         return { id, result: null };
       }
       case 'resizePlanning': {
-        const p = req.params as { cols: number; rows: number };
-        daemon.resizePlanning(p.cols, p.rows);
+        const p = req.params as { id: string; cols: number; rows: number };
+        daemon.resizePlanning(p.id, p.cols, p.rows);
         return { id, result: null };
       }
 
