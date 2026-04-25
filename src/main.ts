@@ -488,6 +488,24 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle('project:getAutoStartSessionOnInProgress', async () =>
+    projectStore.getAutoStartSessionOnInProgressAt(activeProjectDir()),
+  );
+  ipcMain.handle(
+    'project:setAutoStartSessionOnInProgress',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const next = await projectStore.setAutoStartSessionOnInProgressAt(
+          activeProjectDir(),
+          enabled,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
 
   // ---- Projects (multi-project API) ----
   ipcMain.handle('projects:listLocal', () => projectStore.listDiscovered());
@@ -656,7 +674,7 @@ app.whenReady().then(async () => {
     return taskStore.create({ ...input, projectId: project.id });
   });
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
-    taskStore.update(id, patch),
+    updateTaskWithTransitionHandling(id, patch, 'ipc:tasks:update'),
   );
   ipcMain.handle(
     'tasks:cleanupResources',
@@ -763,6 +781,109 @@ app.whenReady().then(async () => {
     return result;
   }
 
+  type TaskUpdatePatch = Partial<
+    Pick<
+      Task,
+      | 'title'
+      | 'status'
+      | 'agent'
+      | 'agentModel'
+      | 'agentYolo'
+      | 'description'
+      | 'orderKey'
+      | 'workspaceCleanedAt'
+    >
+  >;
+
+  async function maybeAutoStartSessionOnInProgressTransition(
+    previous: Task,
+    updated: Task,
+    source: string,
+  ): Promise<void> {
+    const becameInProgress =
+      previous.status !== 'in-progress' && updated.status === 'in-progress';
+    if (!becameInProgress) return;
+
+    let enabled = false;
+    try {
+      enabled = await projectStore.getAutoStartSessionOnInProgressAt(activeProjectDir());
+    } catch (err) {
+      console.error('[task:auto-start] failed to read setting', {
+        source,
+        taskId: updated.id,
+        err,
+      });
+      return;
+    }
+    if (!enabled) return;
+
+    try {
+      const started = await startSessionForTask(updated);
+      if ('error' in started) {
+        console.error('[task:auto-start] session start failed', {
+          source,
+          taskId: updated.id,
+          error: started.error,
+          message: started.message,
+        });
+      }
+    } catch (err) {
+      console.error('[task:auto-start] unexpected failure', {
+        source,
+        taskId: updated.id,
+        err,
+      });
+    }
+  }
+
+  async function updateTaskWithTransitionHandling(
+    id: string,
+    patch: TaskUpdatePatch,
+    source: string,
+  ): Promise<Task> {
+    const project = projectStore.get();
+    if (!project) {
+      throw new Error('No local project open');
+    }
+    const previous = taskStore.getAll(project.id).find((t) => t.id === id);
+    if (!previous) {
+      throw new Error(`Task not found: ${id}`);
+    }
+    const updated = await taskStore.update(id, patch);
+    await maybeAutoStartSessionOnInProgressTransition(previous, updated, source);
+    return updated;
+  }
+
+  async function startTaskAndSession(id: string, source: string): Promise<Task> {
+    const project = projectStore.get();
+    if (!project) {
+      throw new Error('No local project open');
+    }
+    const existing = taskStore.getAll(project.id).find((t) => t.id === id);
+    if (!existing) {
+      throw new Error(`Task not found: ${id}`);
+    }
+    const updated = await taskStore.update(id, { status: 'in-progress' });
+    try {
+      const started = await startSessionForTask(updated);
+      if ('error' in started) {
+        console.error('[task:start] session start failed', {
+          source,
+          taskId: updated.id,
+          error: started.error,
+          message: started.message,
+        });
+      }
+    } catch (err) {
+      console.error('[task:start] unexpected session start failure', {
+        source,
+        taskId: updated.id,
+        err,
+      });
+    }
+    return updated;
+  }
+
   ipcMain.handle('session:start', async (_e, task: Task) => startSessionForTask(task));
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
@@ -793,7 +914,10 @@ app.whenReady().then(async () => {
     daemonClient.resizeSession(sessionId, cols, rows);
   });
 
-  fluxMcpServer = new McpServer(taskStore, projectStore, () => mainWindow);
+  fluxMcpServer = new McpServer(taskStore, projectStore, () => mainWindow, {
+    updateTask: (id, patch) => updateTaskWithTransitionHandling(id, patch, 'mcp:flux__update_task'),
+    startTask: (id) => startTaskAndSession(id, 'mcp:flux__start_task'),
+  });
   fluxMcpServer.start();
 
   ipcMain.handle(

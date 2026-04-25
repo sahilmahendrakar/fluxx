@@ -32,6 +32,8 @@ export interface LocalProject {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  /** Auto-start a task session when status transitions into in-progress. */
+  autoStartSessionOnInProgress: boolean;
   repos: RepoConfig[];
 }
 
