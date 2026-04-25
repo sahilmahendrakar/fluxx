@@ -1,0 +1,62 @@
+src/main.ts
+  b7b3a7d96ed0ae0d 31,564,920-935,1045-1051,1053-1059,1063-1066,1074-1080,1083-1090,1093-1104
+src/main/DaemonClient.ts
+  b7b3a7d96ed0ae0d 78,380,528,530,533,535,538-545,549,553,555,561,563
+src/daemon/DaemonCore.ts
+  b7b3a7d96ed0ae0d 54,262-265,269,271-272,282,287-297,301-303,306,309-310,312-313,317-318,321-322,331,335-337
+src/types.ts
+  b7b3a7d96ed0ae0d 14-25,116
+src/components/TabBar.tsx
+  b7b3a7d96ed0ae0d 8-13,17,21-22,36-37,41,45-46,128-165
+src/daemon/protocol.ts
+  b7b3a7d96ed0ae0d 13
+src/components/Sidebar.tsx
+  b7b3a7d96ed0ae0d 270-272
+src/main/AppStateStore.ts
+  b7b3a7d96ed0ae0d 4,6,84-101
+src/daemon/daemon.ts
+  b7b3a7d96ed0ae0d 190-191,193,197,199-202,204-205,209-210
+src/env.d.ts
+  b7b3a7d96ed0ae0d 11,78-79,148,150-155
+src/App.tsx
+  cd3626568a2145e4 1289,1329
+  b7b3a7d96ed0ae0d 13,21-22,53-69,115-121,151-161,377-413,419-421,447-448,452,470,473-474,481-488,729-731,748-750,757-763,938-962,1046,1050-1071,1195,1199-1200,1285-1288,1290,1305-1306,1310-1328,1331-1335
+src/preload.ts
+  b7b3a7d96ed0ae0d 7,88-90,205-206,209-220,222-223
+src/components/PlanningPanel.tsx
+  cd3626568a2145e4 22
+  b7b3a7d96ed0ae0d 7,11,16-21,23-25,48-52,57-62,74-80,92,97-101,103,109,117-118,122,128,152,171-172,196-198,209,214-218,231-232,234,238,240-241,264,268,319-382,400-407,411,413-415,419-425,428,430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f07716eba5ca482da96d975a2eceeb8a2c74b732",
+  "prompts": {
+    "b7b3a7d96ed0ae0d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fb7cf455-1856-4c4d-ba55-2025e444ce0a",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 599,
+      "total_deletions": 182,
+      "accepted_lines": 584,
+      "overriden_lines": 0
+    },
+    "cd3626568a2145e4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d07a2cd9-5d02-4141-b574-a1b8cef28495",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
