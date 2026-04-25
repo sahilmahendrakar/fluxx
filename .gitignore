@@ -90,6 +90,9 @@ typings/
 # Vite
 .vite/
 
+# Secondary Flux dev instance (`pnpm run start:aux`) — isolated daemon + profile
+.flux-test-userdata/
+
 # Electron-Forge
 out/
 
