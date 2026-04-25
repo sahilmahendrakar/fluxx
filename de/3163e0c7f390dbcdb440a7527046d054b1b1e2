@@ -1,0 +1,35 @@
+src/main/ProjectStore.ts
+  894250735b061565 26,49,110,284-310,372
+src/main.ts
+  894250735b061565 491-508,677,784-886,917-920
+src/main/McpServer.ts
+  894250735b061565 40-46,157,168,185
+src/types.ts
+  894250735b061565 35-36
+src/preload.ts
+  894250735b061565 64-69
+src/env.d.ts
+  894250735b061565 70-73
+src/components/ProjectSettingsView.tsx
+  894250735b061565 99-102,123-163,174-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "de3163e0c7f390dbcdb440a7527046d054b1b1e2",
+  "prompts": {
+    "894250735b061565": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c3915e14-77c3-409c-bffc-f8de5cc51e34",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 259,
+      "total_deletions": 5,
+      "accepted_lines": 259,
+      "overriden_lines": 0
+    }
+  }
+}
