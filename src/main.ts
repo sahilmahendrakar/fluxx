@@ -33,9 +33,14 @@ import type {
   PlanningSession,
   Project,
   RepoConfig,
-  Session,
+  SessionStartResult,
   Task,
 } from './types';
+import {
+  getTaskBlockedStartInfo,
+  isTaskBlocked,
+  validateBlockedByTaskIds,
+} from './taskDependencies';
 
 function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
@@ -663,13 +668,19 @@ app.whenReady().then(async () => {
     return taskStore.getAll(project.id);
   });
 
-  ipcMain.handle('tasks:create', async (_e, input: { title: string; agent: Agent }) => {
-    const project = projectStore.get();
-    if (!project) {
-      throw new Error('No local project open');
-    }
-    return taskStore.create({ ...input, projectId: project.id });
-  });
+  ipcMain.handle(
+    'tasks:create',
+    async (
+      _e,
+      input: { title: string; agent: Agent; blockedByTaskIds?: string[] },
+    ) => {
+      const project = projectStore.get();
+      if (!project) {
+        throw new Error('No local project open');
+      }
+      return taskStore.create({ ...input, projectId: project.id });
+    },
+  );
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
     updateTaskWithTransitionHandling(id, patch, 'ipc:tasks:update'),
   );
@@ -712,11 +723,42 @@ app.whenReady().then(async () => {
 
   async function startSessionForTask(
     task: Task,
-  ): Promise<
-    | Session
-    | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string }
-  > {
+    projectTasks?: Task[],
+  ): Promise<SessionStartResult> {
     const project = await resolveProjectForStart();
+
+    const fromStore = taskStore.getAll(project.id);
+    const passedOk =
+      Array.isArray(projectTasks) &&
+      projectTasks.length > 0 &&
+      projectTasks.every((t) => t.projectId === project.id) &&
+      projectTasks.some((t) => t.id === task.id);
+    const allProjectTasks = passedOk ? projectTasks : fromStore;
+    if (
+      allProjectTasks.length === 0 &&
+      (task.blockedByTaskIds?.length ?? 0) > 0
+    ) {
+      return {
+        error: 'TASK_BLOCKED',
+        message:
+          'This task has dependencies but the task list is unavailable. Return to the board and try again.',
+        blockerIds: task.blockedByTaskIds ?? [],
+        blockers: [],
+      };
+    }
+    const merged = allProjectTasks.find((t) => t.id === task.id) ?? task;
+    if (isTaskBlocked(merged, allProjectTasks)) {
+      const info = getTaskBlockedStartInfo(merged, allProjectTasks);
+      const titles = info.blockers.map((b) => b.title).join(', ');
+      return {
+        error: 'TASK_BLOCKED',
+        message: titles
+          ? `Complete blocking task(s) first: ${titles}`
+          : 'Complete blocking task(s) before starting a session.',
+        blockerIds: info.blockerIds,
+        blockers: info.blockers,
+      };
+    }
 
     // Dedup against the daemon's live registry.
     const existing = (await daemonClient.listSessions()).find(
@@ -789,6 +831,7 @@ app.whenReady().then(async () => {
       | 'description'
       | 'orderKey'
       | 'workspaceCleanedAt'
+      | 'blockedByTaskIds'
     >
   >;
 
@@ -814,8 +857,19 @@ app.whenReady().then(async () => {
     }
     if (!enabled) return;
 
+    const project = projectStore.get();
+    if (!project) return;
+    const columnTasks = taskStore.getAll(project.id);
+    if (isTaskBlocked(updated, columnTasks)) {
+      console.warn('[task:auto-start] skipped — task has incomplete blockers', {
+        source,
+        taskId: updated.id,
+      });
+      return;
+    }
+
     try {
-      const started = await startSessionForTask(updated);
+      const started = await startSessionForTask(updated, columnTasks);
       if ('error' in started) {
         console.error('[task:auto-start] session start failed', {
           source,
@@ -846,7 +900,16 @@ app.whenReady().then(async () => {
     if (!previous) {
       throw new Error(`Task not found: ${id}`);
     }
-    const updated = await taskStore.update(id, patch);
+    let patchToApply = patch;
+    if (patch.blockedByTaskIds !== undefined) {
+      const all = taskStore.getAll(project.id);
+      const v = validateBlockedByTaskIds(id, patch.blockedByTaskIds, all, false);
+      if (!v.ok) {
+        throw new Error(v.message);
+      }
+      patchToApply = { ...patch, blockedByTaskIds: v.normalized };
+    }
+    const updated = await taskStore.update(id, patchToApply);
     await maybeAutoStartSessionOnInProgressTransition(previous, updated, source);
     return updated;
   }
@@ -860,9 +923,15 @@ app.whenReady().then(async () => {
     if (!existing) {
       throw new Error(`Task not found: ${id}`);
     }
+    const columnTasks = taskStore.getAll(project.id);
+    if (isTaskBlocked(existing, columnTasks)) {
+      throw new Error(
+        'Task is blocked by incomplete dependencies. Finish blocking tasks first.',
+      );
+    }
     const updated = await taskStore.update(id, { status: 'in-progress' });
     try {
-      const started = await startSessionForTask(updated);
+      const started = await startSessionForTask(updated, columnTasks);
       if ('error' in started) {
         console.error('[task:start] session start failed', {
           source,
@@ -881,7 +950,9 @@ app.whenReady().then(async () => {
     return updated;
   }
 
-  ipcMain.handle('session:start', async (_e, task: Task) => startSessionForTask(task));
+  ipcMain.handle('session:start', async (_e, task: Task, projectTasks?: Task[]) =>
+    startSessionForTask(task, projectTasks),
+  );
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
     await daemonClient.closeShellsForSession(sessionId);

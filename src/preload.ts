@@ -7,13 +7,10 @@ import type {
   ProjectTabState,
   RepoConfig,
   Session,
+  SessionStartResult,
   Shell,
   Task,
 } from './types';
-
-type SessionStartResult =
-  | Session
-  | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -123,7 +120,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   tasks: {
     getAll: () => ipcRenderer.invoke('tasks:getAll') as Promise<Task[]>,
-    create: (input: { title: string; agent: Agent }) =>
+    create: (input: { title: string; agent: Agent; blockedByTaskIds?: string[] }) =>
       ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -138,6 +135,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'description'
           | 'orderKey'
           | 'workspaceCleanedAt'
+          | 'blockedByTaskIds'
         >
       >,
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
@@ -152,8 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   sessions: {
-    start: (task: Task) =>
-      ipcRenderer.invoke('session:start', task) as Promise<SessionStartResult>,
+    start: (task: Task, projectTasks?: Task[]) =>
+      ipcRenderer.invoke('session:start', task, projectTasks) as Promise<SessionStartResult>,
     archive: (sessionId: string) =>
       ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
     deleteWorkspace: (sessionId: string) =>

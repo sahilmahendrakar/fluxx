@@ -19,12 +19,20 @@ import {
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
 } from '../types';
+import {
+  getBlockingTasks,
+  isTaskBlocked,
+  validateBlockedByTaskIds,
+} from '../taskDependencies';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 interface TaskDetailPanelProps {
   task: Task | null;
+  /** Full board snapshot for dependencies and session start (same `projectId`). */
+  projectTasks: Task[];
+  onSelectTask: (id: string) => void;
   onClose: () => void;
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
@@ -94,6 +102,8 @@ function useAutosizeTextArea(value: string, minHeightPx = 0) {
 
 export default function TaskDetailPanel({
   task,
+  projectTasks,
+  onSelectTask,
   onClose,
   onUpdate,
   onDelete,
@@ -108,6 +118,8 @@ export default function TaskDetailPanel({
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [dependencyError, setDependencyError] = useState<string | null>(null);
+  const [depSearch, setDepSearch] = useState('');
   const terminalRef = useRef<TerminalHandle | null>(null);
 
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
@@ -115,6 +127,8 @@ export default function TaskDetailPanel({
 
   useEffect(() => {
     setAgentSettingsOpen(false);
+    setDependencyError(null);
+    setDepSearch('');
   }, [task?.id]);
 
   useEffect(() => {
@@ -303,12 +317,20 @@ export default function TaskDetailPanel({
 
   const handleStartSession = async () => {
     if (!task) return;
+    if (isTaskBlocked(task, projectTasks)) {
+      setSessionError('Finish blocking tasks before starting a session.');
+      return;
+    }
     setSessionLoading(true);
     setSessionError(null);
     try {
-      const result = await window.electronAPI.sessions.start(task);
+      const result = await window.electronAPI.sessions.start(task, projectTasks);
       if ('error' in result) {
-        setSessionError(result.message ?? result.error);
+        if (result.error === 'TASK_BLOCKED') {
+          setSessionError(result.message ?? 'This task is blocked by incomplete work.');
+        } else {
+          setSessionError(result.message ?? result.error);
+        }
         return;
       }
       setSession(result);
@@ -358,6 +380,36 @@ export default function TaskDetailPanel({
 
   const statusLabel = COLUMNS.find((c) => c.id === task.status)?.label ?? task.status;
   const sessionRunning = session?.status === 'running';
+  const blocked = isTaskBlocked(task, projectTasks);
+  const blockingTasks = getBlockingTasks(task, projectTasks);
+  const taskById = new Map(projectTasks.map((t) => [t.id, t]));
+  const staleMissingIds = (task.blockedByTaskIds ?? []).filter((id) => !taskById.has(id));
+  const depQueryLower = depSearch.trim().toLowerCase();
+  const pickCandidates = projectTasks.filter(
+    (t) =>
+      t.id !== task.id &&
+      !(task.blockedByTaskIds ?? []).includes(t.id) &&
+      (depQueryLower === '' || t.title.toLowerCase().includes(depQueryLower)),
+  );
+
+  const addBlocker = (blockerId: string) => {
+    const next = [...(task.blockedByTaskIds ?? []), blockerId];
+    const v = validateBlockedByTaskIds(task.id, next, projectTasks, false);
+    if (!v.ok) {
+      setDependencyError(v.message);
+      return;
+    }
+    setDependencyError(null);
+    onUpdate(task.id, { blockedByTaskIds: v.normalized });
+    setDepSearch('');
+  };
+
+  const removeBlocker = (blockerId: string) => {
+    onUpdate(task.id, {
+      blockedByTaskIds: (task.blockedByTaskIds ?? []).filter((id) => id !== blockerId),
+    });
+    setDependencyError(null);
+  };
 
   const startButtonLabel = sessionLoading ? 'Starting…' : sessionError ? 'Retry' : 'Start session';
   const startButtonClass = sessionError
@@ -408,10 +460,15 @@ export default function TaskDetailPanel({
                   <button
                     type="button"
                     onClick={handleStartSession}
-                    disabled={sessionLoading}
-                    className={startButtonClass}
+                    disabled={sessionLoading || blocked}
+                    title={blocked ? 'Blocked by incomplete dependencies' : undefined}
+                    className={
+                      blocked
+                        ? 'cursor-not-allowed rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-[12px] font-medium text-zinc-600'
+                        : startButtonClass
+                    }
                   >
-                    {startButtonLabel}
+                    {blocked ? 'Blocked' : startButtonLabel}
                   </button>
                 ) : null}
                 <button
@@ -608,6 +665,121 @@ export default function TaskDetailPanel({
                 className="min-h-[120px] w-full resize-none rounded-md border border-white/[0.08] bg-[#09090b] p-3 text-[13px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
               />
             </div>
+
+            {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (
+              <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-relaxed text-amber-100/90">
+                {blockingTasks.length > 0 ? (
+                  <>
+                    <span className="font-medium">Blocked</span>
+                    <span className="text-amber-200/85">
+                      {' '}
+                      — finish {blockingTasks.length === 1 ? 'this task' : 'these tasks'} first:{' '}
+                      {blockingTasks.map((b) => b.title || '(Untitled)').join(', ')}
+                    </span>
+                  </>
+                ) : null}
+                {staleMissingIds.length > 0 ? (
+                  <span
+                    className={`block text-[11px] text-amber-200/70 ${blockingTasks.length > 0 ? 'mt-1' : ''}`}
+                  >
+                    {staleMissingIds.length} missing reference
+                    {staleMissingIds.length === 1 ? '' : 's'} on the board (remove below).
+                  </span>
+                ) : null}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+                Dependencies
+              </span>
+              <p className="text-[11px] leading-relaxed text-zinc-600">
+                This task stays blocked until every listed dependency is marked done (missing ids are
+                ignored for blocking).
+              </p>
+              {(task.blockedByTaskIds ?? []).length === 0 ? (
+                <p className="text-[12px] text-zinc-500">No dependencies yet.</p>
+              ) : (
+                <ul className="flex flex-col gap-1.5">
+                  {(task.blockedByTaskIds ?? []).map((bid) => {
+                    const other = taskById.get(bid);
+                    if (other) {
+                      const stLabel = COLUMNS.find((c) => c.id === other.status)?.label ?? other.status;
+                      return (
+                        <li
+                          key={bid}
+                          className="flex items-center justify-between gap-2 rounded-md border border-white/[0.06] bg-[#09090b] px-2 py-1.5"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onSelectTask(bid)}
+                            className="min-w-0 flex-1 truncate text-left text-[12px] text-zinc-200 transition hover:text-white"
+                          >
+                            <span className="font-medium">{other.title || '(Untitled)'}</span>
+                            <span className="ml-2 text-zinc-500">· {stLabel}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeBlocker(bid)}
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      );
+                    }
+                    return (
+                      <li
+                        key={bid}
+                        className="flex items-center justify-between gap-2 rounded-md border border-white/[0.06] bg-[#09090b] px-2 py-1.5"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-500">
+                          Missing task <code className="text-zinc-400">{bid}</code>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeBlocker(bid)}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <input
+                type="search"
+                value={depSearch}
+                onChange={(e) => setDepSearch(e.target.value)}
+                placeholder="Search tasks to add…"
+                className="w-full rounded-md border border-white/[0.08] bg-[#09090b] px-2 py-1.5 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:border-white/[0.14]"
+              />
+              {dependencyError ? (
+                <p className="text-[11px] text-red-300/90">{dependencyError}</p>
+              ) : null}
+              {pickCandidates.length > 0 ? (
+                <ul className="max-h-40 overflow-y-auto rounded-md border border-white/[0.06] bg-[#09090b] py-1">
+                  {pickCandidates.slice(0, 50).map((t) => {
+                    const stLabel = COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
+                    return (
+                      <li key={t.id}>
+                        <button
+                          type="button"
+                          onClick={() => addBlocker(t.id)}
+                          className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-white/[0.04]"
+                        >
+                          <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
+                          <span className="shrink-0 text-[11px] text-zinc-500">{stLabel}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : depSearch.trim() ? (
+                <p className="text-[11px] text-zinc-600">No matching tasks.</p>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex min-h-[200px] flex-1 flex-col border-t border-white/[0.06]">
@@ -636,6 +808,11 @@ export default function TaskDetailPanel({
               ) : null}
             </div>
             <div className="min-h-0 flex-1 px-2 pb-2">
+              {blocked && !sessionRunning && !session ? (
+                <div className="mb-2 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-100/90">
+                  Session start is disabled until blocking tasks are done.
+                </div>
+              ) : null}
               {remoteRunner && !session ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[13px] leading-relaxed text-zinc-500">
                   <div className="flex items-center gap-2 text-zinc-300">

@@ -3,8 +3,14 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Task } from '../types';
+import { validateBlockedByTaskIds } from '../taskDependencies';
 
-type TaskInput = { title: string; agent: Agent; projectId: string };
+type TaskInput = {
+  title: string;
+  agent: Agent;
+  projectId: string;
+  blockedByTaskIds?: string[];
+};
 
 function errnoCode(err: unknown): string | undefined {
   return err && typeof err === 'object' && 'code' in err
@@ -134,6 +140,18 @@ export class TaskStore {
       createdAt: new Date().toISOString(),
       projectId: input.projectId,
     };
+    if (input.blockedByTaskIds != null && input.blockedByTaskIds.length > 0) {
+      const v = validateBlockedByTaskIds(
+        task.id,
+        input.blockedByTaskIds,
+        [...this.tasks, task],
+        false,
+      );
+      if (!v.ok) {
+        throw new Error(v.message);
+      }
+      task.blockedByTaskIds = v.normalized;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -152,6 +170,7 @@ export class TaskStore {
         | 'description'
         | 'orderKey'
         | 'workspaceCleanedAt'
+        | 'blockedByTaskIds'
       >
     >,
   ): Promise<Task> {
@@ -180,7 +199,10 @@ export class TaskStore {
     if (next.length === this.tasks.length) {
       return;
     }
-    this.tasks = next;
+    this.tasks = next.map((t) => ({
+      ...t,
+      blockedByTaskIds: (t.blockedByTaskIds ?? []).filter((bid) => bid !== id),
+    }));
     await this.save();
   }
 

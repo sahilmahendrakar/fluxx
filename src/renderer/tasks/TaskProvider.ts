@@ -11,6 +11,7 @@ export type TaskPatch = Partial<
     | 'description'
     | 'orderKey'
     | 'workspaceCleanedAt'
+    | 'blockedByTaskIds'
   >
 > & { workspaceCleanedAt?: string | null };
 
@@ -19,6 +20,7 @@ export type TaskCreateInput = {
   agent: Agent;
   status?: TaskStatus;
   orderKey?: string;
+  blockedByTaskIds?: string[];
 };
 
 /**

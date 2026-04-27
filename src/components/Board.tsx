@@ -6,6 +6,7 @@ import NewTaskModal from './NewTaskModal';
 
 interface Props {
   tasks: Task[];
+  allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
   onCreateTask: (title: string, agent: Agent) => void;
   onDeleteTask: (id: string) => void;
@@ -18,6 +19,7 @@ interface Props {
 
 export default function Board({
   tasks,
+  allTasks,
   onDragEnd,
   onCreateTask,
   onDeleteTask,
@@ -71,6 +73,7 @@ export default function Board({
             id={col.id}
             label={col.label}
             tasks={tasksByStatus[col.id]}
+            allTasks={allTasks}
             onNewTask={col.id === 'backlog' ? () => setModalOpen(true) : undefined}
             onDeleteTask={onDeleteTask}
             onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}

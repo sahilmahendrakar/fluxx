@@ -7,6 +7,7 @@ interface Props {
   id: TaskStatus;
   label: string;
   tasks: Task[];
+  allTasks: Task[];
   onNewTask?: () => void;
   onDeleteTask: (id: string) => void;
   onRequestCleanupTask?: (id: string) => void;
@@ -19,6 +20,7 @@ export default function Column({
   id,
   label,
   tasks,
+  allTasks,
   onNewTask,
   onDeleteTask,
   onRequestCleanupTask,
@@ -79,6 +81,7 @@ export default function Column({
               <TaskCard
                 key={task.id}
                 task={task}
+                allTasks={allTasks}
                 index={index}
                 onDelete={onDeleteTask}
                 onRequestCleanupTask={onRequestCleanupTask}

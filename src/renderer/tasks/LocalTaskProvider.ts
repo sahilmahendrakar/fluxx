@@ -55,6 +55,7 @@ export class LocalTaskProvider implements TaskProvider {
     const task = await window.electronAPI.tasks.create({
       title: input.title,
       agent: input.agent,
+      ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
     });
     this.tasks = [...this.tasks, task];
     this.emit();

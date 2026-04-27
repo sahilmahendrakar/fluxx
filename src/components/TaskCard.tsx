@@ -2,6 +2,7 @@ import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
 import { Icon } from 'lucide-react';
 import { Task } from '../types';
+import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
 
@@ -14,6 +15,7 @@ const STATUS_DOT: Record<Task['status'], string> = {
 
 interface Props {
   task: Task;
+  allTasks: Task[];
   index: number;
   onDelete: (id: string) => void;
   onRequestCleanupTask?: (id: string) => void;
@@ -23,6 +25,7 @@ interface Props {
 
 export default function TaskCard({
   task,
+  allTasks,
   index,
   onDelete,
   onRequestCleanupTask,
@@ -33,6 +36,8 @@ export default function TaskCard({
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const agentBadgeTitle = modelSummaryForTask(task);
+  const blocked = isTaskBlocked(task, allTasks);
+  const blocksCount = getBlockedTasks(task.id, allTasks).length;
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -80,7 +85,20 @@ export default function TaskCard({
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
                 <AgentBadge agent={task.agent} title={agentBadgeTitle} />
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                  {blocked ? (
+                    <span className="rounded border border-amber-500/25 bg-amber-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200/90">
+                      Blocked
+                    </span>
+                  ) : null}
+                  {blocksCount > 0 ? (
+                    <span
+                      className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
+                      title={`${blocksCount} task(s) depend on this one`}
+                    >
+                      Blocks {blocksCount}
+                    </span>
+                  ) : null}
                   {isDone && onRequestCleanupTask ? (
                     workspaceCleaned ? (
                       <span
