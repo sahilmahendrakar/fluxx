@@ -535,6 +535,9 @@ export default function App() {
       if (patch.workspaceCleanedAt !== undefined) {
         persistable.workspaceCleanedAt = patch.workspaceCleanedAt;
       }
+      if (patch.blockedByTaskIds !== undefined) {
+        persistable.blockedByTaskIds = patch.blockedByTaskIds;
+      }
       if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
@@ -1237,6 +1240,7 @@ export default function App() {
                   <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                     <Board
                       tasks={sortedTasks}
+                      allTasks={sortedTasks}
                       onDragEnd={handleDragEnd}
                       onCreateTask={handleCreateTask}
                       onDeleteTask={handleDeleteTask}
@@ -1251,6 +1255,8 @@ export default function App() {
                     />
                     <TaskDetailPanel
                       task={selectedTask}
+                      projectTasks={tasks}
+                      onSelectTask={(id) => setSelectedTaskId(id)}
                       onClose={() => setSelectedTaskId(null)}
                       onUpdate={handleUpdateTask}
                       onDelete={handleDeleteTask}

@@ -98,9 +98,22 @@ export interface Task {
   updatedAt?: string;
   /** Cloud-only: uid of the user who last updated the task. */
   updatedBy?: string;
+  /** Task ids in the same project that must be `done` before this task is unblocked. */
+  blockedByTaskIds?: string[];
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
+
+export type SessionStartErrorCode = 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED' | 'TASK_BLOCKED';
+
+export type SessionStartResult =
+  | Session
+  | {
+      error: SessionStartErrorCode;
+      message: string;
+      blockerIds?: string[];
+      blockers?: { id: string; title: string }[];
+    };
 
 export interface Session {
   id: string;

@@ -5,6 +5,7 @@ import type {
   LocalProject,
   RepoConfig,
   Session,
+  SessionStartResult,
   Shell,
   PlanningSession,
   ActiveProjectKey,
@@ -17,10 +18,6 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_PROJECT_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
 }
-
-type SessionStartResult =
-  | Session
-  | { error: 'AGENT_NOT_FOUND' | 'WORKTREE_FAILED'; message: string };
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -113,17 +110,18 @@ declare global {
               | 'agentModel'
               | 'agentYolo'
               | 'description'
-              | 'orderKey'
-              | 'workspaceCleanedAt'
-            >
-          >,
-        ) => Promise<Task>;
+            | 'orderKey'
+            | 'workspaceCleanedAt'
+            | 'blockedByTaskIds'
+          >
+        >,
+      ) => Promise<Task>;
         delete: (id: string) => Promise<void>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
       };
       sessions: {
-        start: (task: Task) => Promise<SessionStartResult>;
+        start: (task: Task, projectTasks?: Task[]) => Promise<SessionStartResult>;
         archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;

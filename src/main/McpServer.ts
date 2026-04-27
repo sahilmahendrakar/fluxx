@@ -40,7 +40,9 @@ export class McpServer {
     private taskActions: {
       updateTask: (
         id: string,
-        patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'agent'>>,
+        patch: Partial<
+          Pick<Task, 'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds'>
+        >,
       ) => Promise<Task>;
       startTask: (id: string) => Promise<Task>;
     },
@@ -99,6 +101,10 @@ export class McpServer {
           .enum(['claude-code', 'codex', 'cursor'])
           .optional()
           .describe('Agent to use. Defaults to claude-code'),
+        blockedByTaskIds: z
+          .array(z.string())
+          .optional()
+          .describe('Task ids this task is blocked by (must exist and same project)'),
       },
       async (input) => {
         try {
@@ -112,6 +118,7 @@ export class McpServer {
             title: input.title,
             agent,
             projectId: project.id,
+            ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
           });
           if (input.description != null && input.description !== '') {
             task = await this.taskStore.update(task.id, { description: input.description });
@@ -135,6 +142,10 @@ export class McpServer {
           .enum(['backlog', 'in-progress', 'needs-input', 'done'])
           .optional(),
         agent: z.enum(['claude-code', 'codex', 'cursor']).optional(),
+        blockedByTaskIds: z
+          .array(z.string())
+          .optional()
+          .describe('Replace dependency list: task ids this task is blocked by'),
       },
       async (input) => {
         try {
@@ -149,11 +160,14 @@ export class McpServer {
               error: 'Task not found or not part of the current project',
             });
           }
-          const patch: Partial<Pick<Task, 'title' | 'description' | 'status' | 'agent'>> = {};
+          const patch: Partial<
+            Pick<Task, 'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds'>
+          > = {};
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
           if (input.agent !== undefined) patch.agent = input.agent;
+          if (input.blockedByTaskIds !== undefined) patch.blockedByTaskIds = input.blockedByTaskIds;
           const updated = await this.taskActions.updateTask(input.id, patch);
           this.notifyTasksChanged();
           return jsonToolPayload(updated);

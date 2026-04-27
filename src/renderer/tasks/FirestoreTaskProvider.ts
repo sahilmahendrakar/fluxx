@@ -12,6 +12,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import type { Agent, Task, TaskStatus } from '../../types';
+import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { getFirebaseFirestore } from '../firebase';
 import type {
   TaskCreateInput,
@@ -81,6 +82,37 @@ export class FirestoreTaskProvider implements TaskProvider {
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
     };
     const ref = await addDoc(col, data);
+    let normalizedDeps: string[] | undefined;
+    try {
+      if (input.blockedByTaskIds != null && input.blockedByTaskIds.length > 0) {
+        const stub: Task = {
+          id: ref.id,
+          title: input.title,
+          status: data.status,
+          agent: input.agent,
+          createdAt: new Date().toISOString(),
+          projectId: this.projectId,
+        };
+        const v = validateBlockedByTaskIds(
+          ref.id,
+          input.blockedByTaskIds,
+          [...this.tasks, stub],
+          false,
+        );
+        if (!v.ok) {
+          throw new Error(v.message);
+        }
+        normalizedDeps = v.normalized;
+        await updateDoc(ref, {
+          blockedByTaskIds: normalizedDeps,
+          updatedAt: serverTimestamp(),
+          updatedBy: this.uid,
+        });
+      }
+    } catch (err) {
+      await deleteDoc(ref);
+      throw err;
+    }
     return {
       id: ref.id,
       title: input.title,
@@ -92,6 +124,7 @@ export class FirestoreTaskProvider implements TaskProvider {
       updatedBy: this.uid,
       updatedAt: new Date().toISOString(),
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
+      ...(normalizedDeps ? { blockedByTaskIds: normalizedDeps } : {}),
     };
   }
 
@@ -111,6 +144,13 @@ export class FirestoreTaskProvider implements TaskProvider {
     if (patch.orderKey !== undefined) updates.orderKey = patch.orderKey;
     if (patch.workspaceCleanedAt !== undefined) {
       updates.workspaceCleanedAt = patch.workspaceCleanedAt;
+    }
+    if (patch.blockedByTaskIds !== undefined) {
+      const v = validateBlockedByTaskIds(id, patch.blockedByTaskIds, this.tasks, false);
+      if (!v.ok) {
+        throw new Error(v.message);
+      }
+      updates.blockedByTaskIds = v.normalized;
     }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
@@ -159,7 +199,21 @@ function toTask(
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
     updatedAt: tsToIso(data.updatedAt),
     updatedBy: typeof data.updatedBy === 'string' ? data.updatedBy : undefined,
+    ...parseBlockedByTaskIdsField(data.blockedByTaskIds),
   };
+}
+
+function parseBlockedByTaskIdsField(
+  val: unknown,
+): { blockedByTaskIds: string[] } | Record<string, never> {
+  if (!Array.isArray(val)) {
+    return {};
+  }
+  const ids = val.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  if (ids.length === 0) {
+    return {};
+  }
+  return { blockedByTaskIds: ids };
 }
 
 function tsToIso(ts: unknown): string | undefined {
