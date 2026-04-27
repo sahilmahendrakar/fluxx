@@ -3,7 +3,6 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
-  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -41,9 +40,11 @@ export function subscribeToPendingInvites(
   );
   return onSnapshot(
     q,
-    async (snap) => {
-      const invites = await Promise.all(snap.docs.map(toPendingInvite));
-      cb(invites.filter((i): i is PendingInvite => i !== null));
+    (snap) => {
+      const invites = snap.docs
+        .map(toPendingInvite)
+        .filter((i): i is PendingInvite => i !== null);
+      cb(invites);
     },
     (err) => {
       console.error('[invites] snapshot error', err);
@@ -52,9 +53,9 @@ export function subscribeToPendingInvites(
   );
 }
 
-async function toPendingInvite(
+function toPendingInvite(
   d: QueryDocumentSnapshot<DocumentData>,
-): Promise<PendingInvite | null> {
+): PendingInvite | null {
   // Path: projects/{pid}/invites/{email}
   const parts = d.ref.path.split('/');
   if (parts.length !== 4 || parts[0] !== 'projects' || parts[2] !== 'invites') return null;
@@ -62,21 +63,9 @@ async function toPendingInvite(
   const data = d.data() ?? {};
   const invitedAt =
     data.invitedAt instanceof Timestamp ? data.invitedAt.toDate().toISOString() : '';
-  // Best-effort fetch of the project name. Rules may deny if caller can't
-  // read the project doc until acceptance; swallow errors.
-  let projectName = '';
-  try {
-    const projectSnap = await getDoc(doc(getFirebaseFirestore(), 'projects', projectId));
-    if (projectSnap.exists()) {
-      const pData = projectSnap.data() as { name?: unknown };
-      if (typeof pData.name === 'string') projectName = pData.name;
-    }
-  } catch {
-    // ignore
-  }
   return {
     projectId,
-    projectName,
+    projectName: typeof data.projectName === 'string' ? data.projectName : '',
     invitedBy: typeof data.invitedBy === 'string' ? data.invitedBy : '',
     invitedAt,
     email: typeof data.email === 'string' ? data.email : '',
@@ -109,6 +98,7 @@ export async function sendInvite(
     email: lower,
     invitedBy: invitedByUid,
     invitedAt: serverTimestamp(),
+    projectName: options.projectName,
   });
   const result = await window.electronAPI.email.sendInvite({
     to: lower,

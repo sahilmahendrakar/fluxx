@@ -94,5 +94,23 @@ service cloud.firestore {
             && request.auth.token.email.lower() == email);
       }
     }
+
+    // Collection-group read: lets a signed-in user discover their pending
+    // invites across all projects via collectionGroup('invites'). The query
+    // must filter by the email field; this rule aligns the auth email with
+    // resource.data.email so Firestore's static analysis admits it.
+    match /{path=**}/invites/{email} {
+      allow read: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == resource.data.email;
+    }
+
+    // Collection-group read: lets project members watch realtime runner
+    // presence across all tasks via collectionGroup('runners'). The runner
+    // doc carries projectId; membership is checked against that project.
+    match /{path=**}/runners/{uid} {
+      allow read: if isSignedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.memberIds;
+    }
   }
 }
