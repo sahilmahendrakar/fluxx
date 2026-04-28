@@ -9,7 +9,6 @@ interface SidebarProps {
   activeTabId: string;
   onSelectTab: (tabId: string) => void;
   onOpenSettings: () => void;
-  planPanelOpen: boolean;
   onPlanNavClick: () => void;
   onDocsNavClick: () => void;
   docsSidebarExpanded: boolean;
@@ -223,7 +222,6 @@ export function Sidebar({
   activeTabId,
   onSelectTab,
   onOpenSettings,
-  planPanelOpen,
   onPlanNavClick,
   onDocsNavClick,
   docsSidebarExpanded,
@@ -266,10 +264,7 @@ export function Sidebar({
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
 
-  const planNavActive =
-    activeTabId === 'plan' ||
-    activeTabId.startsWith('plan:') ||
-    (activeTabId === 'board' && planPanelOpen);
+  const planNavActive = activeTabId === 'plan' || activeTabId.startsWith('plan:');
 
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">

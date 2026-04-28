@@ -13,7 +13,6 @@ interface AppShellProps {
   collapsed: boolean;
   onCollapse: () => void;
   onExpand: () => void;
-  planPanelOpen: boolean;
   onPlanNavClick: () => void;
   onDocsNavClick: () => void;
   docsSidebarExpanded: boolean;
@@ -57,7 +56,6 @@ export function AppShell({
   collapsed,
   onCollapse,
   onExpand,
-  planPanelOpen,
   onPlanNavClick,
   onDocsNavClick,
   docsSidebarExpanded,
@@ -80,7 +78,6 @@ export function AppShell({
           activeTabId={activeTabId}
           onSelectTab={onSelectTab}
           onOpenSettings={onOpenSettings}
-          planPanelOpen={planPanelOpen}
           onPlanNavClick={onPlanNavClick}
           onDocsNavClick={onDocsNavClick}
           docsSidebarExpanded={docsSidebarExpanded}

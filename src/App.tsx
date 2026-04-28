@@ -1172,7 +1172,6 @@ export default function App() {
           collapsed={sidebarCollapsed}
           onCollapse={handleCollapseSidebar}
           onExpand={handleExpandSidebar}
-          planPanelOpen={planPanelOpen}
           onPlanNavClick={handlePlanNav}
           onDocsNavClick={handleDocsNav}
           docsSidebarExpanded={docsSidebarExpanded}
