@@ -97,7 +97,7 @@ export function planningSpawnSpec(
           '--mcp-config',
           mcpConfigPath,
           '--append-system-prompt',
-          'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; delete requires explicit user intent and confirm:true). Do not write application code.',
+          'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; create and update accept optional blockedByTaskIds for task dependencies; delete requires explicit user intent and confirm:true). Do not write application code.',
         ],
       };
     case 'codex':
