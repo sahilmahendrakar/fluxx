@@ -127,7 +127,7 @@ const daemon = new DaemonCore(broadcast);
 // RPC
 // ---------------------------------------------------------------------------
 
-function handleRpc(req: RpcRequest): RpcResponse {
+async function handleRpc(req: RpcRequest): Promise<RpcResponse> {
   const id = req.id;
   try {
     switch (req.method) {
@@ -145,7 +145,7 @@ function handleRpc(req: RpcRequest): RpcResponse {
       case 'attachSession':
         return {
           id,
-          result: daemon.attachSession((req.params as { id: string }).id),
+          result: await daemon.attachSession((req.params as { id: string }).id),
         };
       case 'writeSession': {
         const p = req.params as { id: string; data: string };
@@ -171,7 +171,7 @@ function handleRpc(req: RpcRequest): RpcResponse {
       case 'attachShell':
         return {
           id,
-          result: daemon.attachShell((req.params as { id: string }).id),
+          result: await daemon.attachShell((req.params as { id: string }).id),
         };
       case 'writeShell': {
         const p = req.params as { id: string; data: string };
@@ -207,7 +207,7 @@ function handleRpc(req: RpcRequest): RpcResponse {
       case 'attachPlanning':
         return {
           id,
-          result: daemon.attachPlanning((req.params as { id: string }).id),
+          result: await daemon.attachPlanning((req.params as { id: string }).id),
         };
       case 'writePlanning': {
         const p = req.params as { id: string; data: string };
@@ -269,48 +269,56 @@ const rpcServer = net.createServer((socket) => {
   log('rpc client connected');
   sendHello(socket, 'daemon');
   let helloSeen = false;
+  /** Preserve RPC response order when handlers await (e.g. attach snapshots). */
+  let rpcTail: Promise<void> = Promise.resolve();
   bindSocket(
     socket,
     (line) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(line);
-      } catch {
-        log('rpc: bad json, ignoring');
-        return;
-      }
-      if (!helloSeen) {
-        // First frame from main must be a Hello.
-        const hello = parsed as Partial<Hello>;
-        if (
-          hello?.hello !== 'flux-daemon' ||
-          typeof hello.protocolVersion !== 'number'
-        ) {
-          log('rpc: expected hello, closing');
-          socket.end();
-          return;
-        }
-        if (hello.protocolVersion !== PROTOCOL_VERSION) {
-          log(
-            `rpc: protocol mismatch (peer=${hello.protocolVersion}, us=${PROTOCOL_VERSION})`,
-          );
-          socket.end();
-          return;
-        }
-        helloSeen = true;
-        return;
-      }
-      const req = parsed as RpcRequest;
-      if (typeof req?.id !== 'number' || typeof req?.method !== 'string') {
-        log('rpc: malformed request, ignoring');
-        return;
-      }
-      const response = handleRpc(req);
-      try {
-        socket.write(encodeLine(response));
-      } catch (err) {
-        log('rpc write failed', err);
-      }
+      rpcTail = rpcTail
+        .then(async () => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(line);
+          } catch {
+            log('rpc: bad json, ignoring');
+            return;
+          }
+          if (!helloSeen) {
+            // First frame from main must be a Hello.
+            const hello = parsed as Partial<Hello>;
+            if (
+              hello?.hello !== 'flux-daemon' ||
+              typeof hello.protocolVersion !== 'number'
+            ) {
+              log('rpc: expected hello, closing');
+              socket.end();
+              return;
+            }
+            if (hello.protocolVersion !== PROTOCOL_VERSION) {
+              log(
+                `rpc: protocol mismatch (peer=${hello.protocolVersion}, us=${PROTOCOL_VERSION})`,
+              );
+              socket.end();
+              return;
+            }
+            helloSeen = true;
+            return;
+          }
+          const req = parsed as RpcRequest;
+          if (typeof req?.id !== 'number' || typeof req?.method !== 'string') {
+            log('rpc: malformed request, ignoring');
+            return;
+          }
+          const response = await handleRpc(req);
+          try {
+            socket.write(encodeLine(response));
+          } catch (err) {
+            log('rpc write failed', err);
+          }
+        })
+        .catch((err) => {
+          log('rpc line handler failed', err instanceof Error ? err.message : err);
+        });
     },
     () => {
       log('rpc client disconnected');

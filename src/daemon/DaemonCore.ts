@@ -122,7 +122,7 @@ export class DaemonCore {
     return [...this.sessions.values()].map((e) => ({ ...e.session }));
   }
 
-  attachSession(id: string): AttachResult | null {
+  async attachSession(id: string): Promise<AttachResult | null> {
     const entry = this.sessions.get(id);
     if (!entry) return null;
     return entry.runtime.snapshot();
@@ -199,7 +199,7 @@ export class DaemonCore {
     return sessionId ? all.filter((s) => s.sessionId === sessionId) : all;
   }
 
-  attachShell(id: string): AttachResult | null {
+  async attachShell(id: string): Promise<AttachResult | null> {
     const entry = this.shells.get(id);
     if (!entry) return null;
     return entry.runtime.snapshot();
@@ -305,11 +305,12 @@ export class DaemonCore {
     return entry ? { ...entry.session } : null;
   }
 
-  attachPlanning(id: string): PlanningAttachResult | null {
+  async attachPlanning(id: string): Promise<PlanningAttachResult | null> {
     const entry = this.planning.get(id);
     if (!entry) return null;
+    const snap = await entry.runtime.snapshot();
     return {
-      ...entry.runtime.snapshot(),
+      ...snap,
       session: { ...entry.session },
     };
   }

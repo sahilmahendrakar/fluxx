@@ -1,9 +1,12 @@
 import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
-import type { AttachResult } from './protocol';
+import type { AttachResult, TerminalSnapshot } from './protocol';
+import { buildRehydrateSequences, captureSerializedSnapshot } from './terminalSnapshot';
 
 const DEFAULT_REPLAY_BYTES = 256 * 1024;
+const HEADLESS_SCROLLBACK = 5000;
 
 export interface SessionRuntimeSpawnSpec {
   command: string;
@@ -34,6 +37,9 @@ export interface SessionRuntimeCallbacks {
 export class SessionRuntime {
   readonly pty: IPty;
   readonly headless: HeadlessTerminal;
+  private readonly serializeAddon: SerializeAddon;
+  /** Serializes concurrent `snapshot()` calls so flush + serialize stay ordered. */
+  private snapshotChain: Promise<void> = Promise.resolve();
   private replay: string[] = [];
   private replayBytes = 0;
   private readonly replayCapBytes: number;
@@ -64,9 +70,11 @@ export class SessionRuntime {
     this.headless = new HeadlessTerminal({
       cols: spec.cols,
       rows: spec.rows,
-      scrollback: 5000,
+      scrollback: HEADLESS_SCROLLBACK,
       allowProposedApi: true,
     });
+    this.serializeAddon = new SerializeAddon();
+    this.headless.loadAddon(this.serializeAddon);
 
     this.pty.onData((chunk) => {
       this.appendReplay(chunk);
@@ -94,13 +102,42 @@ export class SessionRuntime {
     }
   }
 
-  /** Attach payload: replay buffer today; optional `snapshot` added in SessionRuntime later. */
-  snapshot(): AttachResult {
-    return {
-      replay: this.replay.join(''),
-      cols: this.cols,
-      rows: this.rows,
+  /**
+   * Waits for pending headless parser work, then returns legacy `replay` plus
+   * a serialized xterm snapshot for warm reattach.
+   */
+  snapshot(): Promise<AttachResult> {
+    const run = async (): Promise<AttachResult> => {
+      await this.flushHeadlessWrites();
+      const { snapshotAnsi, modes } = captureSerializedSnapshot(
+        this.headless,
+        this.serializeAddon,
+        HEADLESS_SCROLLBACK,
+      );
+      const snapshot: TerminalSnapshot = {
+        snapshotAnsi,
+        rehydrateSequences: buildRehydrateSequences(modes),
+        modes,
+        cols: this.cols,
+        rows: this.rows,
+      };
+      return {
+        replay: this.replay.join(''),
+        cols: this.cols,
+        rows: this.rows,
+        snapshot,
+      };
     };
+    const next = this.snapshotChain.then(run);
+    this.snapshotChain = next.then(() => undefined).catch(() => undefined);
+    return next;
+  }
+
+  /** Ensures all bytes fed into the headless terminal have been parsed. */
+  private flushHeadlessWrites(): Promise<void> {
+    return new Promise((resolve) => {
+      this.headless.write('', () => resolve());
+    });
   }
 
   write(data: string): void {
