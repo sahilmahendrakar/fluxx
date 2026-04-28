@@ -99,3 +99,6 @@ out/
 dist/
 
 .superset/
+
+# Firebase CLI deploy cache
+.firebase/
