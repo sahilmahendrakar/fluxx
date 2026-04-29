@@ -24,6 +24,8 @@ export interface TerminalProps {
 export interface TerminalHandle {
   write: (data: string, callback?: () => void) => void;
   focus: () => void;
+  fit: () => void;
+  scrollToBottom: () => void;
   /**
    * Resize the xterm grid to the captured warm-attach geometry before writing
    * `snapshotAnsi` / `replay` so line wrapping/cursor layout match. Does not
@@ -46,6 +48,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
+  const scheduleFitRef = useRef<((afterFit?: () => void) => void) | null>(
+    null,
+  );
   const onDataRef = useRef(onData);
   const onResizeRef = useRef(onResize);
   onDataRef.current = onData;
@@ -62,6 +67,19 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     },
     focus: () => {
       termRef.current?.focus();
+    },
+    fit: () => {
+      scheduleFitRef.current?.(() => {
+        const t = termRef.current;
+        if (!t) return;
+        if (t.rows > 0) {
+          t.refresh(0, t.rows - 1);
+        }
+        t.scrollToBottom();
+      });
+    },
+    scrollToBottom: () => {
+      termRef.current?.scrollToBottom();
     },
     setSnapshotGeometry: (cols: number, rows: number) => {
       const t = termRef.current;
@@ -130,13 +148,17 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }
     };
 
-    const scheduleResizeFit = () => {
+    const scheduleResizeFit = (afterFit?: () => void) => {
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0;
         doFit();
+        if (!cancelled) {
+          afterFit?.();
+        }
       });
     };
+    scheduleFitRef.current = scheduleResizeFit;
 
     // xterm measures the rendered font to compute cols/rows. If the
     // configured fonts ("JetBrains Mono" etc.) haven't loaded yet the
@@ -160,6 +182,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
           if (term.rows > 0) {
             term.refresh(0, term.rows - 1);
           }
+          term.scrollToBottom();
           // Focus here too so a remount (e.g. sessionId change) that doesn't
           // flip the `visible` prop still picks up keystrokes immediately.
           term.focus();
@@ -184,6 +207,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       cancelled = true;
       window.removeEventListener('resize', onWindowResize);
       if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      scheduleFitRef.current = null;
       ro.disconnect();
       d1.dispose();
       d2.dispose();
@@ -204,11 +228,19 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     prevVisibleRef.current = visible;
     if (!term) return;
     if (!visible || wasVisible) return;
-    if (term.rows > 0) {
-      term.refresh(0, term.rows - 1);
+    const afterFit = () => {
+      if (term.rows > 0) {
+        term.refresh(0, term.rows - 1);
+      }
+      term.scrollToBottom();
+      term.focus();
+    };
+    const scheduleFit = scheduleFitRef.current;
+    if (scheduleFit) {
+      scheduleFit(afterFit);
+    } else {
+      afterFit();
     }
-    term.scrollToBottom();
-    term.focus();
   }, [visible]);
 
   if (!sessionId) {

@@ -95,6 +95,12 @@ export function invalidatePlanningAttachCache(id: string): void {
   planningAttachInflight.delete(id);
 }
 
+interface ApplyAttachOptions {
+  applyGeometry?: boolean;
+  useSnapshot?: boolean;
+  scrollToBottom?: boolean;
+}
+
 /**
  * Restores a warm-attach payload into a fresh xterm.
  * When `result.snapshot` is set (daemon v3+), use serialized state only; do
@@ -110,28 +116,41 @@ export function applyAttachResultToTerminal(
   terminal: TerminalHandle | null,
   result: AttachResult | null | undefined,
   onComplete: () => void,
+  options: ApplyAttachOptions = {},
 ): void {
   if (!terminal) {
     onComplete();
     return;
   }
 
+  const {
+    applyGeometry = true,
+    useSnapshot = true,
+    scrollToBottom = true,
+  } = options;
+  const complete = () => {
+    if (scrollToBottom) {
+      terminal.scrollToBottom();
+    }
+    onComplete();
+  };
+
   const setGeom = (cols: number, rows: number) => {
-    if (cols > 0 && rows > 0) {
+    if (applyGeometry && cols > 0 && rows > 0) {
       terminal.setSnapshotGeometry(cols, rows);
     }
   };
 
   const snap = result?.snapshot;
-  if (snap) {
+  if (snap && useSnapshot) {
     setGeom(snap.cols, snap.rows);
     const a = snap.snapshotAnsi ?? '';
     const b = snap.rehydrateSequences ?? '';
     const afterFirst = () => {
       if (b.length > 0) {
-        terminal.write(b, onComplete);
+        terminal.write(b, complete);
       } else {
-        onComplete();
+        complete();
       }
     };
     if (a.length > 0) {
@@ -147,8 +166,8 @@ export function applyAttachResultToTerminal(
   }
   const replay = result?.replay ?? '';
   if (replay.length > 0) {
-    terminal.write(replay, onComplete);
+    terminal.write(replay, complete);
   } else {
-    onComplete();
+    complete();
   }
 }

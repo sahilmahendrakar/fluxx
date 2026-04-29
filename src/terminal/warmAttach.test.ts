@@ -40,6 +40,8 @@ function mockTerm(): {
       queueMicrotask(() => callback?.());
     },
     focus: () => undefined,
+    fit: () => undefined,
+    scrollToBottom: () => undefined,
     setSnapshotGeometry: (cols, rows) => {
       geom.value = { cols, rows };
     },
@@ -93,6 +95,31 @@ describe('applyAttachResultToTerminal', () => {
     });
     expect(done).toBe(true);
     expect(writes).toEqual([]);
+  });
+
+  it('can replay without applying snapshot geometry', async () => {
+    const { term, writes, getLastGeom } = mockTerm();
+    const result: AttachResult = {
+      replay: 'PANEL_REPLAY',
+      cols: 141,
+      rows: 33,
+      streamSeq: 1,
+      snapshot: {
+        snapshotAnsi: 'FULL_TAB_SCREEN',
+        rehydrateSequences: 'MODES',
+        modes: zeroModes,
+        cols: 141,
+        rows: 33,
+      },
+    };
+    await new Promise<void>((resolve) => {
+      applyAttachResultToTerminal(term, result, resolve, {
+        applyGeometry: false,
+        useSnapshot: false,
+      });
+    });
+    expect(getLastGeom()).toBeNull();
+    expect(writes).toEqual(['PANEL_REPLAY']);
   });
 });
 

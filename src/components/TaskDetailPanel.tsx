@@ -291,6 +291,9 @@ export default function TaskDetailPanel({
         streamReady = true;
         writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
         earlyBuffer.length = 0;
+      }, {
+        applyGeometry: false,
+        useSnapshot: false,
       });
     })();
 
@@ -781,7 +784,7 @@ export default function TaskDetailPanel({
             </div>
           </div>
 
-          <div className="flex min-h-[200px] flex-1 flex-col border-t border-white/[0.06]">
+          <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden border-t border-white/[0.06]">
             <div className="flex items-center justify-between px-4 py-2">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
                 Session
@@ -806,7 +809,7 @@ export default function TaskDetailPanel({
                 </div>
               ) : null}
             </div>
-            <div className="min-h-0 flex-1 px-2 pb-2">
+            <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
               {blocked && !sessionRunning && !session ? (
                 <div className="mb-2 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-100/90">
                   Session start is disabled until blocking tasks are done.

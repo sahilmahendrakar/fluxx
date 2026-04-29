@@ -155,6 +155,7 @@ export function PlanningPanel({
       if (cancelled) return;
       applyAttachResultToTerminal(terminalRef.current, result, () => {
         if (cancelled) return;
+        terminalRef.current?.fit();
         streamReady = true;
         writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
         earlyBuffer.length = 0;
