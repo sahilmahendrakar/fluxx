@@ -90,8 +90,8 @@ export class DaemonCore {
           rows: params.rows,
         },
         {
-          onData: (data) => {
-            this.broadcast({ kind: 'data', target: 'session', id, data });
+          onData: (data, seq) => {
+            this.broadcast({ kind: 'data', target: 'session', id, data, seq });
           },
           onExit: ({ exitCode }) => {
             const entry = this.sessions.get(id);
@@ -169,8 +169,8 @@ export class DaemonCore {
         env: { ...process.env, HOME: process.env.HOME ?? os.homedir() },
       },
       {
-        onData: (data) => {
-          this.broadcast({ kind: 'data', target: 'shell', id, data });
+        onData: (data, seq) => {
+          this.broadcast({ kind: 'data', target: 'shell', id, data, seq });
         },
         onExit: ({ exitCode }) => {
           const entry = this.shells.get(id);
@@ -257,8 +257,8 @@ export class DaemonCore {
           rows: params.rows,
         },
         {
-          onData: (data) => {
-            this.broadcast({ kind: 'data', target: 'planning', id, data });
+          onData: (data, seq) => {
+            this.broadcast({ kind: 'data', target: 'planning', id, data, seq });
           },
           onExit: ({ exitCode }) => {
             const entry = this.planning.get(id);

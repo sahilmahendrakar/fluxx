@@ -10,6 +10,8 @@ import {
   applyAttachResultToTerminal,
   getPlanningAttachShared,
   invalidatePlanningAttachCache,
+  type BufferedStreamChunk,
+  writeBufferedStreamAfterSnapshot,
 } from '../terminal/warmAttach';
 import Terminal, { type TerminalHandle } from './Terminal';
 
@@ -128,27 +130,18 @@ export function PlanningPanel({
     const id = activeSession.id;
 
     let streamReady = false;
-    const earlyBuffer: string[] = [];
+    const earlyBuffer: BufferedStreamChunk[] = [];
     let cancelled = false;
 
-    const unsub = planningApi.onData(id, (data) => {
+    const unsub = planningApi.onData(id, (data, streamSeq) => {
       if (cancelled) return;
       appendOutputAndDetectNeedsInput(data);
       if (!streamReady) {
-        earlyBuffer.push(data);
+        earlyBuffer.push({ data, streamSeq });
       } else {
         terminalRef.current?.write(data);
       }
     });
-
-    const markStreamReady = () => {
-      if (cancelled) return;
-      streamReady = true;
-      if (earlyBuffer.length > 0) {
-        for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
-        earlyBuffer.length = 0;
-      }
-    };
 
     void (async () => {
       const result = await getPlanningAttachShared(id, async () => {
@@ -160,7 +153,12 @@ export function PlanningPanel({
         }
       });
       if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, markStreamReady);
+      applyAttachResultToTerminal(terminalRef.current, result, () => {
+        if (cancelled) return;
+        streamReady = true;
+        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
+        earlyBuffer.length = 0;
+      });
     })();
 
     return () => {

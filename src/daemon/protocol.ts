@@ -23,6 +23,10 @@ import type { Agent, PlanningSession, Session, Shell } from '../types';
  *   Consumers should prefer `snapshot` for warm-reattach when defined; `replay`
  *   remains for transition/debug. The daemon may omit `snapshot` until
  *   `SessionRuntime` emits serialized headless state.
+ * - **v3+ streamSeq** — `data` stream frames may carry a monotonically
+ *   increasing per-PTY `seq` (see `StreamFrame`); `AttachResult.streamSeq` is
+ *   the last seq reflected in a warm snapshot so the renderer can drop
+ *   buffered live chunks already represented by `snapshot` / replay.
  */
 export const PROTOCOL_VERSION = 3;
 
@@ -164,6 +168,14 @@ export interface AttachResult {
   replay: string;
   cols: number;
   rows: number;
+  /**
+   * Highest `seq` of any `data` frame for this PTY that is already reflected
+   * in `snapshot` (or the legacy `replay` join). The renderer must not replay
+   * live chunks with `seq <= streamSeq` after applying the attach. Omitted
+   * when the daemon does not assign stream sequence numbers. `0` when no
+   * output has been emitted yet.
+   */
+  streamSeq?: number;
   snapshot?: TerminalSnapshot;
 }
 
@@ -198,7 +210,14 @@ export type StartPlanningResult =
 export type StreamTarget = 'session' | 'shell' | 'planning';
 
 export type StreamFrame =
-  | { kind: 'data'; target: StreamTarget; id: string; data: string }
+  | {
+      kind: 'data';
+      target: StreamTarget;
+      id: string;
+      data: string;
+      /** Monotonic per PTY (session/shell/planning id) — used with `AttachResult.streamSeq`. */
+      seq?: number;
+    }
   | { kind: 'session-exit'; id: string; session: Session }
   | { kind: 'shell-exit'; id: string; shell: Shell }
   | { kind: 'planning-exit'; id: string; session: PlanningSession };

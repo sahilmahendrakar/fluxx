@@ -82,4 +82,25 @@ describe('terminalSnapshot', () => {
     expect(t.cols).toBe(50);
     expect(t.rows).toBe(8);
   });
+
+  it('serialized line layout differs with terminal width (geometry-sensitive warm restore)', async () => {
+    const longLine = 'A'.repeat(30);
+    const t20 = new HeadlessTerminal({ cols: 20, rows: 5, scrollback: 50, allowProposedApi: true });
+    const s20 = new SerializeAddon();
+    t20.loadAddon(s20);
+    await new Promise<void>((r) => t20.write(`\r${longLine}\r\n`, r));
+    await flush(t20);
+    const a20 = captureSerializedSnapshot(t20, s20, 50).snapshotAnsi;
+    t20.dispose();
+
+    const t40 = new HeadlessTerminal({ cols: 40, rows: 5, scrollback: 50, allowProposedApi: true });
+    const s40 = new SerializeAddon();
+    t40.loadAddon(s40);
+    await new Promise<void>((r) => t40.write(`\r${longLine}\r\n`, r));
+    await flush(t40);
+    const a40 = captureSerializedSnapshot(t40, s40, 50).snapshotAnsi;
+    t40.dispose();
+
+    expect(a20).not.toBe(a40);
+  });
 });

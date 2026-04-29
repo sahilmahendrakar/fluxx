@@ -24,6 +24,12 @@ export interface TerminalProps {
 export interface TerminalHandle {
   write: (data: string, callback?: () => void) => void;
   focus: () => void;
+  /**
+   * Resize the xterm grid to the captured warm-attach geometry before writing
+   * `snapshotAnsi` / `replay` so line wrapping/cursor layout match. Does not
+   * resize the node-pty — parents wire `onResize` only when PTY should track UI.
+   */
+  setSnapshotGeometry: (cols: number, rows: number) => void;
 }
 
 const MIN_CONTAINER_PX = 8;
@@ -56,6 +62,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     },
     focus: () => {
       termRef.current?.focus();
+    },
+    setSnapshotGeometry: (cols: number, rows: number) => {
+      const t = termRef.current;
+      if (!t) return;
+      if (cols <= 0 || rows <= 0) return;
+      try {
+        t.resize(cols, rows);
+      } catch {
+        // ignore
+      }
     },
   }));
 

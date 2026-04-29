@@ -43,6 +43,7 @@ describe('attach wire shape', () => {
       replay: 'x',
       cols: 40,
       rows: 5,
+      streamSeq: 2,
       snapshot,
     };
     const round = jsonRoundTrip(payload);
@@ -50,10 +51,11 @@ describe('attach wire shape', () => {
     expect(round.snapshot).toBeDefined();
     expect(round.snapshot?.snapshotAnsi).toBe('\x1b[2J');
     expect(typeof round.snapshot?.modes.bracketedPaste).toBe('boolean');
+    expect(round.streamSeq).toBe(2);
   });
 
   it('PlanningAttachResult includes session and attach fields', () => {
-    const attach: AttachResult = { replay: '', cols: 80, rows: 24 };
+    const attach: AttachResult = { replay: '', cols: 80, rows: 24, streamSeq: 0 };
     const session: PlanningAttachResult['session'] = {
       id: 'p1',
       projectId: 'proj',

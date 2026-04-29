@@ -18,8 +18,11 @@ export interface SessionRuntimeSpawnSpec {
 }
 
 export interface SessionRuntimeCallbacks {
-  /** Called on every raw PTY chunk. Daemon writes this to the stream socket. */
-  onData: (data: string) => void;
+  /**
+   * Called on every raw PTY chunk. `seq` is monotonic for this runtime;
+   * it pairs with `AttachResult.streamSeq` for warm-attach de-duplication.
+   */
+  onData: (data: string, seq: number) => void;
   /** Called once when the PTY exits. */
   onExit: (info: { exitCode: number; signal?: number }) => void;
 }
@@ -45,6 +48,8 @@ export class SessionRuntime {
   private readonly replayCapBytes: number;
   private exited = false;
   private lastExitCode = 0;
+  /** Monotonic: last seq assigned to a PTY chunk (starts at 0, first chunk is 1). */
+  private lastStreamSeq = 0;
   private cols: number;
   private rows: number;
   private cwd: string;
@@ -79,7 +84,8 @@ export class SessionRuntime {
     this.pty.onData((chunk) => {
       this.appendReplay(chunk);
       this.headless.write(chunk);
-      callbacks.onData(chunk);
+      this.lastStreamSeq += 1;
+      callbacks.onData(chunk, this.lastStreamSeq);
     });
 
     this.pty.onExit(({ exitCode, signal }) => {
@@ -125,6 +131,7 @@ export class SessionRuntime {
         replay: this.replay.join(''),
         cols: this.cols,
         rows: this.rows,
+        streamSeq: this.lastStreamSeq,
         snapshot,
       };
     };

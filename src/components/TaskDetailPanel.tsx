@@ -26,7 +26,12 @@ import {
 } from '../taskDependencies';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
-import { applyAttachResultToTerminal, getSessionAttachShared } from '../terminal/warmAttach';
+import {
+  applyAttachResultToTerminal,
+  getSessionAttachShared,
+  type BufferedStreamChunk,
+  writeBufferedStreamAfterSnapshot,
+} from '../terminal/warmAttach';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 interface TaskDetailPanelProps {
@@ -259,26 +264,17 @@ export default function TaskDetailPanel({
     // snapshot restore so StrictMode does not double-apply or re-replay
     // raw PTY buffers when a serialized snapshot is available.
     let streamReady = false;
-    const earlyBuffer: string[] = [];
+    const earlyBuffer: BufferedStreamChunk[] = [];
     let cancelled = false;
 
-    const unsub = window.electronAPI.sessions.onData(id, (data) => {
+    const unsub = window.electronAPI.sessions.onData(id, (data, streamSeq) => {
       if (cancelled) return;
       if (!streamReady) {
-        earlyBuffer.push(data);
+        earlyBuffer.push({ data, streamSeq });
       } else {
         terminalRef.current?.write(data);
       }
     });
-
-    const markStreamReady = () => {
-      if (cancelled) return;
-      streamReady = true;
-      if (earlyBuffer.length > 0) {
-        for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
-        earlyBuffer.length = 0;
-      }
-    };
 
     void (async () => {
       const result = await getSessionAttachShared(id, async () => {
@@ -290,7 +286,12 @@ export default function TaskDetailPanel({
         }
       });
       if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, markStreamReady);
+      applyAttachResultToTerminal(terminalRef.current, result, () => {
+        if (cancelled) return;
+        streamReady = true;
+        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
+        earlyBuffer.length = 0;
+      });
     })();
 
     return () => {

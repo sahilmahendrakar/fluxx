@@ -163,9 +163,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('session:write', sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.send('session:resize', sessionId, cols, rows),
-    onData: (sessionId: string, cb: (data: string) => void) => {
+    onData: (
+      sessionId: string,
+      cb: (data: string, streamSeq?: number) => void,
+    ) => {
       const channel = `session:data:${sessionId}`;
-      ipcRenderer.on(channel, (_event, data: string) => cb(data));
+      const handler = (
+        _e: unknown,
+        arg: string | { data: string; seq?: number },
+      ) => {
+        if (typeof arg === 'string') cb(arg);
+        else cb(arg.data, arg.seq);
+      };
+      ipcRenderer.on(channel, handler);
       return () => ipcRenderer.removeAllListeners(channel);
     },
     onExit: (cb: (session: Session) => void) => {
@@ -186,9 +196,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('shell:write', shellId, data),
     resize: (shellId: string, cols: number, rows: number) =>
       ipcRenderer.send('shell:resize', shellId, cols, rows),
-    onData: (shellId: string, cb: (data: string) => void) => {
+    onData: (shellId: string, cb: (data: string, streamSeq?: number) => void) => {
       const channel = `shell:data:${shellId}`;
-      ipcRenderer.on(channel, (_event, data: string) => cb(data));
+      const handler = (
+        _e: unknown,
+        arg: string | { data: string; seq?: number },
+      ) => {
+        if (typeof arg === 'string') cb(arg);
+        else cb(arg.data, arg.seq);
+      };
+      ipcRenderer.on(channel, handler);
       return () => ipcRenderer.removeAllListeners(channel);
     },
     onExit: (cb: (shell: Shell) => void) => {
@@ -211,9 +228,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send('planning:write', sessionId, data),
     resize: (sessionId: string, cols: number, rows: number) =>
       ipcRenderer.send('planning:resize', sessionId, cols, rows),
-    onData: (sessionId: string, cb: (data: string) => void) => {
+    onData: (
+      sessionId: string,
+      cb: (data: string, streamSeq?: number) => void,
+    ) => {
       const channel = `planning:data:${sessionId}`;
-      const handler = (_e: IpcRendererEvent, data: string) => cb(data);
+      const handler = (
+        _e: IpcRendererEvent,
+        arg: string | { data: string; seq?: number },
+      ) => {
+        if (typeof arg === 'string') cb(arg);
+        else cb(arg.data, arg.seq);
+      };
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.removeAllListeners(channel);
     },

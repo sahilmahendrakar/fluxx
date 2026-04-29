@@ -76,7 +76,7 @@ function isPidAlive(pid: number): boolean {
  * Main-process client for the Flux daemon. Handles spawning / reconnecting
  * to the detached daemon process, correlation-id RPC, and fanning stream
  * frames back out to every renderer via existing broadcast channels
- * (`session:data:<id>`, `shell:data:<id>`, `planning:data:<id>`).
+ * (`session:data:<id>`, …) with payload `{ data, seq }` for de-duplication.
  */
 export class DaemonClient {
   private rpc: net.Socket | null = null;
@@ -412,12 +412,13 @@ export class DaemonClient {
 
   private dispatchStreamFrame(frame: StreamFrame): void {
     if (frame.kind === 'data') {
+      const payload = { data: frame.data, seq: frame.seq };
       if (frame.target === 'session') {
-        broadcast(`session:data:${frame.id}`, frame.data);
+        broadcast(`session:data:${frame.id}`, payload);
       } else if (frame.target === 'shell') {
-        broadcast(`shell:data:${frame.id}`, frame.data);
+        broadcast(`shell:data:${frame.id}`, payload);
       } else if (frame.target === 'planning') {
-        broadcast(`planning:data:${frame.id}`, frame.data);
+        broadcast(`planning:data:${frame.id}`, payload);
       }
       return;
     }

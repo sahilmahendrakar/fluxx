@@ -5,6 +5,8 @@ import {
   getPlanningAttachShared,
   getSessionAttachShared,
   getShellAttachShared,
+  shouldPlayChunkAfterSnapshot,
+  writeBufferedStreamAfterSnapshot,
 } from './warmAttach';
 import type { TerminalHandle } from '../components/Terminal';
 
@@ -25,25 +27,34 @@ const zeroModes: TerminalModes = {
   bracketedPaste: false,
 };
 
-function mockTerm(): { term: TerminalHandle; writes: string[] } {
+function mockTerm(): {
+  term: TerminalHandle;
+  writes: string[];
+  getLastGeom: () => { cols: number; rows: number } | null;
+} {
   const writes: string[] = [];
+  const geom = { value: null as { cols: number; rows: number } | null };
   const term: TerminalHandle = {
     write: (data: string, callback?: () => void) => {
       writes.push(data);
       queueMicrotask(() => callback?.());
     },
     focus: () => undefined,
+    setSnapshotGeometry: (cols, rows) => {
+      geom.value = { cols, rows };
+    },
   };
-  return { term, writes };
+  return { term, writes, getLastGeom: () => geom.value };
 }
 
 describe('applyAttachResultToTerminal', () => {
   it('writes snapshotAnsi then rehydrateSequences; ignores replay', async () => {
-    const { term, writes } = mockTerm();
+    const { term, writes, getLastGeom } = mockTerm();
     const result: AttachResult = {
       replay: 'REPLAY_DUP',
       cols: 80,
       rows: 24,
+      streamSeq: 1,
       snapshot: {
         snapshotAnsi: 'SCREEN',
         rehydrateSequences: 'MODES',
@@ -55,26 +66,29 @@ describe('applyAttachResultToTerminal', () => {
     await new Promise<void>((resolve) => {
       applyAttachResultToTerminal(term, result, resolve);
     });
+    expect(getLastGeom()).toEqual({ cols: 80, rows: 24 });
     expect(writes).toEqual(['SCREEN', 'MODES']);
   });
 
   it('uses legacy replay when snapshot is absent', async () => {
-    const { term, writes } = mockTerm();
+    const { term, writes, getLastGeom } = mockTerm();
     const result: AttachResult = {
       replay: 'OLD',
       cols: 80,
       rows: 24,
+      streamSeq: 0,
     };
     await new Promise<void>((resolve) => {
       applyAttachResultToTerminal(term, result, resolve);
     });
+    expect(getLastGeom()).toEqual({ cols: 80, rows: 24 });
     expect(writes).toEqual(['OLD']);
   });
 
   it('invokes onComplete when there is no payload', () => {
     const { term, writes } = mockTerm();
     let done = false;
-    applyAttachResultToTerminal(term, { replay: '', cols: 0, rows: 0 }, () => {
+    applyAttachResultToTerminal(term, { replay: '', cols: 0, rows: 0, streamSeq: 0 }, () => {
       done = true;
     });
     expect(done).toBe(true);
@@ -82,7 +96,41 @@ describe('applyAttachResultToTerminal', () => {
   });
 });
 
-const minimalAttach: AttachResult = { replay: '', cols: 80, rows: 24 };
+describe('shouldPlayChunkAfterSnapshot / writeBufferedStreamAfterSnapshot', () => {
+  it('drops buffered chunks at or before the snapshot streamSeq', () => {
+    expect(shouldPlayChunkAfterSnapshot(3, 1)).toBe(false);
+    expect(shouldPlayChunkAfterSnapshot(3, 3)).toBe(false);
+    expect(shouldPlayChunkAfterSnapshot(3, 4)).toBe(true);
+  });
+
+  it('keeps all chunks when attach has no streamSeq (legacy)', () => {
+    expect(shouldPlayChunkAfterSnapshot(undefined, 99)).toBe(true);
+  });
+
+  it('keeps chunks with no seq when streamSeq is set (legacy stream)', () => {
+    expect(shouldPlayChunkAfterSnapshot(5, undefined)).toBe(true);
+  });
+
+  it('flushes only post-boundary data in order', () => {
+    const out: string[] = [];
+    const t: Pick<TerminalHandle, 'write'> = {
+      write: (d) => out.push(d),
+    };
+    writeBufferedStreamAfterSnapshot(
+      t,
+      [
+        { data: 'a', streamSeq: 1 },
+        { data: 'b', streamSeq: 2 },
+        { data: 'c', streamSeq: 3 },
+        { data: 'NEW', streamSeq: 4 },
+      ],
+      3,
+    );
+    expect(out).toEqual(['NEW']);
+  });
+});
+
+const minimalAttach: AttachResult = { replay: '', cols: 80, rows: 24, streamSeq: 0 };
 
 describe('getSessionAttachShared', () => {
   it('dedupes concurrent callers to one in-flight run()', async () => {

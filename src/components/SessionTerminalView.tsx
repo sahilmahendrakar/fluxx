@@ -6,6 +6,8 @@ import {
   getShellAttachShared,
   invalidateSessionAttachCache,
   invalidateShellAttachCache,
+  type BufferedStreamChunk,
+  writeBufferedStreamAfterSnapshot,
 } from '../terminal/warmAttach';
 import Terminal, { type TerminalHandle } from './Terminal';
 
@@ -64,26 +66,17 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
     // fully applied, so in-flight stream chunks stay ordered and do not
     // duplicate the attach payload.
     let streamReady = false;
-    const earlyBuffer: string[] = [];
+    const earlyBuffer: BufferedStreamChunk[] = [];
     let cancelled = false;
 
-    const unsubData = window.electronAPI.sessions.onData(id, (data) => {
+    const unsubData = window.electronAPI.sessions.onData(id, (data, streamSeq) => {
       if (cancelled) return;
       if (!streamReady) {
-        earlyBuffer.push(data);
+        earlyBuffer.push({ data, streamSeq });
       } else {
         terminalRef.current?.write(data);
       }
     });
-
-    const markStreamReady = () => {
-      if (cancelled) return;
-      streamReady = true;
-      if (earlyBuffer.length > 0) {
-        for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
-        earlyBuffer.length = 0;
-      }
-    };
 
     void (async () => {
       const result = await getSessionAttachShared(id, async () => {
@@ -95,7 +88,12 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
         }
       });
       if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, markStreamReady);
+      applyAttachResultToTerminal(terminalRef.current, result, () => {
+        if (cancelled) return;
+        streamReady = true;
+        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
+        earlyBuffer.length = 0;
+      });
     })();
 
     return () => {
@@ -144,26 +142,17 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
     const id = shell.id;
 
     let streamReady = false;
-    const earlyBuffer: string[] = [];
+    const earlyBuffer: BufferedStreamChunk[] = [];
     let cancelled = false;
 
-    const unsubData = window.electronAPI.shells.onData(id, (data) => {
+    const unsubData = window.electronAPI.shells.onData(id, (data, streamSeq) => {
       if (cancelled) return;
       if (!streamReady) {
-        earlyBuffer.push(data);
+        earlyBuffer.push({ data, streamSeq });
       } else {
         terminalRef.current?.write(data);
       }
     });
-
-    const markStreamReady = () => {
-      if (cancelled) return;
-      streamReady = true;
-      if (earlyBuffer.length > 0) {
-        for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
-        earlyBuffer.length = 0;
-      }
-    };
 
     void (async () => {
       const result = await getShellAttachShared(id, async () => {
@@ -175,7 +164,12 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
         }
       });
       if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, markStreamReady);
+      applyAttachResultToTerminal(terminalRef.current, result, () => {
+        if (cancelled) return;
+        streamReady = true;
+        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
+        earlyBuffer.length = 0;
+      });
     })();
 
     return () => {
