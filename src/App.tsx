@@ -45,6 +45,7 @@ import type { TaskPatch, TaskProvider } from './renderer/tasks/TaskProvider';
 import { LocalTaskProvider } from './renderer/tasks/LocalTaskProvider';
 import { FirestoreTaskProvider } from './renderer/tasks/FirestoreTaskProvider';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
+import { invalidateSessionAttachCache } from './terminal/warmAttach';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -990,6 +991,7 @@ export default function App() {
     } catch (err) {
       console.error('[session.archive] failed', err);
     }
+    invalidateSessionAttachCache(sessionId);
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setOpenTabIds((prev) => {
       if (!prev.has(sessionId)) return prev;
@@ -1006,6 +1008,7 @@ export default function App() {
     } catch (err) {
       console.error('[session.deleteWorkspace] failed', err);
     }
+    invalidateSessionAttachCache(sessionId);
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setOpenTabIds((prev) => {
       if (!prev.has(sessionId)) return prev;

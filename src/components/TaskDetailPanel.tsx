@@ -26,6 +26,7 @@ import {
 } from '../taskDependencies';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
+import { applyAttachResultToTerminal, sessionAttachCache } from '../terminal/warmAttach';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 interface TaskDetailPanelProps {
@@ -254,46 +255,50 @@ export default function TaskDetailPanel({
     if (!session) return;
     const id = session.id;
 
-    // Mirror SessionTerminalView.AgentPane: on (re)mount we need to write
-    // the daemon's replay buffer into the fresh xterm before live chunks,
-    // otherwise closing + reopening this pane shows an empty terminal.
-    // Buffer any early live chunks that arrive before replay lands so we
-    // preserve ordering.
-    let replayWritten = false;
+    // Match SessionTerminalView.AgentPane: share attach cache and snapshot
+    // restore so StrictMode and tab/detail switches do not double-apply or
+    // re-replay raw PTY buffers when a serialized snapshot is available.
+    let streamReady = false;
     const earlyBuffer: string[] = [];
     let cancelled = false;
 
     const unsub = window.electronAPI.sessions.onData(id, (data) => {
       if (cancelled) return;
-      if (!replayWritten) {
+      if (!streamReady) {
         earlyBuffer.push(data);
       } else {
         terminalRef.current?.write(data);
       }
     });
 
-    const writeReplayAndFlush = (replay: string) => {
+    const markStreamReady = () => {
       if (cancelled) return;
-      if (replay.length > 0) {
-        terminalRef.current?.write(replay);
-      }
-      replayWritten = true;
+      streamReady = true;
       if (earlyBuffer.length > 0) {
         for (const chunk of earlyBuffer) terminalRef.current?.write(chunk);
         earlyBuffer.length = 0;
       }
     };
 
-    void (async () => {
-      try {
-        const result = await window.electronAPI.sessions.attach(id);
+    const cached = sessionAttachCache.get(id);
+    if (cached) {
+      applyAttachResultToTerminal(terminalRef.current, cached, markStreamReady);
+    } else {
+      void (async () => {
+        let result: Awaited<ReturnType<typeof window.electronAPI.sessions.attach>> =
+          null;
+        try {
+          result = await window.electronAPI.sessions.attach(id);
+        } catch (err) {
+          console.error('[TaskDetailPanel] attach failed', err);
+        }
+        if (result) {
+          sessionAttachCache.set(id, result);
+        }
         if (cancelled) return;
-        writeReplayAndFlush(result?.replay ?? '');
-      } catch (err) {
-        console.error('[TaskDetailPanel] attach failed', err);
-        writeReplayAndFlush('');
-      }
-    })();
+        applyAttachResultToTerminal(terminalRef.current, result, markStreamReady);
+      })();
+    }
 
     return () => {
       cancelled = true;

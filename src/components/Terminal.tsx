@@ -22,7 +22,7 @@ export interface TerminalProps {
 }
 
 export interface TerminalHandle {
-  write: (data: string) => void;
+  write: (data: string, callback?: () => void) => void;
   focus: () => void;
 }
 
@@ -46,8 +46,13 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   onResizeRef.current = onResize;
 
   useImperativeHandle(ref, () => ({
-    write: (data: string) => {
-      termRef.current?.write(data);
+    write: (data: string, callback?: () => void) => {
+      const t = termRef.current;
+      if (t) {
+        t.write(data, callback);
+      } else {
+        callback?.();
+      }
     },
     focus: () => {
       termRef.current?.focus();
