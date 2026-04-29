@@ -1,0 +1,35 @@
+src/terminal/warmAttach.test.ts
+  e8171c60720479de 1-78
+src/components/TaskDetailPanel.tsx
+  e8171c60720479de 29,258-261,267,274,276,283-297,299-301
+src/App.tsx
+  e8171c60720479de 48,994,1011
+src/components/SessionTerminalView.tsx
+  e8171c60720479de 3-7,10,61-64,70,77,79,88,91-92,94,98-102,151,157,164,166,175,178,180,184-188
+src/components/PlanningPanel.tsx
+  e8171c60720479de 9-13,103,130,137,144,146,153-163,165,167-170,222
+src/terminal/warmAttach.ts
+  e8171c60720479de 1-69
+src/components/Terminal.tsx
+  e8171c60720479de 25,49-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "59ba07904a0c5687304d9837491cbd3861d93396",
+  "prompts": {
+    "e8171c60720479de": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "baa00f24-1193-4b49-8ee1-57c537bc7ea6",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 264,
+      "total_deletions": 113,
+      "accepted_lines": 245,
+      "overriden_lines": 0
+    }
+  }
+}
