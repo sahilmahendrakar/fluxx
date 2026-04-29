@@ -3,6 +3,7 @@ import type { CloudProject } from '../types';
 import { useMembers } from '../renderer/projects/useMembers';
 import { removeMember } from '../renderer/projects/members';
 import {
+  backfillInviteProjectNames,
   cancelInvite,
   sendInvite,
   subscribeToProjectInvites,
@@ -39,6 +40,11 @@ export function TeamView({
     const unsub = subscribeToProjectInvites(project.id, setInvites);
     return () => unsub();
   }, [project.id]);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    void backfillInviteProjectNames(project.id, project.name);
+  }, [isOwner, project.id, project.name]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

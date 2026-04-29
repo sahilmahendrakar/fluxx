@@ -3,11 +3,13 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   query,
   serverTimestamp,
   setDoc,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -158,6 +160,39 @@ export async function cancelInvite(
 ): Promise<void> {
   const lower = email.trim().toLowerCase();
   await deleteDoc(doc(getFirebaseFirestore(), 'projects', projectId, 'invites', lower));
+}
+
+/**
+ * Owner-side backfill: stamp `projectName` onto any legacy invite docs that
+ * pre-date denormalization (commit 125d510). Without this, invitees see
+ * "(unknown project)" because they cannot read the parent project doc until
+ * acceptance. Safe to call repeatedly — it skips docs that already have a
+ * non-empty projectName, and silently swallows permission errors so non-owners
+ * can call it without consequence.
+ */
+export async function backfillInviteProjectNames(
+  projectId: string,
+  projectName: string,
+): Promise<void> {
+  if (!projectName) return;
+  const db = getFirebaseFirestore();
+  try {
+    const snap = await getDocs(collection(db, 'projects', projectId, 'invites'));
+    const stale = snap.docs.filter((d) => {
+      const data = d.data() ?? {};
+      return typeof data.projectName !== 'string' || data.projectName.length === 0;
+    });
+    if (stale.length === 0) return;
+    await Promise.all(
+      stale.map((d) =>
+        updateDoc(d.ref, { projectName }).catch((err) => {
+          console.warn('[invites] backfill projectName failed', d.ref.path, err);
+        }),
+      ),
+    );
+  } catch (err) {
+    console.warn('[invites] backfill snapshot failed', err);
+  }
 }
 
 export { acceptInvite };
