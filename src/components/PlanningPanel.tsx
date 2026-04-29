@@ -7,6 +7,7 @@ import {
 import { ExternalLink } from 'lucide-react';
 import { AGENTS, type Agent, type PlanningSession, type Project } from '../types';
 import Terminal, { type TerminalHandle } from './Terminal';
+import { AGENT_CHIP_STYLES } from './AgentBadge';
 
 export interface PlanningPanelProps {
   project: Project;
@@ -66,9 +67,6 @@ export function PlanningPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsInput, setNeedsInput] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<Agent>(() =>
-    project.kind === 'local' ? project.planningAgent : 'claude-code',
-  );
   const terminalRef = useRef<TerminalHandle | null>(null);
   const outputBufferRef = useRef('');
   const activeSessionRef = useRef<PlanningSession | null>(null);
@@ -78,12 +76,6 @@ export function PlanningPanel({
       ? null
       : (sessions.find((s) => s.id === activeSessionId) ?? null);
   activeSessionRef.current = activeSession;
-
-  useEffect(() => {
-    setSelectedAgent(
-      project.kind === 'local' ? project.planningAgent : 'claude-code',
-    );
-  }, [project]);
 
   useEffect(() => {
     setError(null);
@@ -177,7 +169,7 @@ export function PlanningPanel({
     if (needsInput) terminalRef.current?.focus();
   }, [needsInput]);
 
-  const handleStart = async () => {
+  const handleStart = async (agent: Agent) => {
     if (!planningApi) {
       setError('Planning assistant is not available in this build.');
       return;
@@ -185,8 +177,7 @@ export function PlanningPanel({
     setLoading(true);
     setError(null);
     try {
-      const agentForStart =
-        project.kind === 'local' ? selectedAgent : 'claude-code';
+      const agentForStart = project.kind === 'local' ? agent : 'claude-code';
       const result = await planningApi.start(agentForStart);
       if (result && typeof result === 'object' && 'error' in result) {
         const err = result as { error: string; message?: string };
@@ -236,10 +227,7 @@ export function PlanningPanel({
   };
 
   const sessionRunning = activeSession?.status === 'running';
-  const agentSelectValue =
-    sessionRunning && activeSession
-      ? activeSession.agent
-      : selectedAgent;
+  const isCloud = project.kind === 'cloud';
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">
@@ -271,40 +259,6 @@ export function PlanningPanel({
               Stop
             </button>
           ) : null}
-          <select
-            aria-label="Planning agent"
-            title={
-              sessionRunning
-                ? 'Agent for this session'
-                : project.kind === 'local'
-                  ? 'Planning agent for the next session (saved when you change it or start).'
-                  : 'Cloud planning uses Claude Code.'
-            }
-            disabled={sessionRunning || project.kind === 'cloud'}
-            value={agentSelectValue}
-            onChange={(e) => {
-              const next = e.target.value as Agent;
-              setSelectedAgent(next);
-              if (project.kind !== 'local') return;
-              void (async () => {
-                const res = await window.electronAPI.project.setPlanningAgent(next);
-                if ('error' in res) {
-                  setError(res.error);
-                  setSelectedAgent(project.planningAgent);
-                  return;
-                }
-                setError(null);
-                await onLocalProjectRefresh?.();
-              })();
-            }}
-            className="min-w-0 max-w-[9.5rem] cursor-pointer rounded-md border border-gray-700 bg-gray-900 py-1 pl-2 pr-7 text-[11px] font-medium text-gray-200 focus:border-gray-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {AGENTS.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-              </option>
-            ))}
-          </select>
           <button
             type="button"
             onClick={onClose}
@@ -370,14 +324,25 @@ export function PlanningPanel({
             </div>
           );
         })}
-        <button
-          type="button"
-          disabled={loading || !planningApi}
-          onClick={() => void handleStart()}
-          className="shrink-0 rounded-md border border-dashed border-gray-700 px-2 py-0.5 text-[10px] font-medium text-gray-400 hover:border-gray-600 hover:bg-gray-900 hover:text-gray-200 disabled:opacity-40"
-        >
-          + Session
-        </button>
+        {AGENTS.map((a) => {
+          const disabled =
+            loading || !planningApi || (isCloud && a.id !== 'claude-code');
+          const title = isCloud && a.id !== 'claude-code'
+            ? 'Cloud planning only supports Claude Code'
+            : `Start a new planning session with ${a.label}`;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => void handleStart(a.id)}
+              title={title}
+              className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${AGENT_CHIP_STYLES[a.id]} hover:brightness-125`}
+            >
+              + {a.label}
+            </button>
+          );
+        })}
       </div>
 
       {error ? (
@@ -420,7 +385,7 @@ export function PlanningPanel({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
             <p className="text-xs text-gray-500">This planning session has ended</p>
             <p className="text-[10px] text-gray-600">
-              Close the tab or start another session from + Session.
+              Close the tab or start another session from the agent buttons above.
             </p>
           </div>
         ) : (
@@ -429,14 +394,27 @@ export function PlanningPanel({
             <p className="text-[10px] leading-relaxed text-gray-700">
               Multiple assistants can run at once — switch tabs without stopping others.
             </p>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void handleStart()}
-              className="mt-2 rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800 disabled:opacity-50"
-            >
-              {loading ? 'Starting…' : 'Start session'}
-            </button>
+            <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+              {AGENTS.map((a) => {
+                const disabled =
+                  loading || !planningApi || (isCloud && a.id !== 'claude-code');
+                const title = isCloud && a.id !== 'claude-code'
+                  ? 'Cloud planning only supports Claude Code'
+                  : `Start a new planning session with ${a.label}`;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => void handleStart(a.id)}
+                    title={title}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${AGENT_CHIP_STYLES[a.id]} hover:brightness-125`}
+                  >
+                    + {a.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
