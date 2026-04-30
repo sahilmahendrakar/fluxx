@@ -1,0 +1,31 @@
+src/daemon/terminal-host/HeadlessEmulator.test.ts
+  3064ccb22e4f20d5 1-116
+src/daemon/terminal-host/HeadlessEmulator.ts
+  3064ccb22e4f20d5 1-299
+src/daemon/terminal-host/types.ts
+  3064ccb22e4f20d5 1-34
+src/daemon/terminal-host/TerminalSession.ts
+  3064ccb22e4f20d5 1-240
+src/daemon/terminal-host/TerminalSession.test.ts
+  3064ccb22e4f20d5 1-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4ab9d38fea5f6001152c09160603282537a02249",
+  "prompts": {
+    "3064ccb22e4f20d5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d0937d60-9e0d-47d3-8c21-792bc308708a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 1177,
+      "total_deletions": 407,
+      "accepted_lines": 982,
+      "overriden_lines": 37
+    }
+  }
+}
