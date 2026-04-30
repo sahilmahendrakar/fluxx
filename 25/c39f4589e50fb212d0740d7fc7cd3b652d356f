@@ -1,0 +1,29 @@
+src/components/Board.tsx
+  2431167ecbbbf4d7 5-11,14,40-70,78,82-84,89-115,117-133,135-157
+src/components/BoardFilterBar.tsx
+  2431167ecbbbf4d7 1-291
+src/boardFilter.test.ts
+  2431167ecbbbf4d7 1-102
+src/boardFilter.ts
+  2431167ecbbbf4d7 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "25c39f4589e50fb212d0740d7fc7cd3b652d356f",
+  "prompts": {
+    "2431167ecbbbf4d7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "faeb3d04-a6ad-464d-a99d-7976fd3d780c",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 798,
+      "total_deletions": 261,
+      "accepted_lines": 584,
+      "overriden_lines": 0
+    }
+  }
+}
