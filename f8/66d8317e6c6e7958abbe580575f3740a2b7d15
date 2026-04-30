@@ -1,0 +1,27 @@
+src/daemon/SessionRuntime.ts
+  3064ccb22e4f20d5 10-16,128
+src/components/Terminal.tsx
+  3064ccb22e4f20d5 41-43,154-156,169,171-181,190-206,245-247,252-256,264-275
+src/daemon/terminalSnapshot.test.ts
+  3064ccb22e4f20d5 86-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f866d8317e6c6e7958abbe580575f3740a2b7d15",
+  "prompts": {
+    "3064ccb22e4f20d5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d0937d60-9e0d-47d3-8c21-792bc308708a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 77,
+      "total_deletions": 13,
+      "accepted_lines": 76,
+      "overriden_lines": 0
+    }
+  }
+}
