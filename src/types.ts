@@ -86,6 +86,8 @@ export interface Task {
    */
   agentYolo?: boolean;
   description?: string;
+  /** Optional feature or grouping tags (trimmed, empty dropped, case-insensitive dedupe on write). */
+  labels?: string[];
   createdAt: string;
   projectId: string;
   /** Fractional ranking key for stable drag ordering within a column. */

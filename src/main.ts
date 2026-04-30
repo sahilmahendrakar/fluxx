@@ -673,7 +673,7 @@ app.whenReady().then(async () => {
     'tasks:create',
     async (
       _e,
-      input: { title: string; agent: Agent; blockedByTaskIds?: string[] },
+      input: { title: string; agent: Agent; blockedByTaskIds?: string[]; labels?: string[] },
     ) => {
       const project = projectStore.get();
       if (!project) {
@@ -859,6 +859,7 @@ app.whenReady().then(async () => {
       | 'orderKey'
       | 'workspaceCleanedAt'
       | 'blockedByTaskIds'
+      | 'labels'
     >
   >;
 

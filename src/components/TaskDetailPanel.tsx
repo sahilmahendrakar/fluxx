@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -27,11 +28,13 @@ import {
   isTaskBlocked,
   validateBlockedByTaskIds,
 } from '../taskDependencies';
+import { projectLabelCatalog } from '../taskLabels';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
 import { getSessionAttachShared } from '../terminal/warmAttach';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
+import { TaskLabelsField } from './TaskLabelsField';
 
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
 const MD_READ_CLASS = [
@@ -159,6 +162,11 @@ export default function TaskDetailPanel({
 
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
+
+  const labelCatalog = useMemo(
+    () => projectLabelCatalog(projectTasks),
+    [projectTasks],
+  );
 
   useEffect(() => {
     setAgentSettingsOpen(false);
@@ -583,6 +591,13 @@ export default function TaskDetailPanel({
                 }}
                 className="w-full resize-none bg-transparent text-2xl font-semibold leading-tight tracking-tight text-zinc-50 placeholder:text-zinc-600 outline-none focus:outline-none focus-visible:ring-0"
                 placeholder="Task title"
+              />
+
+              <TaskLabelsField
+                idPrefix={`task-${task.id}`}
+                labels={task.labels ?? []}
+                labelCatalog={labelCatalog}
+                onLabelsChange={(next) => onUpdate(task.id, { labels: next })}
               />
 
               {/* Properties: compact row */}

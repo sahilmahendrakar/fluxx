@@ -4,12 +4,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Task } from '../types';
 import { validateBlockedByTaskIds } from '../taskDependencies';
+import { normalizeTaskLabels } from '../taskLabels';
 
 type TaskInput = {
   title: string;
   agent: Agent;
   projectId: string;
   blockedByTaskIds?: string[];
+  labels?: string[];
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -132,6 +134,7 @@ export class TaskStore {
     if (!this.filePath) {
       throw new Error('No project directory open for tasks');
     }
+    const labelNorm = normalizeTaskLabels(input.labels);
     const task: Task = {
       id: randomUUID(),
       title: input.title,
@@ -140,6 +143,9 @@ export class TaskStore {
       createdAt: new Date().toISOString(),
       projectId: input.projectId,
     };
+    if (labelNorm.length > 0) {
+      task.labels = labelNorm;
+    }
     if (input.blockedByTaskIds != null && input.blockedByTaskIds.length > 0) {
       const v = validateBlockedByTaskIds(
         task.id,
@@ -171,6 +177,7 @@ export class TaskStore {
         | 'orderKey'
         | 'workspaceCleanedAt'
         | 'blockedByTaskIds'
+        | 'labels'
       >
     >,
   ): Promise<Task> {
@@ -186,6 +193,14 @@ export class TaskStore {
       ...current,
       ...patch,
     };
+    if (patch.labels !== undefined) {
+      const n = normalizeTaskLabels(patch.labels);
+      if (n.length > 0) {
+        updated.labels = n;
+      } else {
+        delete updated.labels;
+      }
+    }
     this.tasks[index] = updated;
     await this.save();
     return updated;

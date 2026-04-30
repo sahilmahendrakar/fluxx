@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -13,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import type { Agent, Task, TaskStatus } from '../../types';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
+import { normalizeTaskLabels } from '../../taskLabels';
 import { getFirebaseFirestore } from '../firebase';
 import type {
   TaskCreateInput,
@@ -71,6 +73,7 @@ export class FirestoreTaskProvider implements TaskProvider {
   async create(input: TaskCreateInput): Promise<Task> {
     const db = getFirebaseFirestore();
     const col = collection(db, 'projects', this.projectId, 'tasks');
+    const createLabels = normalizeTaskLabels(input.labels);
     const data = {
       title: input.title,
       status: input.status ?? ('backlog' as TaskStatus),
@@ -80,6 +83,7 @@ export class FirestoreTaskProvider implements TaskProvider {
       updatedAt: serverTimestamp(),
       updatedBy: this.uid,
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
+      ...(createLabels.length > 0 ? { labels: createLabels } : {}),
     };
     const ref = await addDoc(col, data);
     let normalizedDeps: string[] | undefined;
@@ -124,6 +128,7 @@ export class FirestoreTaskProvider implements TaskProvider {
       updatedBy: this.uid,
       updatedAt: new Date().toISOString(),
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
+      ...(createLabels.length > 0 ? { labels: createLabels } : {}),
       ...(normalizedDeps ? { blockedByTaskIds: normalizedDeps } : {}),
     };
   }
@@ -151,6 +156,14 @@ export class FirestoreTaskProvider implements TaskProvider {
         throw new Error(v.message);
       }
       updates.blockedByTaskIds = v.normalized;
+    }
+    if (patch.labels !== undefined) {
+      const n = normalizeTaskLabels(patch.labels);
+      if (n.length > 0) {
+        updates.labels = n;
+      } else {
+        updates.labels = deleteField();
+      }
     }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
@@ -200,7 +213,22 @@ function toTask(
     updatedAt: tsToIso(data.updatedAt),
     updatedBy: typeof data.updatedBy === 'string' ? data.updatedBy : undefined,
     ...parseBlockedByTaskIdsField(data.blockedByTaskIds),
+    ...parseLabelsField(data.labels),
   };
+}
+
+function parseLabelsField(
+  val: unknown,
+): { labels: string[] } | Record<string, never> {
+  if (!Array.isArray(val)) {
+    return {};
+  }
+  const raw = val.filter((x): x is string => typeof x === 'string');
+  const n = normalizeTaskLabels(raw);
+  if (n.length === 0) {
+    return {};
+  }
+  return { labels: n };
 }
 
 function parseBlockedByTaskIdsField(

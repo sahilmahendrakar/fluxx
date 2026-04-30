@@ -45,7 +45,10 @@ export class McpServer {
       updateTask: (
         id: string,
         patch: Partial<
-          Pick<Task, 'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds'>
+          Pick<
+            Task,
+            'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds' | 'labels'
+          >
         >,
       ) => Promise<Task>;
       startTask: (id: string) => Promise<Task>;
@@ -112,6 +115,12 @@ export class McpServer {
           .array(z.string())
           .optional()
           .describe('Task ids this task is blocked by (must exist and same project)'),
+        labels: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Optional feature tags / labels; trimmed, empty dropped, case-insensitive duplicates merged',
+          ),
       },
       async (input) => {
         try {
@@ -126,6 +135,7 @@ export class McpServer {
             agent,
             projectId: project.id,
             ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
+            ...(input.labels !== undefined ? { labels: input.labels } : {}),
           });
           if (input.description != null && input.description !== '') {
             task = await this.taskStore.update(task.id, { description: input.description });
@@ -153,6 +163,10 @@ export class McpServer {
           .array(z.string())
           .optional()
           .describe('Replace dependency list: task ids this task is blocked by'),
+        labels: z
+          .array(z.string())
+          .optional()
+          .describe('Replace feature tags; use [] to clear. Duplicates and casing normalized'),
       },
       async (input) => {
         try {
@@ -168,13 +182,17 @@ export class McpServer {
             });
           }
           const patch: Partial<
-            Pick<Task, 'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds'>
+            Pick<
+              Task,
+              'title' | 'description' | 'status' | 'agent' | 'blockedByTaskIds' | 'labels'
+            >
           > = {};
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
           if (input.agent !== undefined) patch.agent = input.agent;
           if (input.blockedByTaskIds !== undefined) patch.blockedByTaskIds = input.blockedByTaskIds;
+          if (input.labels !== undefined) patch.labels = input.labels;
           const updated = await this.taskActions.updateTask(input.id, patch);
           this.notifyTasksChanged();
           return jsonToolPayload(updated);
