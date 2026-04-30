@@ -1,0 +1,35 @@
+src/App.tsx
+  53a7b006d3dafc78 101-104,382-417,458,1302-1304
+src/env.d.ts
+  53a7b006d3dafc78 13,135
+src/preload.ts
+  53a7b006d3dafc78 13,186-196
+src/types.ts
+  53a7b006d3dafc78 107-111,122-126
+src/components/TaskDetailPanel.tsx
+  53a7b006d3dafc78 41-42,114,129-130,145-168,260,262-265,267-271,277-278,284,331,425-427,459-463,466,512,879-899
+src/components/SessionTerminalView.tsx
+  53a7b006d3dafc78 60-64,99,125-147
+src/main.ts
+  53a7b006d3dafc78 770-787,789-803,805-810,812-813,816-817,819-838,840-846
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0c0948f97deabb506acd8b8ca45bb09490cfe797",
+  "prompts": {
+    "53a7b006d3dafc78": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d41acdb1-4bed-4e02-93f6-d05366d67587",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 270,
+      "total_deletions": 94,
+      "accepted_lines": 241,
+      "overriden_lines": 0
+    }
+  }
+}
