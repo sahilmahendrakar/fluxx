@@ -2,11 +2,18 @@ import { useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
+import {
+  applyBoardFilters,
+  boardFiltersAreActive,
+  DEFAULT_BOARD_FILTER,
+  type BoardFilterState,
+  UNLABELED_VALUE,
+} from '../boardFilter';
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
+import { BoardFilterBar } from './BoardFilterBar';
 
 interface Props {
-  tasks: Task[];
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
   onCreateTask: (title: string, agent: Agent, labels?: string[]) => void;
@@ -19,7 +26,6 @@ interface Props {
 }
 
 export default function Board({
-  tasks,
   allTasks,
   onDragEnd,
   onCreateTask,
@@ -31,6 +37,37 @@ export default function Board({
   onTogglePlanPanel,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
+    () => ({ ...DEFAULT_BOARD_FILTER }),
+  );
+
+  const labelCatalog = useMemo(
+    () => projectLabelCatalog(allTasks),
+    [allTasks],
+  );
+
+  const labelOptionsForSelect = useMemo(() => {
+    const sel = boardFilter.label;
+    if (sel == null || sel === UNLABELED_VALUE) {
+      return labelCatalog;
+    }
+    if (labelCatalog.includes(sel)) {
+      return labelCatalog;
+    }
+    return [...labelCatalog, sel].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' }),
+    );
+  }, [boardFilter.label, labelCatalog]);
+
+  const visibleTasks = useMemo(
+    () => applyBoardFilters(allTasks, boardFilter),
+    [allTasks, boardFilter],
+  );
+
+  const doneHiddenCount = useMemo(() => {
+    if (!boardFilter.hideDone) return 0;
+    return allTasks.filter((t) => t.status === 'done').length;
+  }, [allTasks, boardFilter.hideDone]);
 
   const tasksByStatus: Record<TaskStatus, Task[]> = {
     backlog: [],
@@ -38,59 +75,86 @@ export default function Board({
     'needs-input': [],
     done: [],
   };
-  for (const task of tasks) {
+  for (const task of visibleTasks) {
     tasksByStatus[task.status].push(task);
   }
 
-  const boardIsEmpty = tasks.length === 0;
-  const labelCatalog = useMemo(
-    () => projectLabelCatalog(allTasks),
-    [allTasks],
-  );
+  const projectIsEmpty = allTasks.length === 0;
+  const noMatches = !projectIsEmpty && visibleTasks.length === 0;
+  const filtersActive = boardFiltersAreActive(boardFilter);
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="flex shrink-0 items-center justify-end gap-2 border-b border-gray-800 px-4 py-2">
-          <button
-            type="button"
-            onClick={onTogglePlanPanel}
-            className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
-              planPanelOpen
-                ? 'border-gray-700 bg-gray-800 text-gray-200'
-                : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
-            }`}
-          >
-            Plan
-          </button>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
-          >
-            + New task
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-4">
-        {COLUMNS.map((col) => (
-          <Column
-            key={col.id}
-            id={col.id}
-            label={col.label}
-            tasks={tasksByStatus[col.id]}
-            allTasks={allTasks}
-            onNewTask={col.id === 'backlog' ? () => setModalOpen(true) : undefined}
-            onDeleteTask={onDeleteTask}
-            onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}
-            cleanupLoadingTaskId={col.id === 'done' ? cleanupLoadingTaskId : null}
-            onCardClick={onCardClick}
-            emptyState={
-              col.id === 'backlog' && boardIsEmpty
-                ? 'No tasks yet. Create one to get started.'
-                : undefined
-            }
+        <div className="flex shrink-0 flex-col gap-2 border-b border-gray-800 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
+          <BoardFilterBar
+            filter={boardFilter}
+            onFilterChange={setBoardFilter}
+            labelOptions={labelOptionsForSelect}
+            doneHiddenCount={doneHiddenCount}
           />
-        ))}
+          <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center">
+            <button
+              type="button"
+              onClick={onTogglePlanPanel}
+              className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                planPanelOpen
+                  ? 'border-gray-700 bg-gray-800 text-gray-200'
+                  : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
+              }`}
+            >
+              Plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
+            >
+              + New task
+            </button>
+          </div>
+        </div>
+        {noMatches ? (
+          <div
+            className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"
+            role="status"
+          >
+            No tasks match these filters.{' '}
+            <button
+              type="button"
+              onClick={() => setBoardFilter({ ...DEFAULT_BOARD_FILTER })}
+              className="font-medium text-amber-100/95 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-200/60"
+            >
+              Clear filters
+            </button>
+            {' '}
+            to see the full board.
+          </div>
+        ) : null}
+        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-4">
+          {COLUMNS.map((col) => (
+            <Column
+              key={col.id}
+              id={col.id}
+              label={col.label}
+              tasks={tasksByStatus[col.id]}
+              allTasks={allTasks}
+              onNewTask={col.id === 'backlog' ? () => setModalOpen(true) : undefined}
+              onDeleteTask={onDeleteTask}
+              onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}
+              cleanupLoadingTaskId={col.id === 'done' ? cleanupLoadingTaskId : null}
+              onCardClick={onCardClick}
+              emptyState={
+                col.id === 'backlog' && projectIsEmpty
+                  ? 'No tasks yet. Create one to get started.'
+                  : filtersActive &&
+                      !noMatches &&
+                      tasksByStatus[col.id].length === 0
+                    ? 'No tasks in this column for the current filters.'
+                    : undefined
+              }
+            />
+          ))}
         </div>
       </div>
       {modalOpen ? (
