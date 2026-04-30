@@ -1,0 +1,61 @@
+src/types.ts
+  abe9bbbfaac73da7 89-90
+src/renderer/tasks/FirestoreTaskProvider.ts
+  abe9bbbfaac73da7 5,17,76,86,131,160-167,216,220-233
+src/main/agentSpawn.ts
+  abe9bbbfaac73da7 100
+src/env.d.ts
+  abe9bbbfaac73da7 99-104,119
+src/components/TaskCard.tsx
+  abe9bbbfaac73da7 66-87
+src/preload.ts
+  abe9bbbfaac73da7 121-126,141
+src/components/NewTaskModal.tsx
+  abe9bbbfaac73da7 3,7-9,12,15,35,65-74
+src/renderer/tasks/TaskProvider.ts
+  abe9bbbfaac73da7 15,25
+src/main/McpServer.ts
+  abe9bbbfaac73da7 48-51,118-123,138,166-169,185-188,195
+src/main.ts
+  abe9bbbfaac73da7 676,862
+src/components/TaskDetailPanel.tsx
+  abe9bbbfaac73da7 5,28,34,138-142,537-543
+src/taskLabels.ts
+  abe9bbbfaac73da7 1-49
+src/taskLabels.test.ts
+  abe9bbbfaac73da7 1-36
+README.md
+  abe9bbbfaac73da7 86
+src/main/TaskStore.ts
+  abe9bbbfaac73da7 7,14,137,146-148,180,196-203
+src/renderer/tasks/LocalTaskProvider.ts
+  abe9bbbfaac73da7 59
+src/main/ProjectStore.ts
+  abe9bbbfaac73da7 151,153
+src/components/Board.tsx
+  abe9bbbfaac73da7 1,4,12,46-49,98,100-101
+src/components/TaskLabelsField.tsx
+  abe9bbbfaac73da7 1-347
+src/App.tsx
+  abe9bbbfaac73da7 48,568-583,599-601,672,683-689
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "1e5a1fbf33d1072516f2138462d5c32ac9490a38",
+  "prompts": {
+    "abe9bbbfaac73da7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fcacfbe2-2a6f-4b09-8821-1ab24c3a367b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 743,
+      "total_deletions": 158,
+      "accepted_lines": 612,
+      "overriden_lines": 0
+    }
+  }
+}
