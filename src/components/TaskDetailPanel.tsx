@@ -4,10 +4,13 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
-import { Settings } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Pencil, Settings, Terminal, X } from 'lucide-react';
 import {
   Task,
   TaskStatus,
@@ -28,7 +31,28 @@ import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
 import { getSessionAttachShared } from '../terminal/warmAttach';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
-import Terminal, { type TerminalHandle } from './Terminal';
+import TerminalComponent, { type TerminalHandle } from './Terminal';
+
+/** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
+const MD_READ_CLASS = [
+  'min-w-0 text-[13px] leading-relaxed text-zinc-300',
+  '[&_a]:text-sky-400 [&_a]:underline [&_a]:decoration-sky-400/40 [&_a]:underline-offset-2 hover:[&_a]:text-sky-300',
+  '[&_h1]:mb-2 [&_h1]:mt-0 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-zinc-100',
+  '[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-zinc-100 first:[&_h2]:mt-0',
+  '[&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-[14px] [&_h3]:font-medium [&_h3]:text-zinc-200',
+  '[&_p]:my-2.5 [&_p]:text-zinc-300 first:[&_p]:mt-0 last:[&_p]:mb-0',
+  '[&_ul]:my-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2.5 [&_ol]:list-decimal [&_ol]:pl-5',
+  '[&_li]:my-0.5',
+  '[&_blockquote]:my-2.5 [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-600 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-400',
+  '[&_code]:rounded [&_code]:bg-zinc-800/80 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12px] [&_code]:text-emerald-200/90',
+  '[&_pre]:my-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:bg-[#0a0a0c] [&_pre]:p-2.5',
+  '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[12px] [&_pre_code]:text-zinc-300',
+  '[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse text-[12px]',
+  '[&_th]:border [&_th]:border-white/[0.08] [&_th]:bg-white/[0.04] [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-200',
+  '[&_td]:border [&_td]:border-white/[0.06] [&_td]:px-2 [&_td]:py-1',
+  '[&_hr]:my-4 [&_hr]:border-white/[0.08]',
+  '[&_strong]:font-semibold [&_strong]:text-zinc-100',
+].join(' ');
 
 interface TaskDetailPanelProps {
   task: Task | null;
@@ -47,7 +71,7 @@ interface TaskDetailPanelProps {
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
-const DEFAULT_DETAIL_WIDTH = 420;
+const DEFAULT_DETAIL_WIDTH = 480;
 const MIN_DETAIL_WIDTH = 280;
 const MIN_BOARD_REMAINING_PX = 200;
 
@@ -66,24 +90,21 @@ function readStoredDetailWidth(): number | null {
   }
 }
 
-const STATUS_BADGE: Record<TaskStatus, string> = {
-  backlog: 'border-white/[0.08] bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.04]',
-  'in-progress':
-    'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-200/90 ring-1 ring-inset ring-emerald-500/10',
-  'needs-input':
-    'border-amber-500/25 bg-amber-500/[0.1] text-amber-200/90 ring-1 ring-inset ring-amber-500/12',
-  done: 'border-white/[0.06] bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.04]',
+const STATUS_CHIP: Record<TaskStatus, string> = {
+  backlog: 'bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]',
+  'in-progress': 'bg-emerald-500/[0.12] text-emerald-200/95 ring-1 ring-inset ring-emerald-500/15',
+  'needs-input': 'bg-amber-500/[0.12] text-amber-200/90 ring-1 ring-inset ring-amber-500/18',
+  done: 'bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.05]',
 };
 
 function formatCreatedLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const formatted = d.toLocaleDateString('en-US', {
+  return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
-  return `Created ${formatted}`;
 }
 
 function useAutosizeTextArea(value: string, minHeightPx = 0) {
@@ -127,6 +148,7 @@ export default function TaskDetailPanel({
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [depSearch, setDepSearch] = useState('');
+  const [descriptionEditing, setDescriptionEditing] = useState(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
 
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
@@ -136,6 +158,7 @@ export default function TaskDetailPanel({
     setAgentSettingsOpen(false);
     setDependencyError(null);
     setDepSearch('');
+    setDescriptionEditing(false);
   }, [task?.id]);
 
   useEffect(() => {
@@ -374,14 +397,6 @@ export default function TaskDetailPanel({
     }
   };
 
-  // The panel's embedded terminal is a preview of the running session — it
-  // shares the pty with the workspace tab's terminal. We intentionally do NOT
-  // push this narrower view's cols/rows to the pty: that would make the pty
-  // wrap output to the panel width, which corrupts the workspace terminal's
-  // buffer (lines end mid-row, leaving the right side rendered as the theme
-  // background — i.e. "blacked out where the panel was" when the user
-  // switches back to the workspace tab). The workspace terminal owns pty size.
-
   const handleDelete = () => {
     if (!task) return;
     if (!window.confirm('Delete this task?')) return;
@@ -409,6 +424,8 @@ export default function TaskDetailPanel({
       !(task.blockedByTaskIds ?? []).includes(t.id) &&
       (depQueryLower === '' || t.title.toLowerCase().includes(depQueryLower)),
   );
+  const descriptionRaw = task.description ?? '';
+  const hasDescription = descriptionRaw.trim().length > 0;
 
   const addBlocker = (blockerId: string) => {
     const next = [...(task.blockedByTaskIds ?? []), blockerId];
@@ -434,11 +451,20 @@ export default function TaskDetailPanel({
     : sessionError
       ? 'Retry'
       : 'Start session';
-  const startButtonClass = sessionError
-    ? 'rounded-md border border-red-500/25 bg-red-500/[0.08] px-3 py-1.5 text-[12px] font-medium text-red-200/90 transition hover:bg-red-500/[0.12]'
-    : startInFlight
-      ? 'cursor-not-allowed rounded-md border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-zinc-600'
-      : 'rounded-md border border-emerald-500/25 bg-emerald-500/[0.1] px-3 py-1.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-500/[0.14]';
+  const startBtnPrimary =
+    'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed';
+  const startBtnIdle = `${startBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
+  const startBtnError =
+    'rounded-lg border border-red-500/35 bg-red-500/[0.12] px-4 py-2 text-[13px] font-medium text-red-200/90 transition hover:bg-red-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40';
+  const startBtnLoading =
+    'cursor-wait rounded-lg bg-zinc-800/90 px-4 py-2 text-[13px] font-medium text-zinc-500';
+
+  const propertySelectClass =
+    'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
+
+  /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
+  const hasLocalSession = Boolean(session?.id);
+  const sessionIdleAfterRun = hasLocalSession && !sessionRunning;
 
   return (
     <>
@@ -446,13 +472,13 @@ export default function TaskDetailPanel({
         type="button"
         tabIndex={-1}
         aria-label="Close task details"
-        className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[1px]"
+        className="absolute inset-0 z-10 bg-black/30 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <aside
         ref={asideRef}
         style={{ width: detailWidth }}
-        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.06] bg-[#0c0c0e] shadow-2xl shadow-black/50"
+        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-detail-title"
@@ -462,75 +488,80 @@ export default function TaskDetailPanel({
           aria-orientation="vertical"
           aria-label="Resize task details"
           title="Drag to resize. Double-click to reset."
-          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
+          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.08] before:content-[''] hover:before:bg-white/[0.2] focus-visible:ring-1 focus-visible:ring-white/20"
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
-        <div className="flex shrink-0 flex-col gap-3 border-b border-white/[0.06] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
+
+        {/* Top bar: metadata + primary CTA + close */}
+        <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.06em] ${STATUS_BADGE[task.status]}`}
+                className={`inline-flex rounded-md px-2.5 py-0.5 text-xs font-medium ${STATUS_CHIP[task.status]}`}
               >
                 {statusLabel}
               </span>
-              <p className="mt-1.5 text-[11px] text-zinc-600">{formatCreatedLabel(task.createdAt)}</p>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                {!sessionRunning ? (
-                  <button
-                    type="button"
-                    onClick={handleStartSession}
-                    disabled={startInFlight || blocked}
-                    title={blocked ? 'Blocked by incomplete dependencies' : undefined}
-                    className={
-                      blocked
-                        ? 'cursor-not-allowed rounded-md border border-white/[0.06] bg-white/[0.02] px-3 py-1.5 text-[12px] font-medium text-zinc-600'
-                        : startButtonClass
-                    }
-                  >
-                    {blocked ? 'Blocked' : startButtonLabel}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="shrink-0 rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-                  aria-label="Close"
-                >
-                  <span className="text-lg leading-none" aria-hidden>
-                    ×
-                  </span>
-                </button>
-              </div>
-              {sessionError && !sessionRunning ? (
-                <p className="mt-1 max-w-[220px] text-right text-[11px] text-red-300/90">{sessionError}</p>
+              {task.createdAt ? (
+                <span className="text-xs text-zinc-500">Created {formatCreatedLabel(task.createdAt)}</span>
               ) : null}
             </div>
+            {!sessionRunning ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleStartSession}
+                  disabled={startInFlight || blocked}
+                  title={blocked ? 'Blocked by incomplete dependencies' : undefined}
+                  className={
+                    startInFlight
+                      ? startBtnLoading
+                      : sessionError
+                        ? startBtnError
+                        : blocked
+                          ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                          : startBtnIdle
+                  }
+                >
+                  {blocked ? 'Blocked' : startButtonLabel}
+                </button>
+                {sessionError && !sessionRunning ? (
+                  <p className="min-w-0 text-xs leading-snug text-red-300/90">{sessionError}</p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+          </button>
+        </header>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4">
-            <textarea
-              id="task-detail-title"
-              ref={titleArea.ref}
-              value={task.title}
-              rows={1}
-              onChange={(e) => {
-                onUpdate(task.id, { title: e.target.value });
-                titleArea.resize();
-              }}
-              className="w-full resize-none bg-transparent text-xl font-semibold leading-snug tracking-tight text-zinc-100 outline-none focus:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
-              placeholder="Title"
-            />
+          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto">
+            <div className="space-y-6 px-5 py-5">
+              <textarea
+                id="task-detail-title"
+                ref={titleArea.ref}
+                value={task.title}
+                rows={1}
+                onChange={(e) => {
+                  onUpdate(task.id, { title: e.target.value });
+                  titleArea.resize();
+                }}
+                className="w-full resize-none bg-transparent text-2xl font-semibold leading-tight tracking-tight text-zinc-50 placeholder:text-zinc-600 outline-none focus:outline-none focus-visible:ring-0"
+                placeholder="Task title"
+              />
 
-            <div>
-              <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2 text-[13px]">
-                <dt className="text-zinc-600">Agent</dt>
-                <dd className="min-w-0">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {/* Properties: compact row */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-xs text-zinc-500">Agent & model</p>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <select
                       value={task.agent}
                       onChange={(e) => {
@@ -538,12 +569,12 @@ export default function TaskDetailPanel({
                         const patch: Partial<Task> = { agent: next };
                         if (next !== task.agent) {
                           patch.agentYolo = false;
-                          patch.agentModel =
-                            next === 'cursor' ? DEFAULT_CURSOR_AGENT_MODEL : '';
+                          patch.agentModel = next === 'cursor' ? DEFAULT_CURSOR_AGENT_MODEL : '';
                         }
                         onUpdate(task.id, patch);
                       }}
-                      className={`w-auto max-w-full shrink-0 cursor-pointer rounded-md border px-2.5 py-1 pr-8 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${AGENT_CHIP_STYLES[task.agent]}`}
+                      className={`max-w-full shrink-0 ${propertySelectClass} ${AGENT_CHIP_STYLES[task.agent]}`}
+                      style={{ colorScheme: 'dark' } as CSSProperties}
                       aria-label="Agent provider"
                     >
                       {AGENTS.map((a) => (
@@ -553,33 +584,33 @@ export default function TaskDetailPanel({
                       ))}
                     </select>
                     {task.agent === 'cursor' ? (
-                      <AgentModelPicker
-                        kind="cursor"
-                        modelId={resolvedCursorAgentModel(task)}
-                        onModelIdChange={(id) =>
-                          onUpdate(task.id, {
-                            agentModel: id.trim() || DEFAULT_CURSOR_AGENT_MODEL,
-                          })
-                        }
-                        aria-label="Cursor model"
-                      />
+                      <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                        <AgentModelPicker
+                          kind="cursor"
+                          modelId={resolvedCursorAgentModel(task)}
+                          onModelIdChange={(id) =>
+                            onUpdate(task.id, {
+                              agentModel: id.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+                            })
+                          }
+                          aria-label="Cursor model"
+                        />
+                      </div>
                     ) : task.agent === 'claude-code' ? (
-                      <AgentModelPicker
-                        kind="claude-code"
-                        modelId={claudeCodeExplicitModel(task) ?? ''}
-                        onModelIdChange={(id) =>
-                          onUpdate(task.id, {
-                            agentModel: id.trim(),
-                          })
-                        }
-                        aria-label="Claude Code model"
-                      />
+                      <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                        <AgentModelPicker
+                          kind="claude-code"
+                          modelId={claudeCodeExplicitModel(task) ?? ''}
+                          onModelIdChange={(id) => onUpdate(task.id, { agentModel: id.trim() })}
+                          aria-label="Claude Code model"
+                        />
+                      </div>
                     ) : (
                       <span
-                        className="truncate text-[12px] text-zinc-500"
+                        className="text-xs text-zinc-500"
                         title="Model selection is not wired for Codex in this version."
                       >
-                        Model: default
+                        Default model
                       </span>
                     )}
                     <div ref={agentSettingsWrapRef} className="relative shrink-0">
@@ -588,13 +619,13 @@ export default function TaskDetailPanel({
                         aria-label="Agent spawn settings"
                         aria-expanded={agentSettingsOpen}
                         onClick={() => setAgentSettingsOpen((o) => !o)}
-                        className="rounded-md p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                       >
                         <Settings className="h-4 w-4" strokeWidth={1.75} aria-hidden />
                       </button>
                       {agentSettingsOpen ? (
                         <div
-                          className="absolute right-0 z-40 mt-1 w-[min(18rem,calc(100vw-2rem))] rounded-md border border-white/[0.1] bg-[#121214] p-3 text-[12px] shadow-xl shadow-black/40"
+                          className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/[0.08] bg-[#111113] p-3 text-[12px] shadow-xl shadow-black/50"
                           role="dialog"
                           aria-label="Agent settings"
                         >
@@ -611,8 +642,7 @@ export default function TaskDetailPanel({
                               <span className="leading-snug">
                                 <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
                                 <span className="mt-1 block text-[11px] text-zinc-500">
-                                  Matches Cursor Agent{' '}
-                                  <code className="text-zinc-400">--yolo</code> /{' '}
+                                  Matches Cursor Agent <code className="text-zinc-400">--yolo</code> /{' '}
                                   <code className="text-zinc-400">--force</code>: fewer confirmation
                                   prompts; tools and shell commands run more freely unless explicitly
                                   denied.
@@ -630,13 +660,10 @@ export default function TaskDetailPanel({
                                 }
                               />
                               <span className="leading-snug">
-                                <span className="font-medium text-zinc-100">
-                                  Skip permission checks
-                                </span>
+                                <span className="font-medium text-zinc-100">Skip permission checks</span>
                                 <span className="mt-1 block text-[11px] text-zinc-500">
-                                  Passes <code className="text-zinc-400">--dangerously-skip-permissions</code>{' '}
-                                  to Claude Code (bypasses permission prompts). Anthropic recommends
-                                  this only for trusted sandboxes; treat it like Cursor YOLO.
+                                  Passes <code className="text-zinc-400">--dangerously-skip-permissions</code> to
+                                  Claude Code. Anthropic recommends this only for trusted sandboxes.
                                 </span>
                               </span>
                             </label>
@@ -649,13 +676,17 @@ export default function TaskDetailPanel({
                       ) : null}
                     </div>
                   </div>
-                </dd>
-                <dt className="text-zinc-600">Status</dt>
-                <dd>
+                </div>
+                <div className="w-full min-w-0 sm:w-44 sm:shrink-0">
+                  <label htmlFor="task-status-select" className="mb-1.5 block text-xs text-zinc-500">
+                    Status
+                  </label>
                   <select
+                    id="task-status-select"
                     value={task.status}
                     onChange={(e) => onUpdate(task.id, { status: e.target.value as TaskStatus })}
-                    className="w-full max-w-[220px] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] px-2 py-1.5 text-[13px] text-zinc-200 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+                    className={propertySelectClass}
+                    style={{ colorScheme: 'dark' } as CSSProperties}
                     aria-label="Change status"
                   >
                     {COLUMNS.map((c) => (
@@ -664,189 +695,280 @@ export default function TaskDetailPanel({
                       </option>
                     ))}
                   </select>
-                </dd>
-              </dl>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-col">
-              <label
-                htmlFor="task-detail-description"
-                className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
-              >
-                Description
-              </label>
-              <textarea
-                id="task-detail-description"
-                ref={descriptionArea.ref}
-                value={task.description ?? ''}
-                onChange={(e) => {
-                  onUpdate(task.id, { description: e.target.value });
-                  descriptionArea.resize();
-                }}
-                placeholder="Add a description..."
-                className="min-h-[120px] w-full resize-none rounded-md border border-white/[0.08] bg-[#09090b] p-3 text-[13px] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
-              />
-            </div>
-
-            {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (
-              <div className="rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-relaxed text-amber-100/90">
-                {blockingTasks.length > 0 ? (
-                  <>
-                    <span className="font-medium">Blocked</span>
-                    <span className="text-amber-200/85">
-                      {' '}
-                      — finish {blockingTasks.length === 1 ? 'this task' : 'these tasks'} first:{' '}
-                      {blockingTasks.map((b) => b.title || '(Untitled)').join(', ')}
-                    </span>
-                  </>
-                ) : null}
-                {staleMissingIds.length > 0 ? (
-                  <span
-                    className={`block text-[11px] text-amber-200/70 ${blockingTasks.length > 0 ? 'mt-1' : ''}`}
+            {/* Description: read-first, edit on demand */}
+            <section
+              className="border-t border-white/[0.04] bg-white/[0.02] px-5 py-5"
+              aria-label="Description"
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-medium text-zinc-300">Description</h2>
+                {!descriptionEditing ? (
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionEditing(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                   >
-                    {staleMissingIds.length} missing reference
-                    {staleMissingIds.length === 1 ? '' : 's'} on the board (remove below).
-                  </span>
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                    {hasDescription ? 'Edit' : 'Add details'}
+                  </button>
                 ) : null}
               </div>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
-                Dependencies
-              </span>
-              <p className="text-[11px] leading-relaxed text-zinc-600">
-                This task stays blocked until every listed dependency is marked done (missing ids are
-                ignored for blocking).
-              </p>
-              {(task.blockedByTaskIds ?? []).length === 0 ? (
-                <p className="text-[12px] text-zinc-500">No dependencies yet.</p>
+              {descriptionEditing ? (
+                <textarea
+                  id="task-detail-description"
+                  ref={descriptionArea.ref}
+                  value={descriptionRaw}
+                  onChange={(e) => {
+                    onUpdate(task.id, { description: e.target.value });
+                    descriptionArea.resize();
+                  }}
+                  onBlur={() => setDescriptionEditing(false)}
+                  autoFocus
+                  rows={4}
+                  placeholder="Write a plan, acceptance criteria, or notes — Markdown is supported."
+                  className="min-h-[8rem] w-full resize-y rounded-xl bg-[#0c0c0e] px-3.5 py-3.5 text-[13px] leading-[1.65] text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                />
               ) : (
-                <ul className="flex flex-col gap-1.5">
-                  {(task.blockedByTaskIds ?? []).map((bid) => {
-                    const other = taskById.get(bid);
-                    if (other) {
-                      const stLabel = COLUMNS.find((c) => c.id === other.status)?.label ?? other.status;
+                <div className="group relative min-h-[3rem]">
+                  {hasDescription ? (
+                    <article className={MD_READ_CLASS}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{descriptionRaw}</ReactMarkdown>
+                    </article>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDescriptionEditing(true)}
+                      className="w-full rounded-xl border border-dashed border-white/[0.1] bg-transparent py-8 text-left text-sm text-zinc-500 transition hover:border-white/[0.14] hover:bg-white/[0.02] hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      No description yet. Click to add plan, criteria, or notes.
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <div className="space-y-4 px-5 py-5">
+              {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (
+                <div
+                  className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-2.5 text-sm leading-relaxed text-amber-100/90"
+                  role="status"
+                >
+                  {blockingTasks.length > 0 ? (
+                    <p>
+                      <span className="font-medium text-amber-200/95">Waiting on other work</span>
+                      <span className="text-amber-100/85">
+                        {' '}
+                        — complete {blockingTasks.length === 1 ? 'this task' : 'these tasks'} first:{' '}
+                        {blockingTasks.map((b) => b.title || '(Untitled)').join(', ')}
+                      </span>
+                    </p>
+                  ) : null}
+                  {staleMissingIds.length > 0 ? (
+                    <p
+                      className={`text-xs text-amber-200/75 ${blockingTasks.length > 0 ? 'mt-1.5' : ''}`}
+                    >
+                      {staleMissingIds.length} reference{staleMissingIds.length === 1 ? '' : 's'} missing
+                      from the board — remove {staleMissingIds.length === 1 ? 'it' : 'them'} below.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+
+              <section className="space-y-2" aria-label="Dependencies">
+                <h2 className="text-sm font-medium text-zinc-300">Blockers & dependencies</h2>
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  This task stays blocked until every listed dependency is done. Missing task ids are ignored
+                  for blocking logic.
+                </p>
+                {(task.blockedByTaskIds ?? []).length === 0 ? (
+                  <p className="text-sm text-zinc-600">No dependencies — this task is not waiting on other work.</p>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    {(task.blockedByTaskIds ?? []).map((bid) => {
+                      const other = taskById.get(bid);
+                      if (other) {
+                        const stLabel =
+                          COLUMNS.find((c) => c.id === other.status)?.label ?? other.status;
+                        return (
+                          <li
+                            key={bid}
+                            className="flex min-h-[2.75rem] items-stretch gap-0 overflow-hidden rounded-lg bg-white/[0.03] ring-1 ring-inset ring-white/[0.06] transition hover:bg-white/[0.04]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => onSelectTask(bid)}
+                              className="min-w-0 flex-1 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:text-white"
+                            >
+                              <span className="line-clamp-2 font-medium">{other.title || '(Untitled)'}</span>
+                              <span className="ml-2 inline-block align-middle text-xs text-zinc-500">Open →</span>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-1 border-l border-white/[0.05] pl-1 pr-1.5">
+                              <span
+                                className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[other.status]}`}
+                              >
+                                {stLabel}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeBlocker(bid)}
+                                className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
+                                aria-label={`Remove dependency on ${other.title || bid}`}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      }
                       return (
                         <li
                           key={bid}
-                          className="flex items-center justify-between gap-2 rounded-md border border-white/[0.06] bg-[#09090b] px-2 py-1.5"
+                          className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-3 py-2 ring-1 ring-inset ring-amber-500/15"
                         >
-                          <button
-                            type="button"
-                            onClick={() => onSelectTask(bid)}
-                            className="min-w-0 flex-1 truncate text-left text-[12px] text-zinc-200 transition hover:text-white"
-                          >
-                            <span className="font-medium">{other.title || '(Untitled)'}</span>
-                            <span className="ml-2 text-zinc-500">· {stLabel}</span>
-                          </button>
+                          <span className="min-w-0 text-sm text-zinc-500">
+                            Missing on board <code className="text-zinc-400">{bid}</code>
+                          </span>
                           <button
                             type="button"
                             onClick={() => removeBlocker(bid)}
-                            className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+                            className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
                           >
                             Remove
                           </button>
                         </li>
                       );
-                    }
-                    return (
-                      <li
-                        key={bid}
-                        className="flex items-center justify-between gap-2 rounded-md border border-white/[0.06] bg-[#09090b] px-2 py-1.5"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-[12px] text-zinc-500">
-                          Missing task <code className="text-zinc-400">{bid}</code>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeBlocker(bid)}
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
-                        >
-                          Remove
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              <input
-                type="search"
-                value={depSearch}
-                onChange={(e) => setDepSearch(e.target.value)}
-                placeholder="Search tasks to add…"
-                className="w-full rounded-md border border-white/[0.08] bg-[#09090b] px-2 py-1.5 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus-visible:border-white/[0.14]"
-              />
-              {dependencyError ? (
-                <p className="text-[11px] text-red-300/90">{dependencyError}</p>
-              ) : null}
-              {pickCandidates.length > 0 ? (
-                <ul className="max-h-40 overflow-y-auto rounded-md border border-white/[0.06] bg-[#09090b] py-1">
-                  {pickCandidates.slice(0, 50).map((t) => {
-                    const stLabel = COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
-                    return (
-                      <li key={t.id}>
-                        <button
-                          type="button"
-                          onClick={() => addBlocker(t.id)}
-                          className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-white/[0.04]"
-                        >
-                          <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
-                          <span className="shrink-0 text-[11px] text-zinc-500">{stLabel}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : depSearch.trim() ? (
-                <p className="text-[11px] text-zinc-600">No matching tasks.</p>
-              ) : null}
+                    })}
+                  </ul>
+                )}
+
+                <div className="pt-1">
+                  <input
+                    type="search"
+                    value={depSearch}
+                    onChange={(e) => setDepSearch(e.target.value)}
+                    placeholder="Add dependency by search…"
+                    className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                    aria-label="Search tasks to add as dependencies"
+                  />
+                </div>
+                {dependencyError ? (
+                  <p className="text-xs text-red-300/90" role="alert">
+                    {dependencyError}
+                  </p>
+                ) : null}
+                {pickCandidates.length > 0 ? (
+                  <ul
+                    className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
+                    role="listbox"
+                    aria-label="Tasks matching your search"
+                  >
+                    {pickCandidates.slice(0, 50).map((t) => {
+                      const stLabel = COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
+                      return (
+                        <li key={t.id}>
+                          <button
+                            type="button"
+                            onClick={() => addBlocker(t.id)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
+                          >
+                            <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
+                            <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : depSearch.trim() ? (
+                  <p className="text-xs text-zinc-600">No matching tasks.</p>
+                ) : null}
+              </section>
             </div>
           </div>
 
-          <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden border-t border-white/[0.06]">
-            <div className="flex items-center justify-between px-4 py-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
-                Session
-              </span>
-              {sessionRunning ? (
-                <div className="flex items-center gap-2">
+          {/* Session: secondary when idle; compact chrome when live */}
+          <div className="flex min-h-[12rem] min-w-0 flex-col border-t border-white/[0.05] bg-[#080809]">
+            {sessionRunning && session ? (
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.04] px-4 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/90" />
+                  <span className="truncate text-xs font-medium text-zinc-400">Session running</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={handleOpenInTab}
-                    className="text-[11px] font-medium text-zinc-400 transition hover:text-zinc-200"
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                   >
                     Open in tab
                   </button>
                   <button
                     type="button"
                     onClick={handleArchiveFromPanel}
-                    className="text-[11px] font-medium text-red-400/90 transition hover:text-red-300"
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/30"
                     title="Archive — kill agent and terminals, keep worktree"
                   >
                     Archive
                   </button>
                 </div>
-              ) : null}
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
-              {blocked && !sessionRunning && !session ? (
-                <div className="mb-2 rounded-md border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-100/90">
-                  Session start is disabled until blocking tasks are done.
+              </div>
+            ) : (
+              <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+                  <Terminal className="h-3.5 w-3.5 opacity-70" strokeWidth={2} aria-hidden />
+                  {sessionIdleAfterRun ? 'Session output (ended)' : 'Output'}
                 </div>
-              ) : null}
+              </div>
+            )}
+
+            <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3">
               {remoteRunner && !session ? (
-                <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[13px] leading-relaxed text-zinc-500">
-                  <div className="flex items-center gap-2 text-zinc-300">
+                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-6 text-center">
+                  <div className="flex items-center gap-2 text-sm text-zinc-200">
                     <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                     <span className="font-medium">
                       {remoteRunner.displayName ?? 'A teammate'} is running an agent
                     </span>
                   </div>
-                  <p className="max-w-xs text-zinc-500">
-                    Terminal output stays on their machine for now. You'll see
-                    status updates here as they work.
+                  <p className="max-w-[18rem] text-xs leading-relaxed text-zinc-500">
+                    Terminal output stays on their machine for now. You will see status updates here as
+                    they work.
                   </p>
+                </div>
+              ) : !hasLocalSession ? (
+                <div className="relative flex h-full min-h-[6.5rem] flex-col">
+                  {showSessionStarting ? (
+                    <div
+                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-[#0a0a0b]/95 text-[13px] text-zinc-400"
+                      aria-live="polite"
+                      aria-busy="true"
+                    >
+                      <span
+                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+                        aria-hidden
+                      />
+                      <span className="font-medium text-zinc-300">Starting…</span>
+                    </div>
+                  ) : null}
+                  {blocked && !sessionRunning && !session ? (
+                    <p
+                      className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
+                      role="status"
+                    >
+                      Start session is off until blockers are cleared.
+                    </p>
+                  ) : null}
+                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5 text-center">
+                    <p className="text-sm text-zinc-500">No live session in this panel</p>
+                    <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
+                      {blocked
+                        ? 'Unblock the task, then use Start session above. Output streams here and in a workspace tab.'
+                        : 'When you start a session, the agent’s terminal streams here. Open in a tab for the full view.'}
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="relative h-full min-h-[120px]">
@@ -863,7 +985,7 @@ export default function TaskDetailPanel({
                       <span className="font-medium text-zinc-300">Starting…</span>
                     </div>
                   ) : null}
-                  <Terminal
+                  <TerminalComponent
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
                     onData={handleTerminalData}
@@ -875,11 +997,11 @@ export default function TaskDetailPanel({
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/[0.06] p-4">
+        <div className="shrink-0 border-t border-white/[0.05] px-5 py-3">
           <button
             type="button"
             onClick={handleDelete}
-            className="text-[13px] text-zinc-500 transition hover:text-red-400/90"
+            className="text-sm text-zinc-500 transition hover:text-red-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] rounded"
           >
             Delete task
           </button>
