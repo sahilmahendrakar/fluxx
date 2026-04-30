@@ -392,6 +392,7 @@ export function PlanningPanel({
                   planningApi.resize(activeSession.id, cols, rows)
                 }
                 autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
+                hideCursor
               />
             </div>
           </div>
