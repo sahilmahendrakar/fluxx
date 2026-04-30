@@ -6,13 +6,8 @@ import {
 } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { AGENTS, type Agent, type PlanningSession, type Project } from '../types';
-import {
-  applyAttachResultToTerminal,
-  getPlanningAttachShared,
-  invalidatePlanningAttachCache,
-  type BufferedStreamChunk,
-  writeBufferedStreamAfterSnapshot,
-} from '../terminal/warmAttach';
+import { getPlanningAttachShared, invalidatePlanningAttachCache } from '../terminal/warmAttach';
+import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 export interface PlanningPanelProps {
@@ -119,59 +114,37 @@ export function PlanningPanel({
     }
   }, []);
 
-  useEffect(() => {
-    if (
-      !planningApi ||
-      !activeSession ||
-      activeSession.status !== 'running'
-    ) {
-      return;
-    }
-    const id = activeSession.id;
+  const planningStreamEnabled = Boolean(
+    planningApi && activeSession && activeSession.status === 'running',
+  );
+  const activePlanningId = activeSession?.id;
 
-    let streamReady = false;
-    const earlyBuffer: BufferedStreamChunk[] = [];
-    let cancelled = false;
-
-    const unsub = planningApi.onData(id, (data, streamSeq) => {
-      if (cancelled) return;
-      appendOutputAndDetectNeedsInput(data);
-      if (!streamReady) {
-        earlyBuffer.push({ data, streamSeq });
-      } else {
-        terminalRef.current?.write(data);
+  useTerminalPtyStream({
+    terminalRef,
+    id: activePlanningId ?? '',
+    enabled: planningStreamEnabled,
+    geometryMode: 'owner',
+    getAttach: () => {
+      if (!planningApi || !activePlanningId) {
+        return Promise.resolve(null);
       }
-    });
-
-    void (async () => {
-      const result = await getPlanningAttachShared(id, async () => {
+      return getPlanningAttachShared(activePlanningId, async () => {
         try {
-          return await planningApi.attach(id);
+          return await planningApi.attach(activePlanningId);
         } catch (err) {
           console.error('[PlanningPanel] attach failed', err);
           return null;
         }
       });
-      if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, () => {
-        if (cancelled) return;
-        terminalRef.current?.fit();
-        streamReady = true;
-        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
-        earlyBuffer.length = 0;
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, [
-    planningApi,
-    activeSession?.id,
-    activeSession?.status,
-    appendOutputAndDetectNeedsInput,
-  ]);
+    },
+    onStreamData: (id, cb) => {
+      if (!planningApi) {
+        return () => undefined;
+      }
+      return planningApi.onData(id, cb);
+    },
+    onDataChunk: appendOutputAndDetectNeedsInput,
+  });
 
   useEffect(() => {
     if (needsInput) terminalRef.current?.focus();

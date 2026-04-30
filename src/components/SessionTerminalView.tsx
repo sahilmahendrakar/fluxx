@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session, Shell } from '../types';
 import {
-  applyAttachResultToTerminal,
   getSessionAttachShared,
   getShellAttachShared,
   invalidateSessionAttachCache,
   invalidateShellAttachCache,
-  type BufferedStreamChunk,
-  writeBufferedStreamAfterSnapshot,
 } from '../terminal/warmAttach';
+import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
@@ -57,50 +55,24 @@ function paneVisibilityStyle(visible: boolean): React.CSSProperties {
 function AgentPane({ session, visible }: { session: Session; visible: boolean }) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
+  const id = session.id;
 
-  useEffect(() => {
-    if (!running) return;
-    const id = session.id;
-
-    // Buffer live output until the serialized snapshot (or legacy replay) is
-    // fully applied, so in-flight stream chunks stay ordered and do not
-    // duplicate the attach payload.
-    let streamReady = false;
-    const earlyBuffer: BufferedStreamChunk[] = [];
-    let cancelled = false;
-
-    const unsubData = window.electronAPI.sessions.onData(id, (data, streamSeq) => {
-      if (cancelled) return;
-      if (!streamReady) {
-        earlyBuffer.push({ data, streamSeq });
-      } else {
-        terminalRef.current?.write(data);
-      }
-    });
-
-    void (async () => {
-      const result = await getSessionAttachShared(id, async () => {
+  useTerminalPtyStream({
+    terminalRef,
+    id,
+    enabled: running,
+    geometryMode: 'owner',
+    getAttach: () =>
+      getSessionAttachShared(id, async () => {
         try {
           return await window.electronAPI.sessions.attach(id);
         } catch (err) {
           console.error('[AgentPane] attach failed', err);
           return null;
         }
-      });
-      if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, () => {
-        if (cancelled) return;
-        streamReady = true;
-        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
-        earlyBuffer.length = 0;
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      unsubData();
-    };
-  }, [session.id, running]);
+      }),
+    onStreamData: (sid, cb) => window.electronAPI.sessions.onData(sid, cb),
+  });
 
   const handleData = (data: string) => {
     if (running) window.electronAPI.sessions.write(session.id, data);
@@ -120,7 +92,7 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
           ref={terminalRef}
           sessionId={session.id}
           onData={handleData}
-          onResize={handleResize}
+          onResize={visible && running ? handleResize : undefined}
           visible={visible}
           hideCursor
         />
@@ -136,47 +108,24 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
 function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = shell.status === 'running';
+  const id = shell.id;
 
-  useEffect(() => {
-    if (!running) return;
-    const id = shell.id;
-
-    let streamReady = false;
-    const earlyBuffer: BufferedStreamChunk[] = [];
-    let cancelled = false;
-
-    const unsubData = window.electronAPI.shells.onData(id, (data, streamSeq) => {
-      if (cancelled) return;
-      if (!streamReady) {
-        earlyBuffer.push({ data, streamSeq });
-      } else {
-        terminalRef.current?.write(data);
-      }
-    });
-
-    void (async () => {
-      const result = await getShellAttachShared(id, async () => {
+  useTerminalPtyStream({
+    terminalRef,
+    id,
+    enabled: running,
+    geometryMode: 'owner',
+    getAttach: () =>
+      getShellAttachShared(id, async () => {
         try {
           return await window.electronAPI.shells.attach(id);
         } catch (err) {
           console.error('[ShellPane] attach failed', err);
           return null;
         }
-      });
-      if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, () => {
-        if (cancelled) return;
-        streamReady = true;
-        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
-        earlyBuffer.length = 0;
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      unsubData();
-    };
-  }, [shell.id, running]);
+      }),
+    onStreamData: (sid, cb) => window.electronAPI.shells.onData(sid, cb),
+  });
 
   const handleData = (data: string) => {
     if (running) window.electronAPI.shells.write(shell.id, data);
@@ -196,7 +145,7 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
           ref={terminalRef}
           sessionId={shell.id}
           onData={handleData}
-          onResize={handleResize}
+          onResize={visible && running ? handleResize : undefined}
           visible={visible}
         />
       ) : (

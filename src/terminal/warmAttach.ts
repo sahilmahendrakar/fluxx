@@ -95,7 +95,7 @@ export function invalidatePlanningAttachCache(id: string): void {
   planningAttachInflight.delete(id);
 }
 
-interface ApplyAttachOptions {
+export interface ApplyAttachOptions {
   applyGeometry?: boolean;
   useSnapshot?: boolean;
   scrollToBottom?: boolean;

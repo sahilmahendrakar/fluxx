@@ -26,12 +26,8 @@ import {
 } from '../taskDependencies';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
-import {
-  applyAttachResultToTerminal,
-  getSessionAttachShared,
-  type BufferedStreamChunk,
-  writeBufferedStreamAfterSnapshot,
-} from '../terminal/warmAttach';
+import { getSessionAttachShared } from '../terminal/warmAttach';
+import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 interface TaskDetailPanelProps {
@@ -256,28 +252,19 @@ export default function TaskDetailPanel({
     };
   }, [session?.id]);
 
-  useEffect(() => {
-    if (!session) return;
-    const id = session.id;
-
-    // Match SessionTerminalView.AgentPane: in-flight attach coalescing and
-    // snapshot restore so StrictMode does not double-apply or re-replay
-    // raw PTY buffers when a serialized snapshot is available.
-    let streamReady = false;
-    const earlyBuffer: BufferedStreamChunk[] = [];
-    let cancelled = false;
-
-    const unsub = window.electronAPI.sessions.onData(id, (data, streamSeq) => {
-      if (cancelled) return;
-      if (!streamReady) {
-        earlyBuffer.push({ data, streamSeq });
-      } else {
-        terminalRef.current?.write(data);
+  const sessionId = session?.id;
+  const sessionReadyForPty = Boolean(sessionId && session?.status === 'running');
+  useTerminalPtyStream({
+    terminalRef,
+    id: sessionId ?? '',
+    enabled: sessionReadyForPty,
+    geometryMode: 'mirror',
+    getAttach: () => {
+      const id = sessionId;
+      if (!id) {
+        return Promise.resolve(null);
       }
-    });
-
-    void (async () => {
-      const result = await getSessionAttachShared(id, async () => {
+      return getSessionAttachShared(id, async () => {
         try {
           return await window.electronAPI.sessions.attach(id);
         } catch (err) {
@@ -285,23 +272,9 @@ export default function TaskDetailPanel({
           return null;
         }
       });
-      if (cancelled) return;
-      applyAttachResultToTerminal(terminalRef.current, result, () => {
-        if (cancelled) return;
-        streamReady = true;
-        writeBufferedStreamAfterSnapshot(terminalRef.current, earlyBuffer, result?.streamSeq);
-        earlyBuffer.length = 0;
-      }, {
-        applyGeometry: false,
-        useSnapshot: false,
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, [session?.id]);
+    },
+    onStreamData: (id, cb) => window.electronAPI.sessions.onData(id, cb),
+  });
 
   useEffect(() => {
     if (!task) return;
