@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -87,6 +88,24 @@ const DEFAULT_DETAIL_WIDTH = 480;
 const MIN_DETAIL_WIDTH = 280;
 const MIN_BOARD_REMAINING_PX = 200;
 
+/** Drag handle between the scrollable form and the session/terminal (matches layout gap). */
+const TASK_FORM_SPLIT_HANDLE_PX = 6;
+const MIN_SESSION_PANE_PX = 192; // 12rem — keep terminal area usable
+const MIN_TASK_FORM_PANE_PX = 160; // min height for the title/form scroller
+const DEFAULT_SESSION_PANE_PX = 224; // default terminal allocation (14rem at 1rem=16px)
+
+function clampSessionPaneHeight(h: number, containerHeightPx: number): number {
+  if (containerHeightPx <= 0) {
+    return Math.round(h);
+  }
+  const maxH = Math.max(
+    0,
+    containerHeightPx - MIN_TASK_FORM_PANE_PX - TASK_FORM_SPLIT_HANDLE_PX,
+  );
+  const minH = Math.min(MIN_SESSION_PANE_PX, maxH);
+  return Math.max(minH, Math.min(maxH, Math.round(h)));
+}
+
 function clampDetailWidth(width: number, maxWidth: number): number {
   return Math.min(maxWidth, Math.max(MIN_DETAIL_WIDTH, Math.round(width)));
 }
@@ -164,6 +183,10 @@ export default function TaskDetailPanel({
   const [depSearch, setDepSearch] = useState('');
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
+  const taskFormSplitRef = useRef<HTMLDivElement>(null);
+  const [sessionPaneHeightPx, setSessionPaneHeightPx] = useState(
+    DEFAULT_SESSION_PANE_PX,
+  );
 
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
@@ -293,6 +316,117 @@ export default function TaskDetailPanel({
       persistDetailWidth(next);
     },
     [maxDetailWidthForParent, persistDetailWidth],
+  );
+
+  const getTaskFormSplitHeight = useCallback(() => {
+    return taskFormSplitRef.current?.getBoundingClientRect().height ?? 0;
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = taskFormSplitRef.current;
+    if (!el) return;
+    const sync = () => {
+      setSessionPaneHeightPx((prev) => clampSessionPaneHeight(prev, el.getBoundingClientRect().height));
+    };
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(sync);
+    });
+    ro.observe(el);
+    sync();
+    return () => ro.disconnect();
+  }, [task?.id]);
+
+  useLayoutEffect(() => {
+    terminalRef.current?.fit();
+  }, [sessionPaneHeightPx, session?.id, task?.id]);
+
+  const handleSessionSplitPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = e.currentTarget;
+      const startY = e.clientY;
+      const startH = sessionPaneHeightPx;
+      handle.setPointerCapture(e.pointerId);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (ev: globalThis.PointerEvent) => {
+        const next = startH - (ev.clientY - startY);
+        setSessionPaneHeightPx(
+          clampSessionPaneHeight(next, getTaskFormSplitHeight()),
+        );
+      };
+
+      const onUp = (ev: globalThis.PointerEvent) => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        setSessionPaneHeightPx((prev) =>
+          clampSessionPaneHeight(prev, getTaskFormSplitHeight()),
+        );
+      };
+
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    },
+    [getTaskFormSplitHeight, sessionPaneHeightPx],
+  );
+
+  const handleSessionSplitDoubleClick = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSessionPaneHeightPx(
+        clampSessionPaneHeight(
+          DEFAULT_SESSION_PANE_PX,
+          getTaskFormSplitHeight(),
+        ),
+      );
+    },
+    [getTaskFormSplitHeight],
+  );
+
+  const onSessionSplitKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (
+        e.key !== 'ArrowUp' &&
+        e.key !== 'ArrowDown' &&
+        e.key !== 'Home' &&
+        e.key !== 'End'
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const H = getTaskFormSplitHeight();
+      if (H <= 0) return;
+      const maxH = Math.max(
+        0,
+        H - MIN_TASK_FORM_PANE_PX - TASK_FORM_SPLIT_HANDLE_PX,
+      );
+      const minH = Math.min(MIN_SESSION_PANE_PX, maxH);
+      const step = e.shiftKey ? 40 : 10;
+      setSessionPaneHeightPx((prev) => {
+        if (e.key === 'Home') {
+          return clampSessionPaneHeight(minH, H);
+        }
+        if (e.key === 'End') {
+          return clampSessionPaneHeight(maxH, H);
+        }
+        if (e.key === 'ArrowUp') {
+          return clampSessionPaneHeight(prev + step, H);
+        }
+        if (e.key === 'ArrowDown') {
+          return clampSessionPaneHeight(prev - step, H);
+        }
+        return prev;
+      });
+    },
+    [getTaskFormSplitHeight],
   );
 
   const lastSessionFetchTaskIdRef = useRef<string | null>(null);
@@ -582,8 +716,11 @@ export default function TaskDetailPanel({
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto">
+        <div ref={taskFormSplitRef} className="flex min-h-0 flex-1 flex-col">
+          <div
+            className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+            style={{ minHeight: MIN_TASK_FORM_PANE_PX }}
+          >
             <div className="space-y-6 px-5 py-5">
               <textarea
                 id="task-detail-title"
@@ -938,8 +1075,23 @@ export default function TaskDetailPanel({
             </div>
           </div>
 
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize between task details and session output"
+            title="Drag to resize session. Double-click to reset."
+            tabIndex={0}
+            className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+            onPointerDown={handleSessionSplitPointerDown}
+            onDoubleClick={handleSessionSplitDoubleClick}
+            onKeyDown={onSessionSplitKeyDown}
+          />
+
           {/* Session: secondary when idle; compact chrome when live */}
-          <div className="flex min-h-[12rem] min-w-0 flex-col border-t border-white/[0.05] bg-[#080809]">
+          <div
+            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-[#080809]"
+            style={{ height: sessionPaneHeightPx }}
+          >
             {sessionRunning && session ? (
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.04] px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
