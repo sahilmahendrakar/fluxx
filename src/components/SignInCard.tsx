@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../renderer/auth/useAuth';
 
 export function SignInCard() {
   const { status, user, signIn, signOut } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoFailed, setPhotoFailed] = useState(false);
+
+  // Reset failure state when the photo URL changes (e.g. sign-in/out cycle).
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [user?.photoURL]);
 
   if (status === 'unconfigured') {
     return (
@@ -49,10 +55,17 @@ export function SignInCard() {
   if (status === 'signedIn' && user) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-        {user.photoURL ? (
+        {user.photoURL && !photoFailed ? (
+          // referrerPolicy="no-referrer" stops Google's CDN
+          // (lh3.googleusercontent.com) from rejecting the request based on the
+          // app's origin — without it, profile photos sporadically 403/fail to
+          // load. onError falls back to the initial-letter avatar so a broken
+          // image never leaves a blank circle.
           <img
             src={user.photoURL}
             alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setPhotoFailed(true)}
             className="h-9 w-9 rounded-full border border-white/[0.08]"
           />
         ) : (

@@ -86,6 +86,12 @@ service cloud.firestore {
           && request.resource.data.email == email
           && email == email.lower();
 
+        // Owner can update invite metadata (e.g. backfilling projectName onto
+        // legacy invites that pre-date denormalization). The email field is
+        // immutable so the doc id and email stay in sync.
+        allow update: if isOwner(pid)
+          && request.resource.data.email == resource.data.email;
+
         // Owner can cancel. Invited user can delete their own invite
         // (accept/decline flow ends with deleting it).
         allow delete: if isOwner(pid)

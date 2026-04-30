@@ -12,6 +12,12 @@ import type { Task } from '../types';
 
 const MCP_PORT = 47432;
 
+interface ActiveMcpSession {
+  server: BaseMcpServer;
+  transport: SSEServerTransport;
+  createdAt: number;
+}
+
 function jsonToolPayload(data: unknown): {
   content: Array<{ type: 'text'; text: string }>;
 } {
@@ -29,9 +35,7 @@ function toolError(err: unknown): {
 
 export class McpServer {
   private server: http.Server | null = null;
-  private mcpServer: BaseMcpServer;
-  private activeTransport: SSEServerTransport | null = null;
-  private sseChain: Promise<void> = Promise.resolve();
+  private activeSessions = new Map<string, ActiveMcpSession>();
 
   constructor(
     private taskStore: TaskStore,
@@ -46,12 +50,15 @@ export class McpServer {
       ) => Promise<Task>;
       startTask: (id: string) => Promise<Task>;
     },
-  ) {
-    this.mcpServer = new BaseMcpServer(
+  ) {}
+
+  private createSdkServer(): BaseMcpServer {
+    const server = new BaseMcpServer(
       { name: 'flux', version: '0.1.0' },
       { capabilities: { tools: {} } },
     );
-    this.registerTools();
+    this.registerTools(server);
+    return server;
   }
 
   private notifyTasksChanged(): void {
@@ -71,8 +78,8 @@ export class McpServer {
     return task ?? null;
   }
 
-  private registerTools(): void {
-    this.mcpServer.tool(
+  private registerTools(server: BaseMcpServer): void {
+    server.tool(
       'flux__list_tasks',
       'List all tasks on the Flux board for the current project',
       {},
@@ -91,7 +98,7 @@ export class McpServer {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       'flux__create_task',
       'Create a new task on the Flux board for the current project',
       {
@@ -131,7 +138,7 @@ export class McpServer {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       'flux__update_task',
       'Update an existing task on the Flux board',
       {
@@ -177,7 +184,7 @@ export class McpServer {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       'flux__start_task',
       'Move a task to In progress on the Flux board and start its agent session',
       {
@@ -205,7 +212,7 @@ export class McpServer {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       'flux__delete_task',
       'Permanently remove a task from the Flux board for the current project. Requires confirm=true after the user explicitly asked to delete this task.',
       {
@@ -236,7 +243,7 @@ export class McpServer {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       'flux__get_project_info',
       'Get the current Flux project name, canonical rootPath (git repo / application code location), and task status counts',
       {},
@@ -273,22 +280,32 @@ export class McpServer {
   }
 
   private async establishSse(res: http.ServerResponse): Promise<void> {
-    if (this.mcpServer.isConnected()) {
-      await this.mcpServer.close().catch(() => undefined);
-    }
-    this.activeTransport = null;
-
+    const server = this.createSdkServer();
     const transport = new SSEServerTransport('/messages', res);
-    transport.onclose = () => {
-      if (this.activeTransport === transport) {
-        this.activeTransport = null;
+    const sessionId = transport.sessionId;
+    this.activeSessions.set(sessionId, {
+      server,
+      transport,
+      createdAt: Date.now(),
+    });
+
+    const cleanup = () => {
+      const active = this.activeSessions.get(sessionId);
+      if (active?.transport === transport) {
+        this.activeSessions.delete(sessionId);
+        void server.close().catch(() => undefined);
       }
     };
 
+    transport.onclose = () => {
+      cleanup();
+    };
+    res.on('close', cleanup);
+
     try {
-      await this.mcpServer.connect(transport);
-      this.activeTransport = transport;
+      await server.connect(transport);
     } catch (err) {
+      cleanup();
       console.error('[MCP] Failed to establish SSE transport', err);
       if (!res.headersSent) {
         res.writeHead(500).end('MCP transport error');
@@ -333,10 +350,22 @@ export class McpServer {
     }
 
     if (req.method === 'GET' && url.pathname === '/sse') {
-      this.sseChain = this.sseChain
-        .then(() => this.establishSse(res))
-        .catch(() => undefined);
-      await this.sseChain;
+      await this.establishSse(res).catch(() => undefined);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/healthz') {
+      const now = Date.now();
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          ok: true,
+          activeSessions: this.activeSessions.size,
+          sessions: Array.from(this.activeSessions.entries()).map(([sessionId, session]) => ({
+            sessionId,
+            ageMs: now - session.createdAt,
+          })),
+        }),
+      );
       return;
     }
 
@@ -346,13 +375,18 @@ export class McpServer {
         res.writeHead(400).end('Missing sessionId parameter');
         return;
       }
-      const transport = this.activeTransport;
-      if (!transport || transport.sessionId !== sessionId) {
+      const session = this.activeSessions.get(sessionId);
+      if (!session) {
+        console.warn('[MCP] POST /messages for unknown session', {
+          requestedSessionId: sessionId,
+          activeSessionCount: this.activeSessions.size,
+          activeSessionIds: Array.from(this.activeSessions.keys()),
+        });
         res.writeHead(404).end('Session not found');
         return;
       }
       try {
-        await transport.handlePostMessage(req, res, undefined);
+        await session.transport.handlePostMessage(req, res, undefined);
       } catch (err) {
         console.error('[MCP] Error handling POST /messages', err);
         if (!res.headersSent) {
@@ -366,8 +400,10 @@ export class McpServer {
   }
 
   stop(): void {
-    void this.mcpServer.close().catch(() => undefined);
-    this.activeTransport = null;
+    for (const { server } of this.activeSessions.values()) {
+      void server.close().catch(() => undefined);
+    }
+    this.activeSessions.clear();
     if (this.server) {
       this.server.close();
       this.server = null;
