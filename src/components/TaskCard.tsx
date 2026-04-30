@@ -63,13 +63,28 @@ export default function TaskCard({
               className="cursor-grab"
             >
               <div className="flex items-start justify-between gap-2">
-                <p
-                  className={`min-w-0 flex-1 text-[13px] font-medium leading-snug tracking-tight break-words ${
-                    isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
-                  }`}
-                >
-                  {task.title}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
+                      isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
+                    }`}
+                  >
+                    {task.title}
+                  </p>
+                  {task.labels && task.labels.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {task.labels.map((lb) => (
+                        <span
+                          key={lb}
+                          className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
+                          title={lb}
+                        >
+                          {lb}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}

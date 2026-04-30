@@ -118,8 +118,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   tasks: {
     getAll: () => ipcRenderer.invoke('tasks:getAll') as Promise<Task[]>,
-    create: (input: { title: string; agent: Agent; blockedByTaskIds?: string[] }) =>
-      ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
+    create: (input: {
+      title: string;
+      agent: Agent;
+      blockedByTaskIds?: string[];
+      labels?: string[];
+    }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
       patch: Partial<
@@ -134,6 +138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'orderKey'
           | 'workspaceCleanedAt'
           | 'blockedByTaskIds'
+          | 'labels'
         >
       >,
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,

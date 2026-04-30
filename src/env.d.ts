@@ -96,7 +96,12 @@ declare global {
       };
       tasks: {
         getAll: () => Promise<Task[]>;
-        create: (input: { title: string; agent: Agent }) => Promise<Task>;
+        create: (input: {
+          title: string;
+          agent: Agent;
+          blockedByTaskIds?: string[];
+          labels?: string[];
+        }) => Promise<Task>;
         update: (
           id: string,
           patch: Partial<
@@ -111,6 +116,7 @@ declare global {
             | 'orderKey'
             | 'workspaceCleanedAt'
             | 'blockedByTaskIds'
+            | 'labels'
           >
         >,
       ) => Promise<Task>;

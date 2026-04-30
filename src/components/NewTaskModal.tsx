@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Agent, AGENTS } from '../types';
+import { TaskLabelsField } from './TaskLabelsField';
 
 interface Props {
   onClose: () => void;
-  onCreate: (title: string, agent: Agent) => void;
+  onCreate: (title: string, agent: Agent, labels: string[]) => void;
+  /** Union of labels on existing tasks, for the picker. */
+  labelCatalog: string[];
 }
 
-export default function NewTaskModal({ onClose, onCreate }: Props) {
+export default function NewTaskModal({ onClose, onCreate, labelCatalog }: Props) {
   const [title, setTitle] = useState('');
   const [agent, setAgent] = useState<Agent>('claude-code');
+  const [labels, setLabels] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -28,7 +32,7 @@ export default function NewTaskModal({ onClose, onCreate }: Props) {
 
   const submit = () => {
     if (!canSubmit) return;
-    onCreate(trimmed, agent);
+    onCreate(trimmed, agent, labels);
   };
 
   return (
@@ -57,6 +61,16 @@ export default function NewTaskModal({ onClose, onCreate }: Props) {
           placeholder="What should the agent do?"
           className="mt-1.5 w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12]"
         />
+
+        <div className="mt-4">
+          <TaskLabelsField
+            idPrefix="new-task"
+            labels={labels}
+            labelCatalog={labelCatalog}
+            onLabelsChange={setLabels}
+            compact
+          />
+        </div>
 
         <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
           Agent

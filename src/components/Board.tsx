@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
+import { projectLabelCatalog } from '../taskLabels';
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 
@@ -8,7 +9,7 @@ interface Props {
   tasks: Task[];
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
-  onCreateTask: (title: string, agent: Agent) => void;
+  onCreateTask: (title: string, agent: Agent, labels?: string[]) => void;
   onDeleteTask: (id: string) => void;
   onRequestCleanupTask: (id: string) => void;
   cleanupLoadingTaskId: string | null;
@@ -42,6 +43,10 @@ export default function Board({
   }
 
   const boardIsEmpty = tasks.length === 0;
+  const labelCatalog = useMemo(
+    () => projectLabelCatalog(allTasks),
+    [allTasks],
+  );
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
@@ -90,9 +95,10 @@ export default function Board({
       </div>
       {modalOpen ? (
         <NewTaskModal
+          labelCatalog={labelCatalog}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent) => {
-            onCreateTask(title, agent);
+          onCreate={(title, agent, labels) => {
+            onCreateTask(title, agent, labels);
             setModalOpen(false);
           }}
         />

@@ -45,6 +45,7 @@ import type { TaskPatch, TaskProvider } from './renderer/tasks/TaskProvider';
 import { LocalTaskProvider } from './renderer/tasks/LocalTaskProvider';
 import { FirestoreTaskProvider } from './renderer/tasks/FirestoreTaskProvider';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
+import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 
@@ -565,7 +566,22 @@ export default function App() {
 
   const handleUpdateTask = useCallback(
     (id: string, patch: Partial<Task>) => {
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          let next: Task = { ...t, ...patch };
+          if (patch.labels !== undefined) {
+            const n = normalizeTaskLabels(patch.labels);
+            if (n.length > 0) {
+              next = { ...next, labels: n };
+            } else {
+              next = { ...next };
+              delete next.labels;
+            }
+          }
+          return next;
+        }),
+      );
 
       const persistable: TaskPatch = {};
       if (patch.title !== undefined) persistable.title = patch.title;
@@ -580,6 +596,9 @@ export default function App() {
       }
       if (patch.blockedByTaskIds !== undefined) {
         persistable.blockedByTaskIds = patch.blockedByTaskIds;
+      }
+      if (patch.labels !== undefined) {
+        persistable.labels = normalizeTaskLabels(patch.labels);
       }
       if (Object.keys(persistable).length === 0) return;
 
@@ -699,7 +718,7 @@ export default function App() {
   );
 
   const handleCreateTask = useCallback(
-    async (title: string, agent: Agent) => {
+    async (title: string, agent: Agent, labelInput?: string[]) => {
       if (!provider) return;
       try {
         // Append to the bottom of the backlog column.
@@ -710,7 +729,13 @@ export default function App() {
         } catch {
           orderKey = undefined;
         }
-        const task = await provider.create({ title, agent, orderKey });
+        const labels = normalizeTaskLabels(labelInput);
+        const task = await provider.create({
+          title,
+          agent,
+          orderKey,
+          ...(labels.length > 0 ? { labels } : {}),
+        });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
           return [...prev, task];
