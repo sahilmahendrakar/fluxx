@@ -1,0 +1,89 @@
+src/renderer/projects/members.ts
+  426fa78334890b76 22,70-71
+  d3980c43b8d3604b 23,55-58
+  7720e8ff238b42d7 5,13,36,62-69,72-96
+src/components/ProjectsListView.tsx
+  426fa78334890b76 147,181
+src/renderer/mcp/useMcpRendererBridge.ts
+  7720e8ff238b42d7 9,18,180-187
+src/components/TeamView.tsx
+  426fa78334890b76 4,20-48,201
+src/renderer/projects/cloudProjects.ts
+  426fa78334890b76 80-98,104,118-119,125,155,176-179,182,187,189-190
+src/types.ts
+  d3980c43b8d3604b 124-125
+src/main/ProjectStore.ts
+  7720e8ff238b42d7 159
+src/main/McpServer.ts
+  7720e8ff238b42d7 16,467-494
+src/App.tsx
+  426fa78334890b76 59,181,191-206
+  d3980c43b8d3604b 83-106,724,839
+src/renderer/tasks/FirestoreTaskProvider.ts
+  6df894710c59f12a 87-89,136-138
+  d3980c43b8d3604b 181-187,235,242-250
+src/mcpBridge.ts
+  d3980c43b8d3604b 32,43
+  7720e8ff238b42d7 12-22
+src/renderer/tasks/TaskProvider.ts
+  d3980c43b8d3604b 18-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "e40e907136fab673c6d76b2d101b81627b3ed514",
+  "prompts": {
+    "426fa78334890b76": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b53a493f-a749-46a7-accf-8b62f58e4903",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 82,
+      "overriden_lines": 0
+    },
+    "6df894710c59f12a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27c9fc28-ce8d-4014-830b-b1e9d57a2337",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    },
+    "7720e8ff238b42d7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "caa0fdd5-51b7-4b90-a6a0-dfe1994177eb",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    },
+    "d3980c43b8d3604b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1cd7cf0d-c9c7-4018-9919-af7e80ec7503",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 57,
+      "overriden_lines": 0
+    }
+  }
+}
