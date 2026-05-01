@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   Timestamp,
   updateDoc,
@@ -9,6 +10,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
+import type { McpBridgeMember } from '../../mcpBridge';
 import { getFirebaseFirestore } from '../firebase';
 
 export interface ProjectMember {
@@ -31,10 +33,7 @@ export function subscribeToProjectMembers(
     collection(db, 'projects', projectId, 'members'),
     (snap) => {
       const members = snap.docs.map(toMember);
-      members.sort((a, b) => {
-        if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
-        return (a.displayName || a.email).localeCompare(b.displayName || b.email);
-      });
+      sortMembersByRoleThenName(members);
       cb(members);
     },
     (err) => {
@@ -58,6 +57,41 @@ function toMember(d: QueryDocumentSnapshot<DocumentData>): ProjectMember {
         ? data.photoURL.trim()
         : undefined,
   };
+}
+
+function toBridgeMember(d: QueryDocumentSnapshot<DocumentData>): McpBridgeMember {
+  const data = d.data() ?? {};
+  const row: McpBridgeMember = {
+    uid: d.id,
+    role: data.role === 'owner' ? 'owner' : 'member',
+    displayName: typeof data.displayName === 'string' ? data.displayName : '',
+    email: typeof data.email === 'string' ? data.email : '',
+  };
+  if (typeof data.photoURL === 'string' && data.photoURL.length > 0) {
+    row.photoURL = data.photoURL;
+  }
+  return row;
+}
+
+function sortMembersByRoleThenName<T extends { role: 'owner' | 'member'; displayName: string; email: string }>(
+  members: T[],
+): void {
+  members.sort((a, b) => {
+    if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
+    return (a.displayName || a.email).localeCompare(b.displayName || b.email);
+  });
+}
+
+/**
+ * One-shot read of `projects/{projectId}/members` for MCP bridge (same collection as
+ * {@link subscribeToProjectMembers}). Sorted owner-first, then display name.
+ */
+export async function fetchProjectMembersForBridge(projectId: string): Promise<McpBridgeMember[]> {
+  const db = getFirebaseFirestore();
+  const snap = await getDocs(collection(db, 'projects', projectId, 'members'));
+  const members = snap.docs.map(toBridgeMember);
+  sortMembersByRoleThenName(members);
+  return members;
 }
 
 /**
