@@ -1,0 +1,31 @@
+src/App.tsx
+  7a2872b410052818 61-67,72,225-227,660-663,687-690,963-966,1104,1125,1140,1166,1177,1184,1189-1194,1287,1307,1333,1394-1396,1400-1416,1622-1623,1651-1652,1654,1676,1679-1680,1686,1699-1706,1710,1712-1713,1755,1854-1870,1872-1874
+src/components/Sidebar.tsx
+  7a2872b410052818 10,224,269-270,299,302,320,332-336,376-378,408
+src/components/AppShell.tsx
+  7a2872b410052818 11,55,81
+src/projectHashRoute.ts
+  7a2872b410052818 1-54
+src/components/TabBar.tsx
+  7a2872b410052818 18,42,61,66-67,94,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "11237b6030269f7bfae768badcd767a5fcd15dff",
+  "prompts": {
+    "7a2872b410052818": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d9ecc0c3-bdbf-4c90-bb03-be652f127ff2",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 180,
+      "total_deletions": 60,
+      "accepted_lines": 179,
+      "overriden_lines": 0
+    }
+  }
+}
