@@ -180,7 +180,7 @@ export class TaskStore {
         | 'labels'
         | 'autoStartOnUnblock'
       >
-    >,
+    > & { assigneeId?: string | null },
   ): Promise<Task> {
     if (!this.filePath) {
       throw new Error('No project directory open for tasks');
@@ -190,9 +190,10 @@ export class TaskStore {
       throw new Error(`Task not found: ${id}`);
     }
     const current = this.tasks[index];
+    const { assigneeId: patchAssigneeId, ...patchRest } = patch;
     const updated: Task = {
       ...current,
-      ...patch,
+      ...patchRest,
     };
     if (patch.labels !== undefined) {
       const n = normalizeTaskLabels(patch.labels);
@@ -207,6 +208,13 @@ export class TaskStore {
         updated.autoStartOnUnblock = true;
       } else {
         delete updated.autoStartOnUnblock;
+      }
+    }
+    if (patchAssigneeId !== undefined) {
+      if (patchAssigneeId === null || patchAssigneeId === '') {
+        delete updated.assigneeId;
+      } else {
+        updated.assigneeId = patchAssigneeId;
       }
     }
     this.tasks[index] = updated;

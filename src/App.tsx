@@ -86,7 +86,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
   const { assigneeId, workspaceCleanedAt, ...rest } = patch;
   let next: Task = { ...task, ...rest };
   if (assigneeId !== undefined) {
-    if (assigneeId === null) {
+    if (assigneeId === null || assigneeId === '') {
       next = { ...next };
       delete next.assigneeId;
     } else {

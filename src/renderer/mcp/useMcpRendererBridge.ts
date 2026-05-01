@@ -155,6 +155,14 @@ async function handleRequest(
         await provider.delete(payload.taskId);
         return { id: req.id, ok: true, data: { deletedId: payload.taskId } };
       }
+      case 'members.list': {
+        if (project.kind !== 'cloud') {
+          const empty: McpBridgeMember[] = [];
+          return { id: req.id, ok: true, data: empty };
+        }
+        const listed = await fetchProjectMembersForBridge(project.id);
+        return { id: req.id, ok: true, data: listed };
+      }
       case 'projectInfo': {
         const taskCounts = {
           backlog: 0,
@@ -176,14 +184,6 @@ async function handleRequest(
           taskCounts,
         };
         return { id: req.id, ok: true, data: result };
-      }
-      case 'members.list': {
-        if (project.kind !== 'cloud') {
-          const empty: McpBridgeMember[] = [];
-          return { id: req.id, ok: true, data: empty };
-        }
-        const listed = await fetchProjectMembersForBridge(project.id);
-        return { id: req.id, ok: true, data: listed };
       }
       default:
         return {
