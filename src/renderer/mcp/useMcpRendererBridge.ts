@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
+import { maybeCloudAutoStartSessionOnInProgressTransition } from '../../cloudInProgressAutostartApply';
 import type {
   ActiveProjectKey,
   CloudProject,
@@ -25,6 +26,8 @@ export interface McpBridgeContext {
   provider: TaskProvider | null;
   uid: string | null;
   tasksSnapshot: Task[];
+  /** Dedupes cloud auto-start with board/detail/unblock paths (same Set as App). */
+  cloudAutostartInFlightRef: MutableRefObject<Set<string>>;
 }
 
 /**
@@ -139,6 +142,21 @@ async function handleRequest(
         const previous =
           tasksSnapshot.find((t) => t.id === payload.taskId) ?? null;
         const updated = await provider.update(payload.taskId, payload.patch);
+        if (project.kind === 'cloud' && previous) {
+          const allTasksForSession = tasksSnapshot.map((t) =>
+            t.id === payload.taskId ? updated : t,
+          );
+          await maybeCloudAutoStartSessionOnInProgressTransition(
+            previous,
+            updated,
+            allTasksForSession,
+            {
+              source: 'cloud:mcpBridge',
+              inFlight: ctx.cloudAutostartInFlightRef.current,
+              logError: (msg, data) => console.error(msg, data),
+            },
+          );
+        }
         const result: McpBridgeTasksUpdateResult = { previous, updated };
         return { id: req.id, ok: true, data: result };
       }

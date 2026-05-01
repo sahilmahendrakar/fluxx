@@ -50,6 +50,7 @@ import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
+import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
@@ -336,7 +337,13 @@ export default function App() {
     return () => unsub();
   }, [provider]);
 
-  useMcpRendererBridge({ project, provider, uid, tasksSnapshot: tasks });
+  useMcpRendererBridge({
+    project,
+    provider,
+    uid,
+    tasksSnapshot: tasks,
+    cloudAutostartInFlightRef: cloudUnblockInFlightRef,
+  });
 
   useEffect(() => {
     if (!project) {
@@ -707,7 +714,15 @@ export default function App() {
   ]);
 
   const pendingRef = useRef<
-    Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
+    Map<
+      string,
+      {
+        patch: TaskPatch;
+        timer: ReturnType<typeof setTimeout>;
+        /** Task snapshot before this debounced flush window (for transition detection). */
+        preFlushTask: Task;
+      }
+    >
   >(new Map());
 
   useEffect(() => {
@@ -724,19 +739,35 @@ export default function App() {
       const pending = pendingRef.current.get(id);
       if (!pending) return;
       pendingRef.current.delete(id);
+      const { patch, preFlushTask } = pending;
       try {
-        const updated = await provider.update(id, pending.patch);
+        const updated = await provider.update(id, patch);
         const newer = pendingRef.current.get(id);
         setTasks((prev) =>
           prev.map((t) =>
             t.id === id ? mergeServerTaskWithPendingPatch(updated, newer?.patch) : t,
           ),
         );
+        if (project?.kind === 'cloud') {
+          const allTasksForSession = tasksRef.current.map((t) =>
+            t.id === id ? { ...updated, ...(newer?.patch ?? {}) } : t,
+          );
+          await maybeCloudAutoStartSessionOnInProgressTransition(
+            preFlushTask,
+            updated,
+            allTasksForSession,
+            {
+              source: 'cloud:flushUpdate',
+              inFlight: cloudUnblockInFlightRef.current,
+              logError: (msg, data) => console.error(msg, data),
+            },
+          );
+        }
       } catch (err) {
         console.error('[tasks.update] failed', err);
       }
     },
-    [provider],
+    [provider, project?.kind],
   );
 
   const handleUpdateTask = useCallback(
@@ -793,11 +824,14 @@ export default function App() {
 
       const existing = pendingRef.current.get(id);
       if (existing) clearTimeout(existing.timer);
+      const preFlushTask =
+        existing?.preFlushTask ?? tasksRef.current.find((t) => t.id === id);
+      if (!preFlushTask) return;
       const merged: TaskPatch = { ...existing?.patch, ...persistable };
       const timer = setTimeout(() => {
         void flushUpdate(id);
       }, UPDATE_DEBOUNCE_MS);
-      pendingRef.current.set(id, { patch: merged, timer });
+      pendingRef.current.set(id, { patch: merged, timer, preFlushTask });
     },
     [flushUpdate],
   );
@@ -830,6 +864,9 @@ export default function App() {
         nextOrderKey = String(Date.now());
       }
 
+      const previous = tasks.find((t) => t.id === draggableId);
+      if (!previous) return;
+
       setTasks((prev) =>
         prev.map((t) =>
           t.id === draggableId
@@ -851,11 +888,28 @@ export default function App() {
               : t,
           ),
         );
+        if (project?.kind === 'cloud') {
+          const allTasksForSession = tasksRef.current.map((t) =>
+            t.id === draggableId
+              ? { ...updated, ...(pending?.patch ?? {}) }
+              : t,
+          );
+          await maybeCloudAutoStartSessionOnInProgressTransition(
+            previous,
+            updated,
+            allTasksForSession,
+            {
+              source: 'cloud:dragEnd',
+              inFlight: cloudUnblockInFlightRef.current,
+              logError: (msg, data) => console.error(msg, data),
+            },
+          );
+        }
       } catch (err) {
         console.error('[tasks.update] drag-end failed', err);
       }
     },
-    [provider, tasks],
+    [provider, project?.kind, tasks],
   );
 
   const handleMarkTaskDone = useCallback(
@@ -1269,6 +1323,41 @@ export default function App() {
     [refreshPlanningSessions],
   );
 
+  const handlePlanningActiveSessionChange = useCallback(
+    (id: string | null) => {
+      if (activeTabId === 'board' || activeTabId === 'plan') {
+        setPlanningSidebarActiveId(id);
+        return;
+      }
+      const cur = parsePlanTabId(activeTabId);
+      if (cur && id && id !== cur) {
+        setOpenPlanningMainTabIds((prev) => {
+          const next = new Set(prev);
+          next.delete(cur);
+          next.add(id);
+          return next;
+        });
+        setActiveTabId(planTabId(id));
+      }
+      setPlanningSidebarActiveId(id);
+    },
+    [activeTabId],
+  );
+
+  const handlePlanningPanelClose = useCallback(() => {
+    const sid = parsePlanTabId(activeTabId);
+    if (sid) {
+      void handleClosePlanningMainTab(sid);
+      return;
+    }
+    if (activeTabId === 'plan') {
+      setActiveTabId('board');
+      setPlanPanelOpen(false);
+      return;
+    }
+    setPlanPanelOpen(false);
+  }, [activeTabId, handleClosePlanningMainTab]);
+
   const handleOpenSettingsTab = useCallback(() => {
     setSettingsTabOpen(true);
     setActiveTabId('settings');
@@ -1375,10 +1464,17 @@ export default function App() {
     });
   }, [openPlanningMainTabIds, planningSessions]);
 
-  const fullscreenPlanningSessionId =
-    activeTabId === 'plan'
-      ? planningSidebarActiveId
-      : parsePlanTabId(activeTabId);
+  const isFullscreenPlanTab =
+    activeTabId === 'plan' || parsePlanTabId(activeTabId) !== null;
+
+  const isBoardOrPlanTab =
+    activeTabId === 'board' || isFullscreenPlanTab;
+
+  const planningPanelActiveSessionId = useMemo(() => {
+    const sid = parsePlanTabId(activeTabId);
+    if (sid) return sid;
+    return planningSidebarActiveId;
+  }, [activeTabId, planningSidebarActiveId]);
 
   const deleteConfirmSession = useMemo(
     () => (deleteConfirmId ? sessionItems.find((s) => s.session.id === deleteConfirmId) ?? null : null),
@@ -1533,7 +1629,7 @@ export default function App() {
                   style={{
                     visibility: isActive ? 'visible' : 'hidden',
                     pointerEvents: isActive ? 'auto' : 'none',
-                    zIndex: isActive ? 1 : 0,
+                    zIndex: isActive ? 2 : 1,
                   }}
                 >
                   <SessionTerminalView
@@ -1550,149 +1646,177 @@ export default function App() {
                 </div>
               );
             })}
-            {!activeSessionTab && activeTabId === 'board' ? (
-              <div className="relative flex min-h-0 flex-1 overflow-hidden">
+            {/*
+              Board, planning (sidebar + fullscreen), docs, and settings share one
+              persistent stack under session terminals. Toggle visibility instead
+              of conditional mounts so the planning xterm instance (scrollback,
+              TUI state) survives tab switches — matching SessionTerminalView.
+              While a task session tab is focused, hide this stack but keep it
+              mounted for the same reason; session layers use z-index 1–2 so they
+              stay above this workspace shell (z-index 0).
+            */}
+            <div
+              className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
+              aria-hidden={Boolean(activeSessionTab)}
+              style={{
+                visibility: activeSessionTab ? 'hidden' : 'visible',
+                pointerEvents: activeSessionTab ? 'none' : 'auto',
+                zIndex: 0,
+              }}
+            >
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div
-                  ref={boardRowRef}
-                  className="flex min-h-0 flex-1 overflow-hidden"
+                  className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
+                  aria-hidden={!isBoardOrPlanTab}
+                  style={{
+                    visibility: isBoardOrPlanTab ? 'visible' : 'hidden',
+                    pointerEvents: isBoardOrPlanTab ? 'auto' : 'none',
+                    zIndex: isBoardOrPlanTab ? 1 : 0,
+                  }}
                 >
-                  <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                    <Board
-                      allTasks={sortedTasks}
-                      onDragEnd={handleDragEnd}
-                      onCreateTask={handleCreateTask}
-                      defaultTaskAgent={defaultTaskAgentForProject(project)}
-                      onDeleteTask={handleDeleteTask}
-                      onRequestCleanupTask={requestCleanupTask}
-                      cleanupLoadingTaskId={cleanupLoadingTaskId}
-                      onCardClick={(id) => setSelectedTaskId(id)}
-                      autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-                      onToggleTaskAutoStartOnUnblock={(id, enabled) =>
-                        void handleUpdateTask(id, { autoStartOnUnblock: enabled })
-                      }
-                      planPanelOpen={planPanelOpen}
-                      onTogglePlanPanel={() => {
-                        setActiveTabId('board');
-                        setPlanPanelOpen((v) => !v);
-                      }}
-                      projectMembers={projectMembers}
-                    />
-                    <TaskDetailPanel
-                      task={selectedTask}
-                      projectTasks={tasks}
-                      taskSessionStartPending={Boolean(
-                        selectedTask && sessionStartPendingTaskIds.has(selectedTask.id),
-                      )}
-                      implicitSessionAssigneeUid={
-                        project.kind === 'cloud' ? uid : undefined
-                      }
-                      onSelectTask={(id) => setSelectedTaskId(id)}
-                      onClose={() => setSelectedTaskId(null)}
-                      onUpdate={handleUpdateTask}
-                      onDelete={handleDeleteTask}
-                      onMarkAsDone={
-                        selectedTask && selectedTask.status !== 'done' && !isTaskBlocked(selectedTask, tasks)
-                          ? () => void handleMarkTaskDone(selectedTask.id, { closeDetail: true })
-                          : undefined
-                      }
-                      markAsDoneBlocked={Boolean(
-                        selectedTask && isTaskBlocked(selectedTask, tasks),
-                      )}
-                      autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-                      remoteRunner={remoteRunnerForSelected}
-                      onOpenSessionTab={handleOpenSessionTab}
-                      onArchiveSession={(id) => void handleArchiveSession(id)}
-                      projectMembers={projectMembers}
-                    />
-                  </div>
                   <div
-                    className={`relative flex shrink-0 flex-col overflow-hidden ${
-                      planPanelOpen ? '' : 'pointer-events-none'
-                    }`}
-                    style={{ width: planPanelOpen ? planPanelWidth : 0 }}
+                    ref={boardRowRef}
+                    className="flex min-h-0 flex-1 overflow-hidden"
                   >
-                    {planPanelOpen ? (
-                      <div
-                        role="separator"
-                        aria-orientation="vertical"
-                        aria-label="Resize planning panel"
-                        title="Drag to resize. Double-click to reset."
-                        className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
-                        onPointerDown={handlePlanningResizePointerDown}
-                        onDoubleClick={handlePlanningResizeDoubleClick}
-                      />
-                    ) : null}
                     <div
-                      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
-                      style={{ width: planPanelWidth }}
+                      className="relative flex min-h-0 min-w-0 flex-col overflow-hidden"
+                      style={{
+                        flex: isFullscreenPlanTab ? '0 0 0%' : '1 1 0%',
+                        minWidth: isFullscreenPlanTab ? 0 : undefined,
+                        visibility: isFullscreenPlanTab ? 'hidden' : 'visible',
+                        pointerEvents: isFullscreenPlanTab ? 'none' : 'auto',
+                      }}
                     >
-                      <PlanningPanel
-                        project={project}
-                        layout="sidebar"
-                        sessions={planningSessions}
-                        activeSessionId={planningSidebarActiveId}
-                        onActiveSessionChange={setPlanningSidebarActiveId}
-                        onSessionsMutated={() => refreshPlanningSessions()}
-                        onOpenInMainTab={handleOpenPlanningInMainTab}
-                        onClose={() => setPlanPanelOpen(false)}
-                        onLocalProjectRefresh={refreshPlanningRelatedProjectState}
+                      <Board
+                        allTasks={sortedTasks}
+                        onDragEnd={handleDragEnd}
+                        onCreateTask={handleCreateTask}
+                        defaultTaskAgent={defaultTaskAgentForProject(project)}
+                        onDeleteTask={handleDeleteTask}
+                        onRequestCleanupTask={requestCleanupTask}
+                        cleanupLoadingTaskId={cleanupLoadingTaskId}
+                        onCardClick={(id) => setSelectedTaskId(id)}
+                        autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        onToggleTaskAutoStartOnUnblock={(id, enabled) =>
+                          void handleUpdateTask(id, { autoStartOnUnblock: enabled })
+                        }
+                        planPanelOpen={planPanelOpen}
+                        onTogglePlanPanel={() => {
+                          setActiveTabId('board');
+                          setPlanPanelOpen((v) => !v);
+                        }}
+                        projectMembers={projectMembers}
                       />
+                      <TaskDetailPanel
+                        task={selectedTask}
+                        projectTasks={tasks}
+                        taskSessionStartPending={Boolean(
+                          selectedTask && sessionStartPendingTaskIds.has(selectedTask.id),
+                        )}
+                        implicitSessionAssigneeUid={
+                          project.kind === 'cloud' ? uid : undefined
+                        }
+                        onSelectTask={(id) => setSelectedTaskId(id)}
+                        onClose={() => setSelectedTaskId(null)}
+                        onUpdate={handleUpdateTask}
+                        onDelete={handleDeleteTask}
+                        onMarkAsDone={
+                          selectedTask && selectedTask.status !== 'done' && !isTaskBlocked(selectedTask, tasks)
+                            ? () => void handleMarkTaskDone(selectedTask.id, { closeDetail: true })
+                            : undefined
+                        }
+                        markAsDoneBlocked={Boolean(
+                          selectedTask && isTaskBlocked(selectedTask, tasks),
+                        )}
+                        autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        remoteRunner={remoteRunnerForSelected}
+                        onOpenSessionTab={handleOpenSessionTab}
+                        onArchiveSession={(id) => void handleArchiveSession(id)}
+                        projectMembers={projectMembers}
+                      />
+                    </div>
+                    <div
+                      className={`relative flex shrink-0 flex-col overflow-hidden ${
+                        isFullscreenPlanTab || (activeTabId === 'board' && planPanelOpen)
+                          ? ''
+                          : 'pointer-events-none'
+                      }`}
+                      style={{
+                        width: isFullscreenPlanTab
+                          ? undefined
+                          : planPanelOpen
+                            ? planPanelWidth
+                            : 0,
+                        flex: isFullscreenPlanTab ? '1 1 0%' : undefined,
+                        minWidth: isFullscreenPlanTab ? 0 : undefined,
+                      }}
+                    >
+                      {activeTabId === 'board' && planPanelOpen ? (
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label="Resize planning panel"
+                          title="Drag to resize. Double-click to reset."
+                          className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
+                          onPointerDown={handlePlanningResizePointerDown}
+                          onDoubleClick={handlePlanningResizeDoubleClick}
+                        />
+                      ) : null}
+                      <div
+                        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+                        style={{
+                          width: isFullscreenPlanTab ? '100%' : planPanelWidth,
+                        }}
+                      >
+                        <PlanningPanel
+                          project={project}
+                          layout={isFullscreenPlanTab ? 'fullscreen' : 'sidebar'}
+                          sessions={planningSessions}
+                          activeSessionId={planningPanelActiveSessionId}
+                          onActiveSessionChange={handlePlanningActiveSessionChange}
+                          onSessionsMutated={() => refreshPlanningSessions()}
+                          onOpenInMainTab={handleOpenPlanningInMainTab}
+                          onClose={handlePlanningPanelClose}
+                          onLocalProjectRefresh={refreshPlanningRelatedProjectState}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ) : !activeSessionTab &&
-              (activeTabId === 'plan' || parsePlanTabId(activeTabId) !== null) ? (
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <PlanningPanel
-                  project={project}
-                  layout="fullscreen"
-                  sessions={planningSessions}
-                  activeSessionId={fullscreenPlanningSessionId}
-                  onActiveSessionChange={(id) => {
-                    if (activeTabId === 'plan') {
-                      setPlanningSidebarActiveId(id);
-                      return;
-                    }
-                    const cur = parsePlanTabId(activeTabId);
-                    if (id && id !== cur) {
-                      setOpenPlanningMainTabIds((prev) => {
-                        const next = new Set(prev);
-                        if (cur) next.delete(cur);
-                        next.add(id);
-                        return next;
-                      });
-                      setActiveTabId(planTabId(id));
-                    }
+                <div
+                  className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
+                  aria-hidden={activeTabId !== 'docs'}
+                  style={{
+                    visibility: activeTabId === 'docs' ? 'visible' : 'hidden',
+                    pointerEvents: activeTabId === 'docs' ? 'auto' : 'none',
+                    zIndex: activeTabId === 'docs' ? 1 : 0,
                   }}
-                  onSessionsMutated={() => refreshPlanningSessions()}
-                  onClose={() => {
-                    const sid = parsePlanTabId(activeTabId);
-                    if (sid) {
-                      void handleClosePlanningMainTab(sid);
-                      return;
-                    }
-                    setActiveTabId('board');
-                    setPlanPanelOpen(false);
+                >
+                  <PlanningDocsView
+                    key={project.id}
+                    selectedPath={selectedPlanningDocPath}
+                    fileRevision={planningDocFileRevision}
+                  />
+                </div>
+                <div
+                  className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
+                  aria-hidden={activeTabId !== 'settings'}
+                  style={{
+                    visibility: activeTabId === 'settings' ? 'visible' : 'hidden',
+                    pointerEvents: activeTabId === 'settings' ? 'auto' : 'none',
+                    zIndex: activeTabId === 'settings' ? 1 : 0,
                   }}
-                  onLocalProjectRefresh={refreshPlanningRelatedProjectState}
-                />
+                >
+                  <ProjectSettingsView
+                    project={project}
+                    currentUid={uid}
+                    currentUserDisplayName={displayName}
+                    currentUserEmail={userEmail ?? undefined}
+                    onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
+                  />
+                </div>
               </div>
-            ) : !activeSessionTab && activeTabId === 'docs' ? (
-              <PlanningDocsView
-                key={project.id}
-                selectedPath={selectedPlanningDocPath}
-                fileRevision={planningDocFileRevision}
-              />
-            ) : !activeSessionTab && activeTabId === 'settings' ? (
-              <ProjectSettingsView
-                project={project}
-                currentUid={uid}
-                currentUserDisplayName={displayName}
-                currentUserEmail={userEmail ?? undefined}
-                onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
-              />
-            ) : null}
+            </div>
           </div>
         </AppShell>
       </div>
