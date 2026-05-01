@@ -1,6 +1,6 @@
 export type SilenceState = 'active' | 'silent';
 
-const DEFAULT_SILENCE_MS = 5_000;
+const DEFAULT_SILENCE_MS = 10_000;
 
 /**
  * Detects when a PTY session has stopped producing output. Resets a timer
