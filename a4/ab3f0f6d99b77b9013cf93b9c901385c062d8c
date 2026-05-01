@@ -1,0 +1,37 @@
+src/components/NewTaskModal.tsx
+  8e5ad997f17afd88 2,6,152,156-163,183,187,202
+src/components/TeamView.tsx
+  8e5ad997f17afd88 4-5,173
+src/App.tsx
+  8e5ad997f17afd88 45-46,199,223-228,1611-1617,1976,1978-1979,1988-1993
+src/components/TaskCard.tsx
+  8e5ad997f17afd88 9,191
+src/components/TaskDetailPanel.tsx
+  8e5ad997f17afd88 45,79,946,1014,1292-1302
+src/renderer/runners/useRunners.ts
+  8e5ad997f17afd88 71,73,99,109,122
+src/components/ProjectMemberAvatar.tsx
+  8e5ad997f17afd88 1-76
+src/renderer/runners/runners.ts
+  8e5ad997f17afd88 23-24,80,95,107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "a4ab3f0f6d99b77b9013cf93b9c901385c062d8c",
+  "prompts": {
+    "8e5ad997f17afd88": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "89809984-091b-4ac9-960d-fac917eceec6",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 147,
+      "total_deletions": 117,
+      "accepted_lines": 145,
+      "overriden_lines": 0
+    }
+  }
+}
