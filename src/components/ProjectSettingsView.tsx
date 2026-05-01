@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { CloudProject, LocalProject, RepoConfig } from '../types';
+import { AGENTS, type Agent, type CloudProject, type LocalProject, type RepoConfig } from '../types';
+import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
 import { TeamView } from './TeamView';
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   currentUserEmail?: string;
   /** Fires after “auto-start when unblocked” is saved so the board can refresh hints. */
   onAutoStartWhenUnblockedChange?: (enabled: boolean) => void;
+  /** After planning / default task agent prefs are saved, reload the active project from the main process. */
+  onProjectAgentPrefsRefresh?: () => void | Promise<void>;
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -20,6 +23,7 @@ export function ProjectSettingsView({
   currentUserDisplayName,
   currentUserEmail,
   onAutoStartWhenUnblockedChange,
+  onProjectAgentPrefsRefresh,
 }: Props) {
   const teamAvailable = project.kind === 'cloud' && !!currentUid;
   const [category, setCategory] = useState<Category>('project');
@@ -54,6 +58,7 @@ export function ProjectSettingsView({
           <ProjectConfigPane
             project={project}
             onAutoStartWhenUnblockedChange={onAutoStartWhenUnblockedChange}
+            onProjectAgentPrefsRefresh={onProjectAgentPrefsRefresh}
           />
         ) : teamAvailable && project.kind === 'cloud' && currentUid ? (
           <TeamView
@@ -97,9 +102,14 @@ function CategoryButton({
 interface ProjectConfigPaneProps {
   project: LocalProject | CloudProject;
   onAutoStartWhenUnblockedChange?: (enabled: boolean) => void;
+  onProjectAgentPrefsRefresh?: () => void | Promise<void>;
 }
 
-function ProjectConfigPane({ project, onAutoStartWhenUnblockedChange }: ProjectConfigPaneProps) {
+function ProjectConfigPane({
+  project,
+  onAutoStartWhenUnblockedChange,
+  onProjectAgentPrefsRefresh,
+}: ProjectConfigPaneProps) {
   const [repos, setRepos] = useState<RepoConfig[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -111,6 +121,16 @@ function ProjectConfigPane({ project, onAutoStartWhenUnblockedChange }: ProjectC
   const [whenUnblockedLoading, setWhenUnblockedLoading] = useState(true);
   const [whenUnblockedSaveState, setWhenUnblockedSaveState] = useState<SaveState>('idle');
   const [whenUnblockedError, setWhenUnblockedError] = useState<string | null>(null);
+  const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
+  const [planningAgentError, setPlanningAgentError] = useState<string | null>(null);
+  const [defaultTaskAgentSaveState, setDefaultTaskAgentSaveState] = useState<SaveState>('idle');
+  const [defaultTaskAgentError, setDefaultTaskAgentError] = useState<string | null>(null);
+
+  const planningAgentValue: Agent =
+    project.kind === 'local'
+      ? project.planningAgent
+      : (project.planningAgent ?? 'claude-code');
+  const defaultTaskAgentValue = defaultTaskAgentForProject(project);
 
   const refresh = useCallback(async () => {
     try {
@@ -130,6 +150,13 @@ function ProjectConfigPane({ project, onAutoStartWhenUnblockedChange }: ProjectC
   useEffect(() => {
     void refresh();
   }, [refresh, project.id]);
+
+  useEffect(() => {
+    setPlanningAgentError(null);
+    setPlanningAgentSaveState('idle');
+    setDefaultTaskAgentError(null);
+    setDefaultTaskAgentSaveState('idle');
+  }, [project.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -197,6 +224,44 @@ function ProjectConfigPane({ project, onAutoStartWhenUnblockedChange }: ProjectC
       setWhenUnblockedSaveState((state) => (state === 'saved' ? 'idle' : state));
     }, 1500);
   }, [onAutoStartWhenUnblockedChange]);
+
+  const handlePlanningAgentChange = useCallback(
+    async (next: Agent) => {
+      setPlanningAgentSaveState('saving');
+      setPlanningAgentError(null);
+      const res = await window.electronAPI.project.setPlanningAgent(next);
+      if ('error' in res) {
+        setPlanningAgentSaveState('error');
+        setPlanningAgentError(res.error);
+        return;
+      }
+      await onProjectAgentPrefsRefresh?.();
+      setPlanningAgentSaveState('saved');
+      window.setTimeout(() => {
+        setPlanningAgentSaveState((s) => (s === 'saved' ? 'idle' : s));
+      }, 1500);
+    },
+    [onProjectAgentPrefsRefresh],
+  );
+
+  const handleDefaultTaskAgentChange = useCallback(
+    async (next: Agent) => {
+      setDefaultTaskAgentSaveState('saving');
+      setDefaultTaskAgentError(null);
+      const res = await window.electronAPI.project.setDefaultTaskAgent(next);
+      if ('error' in res) {
+        setDefaultTaskAgentSaveState('error');
+        setDefaultTaskAgentError(res.error);
+        return;
+      }
+      await onProjectAgentPrefsRefresh?.();
+      setDefaultTaskAgentSaveState('saved');
+      window.setTimeout(() => {
+        setDefaultTaskAgentSaveState((s) => (s === 'saved' ? 'idle' : s));
+      }, 1500);
+    },
+    [onProjectAgentPrefsRefresh],
+  );
 
   const handleAutoStartChange = useCallback(async (enabled: boolean) => {
     setAutoStartEnabled(enabled);
@@ -293,6 +358,93 @@ function ProjectConfigPane({ project, onAutoStartWhenUnblockedChange }: ProjectC
             ) : whenUnblockedError ? (
               <span className="text-red-400">{whenUnblockedError}</span>
             ) : null}
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+          <h2 className="text-[13px] font-medium text-zinc-200">Default agents</h2>
+          <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+            These apply to this project on this machine. Planning defaults match the Planning
+            sidebar; the task default is used for new tasks and when MCP tools create a task
+            without specifying an agent.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-4">
+            <div>
+              <label
+                htmlFor="project-settings-planning-agent"
+                className="text-[12px] font-medium text-zinc-300"
+              >
+                Planning assistant
+              </label>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
+                Agent for new planning sessions (same control as in the Planning panel).
+              </p>
+              <select
+                id="project-settings-planning-agent"
+                aria-label="Planning assistant default"
+                value={planningAgentValue}
+                disabled={planningAgentSaveState === 'saving'}
+                onChange={(e) => {
+                  const next = e.target.value as Agent;
+                  void handlePlanningAgentChange(next);
+                }}
+                className="mt-2 block w-full max-w-xs cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-2 pl-3 pr-8 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {AGENTS.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-1.5 min-h-4 text-[11px]">
+                {planningAgentSaveState === 'saving' ? (
+                  <span className="text-zinc-500">Saving…</span>
+                ) : planningAgentSaveState === 'saved' ? (
+                  <span className="text-emerald-400">Saved</span>
+                ) : planningAgentError ? (
+                  <span className="text-red-400">{planningAgentError}</span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="border-t border-white/[0.06] pt-4">
+              <label
+                htmlFor="project-settings-default-task-agent"
+                className="text-[12px] font-medium text-zinc-300"
+              >
+                Default task agent
+              </label>
+              <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
+                Used when creating new tasks and when tools create tasks without an agent.
+              </p>
+              <select
+                id="project-settings-default-task-agent"
+                aria-label="Default task agent"
+                value={defaultTaskAgentValue}
+                disabled={defaultTaskAgentSaveState === 'saving'}
+                onChange={(e) => {
+                  const next = e.target.value as Agent;
+                  void handleDefaultTaskAgentChange(next);
+                }}
+                className="mt-2 block w-full max-w-xs cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-2 pl-3 pr-8 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {AGENTS.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-1.5 min-h-4 text-[11px]">
+                {defaultTaskAgentSaveState === 'saving' ? (
+                  <span className="text-zinc-500">Saving…</span>
+                ) : defaultTaskAgentSaveState === 'saved' ? (
+                  <span className="text-emerald-400">Saved</span>
+                ) : defaultTaskAgentError ? (
+                  <span className="text-red-400">{defaultTaskAgentError}</span>
+                ) : null}
+              </div>
+            </div>
           </div>
         </section>
 

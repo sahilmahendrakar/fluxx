@@ -239,6 +239,17 @@ export class ProjectStore {
     await this.mutateConfig((c) => ({ ...c, planningAgent: agent }));
   }
 
+  /** Updates `defaultTaskAgent` in config.json and the in-memory active project. */
+  async setDefaultTaskAgent(agent: Agent): Promise<void> {
+    if (!this.projectDir || !this.project) {
+      throw new Error('ProjectStore: no active local project');
+    }
+    if (agent !== 'claude-code' && agent !== 'codex' && agent !== 'cursor') {
+      throw new Error('ProjectStore: invalid default task agent');
+    }
+    await this.mutateConfig((c) => ({ ...c, defaultTaskAgent: agent }));
+  }
+
   /**
    * Returns repos[] for the project living at `projectDir` by reading config.json.
    * Works for both local projects and cloud-project bindings (both materialise

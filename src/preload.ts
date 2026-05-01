@@ -56,6 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setPlanningAgent', agent) as Promise<
         { ok: true } | { error: string }
       >,
+    setDefaultTaskAgent: (agent: Agent) =>
+      ipcRenderer.invoke('project:setDefaultTaskAgent', agent) as Promise<
+        { ok: true } | { error: string }
+      >,
     getRepos: () =>
       ipcRenderer.invoke('project:getRepos') as Promise<RepoConfig[]>,
     updateRepo: (payload: {

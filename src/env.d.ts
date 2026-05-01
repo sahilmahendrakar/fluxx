@@ -58,6 +58,9 @@ declare global {
         setPlanningAgent: (
           agent: Agent,
         ) => Promise<{ ok: true } | { error: string }>;
+        setDefaultTaskAgent: (
+          agent: Agent,
+        ) => Promise<{ ok: true } | { error: string }>;
         getRepos: () => Promise<RepoConfig[]>;
         updateRepo: (payload: {
           rootPath: string;

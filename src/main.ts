@@ -439,6 +439,26 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle(
+    'project:setDefaultTaskAgent',
+    async (_e, agent: unknown): Promise<{ ok: true } | { error: string }> => {
+      if (!isPlanningAgent(agent)) {
+        return { error: 'INVALID_AGENT' };
+      }
+      try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, { defaultTaskAgent: agent });
+          return { ok: true };
+        }
+        await projectStore.setDefaultTaskAgent(agent);
+        return { ok: true };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle('project:open', async () => {
     const parent = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
