@@ -17,6 +17,7 @@ export interface McpBridgeTaskCreateInput {
   status?: TaskStatus;
   description?: string;
   orderKey?: string;
+  blockedByTaskIds?: string[];
   labels?: string[];
 }
 
@@ -25,6 +26,7 @@ export interface McpBridgeTaskPatch {
   description?: string;
   status?: TaskStatus;
   agent?: Agent;
+  blockedByTaskIds?: string[];
   labels?: string[];
   autoStartOnUnblock?: boolean;
 }

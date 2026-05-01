@@ -159,7 +159,7 @@ You have access to the following Flux tools for task management:
 
 Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the usual way to mark work as actively in flight (\`in-progress\`). Use \`flux__update_task\` for other status changes (e.g. **Needs input**, **Done**) or edits to title/description/agent.
 
-**Task dependencies:** \`blockedByTaskIds\` means “this task is blocked until these prerequisite tasks are addressed.” Use \`flux__list_tasks\` to get ids. Only reference tasks in the current project; invalid or cyclic graphs are rejected. **Team (cloud) projects:** \`blockedByTaskIds\` is currently local-only; if you pass it on a team project the field is silently dropped.
+**Task dependencies:** \`blockedByTaskIds\` means “this task is blocked until these prerequisite tasks are addressed.” Use \`flux__list_tasks\` to get ids. Only reference tasks in the current project; invalid or cyclic graphs are rejected (local and cloud).
 
 **Team (cloud) projects:** the Flux task tools route through the running Flux app for cloud projects. The app must be **open and signed in** for tools to work; if you see \`Sign in to Flux to use cloud project tools\` or \`Open the Flux app to enable cloud project tools\`, ask the user to bring Flux to the foreground and try again.
 

@@ -234,15 +234,15 @@ export class McpServer {
             this.notifyTasksChanged();
             return jsonToolPayload(task);
           }
-          // Cloud: blockedByTaskIds is not yet propagated through the renderer
-          // bridge (it requires a project-wide validation pass that today only
-          // runs in main against the local TaskStore).
           const payload: McpBridgeTasksCreatePayload = {
             input: {
               title: input.title,
               agent,
               ...(input.description != null && input.description !== ''
                 ? { description: input.description }
+                : {}),
+              ...(input.blockedByTaskIds?.length
+                ? { blockedByTaskIds: input.blockedByTaskIds }
                 : {}),
               ...(input.labels !== undefined ? { labels: input.labels } : {}),
             },
@@ -325,17 +325,25 @@ export class McpServer {
             this.notifyTasksChanged();
             return jsonToolPayload(updated);
           }
-          // Cloud: blockedByTaskIds is not yet propagated through the bridge.
           const patch: Partial<
             Pick<
               Task,
-              'title' | 'description' | 'status' | 'agent' | 'labels' | 'autoStartOnUnblock'
+              | 'title'
+              | 'description'
+              | 'status'
+              | 'agent'
+              | 'blockedByTaskIds'
+              | 'labels'
+              | 'autoStartOnUnblock'
             >
           > = {};
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
           if (input.agent !== undefined) patch.agent = input.agent;
+          if (input.blockedByTaskIds !== undefined) {
+            patch.blockedByTaskIds = input.blockedByTaskIds;
+          }
           if (input.labels !== undefined) patch.labels = input.labels;
           if (input.autoStartOnUnblock !== undefined) {
             patch.autoStartOnUnblock = input.autoStartOnUnblock;
