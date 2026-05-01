@@ -49,6 +49,7 @@ import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
+import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
@@ -288,7 +289,13 @@ export default function App() {
     return () => unsub();
   }, [provider]);
 
-  useMcpRendererBridge({ project, provider, uid, tasksSnapshot: tasks });
+  useMcpRendererBridge({
+    project,
+    provider,
+    uid,
+    tasksSnapshot: tasks,
+    cloudAutostartInFlightRef: cloudUnblockInFlightRef,
+  });
 
   useEffect(() => {
     if (!project) {
@@ -653,7 +660,15 @@ export default function App() {
   ]);
 
   const pendingRef = useRef<
-    Map<string, { patch: TaskPatch; timer: ReturnType<typeof setTimeout> }>
+    Map<
+      string,
+      {
+        patch: TaskPatch;
+        timer: ReturnType<typeof setTimeout>;
+        /** Task snapshot before this debounced flush window (for transition detection). */
+        preFlushTask: Task;
+      }
+    >
   >(new Map());
 
   useEffect(() => {
@@ -670,19 +685,35 @@ export default function App() {
       const pending = pendingRef.current.get(id);
       if (!pending) return;
       pendingRef.current.delete(id);
+      const { patch, preFlushTask } = pending;
       try {
-        const updated = await provider.update(id, pending.patch);
+        const updated = await provider.update(id, patch);
         const newer = pendingRef.current.get(id);
         setTasks((prev) =>
           prev.map((t) =>
             t.id === id ? { ...updated, ...(newer?.patch ?? {}) } : t,
           ),
         );
+        if (project?.kind === 'cloud') {
+          const allTasksForSession = tasksRef.current.map((t) =>
+            t.id === id ? { ...updated, ...(newer?.patch ?? {}) } : t,
+          );
+          await maybeCloudAutoStartSessionOnInProgressTransition(
+            preFlushTask,
+            updated,
+            allTasksForSession,
+            {
+              source: 'cloud:flushUpdate',
+              inFlight: cloudUnblockInFlightRef.current,
+              logError: (msg, data) => console.error(msg, data),
+            },
+          );
+        }
       } catch (err) {
         console.error('[tasks.update] failed', err);
       }
     },
-    [provider],
+    [provider, project?.kind],
   );
 
   const handleUpdateTask = useCallback(
@@ -736,11 +767,14 @@ export default function App() {
 
       const existing = pendingRef.current.get(id);
       if (existing) clearTimeout(existing.timer);
+      const preFlushTask =
+        existing?.preFlushTask ?? tasksRef.current.find((t) => t.id === id);
+      if (!preFlushTask) return;
       const merged: TaskPatch = { ...existing?.patch, ...persistable };
       const timer = setTimeout(() => {
         void flushUpdate(id);
       }, UPDATE_DEBOUNCE_MS);
-      pendingRef.current.set(id, { patch: merged, timer });
+      pendingRef.current.set(id, { patch: merged, timer, preFlushTask });
     },
     [flushUpdate],
   );
@@ -773,6 +807,9 @@ export default function App() {
         nextOrderKey = String(Date.now());
       }
 
+      const previous = tasks.find((t) => t.id === draggableId);
+      if (!previous) return;
+
       setTasks((prev) =>
         prev.map((t) =>
           t.id === draggableId
@@ -794,11 +831,28 @@ export default function App() {
               : t,
           ),
         );
+        if (project?.kind === 'cloud') {
+          const allTasksForSession = tasksRef.current.map((t) =>
+            t.id === draggableId
+              ? { ...updated, ...(pending?.patch ?? {}) }
+              : t,
+          );
+          await maybeCloudAutoStartSessionOnInProgressTransition(
+            previous,
+            updated,
+            allTasksForSession,
+            {
+              source: 'cloud:dragEnd',
+              inFlight: cloudUnblockInFlightRef.current,
+              logError: (msg, data) => console.error(msg, data),
+            },
+          );
+        }
       } catch (err) {
         console.error('[tasks.update] drag-end failed', err);
       }
     },
-    [provider, tasks],
+    [provider, project?.kind, tasks],
   );
 
   const handleMarkTaskDone = useCallback(
