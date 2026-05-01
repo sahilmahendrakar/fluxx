@@ -141,7 +141,19 @@ async function handleRequest(
         }
         const previous =
           tasksSnapshot.find((t) => t.id === payload.taskId) ?? null;
-        const updated = await provider.update(payload.taskId, payload.patch);
+        let patch = payload.patch;
+        if (
+          project.kind === 'cloud' &&
+          uid &&
+          previous &&
+          patch.status === 'in-progress' &&
+          !previous.assigneeId
+        ) {
+          if (patch.assigneeId === undefined) {
+            patch = { ...patch, assigneeId: uid };
+          }
+        }
+        const updated = await provider.update(payload.taskId, patch);
         if (project.kind === 'cloud' && previous) {
           const allTasksForSession = tasksSnapshot.map((t) =>
             t.id === payload.taskId ? updated : t,
@@ -154,6 +166,7 @@ async function handleRequest(
               source: 'cloud:mcpBridge',
               inFlight: ctx.cloudAutostartInFlightRef.current,
               logError: (msg, data) => console.error(msg, data),
+              actorUid: uid,
             },
           );
         }

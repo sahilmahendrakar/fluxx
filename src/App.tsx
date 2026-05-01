@@ -785,8 +785,19 @@ export default function App() {
       if (!pending) return;
       pendingRef.current.delete(id);
       const { patch, preFlushTask } = pending;
+      let patchToApply = patch;
+      if (
+        project?.kind === 'cloud' &&
+        uidRef.current &&
+        patchToApply.status === 'in-progress' &&
+        !preFlushTask.assigneeId
+      ) {
+        if (patchToApply.assigneeId === undefined) {
+          patchToApply = { ...patchToApply, assigneeId: uidRef.current };
+        }
+      }
       try {
-        const updated = await provider.update(id, patch);
+        const updated = await provider.update(id, patchToApply);
         const newer = pendingRef.current.get(id);
         setTasks((prev) =>
           prev.map((t) =>
@@ -805,6 +816,7 @@ export default function App() {
               source: 'cloud:flushUpdate',
               inFlight: cloudUnblockInFlightRef.current,
               logError: (msg, data) => console.error(msg, data),
+              actorUid: uidRef.current,
             },
           );
         }
@@ -921,10 +933,19 @@ export default function App() {
       );
 
       try {
-        const updated = await provider.update(draggableId, {
+        const dragPatch: TaskPatch = {
           status: nextStatus,
           orderKey: nextOrderKey,
-        });
+        };
+        if (
+          project?.kind === 'cloud' &&
+          nextStatus === 'in-progress' &&
+          uid &&
+          !previous.assigneeId
+        ) {
+          dragPatch.assigneeId = uid;
+        }
+        const updated = await provider.update(draggableId, dragPatch);
         const pending = pendingRef.current.get(draggableId);
         setTasks((prev) =>
           prev.map((t) =>
@@ -947,6 +968,7 @@ export default function App() {
               source: 'cloud:dragEnd',
               inFlight: cloudUnblockInFlightRef.current,
               logError: (msg, data) => console.error(msg, data),
+              actorUid: uid,
             },
           );
         }
@@ -954,7 +976,7 @@ export default function App() {
         console.error('[tasks.update] drag-end failed', err);
       }
     },
-    [provider, project?.kind, tasks],
+    [provider, project?.kind, tasks, uid],
   );
 
   const handleMarkTaskDone = useCallback(

@@ -5,7 +5,27 @@ export type CloudInProgressAutostartContext = {
   source: string;
   inFlight: Set<string>;
   logError: (msg: string, data: Record<string, unknown>) => void;
+  /** Signed-in user moving / updating the task; used for assignee + autostart gating. */
+  actorUid: string | null;
 };
+
+/**
+ * Cloud in-progress autostart runs only when the actor may work this task:
+ * — was already assigned to the actor, or
+ * — was unclaimed and the persisted task is now assigned to the actor (caller must patch assignee when claiming).
+ * Does not autostart when the task was assigned to someone else.
+ */
+export function cloudInProgressAutostartAllowedByAssignee(
+  previous: Task,
+  freshTask: Task,
+  actorUid: string | null,
+): boolean {
+  if (!actorUid) return false;
+  const prev = previous.assigneeId;
+  if (prev && prev !== actorUid) return false;
+  if (!prev && freshTask.assigneeId !== actorUid) return false;
+  return true;
+}
 
 /**
  * After a successful cloud task write moves a task into `in-progress`, mirror
@@ -39,6 +59,9 @@ export async function maybeCloudAutoStartSessionOnInProgressTransition(
 
     const fresh = allTasksForSession.find((t) => t.id === updated.id) ?? updated;
     if (fresh.status !== 'in-progress') return;
+    if (!cloudInProgressAutostartAllowedByAssignee(previous, fresh, ctx.actorUid)) {
+      return;
+    }
     if (isTaskBlocked(fresh, allTasksForSession)) {
       console.warn('[task:auto-start] skipped — task has incomplete blockers', {
         source: ctx.source,
