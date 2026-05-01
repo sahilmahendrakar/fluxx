@@ -17,7 +17,7 @@ import Terminal, { type TerminalHandle } from './Terminal';
 export interface PlanningPanelProps {
   project: Project;
   onClose: () => void;
-  /** After planning agent is saved locally, reload `project` from the main process. */
+  /** After planning agent prefs are saved, reload `project` from the main process / binding store. */
   onLocalProjectRefresh?: () => void | Promise<void>;
   /** Daemon-backed sessions for this project (caller refetches). */
   sessions: PlanningSession[];
@@ -73,7 +73,9 @@ export function PlanningPanel({
   const [error, setError] = useState<string | null>(null);
   const [needsInput, setNeedsInput] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent>(() =>
-    project.kind === 'local' ? project.planningAgent : 'claude-code',
+    project.kind === 'local'
+      ? project.planningAgent
+      : (project.planningAgent ?? 'claude-code'),
   );
   const terminalRef = useRef<TerminalHandle | null>(null);
   const outputBufferRef = useRef('');
@@ -87,7 +89,9 @@ export function PlanningPanel({
 
   useEffect(() => {
     setSelectedAgent(
-      project.kind === 'local' ? project.planningAgent : 'claude-code',
+      project.kind === 'local'
+        ? project.planningAgent
+        : (project.planningAgent ?? 'claude-code'),
     );
   }, [project]);
 
@@ -162,9 +166,7 @@ export function PlanningPanel({
     setLoading(true);
     setError(null);
     try {
-      const agentForStart =
-        project.kind === 'local' ? selectedAgent : 'claude-code';
-      const result = await planningApi.start(agentForStart);
+      const result = await planningApi.start(selectedAgent);
       if (result && typeof result === 'object' && 'error' in result) {
         const err = result as { error: string; message?: string };
         setError(err.message ?? err.error ?? 'Failed to start');
@@ -173,9 +175,7 @@ export function PlanningPanel({
       const session = result as PlanningSession;
       await onSessionsMutated();
       onActiveSessionChange(session.id);
-      if (project.kind === 'local') {
-        await onLocalProjectRefresh?.();
-      }
+      await onLocalProjectRefresh?.();
     } catch {
       setError('Failed to start session');
     } finally {
@@ -254,21 +254,22 @@ export function PlanningPanel({
             title={
               sessionRunning
                 ? 'Agent for this session'
-                : project.kind === 'local'
-                  ? 'Planning agent for the next session (saved when you change it or start).'
-                  : 'Cloud planning uses Claude Code.'
+                : 'Planning agent for the next session (saved when you change it or start).'
             }
-            disabled={sessionRunning || project.kind === 'cloud'}
+            disabled={sessionRunning}
             value={agentSelectValue}
             onChange={(e) => {
               const next = e.target.value as Agent;
               setSelectedAgent(next);
-              if (project.kind !== 'local') return;
               void (async () => {
                 const res = await window.electronAPI.project.setPlanningAgent(next);
                 if ('error' in res) {
                   setError(res.error);
-                  setSelectedAgent(project.planningAgent);
+                  setSelectedAgent(
+                    project.kind === 'local'
+                      ? project.planningAgent
+                      : (project.planningAgent ?? 'claude-code'),
+                  );
                   return;
                 }
                 setError(null);

@@ -17,6 +17,8 @@ interface Props {
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
   onCreateTask: (title: string, agent: Agent, labels?: string[]) => void;
+  /** Initial agent selection in the new-task modal. */
+  defaultTaskAgent: Agent;
   onDeleteTask: (id: string) => void;
   onRequestCleanupTask: (id: string) => void;
   cleanupLoadingTaskId: string | null;
@@ -31,6 +33,7 @@ export default function Board({
   allTasks,
   onDragEnd,
   onCreateTask,
+  defaultTaskAgent,
   onDeleteTask,
   onRequestCleanupTask,
   cleanupLoadingTaskId,
@@ -166,6 +169,7 @@ export default function Board({
       {modalOpen ? (
         <NewTaskModal
           labelCatalog={labelCatalog}
+          defaultAgent={defaultTaskAgent}
           onClose={() => setModalOpen(false)}
           onCreate={(title, agent, labels) => {
             onCreateTask(title, agent, labels);

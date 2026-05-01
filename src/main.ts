@@ -31,7 +31,6 @@ import type {
   Agent,
   ProjectTabState,
   LocalProject,
-  PlanningSession,
   Project,
   RepoConfig,
   SessionStartResult,
@@ -427,6 +426,11 @@ app.whenReady().then(async () => {
         return { error: 'INVALID_AGENT' };
       }
       try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, { planningAgent: agent });
+          return { ok: true };
+        }
         await projectStore.setPlanningAgent(agent);
         return { ok: true };
       } catch (err: unknown) {
@@ -499,13 +503,27 @@ app.whenReady().then(async () => {
       }
     },
   );
-  ipcMain.handle('project:getAutoStartSessionOnInProgress', async () =>
-    projectStore.getAutoStartSessionOnInProgressAt(activeProjectDir()),
-  );
+  ipcMain.handle('project:getAutoStartSessionOnInProgress', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).autoStartSessionOnInProgress;
+    }
+    return projectStore.getAutoStartSessionOnInProgressAt(activeProjectDir());
+  });
   ipcMain.handle(
     'project:setAutoStartSessionOnInProgress',
     async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
       try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            autoStartSessionOnInProgress: enabled === true,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).autoStartSessionOnInProgress,
+          };
+        }
         const next = await projectStore.setAutoStartSessionOnInProgressAt(
           activeProjectDir(),
           enabled,
@@ -517,13 +535,27 @@ app.whenReady().then(async () => {
       }
     },
   );
-  ipcMain.handle('project:getAutoStartWhenUnblocked', async () =>
-    projectStore.getAutoStartWhenUnblockedAt(activeProjectDir()),
-  );
+  ipcMain.handle('project:getAutoStartWhenUnblocked', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).autoStartWhenUnblocked;
+    }
+    return projectStore.getAutoStartWhenUnblockedAt(activeProjectDir());
+  });
   ipcMain.handle(
     'project:setAutoStartWhenUnblocked',
     async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
       try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            autoStartWhenUnblocked: enabled === true,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).autoStartWhenUnblocked,
+          };
+        }
         const next = await projectStore.setAutoStartWhenUnblockedAt(activeProjectDir(), enabled);
         return { ok: true, enabled: next };
       } catch (err: unknown) {
@@ -737,6 +769,7 @@ app.whenReady().then(async () => {
     }
     const binding = bindingStore.get(activeKey.id);
     if (!binding) throw new Error('Cloud project is not bound to a local folder');
+    const prefs = bindingStore.getPrefs(activeKey.id);
     return {
       id: activeKey.id,
       kind: 'cloud',
@@ -745,6 +778,7 @@ app.whenReady().then(async () => {
       ownerId: '',
       memberIds: [],
       createdAt: '',
+      ...prefs,
     };
   }
 
@@ -1222,6 +1256,16 @@ app.whenReady().then(async () => {
         if (!binding || !projectDir) {
           return { error: 'No project open' };
         }
+        const prefs = bindingStore.getPrefs(activeKey.id);
+        planningAgent = isPlanningAgent(requestedAgent)
+          ? requestedAgent
+          : prefs.planningAgent;
+        try {
+          await bindingStore.setPrefs(activeKey.id, { planningAgent });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { error: 'CONFIG_WRITE_FAILED', message };
+        }
         project = {
           id: activeKey.id,
           kind: 'cloud',
@@ -1230,8 +1274,9 @@ app.whenReady().then(async () => {
           ownerId: '',
           memberIds: [],
           createdAt: '',
+          ...prefs,
+          planningAgent,
         };
-        planningAgent = 'claude-code';
       }
 
       const planningDir = path.join(projectDir, 'planning');

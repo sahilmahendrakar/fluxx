@@ -211,7 +211,11 @@ export class McpServer {
           if (active.kind === 'none') {
             return jsonToolPayload({ error: 'No project open' });
           }
-          const agent = input.agent ?? 'claude-code';
+          const agent =
+            input.agent ??
+            (active.kind === 'local'
+              ? active.project.defaultTaskAgent
+              : this.bindingStore.getPrefs(active.activeKey.id).defaultTaskAgent);
           if (active.kind === 'local') {
             let task = await this.taskStore.create({
               title: input.title,

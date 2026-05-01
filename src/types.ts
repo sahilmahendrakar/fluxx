@@ -58,6 +58,19 @@ export interface LocalProject {
  * Cloud projects in the projects list (not yet activated) don't carry rootPath
  * — see `CloudProjectSummary` in renderer code.
  */
+/**
+ * Per-machine record in `localBindings.json`. Optional fields are per-user prefs
+ * for that cloud project (not synced).
+ */
+export interface CloudProjectLocalBinding {
+  rootPath: string;
+  lastOpenedAt: string;
+  planningAgent?: Agent;
+  defaultTaskAgent?: Agent;
+  autoStartSessionOnInProgress?: boolean;
+  autoStartWhenUnblocked?: boolean;
+}
+
 export interface CloudProject {
   id: string;
   kind: 'cloud';
@@ -66,6 +79,10 @@ export interface CloudProject {
   memberIds: string[];
   createdAt: string;
   rootPath: string;
+  planningAgent?: Agent;
+  defaultTaskAgent?: Agent;
+  autoStartSessionOnInProgress?: boolean;
+  autoStartWhenUnblocked?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;

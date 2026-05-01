@@ -51,6 +51,10 @@ import { isTaskBlocked } from './taskDependencies';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
+import {
+  defaultTaskAgentForProject,
+  hydrateCloudProject,
+} from './cloudBindingPrefs';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -173,6 +177,31 @@ export default function App() {
       console.error('[App] planning.list failed', err);
     }
   }, []);
+
+  const refreshPlanningRelatedProjectState = useCallback(async () => {
+    if (!project) return;
+    if (project.kind === 'local') {
+      const p = await window.electronAPI.project.get();
+      if (p) setProject(p);
+      return;
+    }
+    const binding = await window.electronAPI.projects.getLocalBinding(project.id);
+    if (!binding) return;
+    setProject((cur) =>
+      cur && cur.kind === 'cloud' && cur.id === project.id
+        ? hydrateCloudProject(
+            {
+              id: cur.id,
+              name: cur.name,
+              ownerId: cur.ownerId,
+              memberIds: cur.memberIds,
+              createdAt: cur.createdAt,
+            },
+            binding,
+          )
+        : cur,
+    );
+  }, [project]);
 
   const refreshPlanningDocList = useCallback(async () => {
     const api = window.electronAPI.planningDocs;
@@ -435,15 +464,7 @@ export default function App() {
         setActivationLoading(false);
         return;
       }
-      setProject({
-        id: match.id,
-        kind: 'cloud',
-        name: match.name,
-        ownerId: match.ownerId,
-        memberIds: match.memberIds,
-        createdAt: match.createdAt,
-        rootPath: binding.rootPath,
-      });
+      setProject(hydrateCloudProject(match, binding));
       setPendingCloudActive(null);
       setActivationLoading(false);
     })();
@@ -1482,6 +1503,7 @@ export default function App() {
                       allTasks={sortedTasks}
                       onDragEnd={handleDragEnd}
                       onCreateTask={handleCreateTask}
+                      defaultTaskAgent={defaultTaskAgentForProject(project)}
                       onDeleteTask={handleDeleteTask}
                       onRequestCleanupTask={requestCleanupTask}
                       cleanupLoadingTaskId={cleanupLoadingTaskId}
@@ -1550,14 +1572,7 @@ export default function App() {
                         onSessionsMutated={() => refreshPlanningSessions()}
                         onOpenInMainTab={handleOpenPlanningInMainTab}
                         onClose={() => setPlanPanelOpen(false)}
-                        onLocalProjectRefresh={
-                          project.kind === 'local'
-                            ? async () => {
-                                const p = await window.electronAPI.project.get();
-                                if (p) setProject(p);
-                              }
-                            : undefined
-                        }
+                        onLocalProjectRefresh={refreshPlanningRelatedProjectState}
                       />
                     </div>
                   </div>
@@ -1597,14 +1612,7 @@ export default function App() {
                     setActiveTabId('board');
                     setPlanPanelOpen(false);
                   }}
-                  onLocalProjectRefresh={
-                    project.kind === 'local'
-                      ? async () => {
-                          const p = await window.electronAPI.project.get();
-                          if (p) setProject(p);
-                        }
-                      : undefined
-                  }
+                  onLocalProjectRefresh={refreshPlanningRelatedProjectState}
                 />
               </div>
             ) : !activeSessionTab && activeTabId === 'docs' ? (

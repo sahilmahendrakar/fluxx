@@ -7,17 +7,28 @@ interface Props {
   onCreate: (title: string, agent: Agent, labels: string[]) => void;
   /** Union of labels on existing tasks, for the picker. */
   labelCatalog: string[];
+  /** Default agent for this project (local `config.json` or cloud binding prefs). */
+  defaultAgent?: Agent;
 }
 
-export default function NewTaskModal({ onClose, onCreate, labelCatalog }: Props) {
+export default function NewTaskModal({
+  onClose,
+  onCreate,
+  labelCatalog,
+  defaultAgent = 'claude-code',
+}: Props) {
   const [title, setTitle] = useState('');
-  const [agent, setAgent] = useState<Agent>('claude-code');
+  const [agent, setAgent] = useState<Agent>(defaultAgent);
   const [labels, setLabels] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setAgent(defaultAgent);
+  }, [defaultAgent]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

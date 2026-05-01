@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { hydrateCloudProject } from '../cloudBindingPrefs';
 import type { CloudProject, LocalProject } from '../types';
 import type { AuthState } from '../renderer/auth/useAuth';
 import type { CloudProjectsState } from '../renderer/projects/useCloudProjects';
@@ -111,7 +112,11 @@ export function ProjectsListView({
           setCloudError('That folder is not a git repository.');
           return;
         }
-        binding = { rootPath: picked.rootPath, lastOpenedAt: new Date().toISOString() };
+        binding = await window.electronAPI.projects.getLocalBinding(summary.id);
+      }
+      if (!binding) {
+        setCloudError('Could not read local project binding.');
+        return;
       }
       const result = await window.electronAPI.projects.activateCloud({
         id: summary.id,
@@ -126,15 +131,7 @@ export function ProjectsListView({
         await window.electronAPI.projects.clearLocalBinding(summary.id);
         return;
       }
-      onProjectActivated({
-        id: summary.id,
-        kind: 'cloud',
-        name: summary.name,
-        ownerId: summary.ownerId,
-        memberIds: summary.memberIds,
-        createdAt: summary.createdAt,
-        rootPath: binding.rootPath,
-      });
+      onProjectActivated(hydrateCloudProject(summary, binding));
     } finally {
       setActivatingId(null);
     }
