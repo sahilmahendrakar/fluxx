@@ -12,7 +12,7 @@ import type {
   ProjectTabState,
   TaskSessionStartProgress,
 } from './types';
-import type { AttachResult, PlanningAttachResult } from './daemon/protocol';
+import type { AgentState, AttachResult, PlanningAttachResult } from './daemon/protocol';
 import type {
   McpBridgeRequest,
   McpBridgeResponse,
@@ -147,6 +147,7 @@ declare global {
           cb: (data: string, streamSeq?: number) => void,
         ) => () => void;
         onExit: (cb: (session: Session) => void) => () => void;
+        onAgentState: (sessionId: string, cb: (state: AgentState) => void) => () => void;
         onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => () => void;
       };
       shells: {

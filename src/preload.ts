@@ -12,7 +12,7 @@ import type {
   Task,
   TaskSessionStartProgress,
 } from './types';
-import type { AttachResult, PlanningAttachResult } from './daemon/protocol';
+import type { AgentState, AttachResult, PlanningAttachResult } from './daemon/protocol';
 import {
   MCP_BRIDGE_READY_CHANNEL,
   MCP_BRIDGE_REQUEST_CHANNEL,
@@ -201,6 +201,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onExit: (cb: (session: Session) => void) => {
       ipcRenderer.on('session:exited', (_event, session: Session) => cb(session));
       return () => ipcRenderer.removeAllListeners('session:exited');
+    },
+    onAgentState: (sessionId: string, cb: (state: AgentState) => void) => {
+      const channel = `session:agent-state:${sessionId}`;
+      const handler = (_e: unknown, payload: { state: AgentState }) => cb(payload.state);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.removeListener(channel, handler);
     },
     onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => {
       const ch = 'session:taskStartProgress' as const;

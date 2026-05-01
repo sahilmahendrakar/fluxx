@@ -275,6 +275,32 @@ app.whenReady().then(async () => {
     console.error('[main] failed to start flux-daemon', err);
   }
 
+  // Map session ID → task ID for silence-based status transitions.
+  // Seed from any sessions already running in the daemon.
+  const sessionTaskMap = new Map<string, string>();
+  try {
+    const existing = await daemonClient.listSessions();
+    for (const s of existing) {
+      if (s.taskId) sessionTaskMap.set(s.id, s.taskId);
+    }
+  } catch {
+    // Daemon may not be ready yet; new sessions will still be tracked.
+  }
+
+  daemonClient.onAgentState = async (sessionId, state) => {
+    const taskId = sessionTaskMap.get(sessionId);
+    if (!taskId) return;
+    const project = projectStore.get();
+    if (!project) return;
+    const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+    if (!task) return;
+    if (state === 'silent' && task.status === 'in-progress') {
+      await taskStore.update(taskId, { status: 'needs-input' });
+    } else if (state === 'active' && task.status === 'needs-input') {
+      await taskStore.update(taskId, { status: 'in-progress' });
+    }
+  };
+
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
     userData,
@@ -881,6 +907,7 @@ app.whenReady().then(async () => {
         }
         return finish({ error: 'AGENT_NOT_FOUND', message: result.message });
       }
+      sessionTaskMap.set(result.id, task.id);
       return finish(result);
     } finally {
       const outcome: SessionStartResult = startOutcome ?? {
@@ -1115,11 +1142,13 @@ app.whenReady().then(async () => {
   );
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
+    sessionTaskMap.delete(sessionId);
     await daemonClient.closeShellsForSession(sessionId);
     await daemonClient.stopSession(sessionId);
   });
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
+    sessionTaskMap.delete(sessionId);
     await deleteSessionWorkspaceAndStop(daemonClient, worktreeService, sessionId);
   });
 
