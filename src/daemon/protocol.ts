@@ -209,6 +209,8 @@ export type StartPlanningResult =
 
 export type StreamTarget = 'session' | 'shell' | 'planning';
 
+export type AgentState = 'active' | 'silent';
+
 export type StreamFrame =
   | {
       kind: 'data';
@@ -220,7 +222,8 @@ export type StreamFrame =
     }
   | { kind: 'session-exit'; id: string; session: Session }
   | { kind: 'shell-exit'; id: string; shell: Shell }
-  | { kind: 'planning-exit'; id: string; session: PlanningSession };
+  | { kind: 'planning-exit'; id: string; session: PlanningSession }
+  | { kind: 'agent-state'; id: string; state: AgentState };
 
 // ---------------------------------------------------------------------------
 // NDJSON framer

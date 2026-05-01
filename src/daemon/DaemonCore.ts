@@ -16,10 +16,12 @@ import type {
   StreamFrame,
 } from './protocol';
 import { SessionRuntime } from './SessionRuntime';
+import { SilenceDetector } from './SilenceDetector';
 
 interface SessionEntry {
   runtime: SessionRuntime;
   session: Session;
+  detector: SilenceDetector;
 }
 
 interface ShellEntry {
@@ -79,6 +81,10 @@ export class DaemonCore {
       startedAt: new Date().toISOString(),
     };
 
+    const detector = new SilenceDetector((state) => {
+      this.broadcast({ kind: 'agent-state', id, state });
+    });
+
     let runtime: SessionRuntime;
     try {
       runtime = new SessionRuntime(
@@ -92,10 +98,12 @@ export class DaemonCore {
         {
           onData: (data, seq) => {
             this.broadcast({ kind: 'data', target: 'session', id, data, seq });
+            detector.onData();
           },
           onExit: ({ exitCode }) => {
             const entry = this.sessions.get(id);
             if (!entry) return;
+            entry.detector.dispose();
             entry.session.status = exitCode === 0 ? 'stopped' : 'error';
             entry.session.stoppedAt = new Date().toISOString();
             this.broadcast({
@@ -113,7 +121,7 @@ export class DaemonCore {
       return { error: 'AGENT_NOT_FOUND', message };
     }
 
-    this.sessions.set(id, { runtime, session });
+    this.sessions.set(id, { runtime, session, detector });
     this.cancelIdleTimer();
     return session;
   }
@@ -140,6 +148,7 @@ export class DaemonCore {
   stopSession(id: string): void {
     const entry = this.sessions.get(id);
     if (!entry) return;
+    entry.detector.dispose();
     entry.runtime.kill();
     entry.runtime.dispose();
     this.sessions.delete(id);

@@ -21,6 +21,7 @@ import {
   WIN_STREAM_PIPE,
   daemonUnixSocketPaths,
   encodeLine,
+  type AgentState,
   type AttachResult,
   type CreateSessionParams,
   type CreateSessionResult,
@@ -91,6 +92,9 @@ export class DaemonClient {
   /** Set when the last spawned daemon child exits (for timeout diagnostics). */
   private lastSpawnExit: { code: number | null; signal: NodeJS.Signals | null } | null =
     null;
+
+  /** Optional callback invoked when daemon reports agent silence/activity. */
+  onAgentState: ((sessionId: string, state: AgentState) => void) | null = null;
 
   private readonly userData: string;
   private readonly rpcPath: string;
@@ -432,6 +436,11 @@ export class DaemonClient {
     }
     if (frame.kind === 'planning-exit') {
       broadcast('planning:exited', frame.session);
+      return;
+    }
+    if (frame.kind === 'agent-state') {
+      this.onAgentState?.(frame.id, frame.state);
+      broadcast(`session:agent-state:${frame.id}`, { state: frame.state });
     }
   }
 

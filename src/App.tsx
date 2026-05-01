@@ -572,6 +572,36 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Silence-based needs-input detection: subscribe to agent-state for running sessions.
+  useEffect(() => {
+    const running = sessions.filter((s) => s.status === 'running');
+    const unsubs = running.map((s) =>
+      window.electronAPI.sessions.onAgentState(s.id, (state) => {
+        const taskId = s.taskId;
+        if (!taskId) return;
+        setTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t;
+            if (state === 'silent' && t.status === 'in-progress') {
+              return { ...t, status: 'needs-input' };
+            }
+            if (state === 'active' && t.status === 'needs-input') {
+              return { ...t, status: 'in-progress' };
+            }
+            return t;
+          }),
+        );
+        // Persist to backend (local or cloud).
+        if (state === 'silent') {
+          provider?.update(taskId, { status: 'needs-input' });
+        } else if (state === 'active') {
+          provider?.update(taskId, { status: 'in-progress' });
+        }
+      }),
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [sessions, provider]);
+
   useEffect(() => {
     setSessionStartPendingTaskIds(new Set());
   }, [project?.id]);
