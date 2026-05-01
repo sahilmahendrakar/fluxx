@@ -1,0 +1,47 @@
+src/types.ts
+  6df894710c59f12a 118-119
+src/renderer/tasks/FirestoreTaskProvider.ts
+  6df894710c59f12a 87,134,222
+src/components/NewTaskModal.tsx
+  9fcc4aeb45db9bd5 67-68,186
+  6df894710c59f12a 4,8,13-14,22,27-28,30,48-58,64,69-80,141-185,187-208
+src/components/Board.tsx
+  6df894710c59f12a 5,20,31-32,48,177,179-180
+src/App.tsx
+  6df894710c59f12a 39,168-169,856,873,1524
+src/renderer/tasks/TaskProvider.ts
+  6df894710c59f12a 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b10d3dbdb889c3c32e800cf80b5edf7a4d82f8e8",
+  "prompts": {
+    "6df894710c59f12a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27c9fc28-ce8d-4014-830b-b1e9d57a2337",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 6,
+      "accepted_lines": 120,
+      "overriden_lines": 0
+    },
+    "9fcc4aeb45db9bd5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4097e8d8-fc74-4772-b130-37b298bfd54e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
