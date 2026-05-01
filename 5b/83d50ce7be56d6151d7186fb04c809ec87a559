@@ -1,0 +1,59 @@
+src/components/TaskCard.tsx
+  d629e76a1ec9f74a 1,9,28-72,85,234-236
+src/components/Board.tsx
+  670ad086729b7c63 55-61,167
+src/App.tsx
+  670ad086729b7c63 781-783
+src/renderer/tasks/TaskProvider.ts
+  670ad086729b7c63 17
+src/renderer/tasks/FirestoreTaskProvider.ts
+  47d7df1fe7b95142 182,185
+src/components/Column.tsx
+  d629e76a1ec9f74a 5,20,36,99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "5b83d50ce7be56d6151d7186fb04c809ec87a559",
+  "prompts": {
+    "47d7df1fe7b95142": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "661ca0ae-ec87-402e-9f24-7cadae812f11",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    },
+    "670ad086729b7c63": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7b016ef4-d1c0-4521-b080-4f8d44f49e5b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    },
+    "d629e76a1ec9f74a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2508d183-7dfa-48c2-ad60-aee3e79f963d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 55,
+      "overriden_lines": 0
+    }
+  }
+}
