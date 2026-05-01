@@ -119,6 +119,8 @@ export interface Task {
   updatedAt?: string;
   /** Cloud-only: uid of the user who last updated the task. */
   updatedBy?: string;
+  /** Cloud-only: uid of the user currently assigned to work on this task. */
+  assigneeId?: string;
   /** Task ids in the same project that must be `done` before this task is unblocked. */
   blockedByTaskIds?: string[];
   /** If true, auto-start a session for this task when the last dependency completes, even if project “when unblocked” is off. */
