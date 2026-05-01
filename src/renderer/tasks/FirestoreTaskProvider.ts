@@ -84,6 +84,9 @@ export class FirestoreTaskProvider implements TaskProvider {
       updatedBy: this.uid,
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
       ...(createLabels.length > 0 ? { labels: createLabels } : {}),
+      ...(input.assigneeId !== undefined && input.assigneeId !== ''
+        ? { assigneeId: input.assigneeId }
+        : {}),
     };
     const ref = await addDoc(col, data);
     let normalizedDeps: string[] | undefined;
@@ -130,6 +133,9 @@ export class FirestoreTaskProvider implements TaskProvider {
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
       ...(createLabels.length > 0 ? { labels: createLabels } : {}),
       ...(normalizedDeps ? { blockedByTaskIds: normalizedDeps } : {}),
+      ...(input.assigneeId !== undefined && input.assigneeId !== ''
+        ? { assigneeId: input.assigneeId }
+        : {}),
     };
   }
 
@@ -173,10 +179,10 @@ export class FirestoreTaskProvider implements TaskProvider {
       }
     }
     if (patch.assigneeId !== undefined) {
-      if (patch.assigneeId && patch.assigneeId.trim() !== '') {
-        updates.assigneeId = patch.assigneeId.trim();
-      } else {
+      if (patch.assigneeId === null || patch.assigneeId.trim() === '') {
         updates.assigneeId = deleteField();
+      } else {
+        updates.assigneeId = patch.assigneeId.trim();
       }
     }
     await updateDoc(ref, updates);
@@ -226,11 +232,20 @@ function toTask(
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
     updatedAt: tsToIso(data.updatedAt),
     updatedBy: typeof data.updatedBy === 'string' ? data.updatedBy : undefined,
-    assigneeId: typeof data.assigneeId === 'string' ? data.assigneeId : undefined,
+    ...parseAssigneeIdField(data.assigneeId),
     ...parseBlockedByTaskIdsField(data.blockedByTaskIds),
     ...parseLabelsField(data.labels),
     ...parseAutoStartOnUnblockField(data.autoStartOnUnblock),
   };
+}
+
+function parseAssigneeIdField(
+  val: unknown,
+): { assigneeId: string } | Record<string, never> {
+  if (typeof val !== 'string' || val.trim() === '') {
+    return {};
+  }
+  return { assigneeId: val.trim() };
 }
 
 function parseAutoStartOnUnblockField(

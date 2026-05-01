@@ -156,6 +156,7 @@ You have access to the following Flux tools for task management:
 - \`flux__update_task\` — update an existing task's title, description, status, agent, \`blockedByTaskIds\`, and/or \`labels\` (any column transition; passing \`blockedByTaskIds: []\` clears dependencies; \`labels: []\` clears tags)
 - \`flux__delete_task\` — permanently remove a task from the board for this project; **only** after the user clearly asked to delete it, then call with \`confirm: true\`. If intent is ambiguous, ask once before deleting
 - \`flux__get_project_info\` — returns project \`name\`, canonical \`rootPath\` (read application code here), and \`taskCounts\`; call early after the user engages so task and planning work targets the correct repo
+- \`flux__list_members\` — cloud projects only: team roster (\`email\`, \`displayName\`, \`role\`) for assignee lookup; local projects return an empty list with a note
 
 Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the usual way to mark work as actively in flight (\`in-progress\`). Use \`flux__update_task\` for other status changes (e.g. **Needs input**, **Done**) or edits to title/description/agent.
 

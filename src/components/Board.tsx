@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
+import type { ProjectMember } from '../renderer/projects/members';
 import {
   applyBoardFilters,
   boardFiltersAreActive,
@@ -12,13 +13,11 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
-import { useMembers } from '../renderer/projects/useMembers';
-import type { ProjectMember } from '../renderer/projects/members';
 
 interface Props {
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
-  onCreateTask: (title: string, agent: Agent, labels?: string[]) => void;
+  onCreateTask: (title: string, agent: Agent, labels?: string[], assigneeId?: string) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
   onDeleteTask: (id: string) => void;
@@ -29,8 +28,8 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
-  /** Cloud project ID for member subscription; omit for local projects. */
-  cloudProjectId?: string;
+  /** Cloud-only: team members for the assignee picker. */
+  projectMembers?: ProjectMember[];
 }
 
 export default function Board({
@@ -46,20 +45,19 @@ export default function Board({
   onToggleTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
-  cloudProjectId,
+  projectMembers,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
     () => ({ ...DEFAULT_BOARD_FILTER }),
   );
-  const membersState = useMembers(cloudProjectId ?? null);
 
   const membersMap = useMemo(() => {
-    if (!cloudProjectId) return undefined;
+    if (!projectMembers) return undefined;
     return new Map<string, ProjectMember>(
-      membersState.members.map((member) => [member.uid, member]),
+      projectMembers.map((member) => [member.uid, member]),
     );
-  }, [cloudProjectId, membersState.members]);
+  }, [projectMembers]);
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(allTasks),
@@ -184,9 +182,10 @@ export default function Board({
         <NewTaskModal
           labelCatalog={labelCatalog}
           defaultAgent={defaultTaskAgent}
+          projectMembers={projectMembers}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent, labels) => {
-            onCreateTask(title, agent, labels);
+          onCreate={(title, agent, labels, assigneeId) => {
+            onCreateTask(title, agent, labels, assigneeId);
             setModalOpen(false);
           }}
         />

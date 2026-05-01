@@ -115,6 +115,8 @@ export interface Task {
   workspaceCleanedAt?: string;
   /** Cloud-only: uid of the user who created the task. */
   createdBy?: string;
+  /** Cloud-only: uid of the human assignee. */
+  assigneeId?: string;
   /** Cloud-only. */
   updatedAt?: string;
   /** Cloud-only: uid of the user who last updated the task. */
@@ -123,8 +125,6 @@ export interface Task {
   blockedByTaskIds?: string[];
   /** If true, auto-start a session for this task when the last dependency completes, even if project “when unblocked” is off. */
   autoStartOnUnblock?: boolean;
-  /** Cloud-only: uid of the assigned team member. */
-  assigneeId?: string;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
