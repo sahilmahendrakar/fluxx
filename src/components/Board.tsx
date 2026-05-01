@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
+import type { ProjectMember } from '../renderer/projects/members';
 import {
   applyBoardFilters,
   boardFiltersAreActive,
@@ -16,7 +17,7 @@ import { BoardFilterBar } from './BoardFilterBar';
 interface Props {
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
-  onCreateTask: (title: string, agent: Agent, labels?: string[]) => void;
+  onCreateTask: (title: string, agent: Agent, labels?: string[], assigneeId?: string) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
   onDeleteTask: (id: string) => void;
@@ -27,6 +28,8 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
+  /** Cloud-only: team members for the assignee picker. */
+  projectMembers?: ProjectMember[];
 }
 
 export default function Board({
@@ -42,6 +45,7 @@ export default function Board({
   onToggleTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
+  projectMembers,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -170,9 +174,10 @@ export default function Board({
         <NewTaskModal
           labelCatalog={labelCatalog}
           defaultAgent={defaultTaskAgent}
+          projectMembers={projectMembers}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent, labels) => {
-            onCreateTask(title, agent, labels);
+          onCreate={(title, agent, labels, assigneeId) => {
+            onCreateTask(title, agent, labels, assigneeId);
             setModalOpen(false);
           }}
         />

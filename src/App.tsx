@@ -36,6 +36,7 @@ import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
+import { useMembers } from './renderer/projects/useMembers';
 import { useInvites } from './renderer/invites/useInvites';
 import {
   useAgentHeartbeat,
@@ -49,30 +50,15 @@ import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
-import { useMembers } from './renderer/projects/useMembers';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
 } from './cloudBindingPrefs';
+import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 
 type ActiveProject = LocalProject | CloudProject;
-
-/** Reconcile optimistic UI: `TaskPatch.assigneeId` may be `null` to clear, but `Task` omits or uses `string`. */
-function mergeTaskWithPendingPatch(task: Task, pending?: TaskPatch): Task {
-  if (!pending || Object.keys(pending).length === 0) return task;
-  const { assigneeId, ...rest } = pending;
-  const merged: Task = { ...task, ...rest };
-  if (assigneeId !== undefined) {
-    if (assigneeId === null || assigneeId === '') {
-      delete merged.assigneeId;
-    } else {
-      merged.assigneeId = assigneeId;
-    }
-  }
-  return merged;
-}
 
 const UPDATE_DEBOUNCE_MS = 300;
 const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs', 'settings']);
@@ -92,6 +78,30 @@ function isWorkspaceSessionTabId(tabId: string): boolean {
   if (STATIC_TAB_IDS.has(tabId)) return false;
   if (tabId.startsWith(PLAN_TAB_PREFIX)) return false;
   return true;
+}
+
+/** Apply debounced cloud patches onto a server task for optimistic UI (`null` clears optional fields). */
+function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefined): Task {
+  if (!patch) return task;
+  const { assigneeId, workspaceCleanedAt, ...rest } = patch;
+  let next: Task = { ...task, ...rest };
+  if (assigneeId !== undefined) {
+    if (assigneeId === null || assigneeId === '') {
+      next = { ...next };
+      delete next.assigneeId;
+    } else {
+      next = { ...next, assigneeId };
+    }
+  }
+  if (workspaceCleanedAt !== undefined) {
+    if (workspaceCleanedAt === null) {
+      next = { ...next };
+      delete next.workspaceCleanedAt;
+    } else {
+      next = { ...next, workspaceCleanedAt };
+    }
+  }
+  return next;
 }
 
 const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
@@ -168,6 +178,7 @@ export default function App() {
   tasksRef.current = tasks;
   const cloudUnblockTasksPrevRef = useRef<Task[] | null>(null);
   const cloudUnblockInFlightRef = useRef<Set<string>>(new Set());
+  const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
 
   const auth = useAuth();
@@ -177,9 +188,28 @@ export default function App() {
   const cloudProjectsState = useCloudProjects(uid);
   const invitesState = useInvites(userEmail);
 
+  useEffect(() => {
+    if (!uid || !auth.user || cloudProjectsState.status !== 'ready') return;
+    const ids = cloudProjectsState.projects
+      .map((p) => p.id)
+      .slice()
+      .sort()
+      .join(',');
+    const key = `${auth.user.photoURL ?? ''}|${ids}`;
+    if (key === memberPhotoRefreshKeyRef.current) return;
+    memberPhotoRefreshKeyRef.current = key;
+    void mergeMemberPhotoURL(
+      uid,
+      auth.user.photoURL ?? null,
+      cloudProjectsState.projects.map((p) => p.id),
+    ).catch((err) => console.error('[mergeMemberPhotoURL] failed', err));
+  }, [uid, auth.user, cloudProjectsState.status, cloudProjectsState.projects]);
+
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
   useAgentHeartbeat({ projectId: cloudProjectId, uid, displayName });
+  const membersState = useMembers(cloudProjectId);
+  const projectMembers = cloudProjectId ? membersState.members : undefined;
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
@@ -304,8 +334,7 @@ export default function App() {
     return () => unsub();
   }, [provider]);
 
-  const { members } = useMembers(project?.kind === 'cloud' ? project.id : null);
-  useMcpRendererBridge({ project, provider, uid, tasksSnapshot: tasks, membersSnapshot: members });
+  useMcpRendererBridge({ project, provider, uid, tasksSnapshot: tasks });
 
   useEffect(() => {
     if (!project) {
@@ -692,7 +721,7 @@ export default function App() {
         const newer = pendingRef.current.get(id);
         setTasks((prev) =>
           prev.map((t) =>
-            t.id === id ? mergeTaskWithPendingPatch(updated, newer?.patch) : t,
+            t.id === id ? mergeServerTaskWithPendingPatch(updated, newer?.patch) : t,
           ),
         );
       } catch (err) {
@@ -807,7 +836,7 @@ export default function App() {
         setTasks((prev) =>
           prev.map((t) =>
             t.id === draggableId
-              ? mergeTaskWithPendingPatch(updated, pending?.patch)
+              ? mergeServerTaskWithPendingPatch(updated, pending?.patch)
               : t,
           ),
         );
@@ -867,7 +896,7 @@ export default function App() {
   );
 
   const handleCreateTask = useCallback(
-    async (title: string, agent: Agent, labelInput?: string[]) => {
+    async (title: string, agent: Agent, labelInput?: string[], assigneeId?: string) => {
       if (!provider) return;
       try {
         // Append to the bottom of the backlog column.
@@ -884,6 +913,7 @@ export default function App() {
           agent,
           orderKey,
           ...(labels.length > 0 ? { labels } : {}),
+          ...(assigneeId ? { assigneeId } : {}),
         });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
@@ -1534,6 +1564,7 @@ export default function App() {
                         setActiveTabId('board');
                         setPlanPanelOpen((v) => !v);
                       }}
+                      projectMembers={projectMembers}
                     />
                     <TaskDetailPanel
                       task={selectedTask}

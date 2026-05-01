@@ -12,6 +12,15 @@ export type McpBridgeOp =
   | 'projectInfo'
   | 'members.list';
 
+/** One project member row for `members.list` / `flux__list_members` (cloud). */
+export interface McpBridgeMember {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'owner' | 'member';
+  photoURL?: string;
+}
+
 export interface McpBridgeTaskCreateInput {
   title: string;
   agent: Agent;
@@ -32,18 +41,6 @@ export interface McpBridgeTaskPatch {
   labels?: string[];
   autoStartOnUnblock?: boolean;
   assigneeId?: string | null;
-}
-
-export interface McpBridgeMember {
-  uid: string;
-  role: 'owner' | 'member';
-  displayName: string;
-  email: string;
-  joinedAt: string;
-}
-
-export interface McpBridgeMembersListResult {
-  members: McpBridgeMember[];
 }
 
 export interface McpBridgeTasksCreatePayload {

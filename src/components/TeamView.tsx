@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CloudProject } from '../types';
 import { useMembers } from '../renderer/projects/useMembers';
-import { removeMember } from '../renderer/projects/members';
+import { removeMember, type ProjectMember } from '../renderer/projects/members';
 import {
   backfillInviteProjectNames,
   cancelInvite,
@@ -15,6 +15,35 @@ interface Props {
   currentUid: string;
   currentUserDisplayName?: string;
   currentUserEmail?: string;
+}
+
+function MemberRowAvatar({ member }: { member: ProjectMember }) {
+  const initial = (member.displayName || member.email || '?')
+    .slice(0, 1)
+    .toUpperCase();
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [member.photoURL]);
+
+  if (member.photoURL && !imgFailed) {
+    return (
+      <img
+        src={member.photoURL}
+        alt=""
+        referrerPolicy="no-referrer"
+        className="h-8 w-8 shrink-0 rounded-full object-cover"
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[13px] font-medium text-sky-200/90">
+      {initial}
+    </div>
+  );
 }
 
 export function TeamView({
@@ -163,18 +192,13 @@ export function TeamView({
             <ul className="flex flex-col gap-1.5">
               {members.map((m) => {
                 const name = m.displayName || m.email || m.uid;
-                const initial = (m.displayName || m.email || '?')
-                  .slice(0, 1)
-                  .toUpperCase();
                 const canRemove = isOwner && m.uid !== project.ownerId;
                 return (
                   <li
                     key={m.uid}
                     className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5"
                   >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[13px] font-medium text-sky-200/90">
-                      {initial}
-                    </div>
+                    <MemberRowAvatar member={m} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-[13px] font-medium text-zinc-100">

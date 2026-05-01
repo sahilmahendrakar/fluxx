@@ -77,11 +77,31 @@ function tsToIso(ts: unknown): string {
   return '';
 }
 
+/**
+ * Merge current Auth photo URL into the caller's member doc for each project.
+ * Runs after sign-in / when the project list loads so Google CDN URLs stay fresh.
+ */
+export async function mergeMemberPhotoURL(
+  uid: string,
+  photoURL: string | null,
+  projectIds: string[],
+): Promise<void> {
+  if (projectIds.length === 0) return;
+  const db = getFirebaseFirestore();
+  const value = photoURL ?? null;
+  await Promise.all(
+    projectIds.map((pid) =>
+      setDoc(doc(db, 'projects', pid, 'members', uid), { photoURL: value }, { merge: true }),
+    ),
+  );
+}
+
 export async function createCloudProject(
   uid: string,
   name: string,
   displayName?: string,
   email?: string,
+  photoURL?: string | null,
 ): Promise<CloudProjectSummary> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Project name required.');
@@ -95,11 +115,14 @@ export async function createCloudProject(
     createdAt: serverTimestamp(),
   });
   // Also write a members/{uid} doc with display metadata.
+  const ownerPhoto =
+    photoURL != null && String(photoURL).trim() !== '' ? String(photoURL).trim() : null;
   await setDoc(doc(db, 'projects', ref.id, 'members', uid), {
     role: 'owner',
     joinedAt: serverTimestamp(),
     displayName: displayName ?? '',
     email: email ?? '',
+    photoURL: ownerPhoto,
   });
   return {
     id: ref.id,
@@ -129,6 +152,7 @@ export async function acceptInvite(
   uid: string,
   email: string,
   displayName?: string,
+  photoURL?: string | null,
 ): Promise<void> {
   const db = getFirebaseFirestore();
   const projectRef = doc(db, 'projects', projectId);
@@ -149,14 +173,21 @@ export async function acceptInvite(
     alreadyMember = false;
   }
 
+  const memberRef = doc(db, 'projects', projectId, 'members', uid);
+  const photo =
+    photoURL != null && String(photoURL).trim() !== '' ? String(photoURL).trim() : null;
+
   if (!alreadyMember) {
     await setDoc(projectRef, { memberIds: arrayUnion(uid) }, { merge: true });
-    await setDoc(doc(db, 'projects', projectId, 'members', uid), {
+    await setDoc(memberRef, {
       role: 'member',
       joinedAt: serverTimestamp(),
       displayName: displayName ?? '',
       email,
+      photoURL: photo,
     });
+  } else {
+    await setDoc(memberRef, { photoURL: photo }, { merge: true });
   }
   await deleteDoc(doc(db, 'projects', projectId, 'invites', email.toLowerCase()));
 }

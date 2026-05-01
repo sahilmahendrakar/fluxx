@@ -144,6 +144,7 @@ export function ProjectsListView({
       name,
       auth.user?.displayName ?? undefined,
       auth.user?.email ?? undefined,
+      auth.user?.photoURL ?? null,
     );
     setCreateCloudOpen(false);
     await handleOpenCloud(summary);
@@ -177,6 +178,7 @@ export function ProjectsListView({
         uid,
         email,
         auth.user?.displayName ?? undefined,
+        auth.user?.photoURL ?? null,
       );
     } catch (err) {
       console.error('[acceptInvite] failed', err);

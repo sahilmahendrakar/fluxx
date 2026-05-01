@@ -84,7 +84,7 @@ export class FirestoreTaskProvider implements TaskProvider {
       updatedBy: this.uid,
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
       ...(createLabels.length > 0 ? { labels: createLabels } : {}),
-      ...(input.assigneeId != null && input.assigneeId !== ''
+      ...(input.assigneeId !== undefined && input.assigneeId !== ''
         ? { assigneeId: input.assigneeId }
         : {}),
     };
@@ -133,7 +133,7 @@ export class FirestoreTaskProvider implements TaskProvider {
       ...(input.orderKey !== undefined ? { orderKey: input.orderKey } : {}),
       ...(createLabels.length > 0 ? { labels: createLabels } : {}),
       ...(normalizedDeps ? { blockedByTaskIds: normalizedDeps } : {}),
-      ...(input.assigneeId != null && input.assigneeId !== ''
+      ...(input.assigneeId !== undefined && input.assigneeId !== ''
         ? { assigneeId: input.assigneeId }
         : {}),
     };
@@ -232,20 +232,20 @@ function toTask(
     createdBy: typeof data.createdBy === 'string' ? data.createdBy : undefined,
     updatedAt: tsToIso(data.updatedAt),
     updatedBy: typeof data.updatedBy === 'string' ? data.updatedBy : undefined,
+    ...parseAssigneeIdField(data.assigneeId),
     ...parseBlockedByTaskIdsField(data.blockedByTaskIds),
     ...parseLabelsField(data.labels),
     ...parseAutoStartOnUnblockField(data.autoStartOnUnblock),
-    ...parseAssigneeIdField(data.assigneeId),
   };
 }
 
 function parseAssigneeIdField(
   val: unknown,
 ): { assigneeId: string } | Record<string, never> {
-  if (typeof val === 'string' && val.length > 0) {
-    return { assigneeId: val };
+  if (typeof val !== 'string' || val.trim() === '') {
+    return {};
   }
-  return {};
+  return { assigneeId: val.trim() };
 }
 
 function parseAutoStartOnUnblockField(

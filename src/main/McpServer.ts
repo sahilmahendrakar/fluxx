@@ -13,7 +13,7 @@ import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
 import type { ActiveProjectKey, Task } from '../types';
 import type {
-  McpBridgeMembersListResult,
+  McpBridgeMember,
   McpBridgeProjectInfoResult,
   McpBridgeTasksCreatePayload,
   McpBridgeTasksDeletePayload,
@@ -167,15 +167,13 @@ export class McpServer {
     email: string,
     activeKey: ActiveProjectKey,
   ): Promise<string | ReturnType<typeof jsonToolPayload>> {
-    const result = await this.bridge.request<McpBridgeMembersListResult>(
+    const result = await this.bridge.request<McpBridgeMember[]>(
       'members.list',
       activeKey,
     );
     if (!result.ok) return this.bridgeError(result);
     const normalised = email.toLowerCase();
-    const match = result.data.members.find(
-      (m) => m.email.toLowerCase() === normalised,
-    );
+    const match = result.data.find((m) => m.email.toLowerCase() === normalised);
     if (!match) {
       return jsonToolPayload({
         error: `No member with email '${email}' found in this project`,
@@ -519,6 +517,34 @@ export class McpServer {
           );
           if (!result.ok) return this.bridgeError(result);
           return jsonToolPayload({ ok: true, deletedId: result.data.deletedId });
+        } catch (err) {
+          return toolError(err);
+        }
+      },
+    );
+
+    server.tool(
+      'flux__list_members',
+      'List members of the current cloud project (uid, email, displayName, role owner|member, optional photoURL). Sorted with owners first, then by display name. For local projects returns members: [] with a note; use emails for assigneeEmail when creating or updating tasks.',
+      {},
+      async () => {
+        try {
+          const active = this.resolveActive();
+          if (active.kind === 'none') {
+            return jsonToolPayload({ error: 'No project open' });
+          }
+          if (active.kind === 'local') {
+            return jsonToolPayload({
+              members: [] as McpBridgeMember[],
+              note: 'Team member listing is only available for cloud projects.',
+            });
+          }
+          const result = await this.bridge.request<McpBridgeMember[]>(
+            'members.list',
+            active.activeKey,
+          );
+          if (!result.ok) return this.bridgeError(result);
+          return jsonToolPayload(result.data);
         } catch (err) {
           return toolError(err);
         }

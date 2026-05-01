@@ -119,7 +119,7 @@ export interface Task {
   updatedAt?: string;
   /** Cloud-only: uid of the user who last updated the task. */
   updatedBy?: string;
-  /** Cloud-only: uid of the member assigned to this task. */
+  /** Cloud-only: uid of the human assignee (multi-user board). MCP tools may pass assigneeEmail, which resolves to this id. */
   assigneeId?: string;
   /** Task ids in the same project that must be `done` before this task is unblocked. */
   blockedByTaskIds?: string[];
