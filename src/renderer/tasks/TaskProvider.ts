@@ -14,6 +14,7 @@ export type TaskPatch = Partial<
     | 'blockedByTaskIds'
     | 'labels'
     | 'autoStartOnUnblock'
+    | 'assigneeId'
   >
 > & {
     workspaceCleanedAt?: string | null;

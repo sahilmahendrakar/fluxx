@@ -179,10 +179,10 @@ export class FirestoreTaskProvider implements TaskProvider {
       }
     }
     if (patch.assigneeId !== undefined) {
-      if (patch.assigneeId === null || patch.assigneeId === '') {
+      if (patch.assigneeId === null || patch.assigneeId.trim() === '') {
         updates.assigneeId = deleteField();
       } else {
-        updates.assigneeId = patch.assigneeId;
+        updates.assigneeId = patch.assigneeId.trim();
       }
     }
     await updateDoc(ref, updates);

@@ -778,6 +778,9 @@ export default function App() {
       if (patch.autoStartOnUnblock !== undefined) {
         persistable.autoStartOnUnblock = patch.autoStartOnUnblock;
       }
+      if (patch.assigneeId !== undefined) {
+        persistable.assigneeId = patch.assigneeId;
+      }
       if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);

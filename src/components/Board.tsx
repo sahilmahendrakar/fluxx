@@ -52,6 +52,13 @@ export default function Board({
     () => ({ ...DEFAULT_BOARD_FILTER }),
   );
 
+  const membersMap = useMemo(() => {
+    if (!projectMembers) return undefined;
+    return new Map<string, ProjectMember>(
+      projectMembers.map((member) => [member.uid, member]),
+    );
+  }, [projectMembers]);
+
   const labelCatalog = useMemo(
     () => projectLabelCatalog(allTasks),
     [allTasks],
@@ -157,6 +164,7 @@ export default function Board({
               onCardClick={onCardClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+              membersMap={membersMap}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
