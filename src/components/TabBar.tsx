@@ -15,7 +15,7 @@ interface TabBarProps {
   activeTabId: string;
   openSessions: SessionTabMeta[];
   openPlanningTabs: PlanningTabMeta[];
-  settingsTabOpen: boolean;
+  settingsRouteActive: boolean;
   onSelectTab: (tabId: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
   onSelectPlanningTab: (sessionId: string) => void;
@@ -39,7 +39,7 @@ export function TabBar({
   activeTabId,
   openSessions,
   openPlanningTabs,
-  settingsTabOpen,
+  settingsRouteActive,
   onSelectTab,
   onCloseSessionTab,
   onSelectPlanningTab,
@@ -58,13 +58,13 @@ export function TabBar({
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
       <button
         type="button"
-        className={tabClass(activeTabId === 'board')}
+        className={tabClass(activeTabId === 'board' && !settingsRouteActive)}
         onClick={() => onSelectTab('board')}
       >
         <span>Board</span>
       </button>
-      {settingsTabOpen ? (
-        <div className={tabClass(activeTabId === 'settings')}>
+      {settingsRouteActive ? (
+        <div className={tabClass(settingsRouteActive)}>
           <button
             type="button"
             onClick={() => onSelectTab('settings')}
@@ -91,7 +91,7 @@ export function TabBar({
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}
       {openSessions.map(({ session, title }) => {
-        const active = activeTabId === session.id;
+        const active = activeTabId === session.id && !settingsRouteActive;
         const running = session.status === 'running';
         return (
           <div key={session.id} className={tabClass(active)}>
@@ -130,7 +130,7 @@ export function TabBar({
       ) : null}
       {openPlanningTabs.map(({ sessionId, title, running }) => {
         const tabId = `${PLAN_TAB_PREFIX}${sessionId}`;
-        const active = activeTabId === tabId;
+        const active = activeTabId === tabId && !settingsRouteActive;
         return (
           <div key={tabId} className={tabClass(active)}>
             <button

@@ -7,6 +7,7 @@ export type PlanningDocFile = { relativePath: string };
 interface SidebarProps {
   project: Project;
   activeTabId: string;
+  settingsRouteActive: boolean;
   onSelectTab: (tabId: string) => void;
   onOpenSettings: () => void;
   onPlanNavClick: () => void;
@@ -220,6 +221,7 @@ function TrashIcon({ className }: { className?: string }) {
 export function Sidebar({
   project,
   activeTabId,
+  settingsRouteActive,
   onSelectTab,
   onOpenSettings,
   onPlanNavClick,
@@ -264,7 +266,8 @@ export function Sidebar({
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
 
-  const planNavActive = activeTabId === 'plan' || activeTabId.startsWith('plan:');
+  const planNavActive =
+    !settingsRouteActive && (activeTabId === 'plan' || activeTabId.startsWith('plan:'));
 
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">
@@ -293,10 +296,10 @@ export function Sidebar({
             onClick={onOpenSettings}
             aria-label="Project settings"
             title="Project settings"
-            aria-pressed={activeTabId === 'settings'}
+            aria-pressed={settingsRouteActive}
             className={[
               '-mr-2 shrink-0 rounded p-1 transition',
-              activeTabId === 'settings'
+              settingsRouteActive
                 ? 'bg-white/[0.06] text-zinc-200'
                 : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200',
             ].join(' ')}
@@ -314,7 +317,7 @@ export function Sidebar({
           <div className="flex flex-col gap-0.5">
             <button
               type="button"
-              className={navItemClass(activeTabId === 'board')}
+              className={navItemClass(activeTabId === 'board' && !settingsRouteActive)}
               onClick={() => onSelectTab('board')}
             >
               <BoardIcon className="shrink-0 opacity-80" />
@@ -326,7 +329,11 @@ export function Sidebar({
             </button>
             <div className="flex flex-col gap-0.5">
               <div className="flex w-full min-w-0 items-stretch gap-0.5">
-                <button type="button" className={docsMainNavClass(activeTabId === 'docs')} onClick={onDocsNavClick}>
+                <button
+                  type="button"
+                  className={docsMainNavClass(activeTabId === 'docs' && !settingsRouteActive)}
+                  onClick={onDocsNavClick}
+                >
                   <DocsIcon className="shrink-0 opacity-80" />
                   <span className="min-w-0 truncate">Docs</span>
                 </button>
@@ -366,7 +373,9 @@ export function Sidebar({
                             title={f.relativePath}
                             onClick={() => onSelectPlanningDoc(f.relativePath)}
                             className={fileRowClass(
-                              activeTabId === 'docs' && f.relativePath === selectedPlanningDocPath,
+                              activeTabId === 'docs' &&
+                                !settingsRouteActive &&
+                                f.relativePath === selectedPlanningDocPath,
                             )}
                           >
                             {f.relativePath}
@@ -396,7 +405,7 @@ export function Sidebar({
                   <p className="px-2 py-1 text-[11px] italic text-zinc-600">No open sessions</p>
                 ) : (
                   sessions.map(({ session, title }) => {
-                    const active = activeTabId === session.id;
+                    const active = activeTabId === session.id && !settingsRouteActive;
                     const running = session.status === 'running';
                     return (
                       <div

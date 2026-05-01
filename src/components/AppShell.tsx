@@ -8,6 +8,7 @@ interface AppShellProps {
   project: Project;
   onClearProject: () => void;
   activeTabId: string;
+  settingsRouteActive: boolean;
   onSelectTab: (tabId: string) => void;
   onOpenSettings: () => void;
   collapsed: boolean;
@@ -51,6 +52,7 @@ export function AppShell({
   project,
   onClearProject,
   activeTabId,
+  settingsRouteActive,
   onSelectTab,
   onOpenSettings,
   collapsed,
@@ -76,6 +78,7 @@ export function AppShell({
         <Sidebar
           project={project}
           activeTabId={activeTabId}
+          settingsRouteActive={settingsRouteActive}
           onSelectTab={onSelectTab}
           onOpenSettings={onOpenSettings}
           onPlanNavClick={onPlanNavClick}

@@ -58,11 +58,18 @@ import {
   hydrateCloudProject,
 } from './cloudBindingPrefs';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
+import {
+  leaveSettingsIfActive,
+  pushProjectSettingsRoute,
+  readProjectHashRoute,
+  replaceProjectWorkspaceRoute,
+  useProjectHashRoute,
+} from './projectHashRoute';
 
 type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
-const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs', 'settings']);
+const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs']);
 const PLAN_TAB_PREFIX = 'plan:';
 
 function planTabId(sessionId: string): string {
@@ -139,7 +146,6 @@ export default function App() {
     () => new Set(),
   );
   const [openTabIds, setOpenTabIds] = useState<Set<string>>(() => new Set());
-  const [settingsTabOpen, setSettingsTabOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('flux.sidebarCollapsed') === '1';
@@ -215,6 +221,9 @@ export default function App() {
   const projectMembers = cloudProjectId ? membersState.members : undefined;
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+
+  const projectHashRoute = useProjectHashRoute();
+  const settingsRouteActive = projectHashRoute === 'settings';
 
   const refreshPlanningSessions = useCallback(async () => {
     const api = window.electronAPI.planning;
@@ -648,7 +657,10 @@ export default function App() {
       return;
     }
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
-    setActiveTabId((prev) => (STATIC_TAB_IDS.has(prev) ? prev : 'board'));
+    setActiveTabId((prev) => {
+      if (prev === 'settings') return 'board';
+      return STATIC_TAB_IDS.has(prev) ? prev : 'board';
+    });
 
     // Hydrate live sessions from the daemon and restore the persisted tab
     // strip — the whole point of Milestone A session continuity. The
@@ -672,7 +684,10 @@ export default function App() {
         setOpenTabIds(new Set(restoredOpen));
         setOpenPlanningMainTabIds(new Set(persisted.openPlanningTabIds ?? []));
         setPlanningSidebarActiveId(persisted.planningSidebarActiveSessionId ?? null);
-        if (
+        if (persisted.activeTaskId === 'settings') {
+          setActiveTabId('board');
+          pushProjectSettingsRoute();
+        } else if (
           persisted.activeTaskId &&
           (STATIC_TAB_IDS.has(persisted.activeTaskId) ||
             persisted.activeTaskId.startsWith(PLAN_TAB_PREFIX) ||
@@ -945,7 +960,10 @@ export default function App() {
         ),
       );
       if (ui?.closeDetail) setSelectedTaskId(null);
-      if (ui?.goToBoard) setActiveTabId('board');
+      if (ui?.goToBoard) {
+        leaveSettingsIfActive();
+        setActiveTabId('board');
+      }
 
       try {
         const updated = await provider.update(taskId, {
@@ -1083,6 +1101,7 @@ export default function App() {
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPlanPanelOpen(false);
+    replaceProjectWorkspaceRoute();
     setActiveTabId('board');
     setDocsSidebarExpanded(false);
     setPlanningDocFiles([]);
@@ -1103,6 +1122,7 @@ export default function App() {
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPlanPanelOpen(false);
+    replaceProjectWorkspaceRoute();
     setDocsSidebarExpanded(false);
     setPlanningDocFiles([]);
     setPlanningDocsListError(null);
@@ -1117,6 +1137,7 @@ export default function App() {
   }, []);
 
   const handlePlanNav = useCallback(() => {
+    leaveSettingsIfActive();
     const routeSid = parsePlanTabId(activeTabId);
     if (routeSid) {
       setPlanningSidebarActiveId(routeSid);
@@ -1142,6 +1163,7 @@ export default function App() {
   }, [activeTabId, planPanelOpen]);
 
   const handleDocsNav = useCallback(() => {
+    leaveSettingsIfActive();
     setActiveTabId('docs');
     setPlanPanelOpen(false);
     setDocsSidebarExpanded(true);
@@ -1152,16 +1174,23 @@ export default function App() {
   }, []);
 
   const handleSelectPlanningDoc = useCallback((relativePath: string) => {
+    leaveSettingsIfActive();
     setSelectedPlanningDocPath(relativePath);
     setActiveTabId('docs');
     setPlanPanelOpen(false);
   }, []);
 
   useEffect(() => {
-    if (activeTabId === 'docs' || activeTabId === 'settings') {
+    if (activeTabId === 'docs') {
       setPlanPanelOpen(false);
     }
   }, [activeTabId]);
+
+  useEffect(() => {
+    if (settingsRouteActive) {
+      setPlanPanelOpen(false);
+    }
+  }, [settingsRouteActive]);
 
   const maxPlanningWidthForRow = useCallback(() => {
     const row = boardRowRef.current;
@@ -1255,6 +1284,7 @@ export default function App() {
   );
 
   const handleOpenSessionTab = useCallback((session: Session) => {
+    leaveSettingsIfActive();
     setSessions((prev) => {
       const exists = prev.some((s) => s.id === session.id);
       if (exists) {
@@ -1274,6 +1304,7 @@ export default function App() {
 
   const handleOpenSessionFromSidebar = useCallback(
     (sessionId: string) => {
+      leaveSettingsIfActive();
       const session = sessions.find((s) => s.id === sessionId);
       if (!session) return;
       setOpenTabIds((prev) => {
@@ -1299,6 +1330,7 @@ export default function App() {
   }, []);
 
   const handleOpenPlanningInMainTab = useCallback((sessionId: string) => {
+    leaveSettingsIfActive();
     setOpenPlanningMainTabIds((prev) => new Set(prev).add(sessionId));
     setActiveTabId(planTabId(sessionId));
   }, []);
@@ -1359,13 +1391,29 @@ export default function App() {
   }, [activeTabId, handleClosePlanningMainTab]);
 
   const handleOpenSettingsTab = useCallback(() => {
-    setSettingsTabOpen(true);
-    setActiveTabId('settings');
+    if (readProjectHashRoute() !== 'settings') {
+      pushProjectSettingsRoute();
+    }
   }, []);
 
   const handleCloseSettingsTab = useCallback(() => {
-    setSettingsTabOpen(false);
-    setActiveTabId((prev) => (prev === 'settings' ? 'board' : prev));
+    replaceProjectWorkspaceRoute();
+  }, []);
+
+  const handleSelectWorkspaceTab = useCallback((tabId: string) => {
+    if (tabId === 'settings') {
+      if (readProjectHashRoute() !== 'settings') {
+        pushProjectSettingsRoute();
+      }
+      return;
+    }
+    leaveSettingsIfActive();
+    setActiveTabId(tabId);
+  }, []);
+
+  const handleSelectPlanningTabFromBar = useCallback((sessionId: string) => {
+    leaveSettingsIfActive();
+    setActiveTabId(planTabId(sessionId));
   }, []);
 
   useEffect(() => {
@@ -1571,7 +1619,8 @@ export default function App() {
           project={project}
           onClearProject={() => void handleClearProject()}
           activeTabId={activeTabId}
-          onSelectTab={setActiveTabId}
+          settingsRouteActive={settingsRouteActive}
+          onSelectTab={handleSelectWorkspaceTab}
           onOpenSettings={handleOpenSettingsTab}
           collapsed={sidebarCollapsed}
           onCollapse={handleCollapseSidebar}
@@ -1599,10 +1648,10 @@ export default function App() {
               activeTabId={activeTabId}
               openSessions={openTabItems}
               openPlanningTabs={openPlanningTabItems}
-              settingsTabOpen={settingsTabOpen}
-              onSelectTab={setActiveTabId}
+              settingsRouteActive={settingsRouteActive}
+              onSelectTab={handleSelectWorkspaceTab}
               onCloseSessionTab={handleCloseSessionTab}
-              onSelectPlanningTab={(sessionId) => setActiveTabId(planTabId(sessionId))}
+              onSelectPlanningTab={handleSelectPlanningTabFromBar}
               onClosePlanningTab={(sessionId) => void handleClosePlanningMainTab(sessionId)}
               onCloseSettingsTab={handleCloseSettingsTab}
             />
@@ -1624,17 +1673,17 @@ export default function App() {
               return (
                 <div
                   key={item.session.id}
-                  aria-hidden={!isActive}
+                  aria-hidden={!isActive || settingsRouteActive}
                   className="absolute inset-0 flex min-h-0 flex-col"
                   style={{
-                    visibility: isActive ? 'visible' : 'hidden',
-                    pointerEvents: isActive ? 'auto' : 'none',
+                    visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
+                    pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',
                     zIndex: isActive ? 2 : 1,
                   }}
                 >
                   <SessionTerminalView
                     session={item.session}
-                    visible={isActive}
+                    visible={isActive && !settingsRouteActive}
                     task={tabTask}
                     markAsDoneBlocked={tabTaskBlocked}
                     onMarkAsDone={
@@ -1647,20 +1696,21 @@ export default function App() {
               );
             })}
             {/*
-              Board, planning (sidebar + fullscreen), docs, and settings share one
-              persistent stack under session terminals. Toggle visibility instead
-              of conditional mounts so the planning xterm instance (scrollback,
-              TUI state) survives tab switches — matching SessionTerminalView.
-              While a task session tab is focused, hide this stack but keep it
-              mounted for the same reason; session layers use z-index 1–2 so they
-              stay above this workspace shell (z-index 0).
+              Board, planning (sidebar + fullscreen), and docs share one persistent
+              stack under session terminals. Toggle visibility instead of conditional
+              mounts so the planning xterm instance (scrollback, TUI state) survives
+              tab switches — matching SessionTerminalView. Project settings uses
+              `#/settings` and renders in a separate full-view layer (not this stack).
+              While a task session tab is focused, hide this stack but keep it mounted;
+              session layers use z-index 1–2 so they stay above this workspace shell
+              (z-index 0).
             */}
             <div
               className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
-              aria-hidden={Boolean(activeSessionTab)}
+              aria-hidden={Boolean(activeSessionTab) || settingsRouteActive}
               style={{
-                visibility: activeSessionTab ? 'hidden' : 'visible',
-                pointerEvents: activeSessionTab ? 'none' : 'auto',
+                visibility: activeSessionTab || settingsRouteActive ? 'hidden' : 'visible',
+                pointerEvents: activeSessionTab || settingsRouteActive ? 'none' : 'auto',
                 zIndex: 0,
               }}
             >
@@ -1702,6 +1752,7 @@ export default function App() {
                         }
                         planPanelOpen={planPanelOpen}
                         onTogglePlanPanel={() => {
+                          leaveSettingsIfActive();
                           setActiveTabId('board');
                           setPlanPanelOpen((v) => !v);
                         }}
@@ -1798,26 +1849,29 @@ export default function App() {
                     fileRevision={planningDocFileRevision}
                   />
                 </div>
-                <div
-                  className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
-                  aria-hidden={activeTabId !== 'settings'}
-                  style={{
-                    visibility: activeTabId === 'settings' ? 'visible' : 'hidden',
-                    pointerEvents: activeTabId === 'settings' ? 'auto' : 'none',
-                    zIndex: activeTabId === 'settings' ? 1 : 0,
-                  }}
-                >
-                  <ProjectSettingsView
-                    project={project}
-                    currentUid={uid}
-                    currentUserDisplayName={displayName}
-                    currentUserEmail={userEmail ?? undefined}
-                    onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
-                    onProjectAgentPrefsRefresh={refreshPlanningRelatedProjectState}
-                  />
-                </div>
               </div>
             </div>
+            {settingsRouteActive ? (
+              <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-[#09090b]">
+                <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => replaceProjectWorkspaceRoute()}
+                    className="rounded-md px-2 py-1 text-[12px] font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-100"
+                  >
+                    ← Workspace
+                  </button>
+                </div>
+                <ProjectSettingsView
+                  project={project}
+                  currentUid={uid}
+                  currentUserDisplayName={displayName}
+                  currentUserEmail={userEmail ?? undefined}
+                  onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
+                  onProjectAgentPrefsRefresh={refreshPlanningRelatedProjectState}
+                />
+              </div>
+            ) : null}
           </div>
         </AppShell>
       </div>
