@@ -1,0 +1,25 @@
+src/types.ts
+  337d831ace4e6f27 122-126
+src/App.tsx
+  337d831ace4e6f27 1594
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "54b2da0784c7c63bcd5734af60576fc35e28b881",
+  "prompts": {
+    "337d831ace4e6f27": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "76f247b8-00eb-4756-9cd0-2dd15c449e8e",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 11,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
