@@ -36,6 +36,7 @@ import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
+import { useMembers } from './renderer/projects/useMembers';
 import { useInvites } from './renderer/invites/useInvites';
 import {
   useAgentHeartbeat,
@@ -163,6 +164,7 @@ export default function App() {
 
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
+  const membersState = useMembers(cloudProjectId);
   useAgentHeartbeat({ projectId: cloudProjectId, uid, displayName });
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
@@ -731,6 +733,9 @@ export default function App() {
       }
       if (patch.autoStartOnUnblock !== undefined) {
         persistable.autoStartOnUnblock = patch.autoStartOnUnblock;
+      }
+      if (patch.assigneeId !== undefined) {
+        persistable.assigneeId = patch.assigneeId;
       }
       if (Object.keys(persistable).length === 0) return;
 
@@ -1540,6 +1545,7 @@ export default function App() {
                       remoteRunner={remoteRunnerForSelected}
                       onOpenSessionTab={handleOpenSessionTab}
                       onArchiveSession={(id) => void handleArchiveSession(id)}
+                      projectMembers={cloudProjectId ? membersState.members : undefined}
                     />
                   </div>
                   <div

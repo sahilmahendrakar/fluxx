@@ -172,6 +172,13 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.autoStartOnUnblock = deleteField();
       }
     }
+    if (patch.assigneeId !== undefined) {
+      if (patch.assigneeId) {
+        updates.assigneeId = patch.assigneeId;
+      } else {
+        updates.assigneeId = deleteField();
+      }
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
     return toTask(
@@ -222,6 +229,7 @@ function toTask(
     ...parseBlockedByTaskIdsField(data.blockedByTaskIds),
     ...parseLabelsField(data.labels),
     ...parseAutoStartOnUnblockField(data.autoStartOnUnblock),
+    assigneeId: typeof data.assigneeId === 'string' ? data.assigneeId : undefined,
   };
 }
 

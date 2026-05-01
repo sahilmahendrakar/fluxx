@@ -12,7 +12,7 @@ import {
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Settings, Terminal, X } from 'lucide-react';
+import { ChevronDown, Pencil, Settings, Terminal, UserCircle2, X } from 'lucide-react';
 import {
   Task,
   TaskStatus,
@@ -24,6 +24,7 @@ import {
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
 } from '../types';
+import type { ProjectMember } from '../renderer/projects/members';
 import {
   getBlockingTasks,
   isTaskBlocked,
@@ -83,6 +84,8 @@ interface TaskDetailPanelProps {
   markAsDoneBlocked?: boolean;
   /** Project “auto-start when unblocked” (from local config / cloud binding). */
   autoStartWhenUnblockedProject?: boolean;
+  /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
+  projectMembers?: ProjectMember[];
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -140,6 +143,14 @@ function formatCreatedLabel(iso: string): string {
   });
 }
 
+function projectMemberLabel(m: ProjectMember): string {
+  return m.displayName || m.email || m.uid;
+}
+
+function projectMemberInitial(m: ProjectMember): string {
+  return (m.displayName || m.email || '?').slice(0, 1).toUpperCase();
+}
+
 function useAutosizeTextArea(value: string, minHeightPx = 0) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -172,6 +183,7 @@ export default function TaskDetailPanel({
   onMarkAsDone,
   markAsDoneBlocked = false,
   autoStartWhenUnblockedProject = false,
+  projectMembers,
 }: TaskDetailPanelProps) {
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
@@ -193,14 +205,22 @@ export default function TaskDetailPanel({
 
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
+  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
+  const assigneeMenuWrapRef = useRef<HTMLDivElement>(null);
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(projectTasks),
     [projectTasks],
   );
 
+  const selectedAssigneeMember = useMemo(() => {
+    if (!task?.assigneeId || projectMembers === undefined) return null;
+    return projectMembers.find((m) => m.uid === task.assigneeId) ?? null;
+  }, [task?.assigneeId, projectMembers]);
+
   useEffect(() => {
     setAgentSettingsOpen(false);
+    setAssigneeMenuOpen(false);
     setDependencyError(null);
     setDepSearch('');
     setDescriptionEditing(false);
@@ -241,6 +261,18 @@ export default function TaskDetailPanel({
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [agentSettingsOpen]);
+
+  useEffect(() => {
+    if (!assigneeMenuOpen) return;
+    const onPointerDown = (e: globalThis.PointerEvent) => {
+      const root = assigneeMenuWrapRef.current;
+      if (root && !root.contains(e.target as Node)) {
+        setAssigneeMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [assigneeMenuOpen]);
 
   const maxDetailWidthForParent = useCallback(() => {
     const parent = asideRef.current?.parentElement;
@@ -621,6 +653,8 @@ export default function TaskDetailPanel({
 
   const propertySelectClass =
     'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
+  const assigneeTriggerClass =
+    'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-2 text-left text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
 
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
@@ -886,6 +920,104 @@ export default function TaskDetailPanel({
                   </select>
                 </div>
               </div>
+
+              {projectMembers !== undefined ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p className="shrink-0 text-xs text-zinc-500">Assignee</p>
+                  <div ref={assigneeMenuWrapRef} className="relative min-w-0 sm:max-w-[min(18rem,100%)] sm:flex-1">
+                    <button
+                      type="button"
+                      id="task-assignee-trigger"
+                      onClick={() => setAssigneeMenuOpen((o) => !o)}
+                      aria-haspopup="listbox"
+                      aria-expanded={assigneeMenuOpen}
+                      aria-controls="task-assignee-listbox"
+                      className={assigneeTriggerClass}
+                    >
+                      {task.assigneeId && selectedAssigneeMember ? (
+                        <>
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[11px] font-medium text-sky-200/90">
+                            {projectMemberInitial(selectedAssigneeMember)}
+                          </div>
+                          <span className="min-w-0 flex-1 truncate">
+                            {projectMemberLabel(selectedAssigneeMember)}
+                          </span>
+                        </>
+                      ) : task.assigneeId ? (
+                        <>
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-500/[0.15] text-[10px] font-medium text-zinc-400">
+                            ?
+                          </div>
+                          <span className="min-w-0 flex-1 truncate text-zinc-400">
+                            Unknown member
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <UserCircle2
+                            className="h-5 w-5 shrink-0 text-zinc-500"
+                            strokeWidth={1.5}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate text-zinc-400">
+                            Unassigned
+                          </span>
+                        </>
+                      )}
+                      <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" strokeWidth={2} aria-hidden />
+                    </button>
+                    {assigneeMenuOpen ? (
+                      <div
+                        id="task-assignee-listbox"
+                        role="listbox"
+                        aria-labelledby="task-assignee-trigger"
+                        className="absolute left-0 right-0 z-40 mt-1 max-h-56 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111113] py-1 shadow-xl shadow-black/50"
+                      >
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={!task.assigneeId}
+                          className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] text-zinc-200 hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
+                          onClick={() => {
+                            onUpdate(task.id, { assigneeId: null });
+                            setAssigneeMenuOpen(false);
+                          }}
+                        >
+                          <UserCircle2
+                            className="h-5 w-5 shrink-0 text-zinc-500"
+                            strokeWidth={1.5}
+                            aria-hidden
+                          />
+                          <span className="truncate text-zinc-400">Unassigned</span>
+                        </button>
+                        {projectMembers.map((m) => {
+                          const selected = task.assigneeId === m.uid;
+                          return (
+                            <button
+                              key={m.uid}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
+                                selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
+                              }`}
+                              onClick={() => {
+                                onUpdate(task.id, { assigneeId: m.uid });
+                                setAssigneeMenuOpen(false);
+                              }}
+                            >
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[11px] font-medium text-sky-200/90">
+                                {projectMemberInitial(m)}
+                              </div>
+                              <span className="min-w-0 flex-1 truncate">{projectMemberLabel(m)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* Description: read-first, edit on demand */}
