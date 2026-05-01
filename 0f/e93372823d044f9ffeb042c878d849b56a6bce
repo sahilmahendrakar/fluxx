@@ -1,0 +1,33 @@
+src/env.d.ts
+  360a56057098a697 61-63
+src/components/ProjectSettingsView.tsx
+  360a56057098a697 2-3,13-14,26,61,105,108-112,124-133,154-160,228-265,364-450
+src/main/ProjectStore.ts
+  360a56057098a697 241-251
+src/App.tsx
+  360a56057098a697 1753
+src/preload.ts
+  360a56057098a697 59-62
+src/main.ts
+  360a56057098a697 442-460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0fe93372823d044f9ffeb042c878d849b56a6bce",
+  "prompts": {
+    "360a56057098a697": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2a68e73d-4372-4976-95ce-4b6fc14ae1ad",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 195,
+      "total_deletions": 4,
+      "accepted_lines": 193,
+      "overriden_lines": 0
+    }
+  }
+}
