@@ -1,0 +1,45 @@
+src/types.ts
+  22da6c7dacf35194 126-127
+src/App.tsx
+  22da6c7dacf35194 39,167,737-739,1548
+src/components/TaskDetailPanel.tsx
+  337d831ace4e6f27 15,146-153,208-209,216-220,223,265-276,656-657,925-935,937-1017
+  22da6c7dacf35194 27,87-88,186,923-924,936,1018-1020
+src/renderer/tasks/FirestoreTaskProvider.ts
+  22da6c7dacf35194 175-181,232
+src/renderer/tasks/TaskProvider.ts
+  22da6c7dacf35194 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8a220ccf8008b74ec168050c978b90502160b9d3",
+  "prompts": {
+    "22da6c7dacf35194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99977832-54f1-45a8-9100-54671284012a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 46,
+      "total_deletions": 0,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    },
+    "337d831ace4e6f27": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "76f247b8-00eb-4756-9cd0-2dd15c449e8e",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 124,
+      "total_deletions": 21,
+      "accepted_lines": 123,
+      "overriden_lines": 0
+    }
+  }
+}
