@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import { Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
+import type { ProjectMember } from '../renderer/projects/members';
 
 interface Props {
   id: TaskStatus;
@@ -16,6 +17,7 @@ interface Props {
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   emptyState?: ReactNode;
+  membersMap?: Map<string, ProjectMember>;
 }
 
 export default function Column({
@@ -31,6 +33,7 @@ export default function Column({
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   emptyState,
+  membersMap,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isDone = id === 'done';
@@ -93,6 +96,7 @@ export default function Column({
                 onCardClick={onCardClick}
                 autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                 onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+                assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
               />
             ))}
             {provided.placeholder}

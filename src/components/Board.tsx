@@ -12,6 +12,8 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
+import { useMembers } from '../renderer/projects/useMembers';
+import type { ProjectMember } from '../renderer/projects/members';
 
 interface Props {
   allTasks: Task[];
@@ -27,6 +29,8 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
+  /** Cloud project ID for member subscription; omit for local projects. */
+  cloudProjectId?: string;
 }
 
 export default function Board({
@@ -42,11 +46,20 @@ export default function Board({
   onToggleTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
+  cloudProjectId,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
     () => ({ ...DEFAULT_BOARD_FILTER }),
   );
+  const membersState = useMembers(cloudProjectId ?? null);
+
+  const membersMap = useMemo(() => {
+    if (!cloudProjectId) return undefined;
+    return new Map<string, ProjectMember>(
+      membersState.members.map((member) => [member.uid, member]),
+    );
+  }, [cloudProjectId, membersState.members]);
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(allTasks),
@@ -153,6 +166,7 @@ export default function Board({
               onCardClick={onCardClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+              membersMap={membersMap}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'

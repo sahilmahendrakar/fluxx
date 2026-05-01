@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
 import { Icon } from 'lucide-react';
@@ -5,6 +6,7 @@ import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
+import type { ProjectMember } from '../renderer/projects/members';
 
 const STATUS_DOT: Record<Task['status'], string> = {
   'in-progress': 'bg-emerald-400/80',
@@ -23,6 +25,51 @@ interface Props {
   onCardClick: (id: string) => void;
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
+  assigneeMember?: ProjectMember;
+}
+
+const AVATAR_COLORS = [
+  '#7c3aed',
+  '#2563eb',
+  '#059669',
+  '#d97706',
+  '#e11d48',
+  '#0891b2',
+  '#4f46e5',
+  '#0d9488',
+];
+
+function avatarBg(uid: string): string {
+  let hash = 0;
+  for (let i = 0; i < uid.length; i++) {
+    hash = (hash * 31 + uid.charCodeAt(i)) | 0;
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function AssigneeAvatar({ member }: { member: ProjectMember }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const initial = (member.displayName || member.email)[0]?.toUpperCase() ?? '?';
+  if (member.photoURL && !imgFailed) {
+    return (
+      <img
+        src={member.photoURL}
+        alt={member.displayName || member.email}
+        onError={() => setImgFailed(true)}
+        className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-white/10"
+        title={member.displayName || member.email}
+      />
+    );
+  }
+  return (
+    <span
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-1 ring-white/10"
+      style={{ backgroundColor: avatarBg(member.uid) }}
+      title={member.displayName || member.email}
+    >
+      {initial}
+    </span>
+  );
 }
 
 export default function TaskCard({
@@ -35,6 +82,7 @@ export default function TaskCard({
   onCardClick,
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
+  assigneeMember,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
@@ -182,6 +230,9 @@ export default function TaskCard({
                         />
                       </button>
                     )
+                  ) : null}
+                  {assigneeMember ? (
+                    <AssigneeAvatar member={assigneeMember} />
                   ) : null}
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`}
