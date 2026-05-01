@@ -64,7 +64,10 @@ export class LocalTaskProvider implements TaskProvider {
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {
-    const updated = await window.electronAPI.tasks.update(id, patch);
+    // assigneeId is cloud-only; strip it so it never reaches the local IPC handler
+    const localPatch = { ...patch };
+    delete localPatch.assigneeId;
+    const updated = await window.electronAPI.tasks.update(id, localPatch);
     this.tasks = this.tasks.map((t) => (t.id === id ? updated : t));
     this.emit();
     return updated;

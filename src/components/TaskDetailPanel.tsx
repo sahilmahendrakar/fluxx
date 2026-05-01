@@ -86,6 +86,11 @@ interface TaskDetailPanelProps {
   autoStartWhenUnblockedProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
+  /**
+   * Cloud projects only: signed-in user uid. When starting a session, if the task
+   * has no assignee yet, `assigneeId` is set to this value alongside in-progress.
+   */
+  implicitSessionAssigneeUid?: string | null;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -184,6 +189,7 @@ export default function TaskDetailPanel({
   markAsDoneBlocked = false,
   autoStartWhenUnblockedProject = false,
   projectMembers,
+  implicitSessionAssigneeUid,
 }: TaskDetailPanelProps) {
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
@@ -560,7 +566,11 @@ export default function TaskDetailPanel({
         return;
       }
       setSession(result);
-      onUpdate(task.id, { status: 'in-progress' });
+      const statusPatch: Partial<Task> = { status: 'in-progress' };
+      if (implicitSessionAssigneeUid && !task.assigneeId) {
+        statusPatch.assigneeId = implicitSessionAssigneeUid;
+      }
+      onUpdate(task.id, statusPatch);
     } catch {
       setSessionError('Failed to start session');
     } finally {

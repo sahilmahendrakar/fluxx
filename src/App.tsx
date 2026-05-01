@@ -176,6 +176,7 @@ export default function App() {
   sessionsRef.current = sessions;
   const tasksRef = useRef<Task[]>([]);
   tasksRef.current = tasks;
+  const uidRef = useRef<string | null>(null);
   const cloudUnblockTasksPrevRef = useRef<Task[] | null>(null);
   const cloudUnblockInFlightRef = useRef<Set<string>>(new Set());
   const memberPhotoRefreshKeyRef = useRef('');
@@ -183,6 +184,7 @@ export default function App() {
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
+  uidRef.current = uid;
   const userEmail = auth.user?.email ?? null;
   const displayName = auth.user?.displayName ?? undefined;
   const cloudProjectsState = useCloudProjects(uid);
@@ -398,7 +400,10 @@ export default function App() {
           getCurrentList: () => tasksRef.current,
           startSession: (task, all) => window.electronAPI.sessions.start(task, all),
           moveBacklogToInProgress: async (id) => {
-            const updated = await provider.update(id, { status: 'in-progress' });
+            const task = tasksRef.current.find((x) => x.id === id);
+            const patch: TaskPatch = { status: 'in-progress' };
+            if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
+            const updated = await provider.update(id, patch);
             if (inProg) {
               const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
               const r = await window.electronAPI.sessions.start(updated, all);
@@ -411,7 +416,10 @@ export default function App() {
             }
           },
           moveBacklogToInProgressThenStartSessionWithoutImplicitInProg: async (id) => {
-            const updated = await provider.update(id, { status: 'in-progress' });
+            const task = tasksRef.current.find((x) => x.id === id);
+            const patch: TaskPatch = { status: 'in-progress' };
+            if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
+            const updated = await provider.update(id, patch);
             const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
             const r = await window.electronAPI.sessions.start(updated, all);
             if (r && typeof r === 'object' && 'error' in r) {
@@ -1575,6 +1583,9 @@ export default function App() {
                       taskSessionStartPending={Boolean(
                         selectedTask && sessionStartPendingTaskIds.has(selectedTask.id),
                       )}
+                      implicitSessionAssigneeUid={
+                        project.kind === 'cloud' ? uid : undefined
+                      }
                       onSelectTask={(id) => setSelectedTaskId(id)}
                       onClose={() => setSelectedTaskId(null)}
                       onUpdate={handleUpdateTask}
