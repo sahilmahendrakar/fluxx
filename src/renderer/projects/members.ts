@@ -19,7 +19,7 @@ export interface ProjectMember {
   displayName: string;
   email: string;
   joinedAt: string;
-  /** Profile image URL from Auth at join time (optional for legacy docs). */
+  /** Profile image URL from Firebase Auth (e.g. Google); optional on legacy docs. Cloud member docs only. */
   photoURL?: string;
 }
 
@@ -67,8 +67,8 @@ function toBridgeMember(d: QueryDocumentSnapshot<DocumentData>): McpBridgeMember
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
     email: typeof data.email === 'string' ? data.email : '',
   };
-  if (typeof data.photoURL === 'string' && data.photoURL.length > 0) {
-    row.photoURL = data.photoURL;
+  if (typeof data.photoURL === 'string' && data.photoURL.trim() !== '') {
+    row.photoURL = data.photoURL.trim();
   }
   return row;
 }

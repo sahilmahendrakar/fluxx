@@ -55,6 +55,7 @@ import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
 } from './cloudBindingPrefs';
+import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -176,6 +177,7 @@ export default function App() {
   tasksRef.current = tasks;
   const cloudUnblockTasksPrevRef = useRef<Task[] | null>(null);
   const cloudUnblockInFlightRef = useRef<Set<string>>(new Set());
+  const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
 
   const auth = useAuth();
@@ -184,6 +186,23 @@ export default function App() {
   const displayName = auth.user?.displayName ?? undefined;
   const cloudProjectsState = useCloudProjects(uid);
   const invitesState = useInvites(userEmail);
+
+  useEffect(() => {
+    if (!uid || !auth.user || cloudProjectsState.status !== 'ready') return;
+    const ids = cloudProjectsState.projects
+      .map((p) => p.id)
+      .slice()
+      .sort()
+      .join(',');
+    const key = `${auth.user.photoURL ?? ''}|${ids}`;
+    if (key === memberPhotoRefreshKeyRef.current) return;
+    memberPhotoRefreshKeyRef.current = key;
+    void mergeMemberPhotoURL(
+      uid,
+      auth.user.photoURL ?? null,
+      cloudProjectsState.projects.map((p) => p.id),
+    ).catch((err) => console.error('[mergeMemberPhotoURL] failed', err));
+  }, [uid, auth.user, cloudProjectsState.status, cloudProjectsState.projects]);
 
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
