@@ -8,7 +8,8 @@ const PLANNING_DOCS_CHANGED_CHANNEL = 'planningDocs:changed';
 const DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 2500;
 
-function broadcastPlanningDocsChanged(): void {
+/** Notify all windows that planning markdown changed (used by FS watcher and migration hydrate). */
+export function broadcastPlanningDocsChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(PLANNING_DOCS_CHANGED_CHANNEL);

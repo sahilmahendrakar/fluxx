@@ -31,7 +31,11 @@ import {
   type McpBridgeRequest,
   type McpBridgeResponse,
 } from './mcpBridge';
-import type { PlanningDocsListResult } from './planningDocs/types';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type {
+  PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsListResult,
+} from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
@@ -395,6 +399,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       ipcRenderer.on('planningDocs:changed', handler);
       return () => ipcRenderer.removeListener('planningDocs:changed', handler);
+    },
+    cloudMigration: {
+      getState: (cloudProjectId: string) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:getState',
+          cloudProjectId,
+        ) as Promise<
+          | { state: PlanningDocsCloudMigrationPersistedV1 | null }
+          | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+        >,
+      patchState: (
+        cloudProjectId: string,
+        patch: Partial<
+          Pick<
+            PlanningDocsCloudMigrationPersistedV1,
+            'didInitialHydrateFromCloud' | 'seedOfferResolved'
+          >
+        >,
+      ) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:patchState',
+          cloudProjectId,
+          patch,
+        ) as Promise<
+          | { ok: true; state: PlanningDocsCloudMigrationPersistedV1 }
+          | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+        >,
+      applyHydration: (payload: {
+        cloudProjectId: string;
+        plan: FirestoreHydrationWritePlan;
+      }) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:applyHydration',
+          payload,
+        ) as Promise<{ ok: true } | { error: string }>,
     },
   },
   mcpBridge: {

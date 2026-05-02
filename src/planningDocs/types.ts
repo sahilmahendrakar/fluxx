@@ -64,3 +64,15 @@ export interface FirestorePlanningDocDocumentV1 {
   updatedAt: { seconds: number; nanoseconds: number } | Date | unknown;
   updatedBy: string;
 }
+
+/** Per-machine state next to `planning/` — see `cloudPlanningDocsMigration.ts` header. */
+export type PlanningDocsSeedOfferResolution = 'uploaded' | 'skipped';
+
+export interface PlanningDocsCloudMigrationPersistedV1 {
+  version: 1;
+  cloudProjectId: string;
+  /** Set after a successful Firestore-first disk hydrate for a non-empty cloud doc set. */
+  didInitialHydrateFromCloud?: boolean;
+  /** When cloud was empty, records the one-time seed offer outcome. */
+  seedOfferResolved?: PlanningDocsSeedOfferResolution;
+}

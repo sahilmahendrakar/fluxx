@@ -28,7 +28,11 @@ import type {
   McpBridgeRequest,
   McpBridgeResponse,
 } from './mcpBridge';
-import type { PlanningDocFileEntry } from './planningDocs/types';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type {
+  PlanningDocFileEntry,
+  PlanningDocsCloudMigrationPersistedV1,
+} from './planningDocs/types';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -269,6 +273,30 @@ declare global {
           { content: string } | { error: string }
         >;
         onChanged: (cb: () => void) => () => void;
+        cloudMigration: {
+          getState: (
+            cloudProjectId: string,
+          ) => Promise<
+            | { state: PlanningDocsCloudMigrationPersistedV1 | null }
+            | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+          >;
+          patchState: (
+            cloudProjectId: string,
+            patch: Partial<
+              Pick<
+                PlanningDocsCloudMigrationPersistedV1,
+                'didInitialHydrateFromCloud' | 'seedOfferResolved'
+              >
+            >,
+          ) => Promise<
+            | { ok: true; state: PlanningDocsCloudMigrationPersistedV1 }
+            | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+          >;
+          applyHydration: (payload: {
+            cloudProjectId: string;
+            plan: FirestoreHydrationWritePlan;
+          }) => Promise<{ ok: true } | { error: string }>;
+        };
       };
       mcpBridge: {
         signalReady: () => void;

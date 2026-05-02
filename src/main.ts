@@ -36,7 +36,17 @@ import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAut
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
-import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
+import {
+  broadcastPlanningDocsChanged,
+  createPlanningDocsWatcher,
+} from './main/PlanningDocsWatcher';
+import {
+  applyPlanningDocsFirestoreHydrationPlan,
+  patchPlanningDocsCloudMigrationState,
+  readPlanningDocsCloudMigrationState,
+} from './main/planningDocsMigrationDisk';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type { PlanningDocsCloudMigrationPersistedV1 } from './planningDocs/types';
 import {
   createPlanningDocsProviderBundle,
   planningDocsProviderForActiveProject,
@@ -2370,6 +2380,60 @@ app.whenReady().then(async () => {
       relativePath: string,
     ): Promise<{ content: string } | { error: string }> => {
       return activePlanningDocsProvider().read(relativePath);
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:cloudMigration:getState',
+    async (_e, cloudProjectId: string) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== cloudProjectId) {
+        return { error: 'NOT_ACTIVE_CLOUD' as const };
+      }
+      const dir = resolvePlanningDocsDir();
+      if (!dir) return { error: 'NO_PLANNING_DIR' as const };
+      const state = await readPlanningDocsCloudMigrationState(dir, cloudProjectId);
+      return { state };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:cloudMigration:patchState',
+    async (
+      _e,
+      cloudProjectId: string,
+      patch: Partial<
+        Pick<
+          PlanningDocsCloudMigrationPersistedV1,
+          'didInitialHydrateFromCloud' | 'seedOfferResolved'
+        >
+      >,
+    ) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== cloudProjectId) {
+        return { error: 'NOT_ACTIVE_CLOUD' as const };
+      }
+      const dir = resolvePlanningDocsDir();
+      if (!dir) return { error: 'NO_PLANNING_DIR' as const };
+      const state = await patchPlanningDocsCloudMigrationState(dir, cloudProjectId, patch);
+      return { ok: true as const, state };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:cloudMigration:applyHydration',
+    async (_e, payload: { cloudProjectId: string; plan: FirestoreHydrationWritePlan }) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.cloudProjectId) {
+        return { error: 'Active cloud project mismatch.' };
+      }
+      const dir = resolvePlanningDocsDir();
+      if (!dir) return { error: 'No planning directory.' };
+      const result = await applyPlanningDocsFirestoreHydrationPlan(dir, payload.plan);
+      if ('error' in result) return result;
+      broadcastPlanningDocsChanged();
+      planningDocsWatcher?.sync();
+      return { ok: true as const };
     },
   );
 

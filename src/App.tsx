@@ -59,6 +59,7 @@ import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
+import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
@@ -325,6 +326,10 @@ export default function App() {
     };
   }, [project?.id, project?.rootPath, project?.kind]);
   const membersState = useMembers(cloudProjectId);
+  const { cloudPlanningDocsSeedModal } = useCloudPlanningDocsMigration(
+    project?.kind === 'cloud' ? project : null,
+    uid,
+  );
   useAgentHeartbeat({
     projectId: cloudProjectId,
     uid,
@@ -2691,6 +2696,7 @@ export default function App() {
           onCancel={cancelCleanupTask}
         />
       ) : null}
+      {cloudPlanningDocsSeedModal}
     </div>
   );
 }
