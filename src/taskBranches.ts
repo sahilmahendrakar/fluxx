@@ -120,3 +120,132 @@ export function resolveCreateSourceBranchIfMissingForStart(
   }
   return true;
 }
+
+/** True when the board should surface a compact branch hint on the card. */
+export function taskCardShouldShowSourceBranchChip(
+  task: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+  projectDefaultBranchShort: string,
+): boolean {
+  if (task.createSourceBranchIfMissing === true) {
+    return true;
+  }
+  const def = normalizeGitBranchShortName(projectDefaultBranchShort);
+  const raw = (task.sourceBranch ?? '').trim();
+  if (!raw) {
+    return false;
+  }
+  return normalizeGitBranchShortName(raw) !== def;
+}
+
+/**
+ * Best-effort validation for a single git branch segment (short name).
+ * Matches common `git check-ref-format --branch` constraints closely enough for UI gating.
+ */
+export function gitBranchShortNameLooksValid(raw: string): boolean {
+  const s = normalizeGitBranchShortName(raw);
+  if (!s) return false;
+  if (s === '.' || s === '..') return false;
+  if (s.startsWith('/')) return false;
+  if (s.includes('..')) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return false;
+    const ch = s.charAt(i);
+    if (' ~^:?*[]\\'.includes(ch)) return false;
+  }
+  if (s.includes('@{')) return false;
+  if (s.endsWith('.') || s.endsWith('/')) return false;
+  if (s.endsWith('.lock')) return false;
+  if (s === '@') return false;
+  if (s.startsWith('.')) return false;
+  return true;
+}
+
+/** Sorted unique short branch names for pickers (includes configured default). */
+export function mergeDiscoveryBranchSuggestions(discovery: RepoBranchDiscovery): string[] {
+  const set = new Set<string>();
+  const add = (raw: string) => {
+    const n = normalizeGitBranchShortName(raw);
+    if (n.length > 0) set.add(n);
+  };
+  for (const b of discovery.localBranches) add(b);
+  for (const b of discovery.remoteBranches) add(b);
+  add(discovery.defaultBranchShort);
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+export type PlannedTaskSourceBranch = {
+  sourceBranch: string;
+  createSourceBranchIfMissing: boolean;
+};
+
+/**
+ * New-task modal → `TaskProvider.create` / IPC: planned branch fields, or raw name only when
+ * discovery failed in the UI (main / cloud provider still re-plans from git when possible).
+ */
+export function buildCreateTaskBranchPayload(
+  branchInputRaw: string,
+  discovery: RepoBranchDiscovery | null,
+): { sourceBranch?: string; createSourceBranchIfMissing?: boolean } | undefined {
+  const branchTrim = branchInputRaw.trim();
+  if (discovery) {
+    const planned = planTaskSourceBranchFieldsForCreate(
+      discovery,
+      branchTrim === '' ? {} : { sourceBranch: branchInputRaw },
+    );
+    return {
+      sourceBranch: planned.sourceBranch,
+      createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+    };
+  }
+  if (branchTrim !== '') {
+    return { sourceBranch: branchTrim };
+  }
+  return undefined;
+}
+
+/**
+ * Detail-panel save: strip redundant stored fields when the task matches the default branch
+ * that already exists (same effective behavior as legacy rows with no `sourceBranch`).
+ */
+export function buildTaskSourceBranchPersistPatch(
+  planned: PlannedTaskSourceBranch,
+  discovery: RepoBranchDiscovery,
+): { sourceBranch: string; createSourceBranchIfMissing: boolean } {
+  const def = normalizeGitBranchShortName(discovery.defaultBranchShort);
+  const sb = normalizeGitBranchShortName(planned.sourceBranch);
+  if (sb === def && planned.createSourceBranchIfMissing === false) {
+    return { sourceBranch: '', createSourceBranchIfMissing: false };
+  }
+  return {
+    sourceBranch: planned.sourceBranch,
+    createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+  };
+}
+
+/** True when persisting `planned` would not change stored metadata vs `task`. */
+export function taskSourceBranchPersistIsNoOp(
+  task: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+  planned: PlannedTaskSourceBranch,
+  discovery: RepoBranchDiscovery,
+): boolean {
+  const patch = buildTaskSourceBranchPersistPatch(planned, discovery);
+  const clearing =
+    patch.sourceBranch.trim() === '' && patch.createSourceBranchIfMissing === false;
+
+  if (clearing) {
+    const noStoredBranch = !(task.sourceBranch ?? '').trim();
+    const noCreateFlag = task.createSourceBranchIfMissing !== true;
+    return noStoredBranch && noCreateFlag;
+  }
+
+  const prevSb = (task.sourceBranch ?? '').trim();
+  const normalizedPrev = prevSb
+    ? normalizeGitBranchShortName(prevSb)
+    : normalizeGitBranchShortName(discovery.defaultBranchShort);
+  const sameSb =
+    normalizedPrev === normalizeGitBranchShortName(patch.sourceBranch.trim());
+  const prevCreate = task.createSourceBranchIfMissing === true;
+  const sameCreate = patch.createSourceBranchIfMissing === prevCreate;
+  return sameSb && sameCreate;
+}

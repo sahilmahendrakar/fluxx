@@ -94,7 +94,13 @@ function isWorkspaceSessionTabId(tabId: string): boolean {
 /** Apply debounced cloud patches onto a server task for optimistic UI (`null` clears optional fields). */
 function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefined): Task {
   if (!patch) return task;
-  const { assigneeId, workspaceCleanedAt, ...rest } = patch;
+  const {
+    assigneeId,
+    workspaceCleanedAt,
+    sourceBranch,
+    createSourceBranchIfMissing,
+    ...rest
+  } = patch;
   let next: Task = { ...task, ...rest };
   if (assigneeId !== undefined) {
     if (assigneeId === null || assigneeId === '') {
@@ -110,6 +116,22 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       delete next.workspaceCleanedAt;
     } else {
       next = { ...next, workspaceCleanedAt };
+    }
+  }
+  if (sourceBranch !== undefined) {
+    if (typeof sourceBranch === 'string' && sourceBranch.trim() === '') {
+      next = { ...next };
+      delete next.sourceBranch;
+    } else {
+      next = { ...next, sourceBranch };
+    }
+  }
+  if (createSourceBranchIfMissing !== undefined) {
+    if (createSourceBranchIfMissing) {
+      next = { ...next, createSourceBranchIfMissing: true };
+    } else {
+      next = { ...next };
+      delete next.createSourceBranchIfMissing;
     }
   }
   return next;
@@ -193,6 +215,7 @@ export default function App() {
   const cloudInlineDoneFollowUpTaskIdsRef = useRef<Set<string>>(new Set());
   const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
+  const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -222,6 +245,29 @@ export default function App() {
 
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
+
+  useEffect(() => {
+    if (!project) {
+      setRepoDefaultBranchShort('main');
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+      if (cancelled) return;
+      if ('error' in r) {
+        const fallback =
+          project.kind === 'local' && project.repos[0]?.baseBranch?.trim()
+            ? project.repos[0].baseBranch.trim()
+            : 'main';
+        setRepoDefaultBranchShort(fallback);
+        return;
+      }
+      setRepoDefaultBranchShort(r.defaultBranchShort);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.rootPath, project?.kind]);
   const membersState = useMembers(cloudProjectId);
   useAgentHeartbeat({
     projectId: cloudProjectId,
@@ -954,6 +1000,16 @@ export default function App() {
               delete next.autoStartOnUnblock;
             }
           }
+          if (patch.sourceBranch !== undefined) {
+            if (typeof patch.sourceBranch === 'string' && patch.sourceBranch.trim() === '') {
+              next = { ...next };
+              delete next.sourceBranch;
+            }
+          }
+          if (patch.createSourceBranchIfMissing !== undefined && !patch.createSourceBranchIfMissing) {
+            next = { ...next };
+            delete next.createSourceBranchIfMissing;
+          }
           return next;
         }),
       );
@@ -980,6 +1036,12 @@ export default function App() {
       }
       if (patch.assigneeId !== undefined) {
         persistable.assigneeId = patch.assigneeId;
+      }
+      if (patch.sourceBranch !== undefined) {
+        persistable.sourceBranch = patch.sourceBranch;
+      }
+      if (patch.createSourceBranchIfMissing !== undefined) {
+        persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
       }
       if (Object.keys(persistable).length === 0) return;
 
@@ -1252,7 +1314,13 @@ export default function App() {
   );
 
   const handleCreateTask = useCallback(
-    async (title: string, agent: Agent, labelInput?: string[], assigneeId?: string) => {
+    async (
+      title: string,
+      agent: Agent,
+      labelInput?: string[],
+      assigneeId?: string,
+      branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+    ) => {
       if (!provider) return;
       try {
         // Append to the bottom of the backlog column.
@@ -1270,6 +1338,10 @@ export default function App() {
           orderKey,
           ...(labels.length > 0 ? { labels } : {}),
           ...(assigneeId ? { assigneeId } : {}),
+          ...(branch?.sourceBranch !== undefined ? { sourceBranch: branch.sourceBranch } : {}),
+          ...(branch?.createSourceBranchIfMissing !== undefined
+            ? { createSourceBranchIfMissing: branch.createSourceBranchIfMissing }
+            : {}),
         });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
@@ -2022,6 +2094,7 @@ export default function App() {
                           setPlanPanelOpen((v) => !v);
                         }}
                         projectMembers={projectMembers}
+                        repoDefaultBranchShort={repoDefaultBranchShort}
                       />
                       <TaskDetailPanel
                         task={selectedTask}
