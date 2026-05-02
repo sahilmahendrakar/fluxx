@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import type { Project } from '../types';
 import { Sidebar, type PlanningDocFile } from './Sidebar';
 import type { SessionTabMeta } from './TabBar';
+import { ThemeModeCompactToggle } from './ThemeModeCompactToggle';
 
 interface AppShellProps {
   children: ReactNode;
@@ -100,15 +101,18 @@ export function AppShell({
       )}
       <main className="relative flex min-h-0 flex-1 flex flex-col overflow-hidden">
         {collapsed ? (
-          <button
-            type="button"
-            onClick={onExpand}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-            className="absolute left-2 top-2 z-30 rounded-md border border-flux-border/10 bg-flux-sidebar/80 p-1 text-flux-fg-subtle shadow-sm backdrop-blur transition hover:bg-flux-hover/8 hover:text-flux-fg"
-          >
-            <SidebarExpandIcon />
-          </button>
+          <div className="absolute left-2 top-2 z-30 flex items-center gap-1">
+            <ThemeModeCompactToggle className="rounded-md border border-flux-border/10 bg-flux-sidebar/80 p-1 text-flux-fg-subtle shadow-sm backdrop-blur transition hover:bg-flux-hover/8 hover:text-flux-fg" />
+            <button
+              type="button"
+              onClick={onExpand}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              className="rounded-md border border-flux-border/10 bg-flux-sidebar/80 p-1 text-flux-fg-subtle shadow-sm backdrop-blur transition hover:bg-flux-hover/8 hover:text-flux-fg"
+            >
+              <SidebarExpandIcon />
+            </button>
+          </div>
         ) : null}
         {children}
       </main>
