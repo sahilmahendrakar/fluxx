@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
 import type { Session, Shell, Task } from '../types';
 import {
   getSessionAttachShared,
@@ -46,6 +47,10 @@ interface SessionTerminalViewProps {
   onMarkAsDone?: () => void;
   /** Dependency blockers not finished — Mark as done stays visible but disabled. */
   markAsDoneBlocked?: boolean;
+  /** Open linked PR or start create flow (same IPC as board `TaskCard`). */
+  onTaskPrClick?: (taskId: string) => void;
+  /** True while create PR is in flight for this session’s task. */
+  prLoading?: boolean;
 }
 
 type PaneId = 'agent' | `shell:${string}`;
@@ -256,12 +261,24 @@ export function SessionTerminalView({
   task = null,
   onMarkAsDone,
   markAsDoneBlocked = false,
+  onTaskPrClick,
+  prLoading = false,
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
   const running = session.status === 'running';
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
+
+  const prUrl = task?.githubPr?.url?.trim() ?? '';
+  const prState = task?.githubPr?.state;
+  const prMergedAt = task?.githubPr?.mergedAt?.trim() ?? '';
+  const prMerged = prState === 'merged' || prMergedAt.length > 0;
+  const prIsOpen = prState === 'open';
+  const prIsClosed = prState === 'closed';
+  const prLinked = Boolean(prUrl) && !prMerged;
+  const hasWorktree = Boolean(session.worktreePath?.trim());
+  const showPrButton = task != null && typeof onTaskPrClick === 'function' && hasWorktree;
 
   useEffect(() => {
     let cancelled = false;
@@ -343,6 +360,58 @@ export function SessionTerminalView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
+          {showPrButton ? (
+            <button
+              type="button"
+              disabled={prLoading}
+              onClick={() => onTaskPrClick(task.id)}
+              className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                prMerged
+                  ? 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90'
+                  : prIsOpen
+                    ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
+                    : prLinked
+                      ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
+                      : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+              }`}
+              aria-label={
+                prLoading
+                  ? 'Working with pull request…'
+                  : prMerged
+                    ? 'Open merged pull request'
+                    : prIsOpen
+                      ? 'Open pull request'
+                      : prIsClosed
+                        ? 'Open closed pull request'
+                        : prLinked
+                          ? 'Open pull request'
+                          : 'Create GitHub pull request'
+              }
+              title={
+                prLoading
+                  ? 'Please wait…'
+                  : prMerged
+                    ? 'Open merged pull request'
+                    : prIsOpen
+                      ? 'Open pull request'
+                      : prIsClosed
+                        ? 'Open closed pull request'
+                        : prLinked
+                          ? 'Open pull request'
+                          : 'Create GitHub pull request'
+              }
+            >
+              {prLoading ? (
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" aria-hidden />
+              ) : prMerged ? (
+                <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              ) : prLinked ? (
+                <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              ) : (
+                <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              )}
+            </button>
+          ) : null}
           {showMarkAsDone ? (
             <button
               type="button"

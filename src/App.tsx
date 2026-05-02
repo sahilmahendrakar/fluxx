@@ -2442,6 +2442,8 @@ export default function App() {
                         ? () => void handleMarkTaskDone(item.session.taskId, { goToBoard: true })
                         : undefined
                     }
+                    onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                    prLoading={prLoadingTaskId === item.session.taskId}
                   />
                 </div>
               );
