@@ -11,6 +11,7 @@ import {
 import { DropResult } from '@hello-pangea/dnd';
 import {
   AGENTS,
+  COLUMNS,
   Task,
   TaskStatus,
   Agent,
@@ -830,20 +831,21 @@ export default function App() {
     };
   }, []);
 
-  // Cloud projects: transition needs-input → in-progress when the user submits
+  // Cloud projects: transition needs-input or review → in-progress when the user submits
   // a query. SENDING A QUERY IS THE ONLY WAY TO BREAK SILENCE.
   useEffect(() => {
     if (project?.kind !== 'cloud') return;
     return window.electronAPI.tasks.onUserInput(({ taskId }) => {
       const task = tasksRef.current.find((t) => t.id === taskId);
-      if (!task || task.status !== 'needs-input') return;
+      if (!task || (task.status !== 'needs-input' && task.status !== 'review')) return;
 
       const currentUid = uidRef.current;
       if (!currentUid || task.assigneeId !== currentUid) return;
 
-      console.log('[task:status] needs-input → in-progress (user submitted query)', {
+      console.log('[task:status] needs-input/review → in-progress (user submitted query)', {
         taskId,
         assigneeId: task.assigneeId,
+        from: task.status,
       });
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, status: 'in-progress' } : t)),
@@ -2171,7 +2173,8 @@ export default function App() {
 
   const inProgressCount = tasks.filter((t) => t.status === 'in-progress').length;
   const needsInputCount = tasks.filter((t) => t.status === 'needs-input').length;
-  const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input`;
+  const reviewCount = tasks.filter((t) => t.status === 'review').length;
+  const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input · ${reviewCount} in review`;
 
   const sessionItems = useMemo(
     () => buildSessionTabs(sessions, tasks),
@@ -2233,12 +2236,7 @@ export default function App() {
   // Sort tasks per column for the board (orderKey-aware). Falls back to
   // createdAt/id for rows without a key.
   const sortedTasks = useMemo(() => {
-    return [
-      ...sortColumn(tasks, 'backlog'),
-      ...sortColumn(tasks, 'in-progress'),
-      ...sortColumn(tasks, 'needs-input'),
-      ...sortColumn(tasks, 'done'),
-    ];
+    return COLUMNS.flatMap((col) => sortColumn(tasks, col.id));
   }, [tasks]);
 
   const remoteRunnerForSelected = useMemo(
@@ -2472,6 +2470,9 @@ export default function App() {
                           setPlanPanelOpen((v) => !v);
                         }}
                         projectMembers={projectMembers}
+                        onTaskAssigneeChange={(id, assigneeId) =>
+                          void handleUpdateTask(id, { assigneeId })
+                        }
                         repoDefaultBranchShort={repoDefaultBranchShort}
                         cloudUnblockAutostartClientUid={
                           project.kind === 'cloud' && uid ? uid : undefined
@@ -2502,6 +2503,11 @@ export default function App() {
                         )}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                         remoteRunner={remoteRunnerForSelected}
+                        cloudActiveRunnerSession={
+                          project.kind === 'cloud' && selectedTask
+                            ? runners.isRunningFresh(selectedTask.id)
+                            : false
+                        }
                         onOpenSessionTab={handleOpenSessionTab}
                         onArchiveSession={(id) => void handleArchiveSession(id)}
                         projectMembers={projectMembers}

@@ -28,6 +28,7 @@ import type {
   McpBridgeTasksUpdateResult,
 } from '../mcpBridge';
 import { isTaskBlocked } from '../taskDependencies';
+import { filterTasksByExcludeStatuses, FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
 const MCP_PORT = 47432;
 
@@ -194,9 +195,16 @@ export class McpServer {
   private registerTools(server: BaseMcpServer): void {
     server.tool(
       'flux__list_tasks',
-      'List all tasks on the Flux board for the current project',
-      {},
-      async () => {
+      'List tasks on the Flux board for the current project. By default returns every task. Optional excludeStatuses removes tasks in those columns (values: backlog, in-progress, needs-input, done)—e.g. pass ["done"] to omit completed work and shrink the payload. Filtering runs in the desktop app after tasks load so local and cloud projects behave the same.',
+      {
+        excludeStatuses: z
+          .array(z.enum(FLUX_TASK_STATUS_VALUES))
+          .optional()
+          .describe(
+            'Statuses to omit from the result. Each value is a board column id. Omit this field for the full board.',
+          ),
+      },
+      async (input) => {
         try {
           const active = this.resolveActive();
           if (active.kind === 'none') {
@@ -204,14 +212,16 @@ export class McpServer {
           }
           if (active.kind === 'local') {
             const tasks = this.taskStore.getAll(active.project.id);
-            return jsonToolPayload(tasks);
+            return jsonToolPayload(filterTasksByExcludeStatuses(tasks, input.excludeStatuses));
           }
           const result = await this.bridge.request<Task[]>(
             'tasks.list',
             active.activeKey,
           );
           if (!result.ok) return this.bridgeError(result);
-          return jsonToolPayload(result.data);
+          return jsonToolPayload(
+            filterTasksByExcludeStatuses(result.data, input.excludeStatuses),
+          );
         } catch (err) {
           return toolError(err);
         }
@@ -374,7 +384,7 @@ export class McpServer {
         title: z.string().optional(),
         description: z.string().optional(),
         status: z
-          .enum(['backlog', 'in-progress', 'needs-input', 'done'])
+          .enum(['backlog', 'in-progress', 'needs-input', 'review', 'done'])
           .optional(),
         agent: z.enum(['claude-code', 'codex', 'cursor']).optional(),
         blockedByTaskIds: z
@@ -683,6 +693,7 @@ export class McpServer {
               backlog: 0,
               'in-progress': 0,
               'needs-input': 0,
+              review: 0,
               done: 0,
               total: tasks.length,
             };
@@ -690,6 +701,7 @@ export class McpServer {
               if (t.status === 'backlog') taskCounts.backlog++;
               else if (t.status === 'in-progress') taskCounts['in-progress']++;
               else if (t.status === 'needs-input') taskCounts['needs-input']++;
+              else if (t.status === 'review') taskCounts.review++;
               else if (t.status === 'done') taskCounts.done++;
             }
             const repos = await this.projectStore.getReposAt(active.projectDir);

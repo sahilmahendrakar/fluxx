@@ -1,4 +1,4 @@
-export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'done';
+export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'review' | 'done';
 
 /** Where a normalized short branch name exists in the clone; see `classifyGitBranchPresence`. */
 export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
@@ -331,6 +331,7 @@ export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
   { id: 'in-progress', label: 'In progress' },
   { id: 'needs-input', label: 'Needs input' },
+  { id: 'review', label: 'Review' },
   { id: 'done', label: 'Done' },
 ];
 

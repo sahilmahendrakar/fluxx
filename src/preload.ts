@@ -229,7 +229,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('tasks:changed', handler);
       return () => ipcRenderer.removeListener('tasks:changed', handler);
     },
-    // Fires when the user writes to a session whose task was in needs-input.
+    // Fires when the user submits input to a session whose task was in needs-input or review.
     // Used by cloud projects to update Firestore (local is handled in main.ts).
     onUserInput: (cb: (p: { sessionId: string; taskId: string }) => void) => {
       const handler = (_e: unknown, p: { sessionId: string; taskId: string }) => cb(p);

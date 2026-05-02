@@ -36,6 +36,8 @@ interface Props {
   onTogglePlanPanel: () => void;
   /** Cloud-only: team members for the assignee picker. */
   projectMembers?: ProjectMember[];
+  /** Cloud boards: persist `assigneeId` from the card footer quick-assign control. */
+  onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
   /** Configured / detected default short branch name for branch chips on cards. */
@@ -62,6 +64,7 @@ export default function Board({
   planPanelOpen,
   onTogglePlanPanel,
   projectMembers,
+  onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
   repoDefaultBranchShort,
@@ -113,15 +116,16 @@ export default function Board({
     return allTasks.filter((t) => t.status === 'done').length;
   }, [allTasks, boardFilter.hideDone]);
 
-  const tasksByStatus: Record<TaskStatus, Task[]> = {
-    backlog: [],
-    'in-progress': [],
-    'needs-input': [],
-    done: [],
-  };
-  for (const task of visibleTasks) {
-    tasksByStatus[task.status].push(task);
-  }
+  const tasksByStatus = useMemo(() => {
+    const by = {} as Record<TaskStatus, Task[]>;
+    for (const c of COLUMNS) {
+      by[c.id] = [];
+    }
+    for (const task of visibleTasks) {
+      by[task.status].push(task);
+    }
+    return by;
+  }, [visibleTasks]);
 
   const projectIsEmpty = allTasks.length === 0;
   const noMatches = !projectIsEmpty && visibleTasks.length === 0;
@@ -192,6 +196,8 @@ export default function Board({
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
+              projectMembers={projectMembers}
+              onTaskAssigneeChange={onTaskAssigneeChange}
               onTaskPrClick={onTaskPrClick}
               prLoadingTaskId={prLoadingTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
