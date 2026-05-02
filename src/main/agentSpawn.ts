@@ -82,34 +82,44 @@ export async function ensurePlanningDirCursorMcp(planningDir: string): Promise<v
 }
 
 /**
- * Planning PTY uses project-level defaults only (not per-task model / yolo).
+ * Planning PTY uses project-level agent (and optional model for Claude / Cursor).
  * Task sessions use {@link agentSpawnSpec} with the task row.
+ *
+ * @param agentModel — For `claude-code`, non-empty → `--model`; for `cursor`, passed to
+ *   `--model` (default `auto` when blank). Ignored for `codex`.
  */
 export function planningSpawnSpec(
   agent: Agent,
   mcpConfigPath: string,
+  agentModel?: string,
 ): { command: string; args: string[] } {
   switch (agent) {
-    case 'claude-code':
-      return {
-        command: 'claude',
-        args: [
-          '--mcp-config',
-          mcpConfigPath,
-          '--append-system-prompt',
-          'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; create and update accept optional blockedByTaskIds and optional labels for feature grouping; delete requires explicit user intent and confirm:true). Do not write application code.',
-        ],
-      };
+    case 'claude-code': {
+      const model = (agentModel ?? '').trim();
+      const args: string[] = [];
+      if (model) {
+        args.push('--model', model);
+      }
+      args.push(
+        '--mcp-config',
+        mcpConfigPath,
+        '--append-system-prompt',
+        'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; create and update accept optional blockedByTaskIds and optional labels for feature grouping; delete requires explicit user intent and confirm:true). Do not write application code.',
+      );
+      return { command: 'claude', args };
+    }
     case 'codex':
       return {
         command: 'codex',
         args: [],
       };
-    case 'cursor':
+    case 'cursor': {
+      const model = (agentModel ?? '').trim() || 'auto';
       return {
         command: 'agent',
-        args: ['--model', 'auto', '--approve-mcps'],
+        args: ['--model', model, '--approve-mcps'],
       };
+    }
   }
 }
 

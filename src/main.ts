@@ -50,6 +50,21 @@ function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
 }
 
+function parsePlanningStartPayload(payload: unknown): {
+  agent: Agent;
+  agentModel?: string;
+} | null {
+  if (isPlanningAgent(payload)) {
+    return { agent: payload };
+  }
+  if (!payload || typeof payload !== 'object') return null;
+  const o = payload as { agent?: unknown; agentModel?: unknown };
+  if (!isPlanningAgent(o.agent)) return null;
+  const agentModel =
+    typeof o.agentModel === 'string' ? o.agentModel : undefined;
+  return { agent: o.agent, agentModel };
+}
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
@@ -1348,7 +1363,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'planning:start',
-    async (_e, requestedAgent: unknown) => {
+    async (_e, payload: unknown) => {
+      const parsed = parsePlanningStartPayload(payload);
+      if (!parsed) {
+        return { error: 'INVALID_PARAMS', message: 'Invalid planning start payload' };
+      }
+      const { agent: requestedAgent, agentModel: requestedModel } = parsed;
+
       const activeKey = appStateStore.get().activeProjectKey;
       if (!activeKey) {
         return { error: 'No project open' };
@@ -1436,7 +1457,11 @@ app.whenReady().then(async () => {
         await ensurePlanningDirCursorMcp(planningDir);
       }
 
-      const { command, args } = planningSpawnSpec(planningAgent, mcpConfigPath);
+      const { command, args } = planningSpawnSpec(
+        planningAgent,
+        mcpConfigPath,
+        requestedModel,
+      );
       const result = await daemonClient.startPlanning({
         projectId: project.id,
         agent: planningAgent,

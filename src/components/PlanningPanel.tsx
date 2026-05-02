@@ -1,11 +1,29 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
-import { ExternalLink } from 'lucide-react';
-import { AGENTS, type Agent, type PlanningSession, type Project } from '../types';
+import { createPortal } from 'react-dom';
+import { ChevronDown, ExternalLink } from 'lucide-react';
+import type { AgentModelUiKind } from '../agentModelUi';
+import {
+  appendAgentModelExtra,
+  choicesForPicker,
+  labelForModelId,
+} from '../agentModelUi';
+import {
+  readPlanningModelsForProject,
+  writePlanningModelForProject,
+} from '../planningSessionModelPrefs';
+import {
+  AGENTS,
+  DEFAULT_CURSOR_AGENT_MODEL,
+  type Agent,
+  type PlanningSession,
+  type Project,
+} from '../types';
 import { getPlanningAttachShared, invalidatePlanningAttachCache } from '../terminal/warmAttach';
 import {
   OWNER_TERMINAL_VIEW_POLICY,
@@ -13,6 +31,15 @@ import {
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
+
+/**
+ * Header “Add session” prefs (for PR / product notes):
+ * - **Agent** changes in the menu call `project.setPlanningAgent` immediately (same persistence
+ *   as the legacy header `<select>`), including cloud `LocalBindingStore` prefs.
+ * - **Model** is stored in renderer `localStorage` via `planningSessionModelPrefs` (per project id),
+ *   not in the binding store; it is applied on each new planning spawn together with the agent.
+ * - Next-session agent/model are global for this panel (not tied to which session tab is focused).
+ */
 
 export interface PlanningPanelProps {
   project: Project;
@@ -35,6 +62,9 @@ const OUTPUT_TAIL_MAX = 12_000;
 
 const ESC = String.fromCharCode(27);
 const ANSI_ESCAPE_PATTERN = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'g');
+
+const prefsMenuItemClass =
+  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-zinc-200 transition hover:bg-white/[0.06]';
 
 function stripAnsi(s: string): string {
   return s.replace(ANSI_ESCAPE_PATTERN, '');
@@ -62,6 +92,10 @@ function planningPaneVisibilityStyle(visible: boolean): React.CSSProperties {
     pointerEvents: visible ? 'auto' : 'none',
     zIndex: visible ? 1 : 0,
   };
+}
+
+function defaultPlanningAgent(p: Project): Agent {
+  return p.kind === 'local' ? p.planningAgent : (p.planningAgent ?? 'claude-code');
 }
 
 function PlanningTerminalPane({
@@ -167,13 +201,25 @@ export function PlanningPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsInput, setNeedsInput] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<Agent>(() =>
-    project.kind === 'local'
-      ? project.planningAgent
-      : (project.planningAgent ?? 'claude-code'),
-  );
+  const [selectedAgent, setSelectedAgent] = useState<Agent>(() => defaultPlanningAgent(project));
+  const [claudeModelId, setClaudeModelId] = useState('');
+  const [cursorModelId, setCursorModelId] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [extrasGen, setExtrasGen] = useState(0);
+  const [addModelOpen, setAddModelOpen] = useState(false);
+  const [addModelId, setAddModelId] = useState('');
+  const [addModelLabel, setAddModelLabel] = useState('');
+  const [addModelError, setAddModelError] = useState<string | null>(null);
+
   const outputBufferRef = useRef('');
   const activeSessionRef = useRef<PlanningSession | null>(null);
+  const splitAnchorRef = useRef<HTMLDivElement>(null);
+  const prefsDropdownRef = useRef<HTMLDivElement>(null);
+  const [prefsPos, setPrefsPos] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 240,
+  });
 
   const activeSession =
     activeSessionId == null
@@ -181,18 +227,32 @@ export function PlanningPanel({
       : (sessions.find((s) => s.id === activeSessionId) ?? null);
   activeSessionRef.current = activeSession;
 
+  const modelKindForAgent = (a: Agent): AgentModelUiKind | null =>
+    a === 'cursor' ? 'cursor' : a === 'claude-code' ? 'claude-code' : null;
+
+  const activeModelId =
+    selectedAgent === 'cursor'
+      ? cursorModelId
+      : selectedAgent === 'claude-code'
+        ? claudeModelId
+        : '';
+
   useEffect(() => {
-    setSelectedAgent(
-      project.kind === 'local'
-        ? project.planningAgent
-        : (project.planningAgent ?? 'claude-code'),
-    );
+    setSelectedAgent(defaultPlanningAgent(project));
   }, [project]);
 
   useEffect(() => {
+    const m = readPlanningModelsForProject(project.id);
+    setClaudeModelId(m['claude-code']);
+    setCursorModelId(m.cursor);
     setError(null);
     setNeedsInput(false);
     outputBufferRef.current = '';
+    setPrefsOpen(false);
+    setAddModelOpen(false);
+    setAddModelId('');
+    setAddModelLabel('');
+    setAddModelError(null);
   }, [project.id]);
 
   useEffect(() => {
@@ -207,6 +267,34 @@ export function PlanningPanel({
     });
   }, [planningApi, onSessionsMutated]);
 
+  useLayoutEffect(() => {
+    if (!prefsOpen || !splitAnchorRef.current) return;
+    const rect = splitAnchorRef.current.getBoundingClientRect();
+    setPrefsPos({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - 260),
+      width: 260,
+    });
+  }, [prefsOpen]);
+
+  useEffect(() => {
+    if (!prefsOpen) return;
+    const onPointerDown = (e: globalThis.PointerEvent) => {
+      const anchor = splitAnchorRef.current;
+      const menu = prefsDropdownRef.current;
+      const t = e.target as Node;
+      if (anchor && !anchor.contains(t) && (!menu || !menu.contains(t))) {
+        setPrefsOpen(false);
+        setAddModelOpen(false);
+        setAddModelId('');
+        setAddModelLabel('');
+        setAddModelError(null);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [prefsOpen]);
+
   const appendOutputAndDetectNeedsInput = useCallback((chunk: string) => {
     outputBufferRef.current = (
       outputBufferRef.current + chunk
@@ -216,6 +304,76 @@ export function PlanningPanel({
     }
   }, []);
 
+  const persistPlanningAgent = useCallback(
+    async (next: Agent) => {
+      const res = await window.electronAPI.project.setPlanningAgent(next);
+      if ('error' in res) {
+        setError(res.error);
+        setSelectedAgent(defaultPlanningAgent(project));
+        return false;
+      }
+      setError(null);
+      await onLocalProjectRefresh?.();
+      return true;
+    },
+    [onLocalProjectRefresh, project],
+  );
+
+  const handleAgentPick = (next: Agent) => {
+    setSelectedAgent(next);
+    void (async () => {
+      await persistPlanningAgent(next);
+    })();
+  };
+
+  const handleModelPick = (kind: AgentModelUiKind, id: string) => {
+    if (kind === 'claude-code') {
+      setClaudeModelId(id);
+      writePlanningModelForProject(project.id, 'claude-code', id);
+    } else {
+      const norm = id.trim() || DEFAULT_CURSOR_AGENT_MODEL;
+      setCursorModelId(norm);
+      writePlanningModelForProject(project.id, 'cursor', norm);
+    }
+    setPrefsOpen(false);
+    setAddModelOpen(false);
+    setAddModelId('');
+    setAddModelLabel('');
+    setAddModelError(null);
+  };
+
+  const handleAddCustomModel = (kind: AgentModelUiKind) => {
+    setAddModelError(null);
+    const id = addModelId.trim();
+    if (!id) {
+      setAddModelError('Enter a model id.');
+      return;
+    }
+    const label = addModelLabel.trim() || id;
+    if (!appendAgentModelExtra(kind, { id, label })) {
+      setAddModelError('That id is already in the list (preset or added earlier).');
+      return;
+    }
+    setExtrasGen((g) => g + 1);
+    handleModelPick(kind, id);
+  };
+
+  const buildStartPayload = (): Agent | { agent: Agent; agentModel?: string } => {
+    if (selectedAgent === 'codex') {
+      return { agent: selectedAgent };
+    }
+    if (selectedAgent === 'cursor') {
+      return {
+        agent: selectedAgent,
+        agentModel: cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+      };
+    }
+    return {
+      agent: selectedAgent,
+      agentModel: claudeModelId.trim(),
+    };
+  };
+
   const handleStart = async () => {
     if (!planningApi) {
       setError('Planning assistant is not available in this build.');
@@ -224,7 +382,7 @@ export function PlanningPanel({
     setLoading(true);
     setError(null);
     try {
-      const result = await planningApi.start(selectedAgent);
+      const result = await planningApi.start(buildStartPayload());
       if (result && typeof result === 'object' && 'error' in result) {
         const err = result as { error: string; message?: string };
         setError(err.message ?? err.error ?? 'Failed to start');
@@ -262,10 +420,153 @@ export function PlanningPanel({
   };
 
   const sessionRunning = activeSession?.status === 'running';
-  const agentSelectValue =
-    sessionRunning && activeSession
-      ? activeSession.agent
-      : selectedAgent;
+  const mk = modelKindForAgent(selectedAgent);
+  // `extrasGen` bumps after "Add model" so lists match `agentModelUi` / task flows.
+  void extrasGen;
+  const modelChoices = mk ? choicesForPicker(mk, activeModelId) : [];
+  const modelSummary =
+    mk === 'claude-code' && !claudeModelId.trim()
+      ? 'Default'
+      : mk
+        ? labelForModelId(mk, activeModelId)
+        : '—';
+
+  const prefsMenu =
+    prefsOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={prefsDropdownRef}
+            className="fixed z-[200] max-h-[min(22rem,calc(100vh-5rem))] overflow-y-auto rounded-md border border-white/[0.12] bg-[#121214] py-1 shadow-xl shadow-black/50"
+            style={{
+              top: prefsPos.top,
+              left: prefsPos.left,
+              width: prefsPos.width,
+            }}
+            role="dialog"
+            aria-label="Next planning session"
+          >
+            <div className="border-b border-white/[0.06] px-2.5 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Agent
+              </p>
+              <div className="mt-1 flex flex-col gap-0.5">
+                {AGENTS.map((a) => {
+                  const sel = selectedAgent === a.id;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`${prefsMenuItemClass} rounded ${sel ? 'bg-white/[0.06]' : ''}`}
+                      onClick={() => handleAgentPick(a.id)}
+                    >
+                      <span className="font-medium text-zinc-100">{a.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="px-2.5 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Model
+              </p>
+              {mk ? (
+                <>
+                  {mk === 'claude-code' ? (
+                    <button
+                      type="button"
+                      className={`${prefsMenuItemClass} mt-1 rounded ${!claudeModelId.trim() ? 'bg-white/[0.06]' : ''}`}
+                      onClick={() => handleModelPick('claude-code', '')}
+                    >
+                      <span className="font-medium text-zinc-100">Default</span>
+                      <span className="ml-auto shrink-0 text-[10px] text-zinc-500">CLI</span>
+                    </button>
+                  ) : null}
+                  {modelChoices.map((p) => {
+                    const selected =
+                      mk === 'claude-code'
+                        ? claudeModelId.trim() === p.id
+                        : (cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL) === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${prefsMenuItemClass} rounded ${selected ? 'bg-white/[0.06]' : ''}`}
+                        onClick={() => handleModelPick(mk, p.id)}
+                      >
+                        <span className="min-w-0 flex-1 truncate font-medium text-zinc-100">
+                          {p.label}
+                        </span>
+                        <span className="shrink-0 font-mono text-[9px] text-zinc-500">{p.id}</span>
+                      </button>
+                    );
+                  })}
+                  <div className="mx-0.5 my-1 border-t border-white/[0.08] pt-1">
+                    {!addModelOpen ? (
+                      <button
+                        type="button"
+                        className={`${prefsMenuItemClass} text-zinc-300`}
+                        onClick={() => {
+                          setAddModelOpen(true);
+                          setAddModelError(null);
+                        }}
+                      >
+                        Add model…
+                      </button>
+                    ) : (
+                      <div className="space-y-1.5 px-1 py-1">
+                        <p className="text-[10px] leading-snug text-zinc-500">
+                          Model id your CLI accepts (same list as task sessions).
+                        </p>
+                        <input
+                          value={addModelId}
+                          onChange={(e) => setAddModelId(e.target.value)}
+                          placeholder="Model id"
+                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 font-mono text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
+                        />
+                        <input
+                          value={addModelLabel}
+                          onChange={(e) => setAddModelLabel(e.target.value)}
+                          placeholder="Display name (optional)"
+                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
+                        />
+                        {addModelError ? (
+                          <p className="text-[10px] text-red-300/90">{addModelError}</p>
+                        ) : null}
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAddCustomModel(mk)}
+                            className="rounded border border-emerald-500/25 bg-emerald-500/[0.1] px-2 py-0.5 text-[10px] font-medium text-emerald-100/90"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAddModelOpen(false);
+                              setAddModelId('');
+                              setAddModelLabel('');
+                              setAddModelError(null);
+                            }}
+                            className="rounded px-2 py-0.5 text-[10px] text-zinc-500 hover:bg-white/[0.06]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
+                  Codex uses its default model for planning in this version.
+                </p>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">
@@ -297,41 +598,30 @@ export function PlanningPanel({
               Stop
             </button>
           ) : null}
-          <select
-            aria-label="Planning agent"
-            title={
-              sessionRunning
-                ? 'Agent for this session'
-                : 'Planning agent for the next session (saved when you change it or start).'
-            }
-            disabled={sessionRunning}
-            value={agentSelectValue}
-            onChange={(e) => {
-              const next = e.target.value as Agent;
-              setSelectedAgent(next);
-              void (async () => {
-                const res = await window.electronAPI.project.setPlanningAgent(next);
-                if ('error' in res) {
-                  setError(res.error);
-                  setSelectedAgent(
-                    project.kind === 'local'
-                      ? project.planningAgent
-                      : (project.planningAgent ?? 'claude-code'),
-                  );
-                  return;
-                }
-                setError(null);
-                await onLocalProjectRefresh?.();
-              })();
-            }}
-            className="min-w-0 max-w-[9.5rem] cursor-pointer rounded-md border border-gray-700 bg-gray-900 py-1 pl-2 pr-7 text-[11px] font-medium text-gray-200 focus:border-gray-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {AGENTS.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-              </option>
-            ))}
-          </select>
+          <div ref={splitAnchorRef} className="flex shrink-0 overflow-hidden rounded-md border border-gray-700">
+            <button
+              type="button"
+              disabled={loading || !planningApi}
+              onClick={() => void handleStart()}
+              className="flex min-w-0 items-center gap-1 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-200 transition hover:bg-gray-800 disabled:opacity-40"
+              aria-label="Start new planning session"
+              title={`Start session · ${AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent} · ${modelSummary}`}
+            >
+              <span className="truncate">Add session</span>
+            </button>
+            <button
+              type="button"
+              disabled={loading || !planningApi}
+              onClick={() => setPrefsOpen((o) => !o)}
+              className="flex w-7 shrink-0 items-center justify-center border-l border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200 disabled:opacity-40"
+              aria-label="Choose agent and model for the next session"
+              aria-expanded={prefsOpen}
+              aria-haspopup="dialog"
+            >
+              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+            </button>
+          </div>
+          {prefsMenu}
           <button
             type="button"
             onClick={onClose}
@@ -397,14 +687,6 @@ export function PlanningPanel({
             </div>
           );
         })}
-        <button
-          type="button"
-          disabled={loading || !planningApi}
-          onClick={() => void handleStart()}
-          className="shrink-0 rounded-md border border-dashed border-gray-700 px-2 py-0.5 text-[10px] font-medium text-gray-400 hover:border-gray-600 hover:bg-gray-900 hover:text-gray-200 disabled:opacity-40"
-        >
-          + Session
-        </button>
       </div>
 
       {error ? (
@@ -443,7 +725,7 @@ export function PlanningPanel({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
             <p className="text-xs text-gray-500">This planning session has ended</p>
             <p className="text-[10px] text-gray-600">
-              Close the tab or start another session from + Session.
+              Close the tab or start another session from the header.
             </p>
           </div>
         ) : (

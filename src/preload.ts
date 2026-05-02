@@ -273,8 +273,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   planning: {
     list: () =>
       ipcRenderer.invoke('planning:list') as Promise<PlanningSession[]>,
-    start: (agent: Agent) =>
-      ipcRenderer.invoke('planning:start', agent) as Promise<PlanningStartResult>,
+    start: (payload: Agent | { agent: Agent; agentModel?: string }) =>
+      ipcRenderer.invoke('planning:start', payload) as Promise<PlanningStartResult>,
     stop: (sessionId: string) =>
       ipcRenderer.invoke('planning:stop', sessionId) as Promise<void>,
     get: (sessionId: string) =>

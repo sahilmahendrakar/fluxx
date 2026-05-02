@@ -181,7 +181,9 @@ declare global {
       };
       planning: {
         list: () => Promise<PlanningSession[]>;
-        start: (agent: Agent) => Promise<PlanningStartResult>;
+        start: (
+          payload: Agent | { agent: Agent; agentModel?: string },
+        ) => Promise<PlanningStartResult>;
         stop: (sessionId: string) => Promise<void>;
         get: (sessionId: string) => Promise<PlanningSession | null>;
         attach: (sessionId: string) => Promise<PlanningAttachResult | null>;
