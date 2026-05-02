@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import { Session, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
+import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { ProjectMember } from '../renderer/projects/members';
 
 interface Props {
@@ -28,6 +29,7 @@ interface Props {
   cloudUnblockAutostartClientUid?: string;
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function Column({
@@ -53,6 +55,7 @@ export default function Column({
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isReview = id === 'review';
@@ -138,6 +141,7 @@ export default function Column({
                     repoDefaultBranchShort={repoDefaultBranchShort}
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
+                    onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
                   />
                 );
               })}

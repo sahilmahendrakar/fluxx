@@ -2658,6 +2658,9 @@ export default function App() {
                         }
                         sessions={sessions}
                         taskHasWorktreeById={taskHasWorktreeById}
+                        onTaskAgentSpawnPrefsChange={(id, patch) =>
+                          void handleUpdateTask(id, patch)
+                        }
                       />
                       <TaskDetailPanel
                         task={selectedTask}

@@ -17,8 +17,7 @@ import {
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
-import { modelSummaryForTask } from '../agentModelUi';
-import AgentBadge from './AgentBadge';
+import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 
@@ -225,6 +224,8 @@ interface Props {
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
   hasWorktree?: boolean;
+  /** Persist agent / model / YOLO for this task (same fields as task detail & MCP `flux__update_task`). */
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function TaskCard({
@@ -246,12 +247,12 @@ export default function TaskCard({
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
-  const agentModelSummary = modelSummaryForTask(task);
   const blocked = isTaskBlocked(task, allTasks);
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
@@ -291,6 +292,10 @@ export default function TaskCard({
         ? 'Blocked: this project auto-starts when unblocked; click to add a per-task override to turn auto-start on for this task'
         : 'Blocked: click to enable auto-start when unblocked for this task';
 
+  const tryOpenTaskDetail = () => {
+    onCardClick(task.id);
+  };
+
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -309,13 +314,9 @@ export default function TaskCard({
             {...provided.dragHandleProps}
             className="cursor-grab rounded-md p-3 active:cursor-grabbing"
           >
-            <div
-              role="presentation"
-              onClick={() => onCardClick(task.id)}
-              className="cursor-grab"
-            >
+            <div role="presentation" className="cursor-grab">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={tryOpenTaskDetail}>
                   <p
                     className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
                       isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
@@ -367,9 +368,19 @@ export default function TaskCard({
                   ×
                 </button>
               </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
+              <div
+                className="mt-3 flex items-center justify-between gap-2"
+                onClick={(e) => {
+                  const t = e.target as HTMLElement;
+                  if (t.closest('button')) return;
+                  tryOpenTaskDetail();
+                }}
+              >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  <AgentBadge agent={task.agent} summary={agentModelSummary} variant="icon" />
+                  <TaskCardAgentSpawnMenu
+                    task={task}
+                    onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
+                  />
                   {showBranchChip ? (
                     <span
                       title={branchChipTitle}

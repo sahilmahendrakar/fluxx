@@ -10,6 +10,8 @@ import {
 } from '../types';
 import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
 import AgentModelPicker from './AgentModelPicker';
+import { SettingsSwitch } from './SettingsSwitch';
+import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
 
 interface Props {
@@ -25,46 +27,6 @@ interface Props {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Category = 'project' | 'team';
-
-function SettingsSwitch({
-  checked,
-  onCheckedChange,
-  disabled,
-  ariaLabelledBy,
-  ariaBusy,
-}: {
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  disabled?: boolean;
-  /** Prefer wiring the row title via `id` + this prop for a concise switch name in assistive tech. */
-  ariaLabelledBy?: string;
-  /** True while loading prefs or persisting so assistive tech can announce activity. */
-  ariaBusy?: boolean;
-}) {
-  const busy = !!disabled;
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-labelledby={ariaLabelledBy}
-      aria-busy={ariaBusy || undefined}
-      disabled={busy}
-      onClick={() => {
-        if (busy) return;
-        onCheckedChange(!checked);
-      }}
-      className={[
-        'relative inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.18] focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]',
-        checked ? 'justify-end bg-emerald-600' : 'justify-start bg-zinc-700',
-        busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
-      ].join(' ')}
-    >
-      <span className="pointer-events-none block h-5 w-5 rounded-full bg-zinc-100 shadow-sm" />
-    </button>
-  );
-}
 
 function AutomationSettingRow({
   title,
@@ -793,7 +755,7 @@ function ProjectConfigPane({
                       const next = e.target.value as Agent;
                       void handlePlanningAgentChange(next);
                     }}
-                    className="h-[34px] min-w-[9.5rem] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-0 pl-2.5 pr-7 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                    className={AGENT_SPAWN_AGENT_SELECT_CLASS}
                   >
                     {AGENTS.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -901,7 +863,7 @@ function ProjectConfigPane({
                       const next = e.target.value as Agent;
                       void handleDefaultTaskAgentChange(next);
                     }}
-                    className="h-[34px] min-w-[9.5rem] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-0 pl-2.5 pr-7 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                    className={AGENT_SPAWN_AGENT_SELECT_CLASS}
                   >
                     {AGENTS.map((a) => (
                       <option key={a.id} value={a.id}>

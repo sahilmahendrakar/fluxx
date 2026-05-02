@@ -13,6 +13,7 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
+import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 
 interface Props {
   allTasks: Task[];
@@ -48,6 +49,7 @@ interface Props {
   sessions: Session[];
   /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
   taskHasWorktreeById: Record<string, boolean>;
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function Board({
@@ -71,6 +73,7 @@ export default function Board({
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -204,6 +207,7 @@ export default function Board({
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               sessions={sessions}
               taskHasWorktreeById={taskHasWorktreeById}
+              onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
