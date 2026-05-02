@@ -1,0 +1,53 @@
+src/components/TaskDetailPanel.tsx
+  1a72f1822e45b802 582-586,645-649,1148-1159,1162,1164-1168,1179-1184
+src/preload.ts
+  1a72f1822e45b802 190-191
+src/components/Board.tsx
+  1a72f1822e45b802 33-34,51,176
+src/cloudInProgressAutostartApply.ts
+  1a72f1822e45b802 74-78
+src/types.ts
+  1a72f1822e45b802 150
+src/unblockAutostart.ts
+  1a72f1822e45b802 7-10,14-31,37-38,40
+src/env.d.ts
+  1a72f1822e45b802 153-157
+src/unblockAutostartApply.test.ts
+  1a72f1822e45b802 1-179
+src/components/TaskCard.tsx
+  1a72f1822e45b802 30-31,46,56-60,144,148,152-158,161-167
+src/renderer/mcp/useMcpRendererBridge.ts
+  1a72f1822e45b802 161-171
+src/components/Column.tsx
+  1a72f1822e45b802 22,40,105
+src/cloudTaskDoneFollowUp.ts
+  1a72f1822e45b802 87-89,99,116
+src/unblockAutostartApply.ts
+  1a72f1822e45b802 4,15-20,67-72
+src/main.ts
+  1a72f1822e45b802 894,931-945,1301-1304
+src/App.tsx
+  1a72f1822e45b802 423-425,433-437,452-456,849-858,977-984,1019-1027,1034,2062-2064
+src/unblockAutostart.test.ts
+  1a72f1822e45b802 4,27-39,92-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "6296db0a31ed943d37f539d63e4e9f71e0b142c7",
+  "prompts": {
+    "1a72f1822e45b802": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "860e0441-53a6-42b4-bf6c-daa084f907dc",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 461,
+      "total_deletions": 57,
+      "accepted_lines": 443,
+      "overriden_lines": 0
+    }
+  }
+}
