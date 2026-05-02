@@ -28,6 +28,7 @@ import type {
   McpBridgeTasksUpdateResult,
 } from '../mcpBridge';
 import { isTaskBlocked } from '../taskDependencies';
+import { filterTasksByExcludeStatuses, FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
 const MCP_PORT = 47432;
 
@@ -194,9 +195,16 @@ export class McpServer {
   private registerTools(server: BaseMcpServer): void {
     server.tool(
       'flux__list_tasks',
-      'List all tasks on the Flux board for the current project',
-      {},
-      async () => {
+      'List tasks on the Flux board for the current project. By default returns every task. Optional excludeStatuses removes tasks in those columns (values: backlog, in-progress, needs-input, done)—e.g. pass ["done"] to omit completed work and shrink the payload. Filtering runs in the desktop app after tasks load so local and cloud projects behave the same.',
+      {
+        excludeStatuses: z
+          .array(z.enum(FLUX_TASK_STATUS_VALUES))
+          .optional()
+          .describe(
+            'Statuses to omit from the result. Each value is a board column id. Omit this field for the full board.',
+          ),
+      },
+      async (input) => {
         try {
           const active = this.resolveActive();
           if (active.kind === 'none') {
@@ -204,14 +212,16 @@ export class McpServer {
           }
           if (active.kind === 'local') {
             const tasks = this.taskStore.getAll(active.project.id);
-            return jsonToolPayload(tasks);
+            return jsonToolPayload(filterTasksByExcludeStatuses(tasks, input.excludeStatuses));
           }
           const result = await this.bridge.request<Task[]>(
             'tasks.list',
             active.activeKey,
           );
           if (!result.ok) return this.bridgeError(result);
-          return jsonToolPayload(result.data);
+          return jsonToolPayload(
+            filterTasksByExcludeStatuses(result.data, input.excludeStatuses),
+          );
         } catch (err) {
           return toolError(err);
         }
