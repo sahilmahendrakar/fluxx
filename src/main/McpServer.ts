@@ -369,9 +369,12 @@ export class McpServer {
         assigneeEmail: z
           .string()
           .email()
-          .nullable()
           .optional()
-          .describe('Email to assign, or null to unassign (cloud only)'),
+          .describe('Email to assign or reassign this task to (cloud only)'),
+        unassignAssignee: z
+          .boolean()
+          .optional()
+          .describe('Set true to remove the current assignee from this task (cloud only)'),
         sourceBranch: z.string().optional(),
         createSourceBranchIfMissing: z.boolean().optional(),
         githubPr: z
@@ -443,17 +446,20 @@ export class McpServer {
             return jsonToolPayload(updated);
           }
           let assigneeId: string | null | undefined;
-          if (input.assigneeEmail !== undefined) {
-            if (input.assigneeEmail === null) {
-              assigneeId = null;
-            } else {
-              const resolved = await this.resolveEmailToId(
-                input.assigneeEmail,
-                active.activeKey,
-              );
-              if (typeof resolved !== 'string') return resolved;
-              assigneeId = resolved;
-            }
+          if (input.assigneeEmail !== undefined && input.unassignAssignee === true) {
+            return jsonToolPayload({
+              error: 'Pass either assigneeEmail or unassignAssignee, not both',
+            });
+          }
+          if (input.unassignAssignee === true) {
+            assigneeId = null;
+          } else if (input.assigneeEmail !== undefined) {
+            const resolved = await this.resolveEmailToId(
+              input.assigneeEmail,
+              active.activeKey,
+            );
+            if (typeof resolved !== 'string') return resolved;
+            assigneeId = resolved;
           }
           const patch: Partial<
             Pick<
