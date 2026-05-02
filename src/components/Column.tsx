@@ -75,7 +75,7 @@ export default function Column({
         : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
 
   return (
-    <div className="flex min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">
+    <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2
@@ -104,46 +104,50 @@ export default function Column({
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className={`flex flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3 transition-colors ${
-              snapshot.isDraggingOver ? 'bg-white/[0.02]' : ''
-            }`}
+            className="flex min-h-0 flex-1 flex-col"
           >
-            {tasks.map((task, index) => {
-              const sessionWorktree = sessions.some(
-                (s) => s.taskId === task.id && Boolean(s.worktreePath?.trim()),
-              );
-              const diskWorktree = taskHasWorktreeById[task.id] === true;
-              const hasWorktree = sessionWorktree || diskWorktree;
-              return (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  allTasks={allTasks}
-                  index={index}
-                  onDelete={onDeleteTask}
-                  onRequestCleanupTask={onRequestCleanupTask}
-                  cleanupLoading={cleanupLoadingTaskId === task.id}
-                  onCardClick={onCardClick}
-                  onLabelClick={onLabelClick}
-                  autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-                  onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
-                  assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
-                  cloudProjectMembers={projectMembers}
-                  onTaskAssigneeChange={onTaskAssigneeChange}
-                  onTaskPrClick={onTaskPrClick}
-                  prLoading={prLoadingTaskId === task.id}
-                  repoDefaultBranchShort={repoDefaultBranchShort}
-                  cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
-                  hasWorktree={hasWorktree}
-                />
-              );
-            })}
-            {provided.placeholder}
-            {tasks.length === 0 && emptyState ? (
-              <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-[13px] leading-relaxed text-zinc-600">
-                {emptyState}
-              </div>
-            ) : null}
+            <div
+              className={`flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3 transition-colors ${
+                snapshot.isDraggingOver ? 'bg-white/[0.02]' : ''
+              }`}
+            >
+              {tasks.map((task, index) => {
+                const sessionWorktree = sessions.some(
+                  (s) => s.taskId === task.id && Boolean(s.worktreePath?.trim()),
+                );
+                const diskWorktree = taskHasWorktreeById[task.id] === true;
+                const hasWorktree = sessionWorktree || diskWorktree;
+                return (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    allTasks={allTasks}
+                    index={index}
+                    onDelete={onDeleteTask}
+                    onRequestCleanupTask={onRequestCleanupTask}
+                    cleanupLoading={cleanupLoadingTaskId === task.id}
+                    onCardClick={onCardClick}
+                    onLabelClick={onLabelClick}
+                    autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                    onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+                    assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
+                    cloudProjectMembers={projectMembers}
+                    onTaskAssigneeChange={onTaskAssigneeChange}
+                    onTaskPrClick={onTaskPrClick}
+                    prLoading={prLoadingTaskId === task.id}
+                    repoDefaultBranchShort={repoDefaultBranchShort}
+                    cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
+                    hasWorktree={hasWorktree}
+                  />
+                );
+              })}
+              {provided.placeholder}
+              {tasks.length === 0 && emptyState ? (
+                <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-[13px] leading-relaxed text-zinc-600">
+                  {emptyState}
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </Droppable>
