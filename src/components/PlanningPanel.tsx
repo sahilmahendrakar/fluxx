@@ -56,6 +56,101 @@ function planningTabLabel(s: PlanningSession, index: number): string {
   return `Plan ${index + 1} · ${agent}`;
 }
 
+function planningPaneVisibilityStyle(visible: boolean): React.CSSProperties {
+  return {
+    visibility: visible ? 'visible' : 'hidden',
+    pointerEvents: visible ? 'auto' : 'none',
+    zIndex: visible ? 1 : 0,
+  };
+}
+
+function PlanningTerminalPane({
+  session,
+  visible,
+  layout,
+  needsInput,
+  onDataChunk,
+}: {
+  session: PlanningSession;
+  visible: boolean;
+  layout: 'sidebar' | 'fullscreen';
+  needsInput: boolean;
+  onDataChunk: (chunk: string) => void;
+}) {
+  const planningApi = window.electronAPI.planning;
+  const terminalRef = useRef<TerminalHandle | null>(null);
+  const running = session.status === 'running';
+
+  useTerminalPtyStream({
+    terminalRef,
+    id: session.id,
+    enabled: Boolean(planningApi && running),
+    viewPolicy: OWNER_TERMINAL_VIEW_POLICY,
+    getAttach: () => {
+      if (!planningApi) {
+        return Promise.resolve(null);
+      }
+      return getPlanningAttachShared(session.id, async () => {
+        try {
+          return await planningApi.attach(session.id);
+        } catch (err) {
+          console.error('[PlanningPanel] attach failed', err);
+          return null;
+        }
+      });
+    },
+    onStreamData: (id, cb) => {
+      if (!planningApi) {
+        return () => undefined;
+      }
+      return planningApi.onData(id, cb);
+    },
+    onDataChunk: visible ? onDataChunk : undefined,
+  });
+
+  useEffect(() => {
+    if (visible && needsInput) terminalRef.current?.focus();
+  }, [needsInput, visible]);
+
+  const handleTerminalData = (data: string) => {
+    if (planningApi && running) {
+      planningApi.write(session.id, data);
+    }
+  };
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className="absolute inset-0 flex min-h-0 flex-col"
+      style={planningPaneVisibilityStyle(visible)}
+    >
+      <div
+        className={
+          layout === 'sidebar'
+            ? 'flex min-h-0 flex-1 flex-col px-3 py-2'
+            : 'flex min-h-0 flex-1 flex-col px-4 py-3'
+        }
+      >
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <Terminal
+            ref={terminalRef}
+            sessionId={session.id}
+            onData={handleTerminalData}
+            onResize={
+              visible && running && planningApi
+                ? (cols, rows) => planningApi.resize(session.id, cols, rows)
+                : undefined
+            }
+            visible={visible}
+            autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
+            hideCursor
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PlanningPanel({
   project,
   onClose,
@@ -77,7 +172,6 @@ export function PlanningPanel({
       ? project.planningAgent
       : (project.planningAgent ?? 'claude-code'),
   );
-  const terminalRef = useRef<TerminalHandle | null>(null);
   const outputBufferRef = useRef('');
   const activeSessionRef = useRef<PlanningSession | null>(null);
 
@@ -122,42 +216,6 @@ export function PlanningPanel({
     }
   }, []);
 
-  const planningStreamEnabled = Boolean(
-    planningApi && activeSession && activeSession.status === 'running',
-  );
-  const activePlanningId = activeSession?.id;
-
-  useTerminalPtyStream({
-    terminalRef,
-    id: activePlanningId ?? '',
-    enabled: planningStreamEnabled,
-    viewPolicy: OWNER_TERMINAL_VIEW_POLICY,
-    getAttach: () => {
-      if (!planningApi || !activePlanningId) {
-        return Promise.resolve(null);
-      }
-      return getPlanningAttachShared(activePlanningId, async () => {
-        try {
-          return await planningApi.attach(activePlanningId);
-        } catch (err) {
-          console.error('[PlanningPanel] attach failed', err);
-          return null;
-        }
-      });
-    },
-    onStreamData: (id, cb) => {
-      if (!planningApi) {
-        return () => undefined;
-      }
-      return planningApi.onData(id, cb);
-    },
-    onDataChunk: appendOutputAndDetectNeedsInput,
-  });
-
-  useEffect(() => {
-    if (needsInput) terminalRef.current?.focus();
-  }, [needsInput]);
-
   const handleStart = async () => {
     if (!planningApi) {
       setError('Planning assistant is not available in this build.');
@@ -200,16 +258,6 @@ export function PlanningPanel({
       setError('Failed to stop session');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleTerminalData = (data: string) => {
-    if (
-      planningApi &&
-      activeSessionRef.current?.status === 'running' &&
-      activeSessionRef.current.id
-    ) {
-      planningApi.write(activeSessionRef.current.id, data);
     }
   };
 
@@ -377,25 +425,19 @@ export function PlanningPanel({
             </p>
           </div>
         ) : sessionRunning && activeSession ? (
-          <div
-            className={
-              layout === 'sidebar'
-                ? 'flex min-h-0 flex-1 flex-col px-3 py-2'
-                : 'flex min-h-0 flex-1 flex-col px-4 py-3'
-            }
-          >
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <Terminal
-                ref={terminalRef}
-                sessionId={activeSession.id}
-                onData={handleTerminalData}
-                onResize={(cols, rows) =>
-                  planningApi.resize(activeSession.id, cols, rows)
-                }
-                autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
-                hideCursor
-              />
-            </div>
+          <div className="relative min-h-0 flex-1">
+            {sessions
+              .filter((s) => s.status === 'running')
+              .map((s) => (
+                <PlanningTerminalPane
+                  key={s.id}
+                  session={s}
+                  visible={s.id === activeSession.id}
+                  layout={layout}
+                  needsInput={s.id === activeSession.id && needsInput}
+                  onDataChunk={appendOutputAndDetectNeedsInput}
+                />
+              ))}
           </div>
         ) : activeSession && !sessionRunning ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
