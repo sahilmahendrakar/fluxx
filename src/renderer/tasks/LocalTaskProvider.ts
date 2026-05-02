@@ -57,6 +57,10 @@ export class LocalTaskProvider implements TaskProvider {
       agent: input.agent,
       ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
       ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(input.sourceBranch !== undefined ? { sourceBranch: input.sourceBranch } : {}),
+      ...(input.createSourceBranchIfMissing !== undefined
+        ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
+        : {}),
     });
     this.tasks = [...this.tasks, task];
     this.emit();

@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { UserCircle2 } from 'lucide-react';
-import { Agent, AGENTS } from '../types';
+import { Agent, AGENTS, type RepoBranchDiscovery } from '../types';
+import { buildCreateTaskBranchPayload, gitBranchShortNameLooksValid } from '../taskBranches';
 import { TaskLabelsField } from './TaskLabelsField';
 import type { ProjectMember } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
+import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 
 interface Props {
   onClose: () => void;
-  onCreate: (title: string, agent: Agent, labels: string[], assigneeId?: string) => void;
+  onCreate: (
+    title: string,
+    agent: Agent,
+    labels: string[],
+    assigneeId?: string,
+    branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+  ) => void;
   /** Union of labels on existing tasks, for the picker. */
   labelCatalog: string[];
   /** Default agent for this project (local `config.json` or cloud binding prefs). */
@@ -28,11 +36,36 @@ export default function NewTaskModal({
   const [labels, setLabels] = useState<string[]>([]);
   const [assigneeId, setAssigneeId] = useState<string | undefined>(undefined);
   const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
+  const [branchDiscovery, setBranchDiscovery] = useState<RepoBranchDiscovery | null>(null);
+  const [branchDiscoveryLoading, setBranchDiscoveryLoading] = useState(true);
+  const [branchDiscoveryError, setBranchDiscoveryError] = useState<string | null>(null);
+  const [branchInput, setBranchInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const assigneeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBranchDiscoveryLoading(true);
+    setBranchDiscoveryError(null);
+    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+      if (cancelled) return;
+      setBranchDiscoveryLoading(false);
+      if ('error' in r) {
+        setBranchDiscovery(null);
+        setBranchDiscoveryError(r.error);
+        setBranchInput('');
+        return;
+      }
+      setBranchDiscovery(r);
+      setBranchInput(r.defaultBranchShort);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -59,11 +92,14 @@ export default function NewTaskModal({
   }, [assigneeDropdownOpen]);
 
   const trimmed = title.trim();
-  const canSubmit = trimmed.length > 0;
+  const branchTrim = branchInput.trim();
+  const branchNameOk = branchTrim === '' || gitBranchShortNameLooksValid(branchInput);
+  const canSubmit = trimmed.length > 0 && branchNameOk;
 
   const submit = () => {
     if (!canSubmit) return;
-    onCreate(trimmed, agent, labels, assigneeId);
+    const branch = buildCreateTaskBranchPayload(branchInput, branchDiscovery);
+    onCreate(trimmed, agent, labels, assigneeId, branch);
   };
 
   /** Defined only for cloud projects (may be empty while members load). */
@@ -110,6 +146,17 @@ export default function NewTaskModal({
             labelCatalog={labelCatalog}
             onLabelsChange={setLabels}
             compact
+          />
+        </div>
+
+        <div className="mt-4">
+          <TaskSourceBranchPicker
+            idPrefix="new-task"
+            branchInput={branchInput}
+            onBranchInputChange={setBranchInput}
+            discovery={branchDiscovery}
+            discoveryLoading={branchDiscoveryLoading}
+            discoveryError={branchDiscoveryError}
           />
         </div>
 

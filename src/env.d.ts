@@ -5,6 +5,7 @@ import type {
   CloudProjectLocalBinding,
   LocalProject,
   OpenWorkspaceTarget,
+  RepoBranchDiscoveryResponse,
   RepoConfig,
   Session,
   SessionStartResult,
@@ -120,6 +121,11 @@ declare global {
           inviterEmail?: string;
         }) => Promise<{ ok: true } | { error: string }>;
       };
+      repo: {
+        getBranchDiscovery: (
+          requestedBranch?: string,
+        ) => Promise<RepoBranchDiscoveryResponse | { error: string }>;
+      };
       tasks: {
         getAll: () => Promise<Task[]>;
         create: (input: {
@@ -127,6 +133,8 @@ declare global {
           agent: Agent;
           blockedByTaskIds?: string[];
           labels?: string[];
+          sourceBranch?: string;
+          createSourceBranchIfMissing?: boolean;
         }) => Promise<Task>;
         update: (
           id: string,
@@ -144,9 +152,16 @@ declare global {
             | 'blockedByTaskIds'
             | 'labels'
             | 'autoStartOnUnblock'
+            | 'sourceBranch'
+            | 'createSourceBranchIfMissing'
           >
         > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
+        assertSourceBranchEditable: (
+          taskId: string,
+          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+          patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
         createPullRequest: (payload: {
           taskId: string;
@@ -161,7 +176,11 @@ declare global {
         onChanged: (cb: () => void) => () => void;
       };
       sessions: {
-        start: (task: Task, projectTasks?: Task[]) => Promise<SessionStartResult>;
+        start: (
+          task: Task,
+          projectTasks?: Task[],
+          requesterUid?: string | null,
+        ) => Promise<SessionStartResult>;
         archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;

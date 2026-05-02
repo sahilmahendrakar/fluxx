@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
@@ -17,7 +17,13 @@ import { BoardFilterBar } from './BoardFilterBar';
 interface Props {
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
-  onCreateTask: (title: string, agent: Agent, labels?: string[], assigneeId?: string) => void;
+  onCreateTask: (
+    title: string,
+    agent: Agent,
+    labels?: string[],
+    assigneeId?: string,
+    branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+  ) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
   onDeleteTask: (id: string) => void;
@@ -32,6 +38,10 @@ interface Props {
   projectMembers?: ProjectMember[];
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
+  /** Configured / detected default short branch name for branch chips on cards. */
+  repoDefaultBranchShort: string;
+  /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function Board({
@@ -50,6 +60,8 @@ export default function Board({
   projectMembers,
   onTaskPrClick,
   prLoadingTaskId,
+  repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -85,6 +97,10 @@ export default function Board({
     () => applyBoardFilters(allTasks, boardFilter),
     [allTasks, boardFilter],
   );
+
+  const onLabelClick = useCallback((label: string) => {
+    setBoardFilter((prev) => ({ ...prev, label }));
+  }, []);
 
   const doneHiddenCount = useMemo(() => {
     if (!boardFilter.hideDone) return 0;
@@ -166,11 +182,14 @@ export default function Board({
               onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}
               cleanupLoadingTaskId={col.id === 'done' ? cleanupLoadingTaskId : null}
               onCardClick={onCardClick}
+              onLabelClick={onLabelClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
               onTaskPrClick={onTaskPrClick}
               prLoadingTaskId={prLoadingTaskId}
+              repoDefaultBranchShort={repoDefaultBranchShort}
+              cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
@@ -190,8 +209,8 @@ export default function Board({
           defaultAgent={defaultTaskAgent}
           projectMembers={projectMembers}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent, labels, assigneeId) => {
-            onCreateTask(title, agent, labels, assigneeId);
+          onCreate={(title, agent, labels, assigneeId, branch) => {
+            onCreateTask(title, agent, labels, assigneeId, branch);
             setModalOpen(false);
           }}
         />

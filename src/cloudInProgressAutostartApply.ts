@@ -71,7 +71,11 @@ export async function maybeCloudAutoStartSessionOnInProgressTransition(
     }
 
     try {
-      const started = await window.electronAPI.sessions.start(fresh, allTasksForSession);
+      const started = await window.electronAPI.sessions.start(
+        fresh,
+        allTasksForSession,
+        ctx.actorUid ?? undefined,
+      );
       if (started && typeof started === 'object' && 'error' in started) {
         const e = started as { error: string; message?: string };
         ctx.logError('[task:auto-start] session start failed', {

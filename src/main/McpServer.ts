@@ -11,7 +11,13 @@ import type { ProjectStore } from './ProjectStore';
 import type { AppStateStore } from './AppStateStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
-import type { ActiveProjectKey, Task, TaskGithubPr } from '../types';
+import type { ActiveProjectKey, RepoBranchDiscoveryResponse, Task, TaskGithubPr } from '../types';
+import {
+  classifyGitBranchPresence,
+  planTaskSourceBranchFieldsForCreate,
+  validateStoredTaskSourceBranchName,
+} from '../taskBranches';
+import { collectRepoBranchDiscovery } from './repoGit';
 import type {
   McpBridgeMember,
   McpBridgeProjectInfoResult,
@@ -69,6 +75,8 @@ export class McpServer {
             | 'blockedByTaskIds'
             | 'labels'
             | 'autoStartOnUnblock'
+            | 'sourceBranch'
+            | 'createSourceBranchIfMissing'
           >
         > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
@@ -234,6 +242,18 @@ export class McpServer {
           .email()
           .optional()
           .describe('Email of the team member to assign this task to (cloud projects only)'),
+        sourceBranch: z
+          .string()
+          .optional()
+          .describe(
+            'Git branch this task is based on (short name). Defaults to the project default branch when omitted.',
+          ),
+        createSourceBranchIfMissing: z
+          .boolean()
+          .optional()
+          .describe(
+            'When true and sourceBranch does not exist yet, Flux creates it from the project default on first session start.',
+          ),
       },
       async (input) => {
         try {
@@ -247,10 +267,27 @@ export class McpServer {
               ? active.project.defaultTaskAgent
               : this.bindingStore.getPrefs(active.activeKey.id).defaultTaskAgent);
           if (active.kind === 'local') {
+            const repos = await this.projectStore.getReposAt(active.projectDir);
+            const repo =
+              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
+            if (!repo?.rootPath) {
+              return jsonToolPayload({ error: 'No repository root configured for this project' });
+            }
+            const discovery = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+            const planned = planTaskSourceBranchFieldsForCreate(discovery, {
+              sourceBranch: input.sourceBranch,
+              createSourceBranchIfMissing: input.createSourceBranchIfMissing,
+            });
+            const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
+            if (!branchOk.ok) {
+              return jsonToolPayload({ error: branchOk.message });
+            }
             let task = await this.taskStore.create({
               title: input.title,
               agent,
               projectId: active.project.id,
+              sourceBranch: planned.sourceBranch,
+              createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
               ...(input.blockedByTaskIds?.length
                 ? { blockedByTaskIds: input.blockedByTaskIds }
                 : {}),
@@ -285,6 +322,10 @@ export class McpServer {
                 : {}),
               ...(input.labels !== undefined ? { labels: input.labels } : {}),
               ...(assigneeId !== undefined ? { assigneeId } : {}),
+              ...(input.sourceBranch !== undefined ? { sourceBranch: input.sourceBranch } : {}),
+              ...(input.createSourceBranchIfMissing !== undefined
+                ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
+                : {}),
             },
           };
           const result = await this.bridge.request<Task>(
@@ -345,6 +386,8 @@ export class McpServer {
           .nullable()
           .optional()
           .describe('GitHub PR metadata to set or null to clear'),
+        sourceBranch: z.string().optional(),
+        createSourceBranchIfMissing: z.boolean().optional(),
       },
       async (input) => {
         try {
@@ -369,6 +412,8 @@ export class McpServer {
                 | 'blockedByTaskIds'
                 | 'labels'
                 | 'autoStartOnUnblock'
+                | 'sourceBranch'
+                | 'createSourceBranchIfMissing'
               >
             > & { githubPr?: TaskGithubPr | null } = {};
             if (input.title !== undefined) patch.title = input.title;
@@ -383,6 +428,12 @@ export class McpServer {
             }
             if (input.githubPr !== undefined) {
               patch.githubPr = input.githubPr;
+            }
+            if (input.sourceBranch !== undefined) {
+              patch.sourceBranch = input.sourceBranch;
+            }
+            if (input.createSourceBranchIfMissing !== undefined) {
+              patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
             }
             const updated = await this.taskActions.updateTask(input.id, patch);
             this.notifyTasksChanged();
@@ -411,6 +462,8 @@ export class McpServer {
               | 'blockedByTaskIds'
               | 'labels'
               | 'autoStartOnUnblock'
+              | 'sourceBranch'
+              | 'createSourceBranchIfMissing'
             >
           > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null } = {};
           if (input.title !== undefined) patch.title = input.title;
@@ -426,6 +479,12 @@ export class McpServer {
           }
           if (input.githubPr !== undefined) {
             patch.githubPr = input.githubPr;
+          }
+          if (input.sourceBranch !== undefined) {
+            patch.sourceBranch = input.sourceBranch;
+          }
+          if (input.createSourceBranchIfMissing !== undefined) {
+            patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
           }
           if (assigneeId !== undefined) patch.assigneeId = assigneeId;
           const payload: McpBridgeTasksUpdatePayload = { taskId: input.id, patch };
@@ -573,7 +632,7 @@ export class McpServer {
 
     server.tool(
       'flux__get_project_info',
-      'Get the current Flux project name, canonical rootPath (git repo / application code location), and task status counts',
+      'Get the current Flux project name, canonical rootPath (git repo / application code location), task status counts, and default git branch when discovery succeeds',
       {},
       async () => {
         try {
@@ -596,10 +655,25 @@ export class McpServer {
               else if (t.status === 'needs-input') taskCounts['needs-input']++;
               else if (t.status === 'done') taskCounts.done++;
             }
+            const repos = await this.projectStore.getReposAt(active.projectDir);
+            const repo =
+              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
+            let defaultBranchShort: string | undefined;
+            let branchDiscoveryError: string | undefined;
+            if (repo?.rootPath) {
+              try {
+                const disc = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+                defaultBranchShort = disc.defaultBranchShort;
+              } catch (err) {
+                branchDiscoveryError = err instanceof Error ? err.message : String(err);
+              }
+            }
             return jsonToolPayload({
               name: active.project.name,
               rootPath: active.project.rootPath,
               taskCounts,
+              ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
+              ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
             });
           }
           const result = await this.bridge.request<McpBridgeProjectInfoResult>(
@@ -611,7 +685,71 @@ export class McpServer {
             name: result.data.name,
             rootPath: active.rootPath,
             taskCounts: result.data.taskCounts,
+            ...(result.data.defaultBranchShort !== undefined
+              ? { defaultBranchShort: result.data.defaultBranchShort }
+              : {}),
+            ...(result.data.branchDiscoveryError !== undefined
+              ? { branchDiscoveryError: result.data.branchDiscoveryError }
+              : {}),
           });
+        } catch (err) {
+          return toolError(err);
+        }
+      },
+    );
+
+    server.tool(
+      'flux__list_repo_branches',
+      'List local and origin remote branch short names for the active repo, the configured default branch, and optionally classify one branch name (exists locally / on origin / missing). Prefer flux__get_project_info for defaultBranchShort alone; use this before batch-creating tasks on specific branches.',
+      {
+        classifyBranch: z
+          .string()
+          .optional()
+          .describe(
+            'Optional branch name to normalize and classify against local + origin remote lists',
+          ),
+      },
+      async (input) => {
+        try {
+          const active = this.resolveActive();
+          if (active.kind === 'none') {
+            return jsonToolPayload({ error: 'No project open' });
+          }
+          if (active.kind === 'local') {
+            const repos = await this.projectStore.getReposAt(active.projectDir);
+            const repo =
+              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
+            if (!repo?.rootPath) {
+              return jsonToolPayload({ error: 'No repository root configured for this project' });
+            }
+            const disc = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+            if (input.classifyBranch != null && input.classifyBranch.trim() !== '') {
+              const { normalizedShort, presence } = classifyGitBranchPresence(
+                input.classifyBranch,
+                disc.localBranches,
+                disc.remoteBranches,
+              );
+              const out: RepoBranchDiscoveryResponse = {
+                ...disc,
+                classification: {
+                  raw: input.classifyBranch,
+                  normalizedShort,
+                  presence,
+                },
+              };
+              return jsonToolPayload(out);
+            }
+            return jsonToolPayload(disc);
+          }
+          const result = await this.bridge.request<RepoBranchDiscoveryResponse>(
+            'repo.branchDiscovery',
+            active.activeKey,
+            {
+              classifyBranch: input.classifyBranch,
+            },
+          );
+          if (!result.ok) return this.bridgeError(result);
+          return jsonToolPayload(result.data);
         } catch (err) {
           return toolError(err);
         }
