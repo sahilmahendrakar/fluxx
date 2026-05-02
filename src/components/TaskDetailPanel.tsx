@@ -1,4 +1,5 @@
 import {
+  createElement,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -83,7 +84,7 @@ const MD_READ_CLASS = [
   '[&_strong]:font-semibold [&_strong]:text-zinc-100',
 ].join(' ');
 
-interface TaskDetailPanelProps {
+export interface TaskDetailPanelProps {
   task: Task | null;
   /** Full board snapshot for dependencies and session start (same `projectId`). */
   projectTasks: Task[];
@@ -119,6 +120,12 @@ interface TaskDetailPanelProps {
   onTaskPrClick?: (taskId: string) => void;
   /** True while create PR is in flight for this task. */
   prLoading?: boolean;
+  /**
+   * `board` (default): right-rail overlay with resize, embedded session mirror, backdrop.
+   * `sessionWorkspace`: full-area inline body for the task session workspace Details tab
+   * (no overlay, no mirror terminal — use the Agent tab for output).
+   */
+  layout?: 'board' | 'sessionWorkspace';
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -214,7 +221,9 @@ export default function TaskDetailPanel({
   implicitSessionAssigneeUid,
   onTaskPrClick,
   prLoading = false,
+  layout = 'board',
 }: TaskDetailPanelProps) {
+  const sessionWorkspace = layout === 'sessionWorkspace';
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
@@ -398,19 +407,21 @@ export default function TaskDetailPanel({
   }, []);
 
   useEffect(() => {
+    if (sessionWorkspace) return;
     const stored = readStoredDetailWidth();
     if (stored != null) {
       setDetailWidth(clampDetailWidth(stored, maxDetailWidthForParent()));
     }
-  }, [maxDetailWidthForParent]);
+  }, [maxDetailWidthForParent, sessionWorkspace]);
 
   useEffect(() => {
+    if (sessionWorkspace) return;
     const onResize = () => {
       setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [maxDetailWidthForParent]);
+  }, [maxDetailWidthForParent, sessionWorkspace]);
 
   const persistDetailWidth = useCallback((w: number) => {
     try {
@@ -475,6 +486,7 @@ export default function TaskDetailPanel({
   }, []);
 
   useLayoutEffect(() => {
+    if (sessionWorkspace) return;
     const el = taskFormSplitRef.current;
     if (!el) return;
     const sync = () => {
@@ -486,11 +498,12 @@ export default function TaskDetailPanel({
     ro.observe(el);
     sync();
     return () => ro.disconnect();
-  }, [task?.id]);
+  }, [task?.id, sessionWorkspace]);
 
   useLayoutEffect(() => {
+    if (sessionWorkspace) return;
     terminalRef.current?.fit();
-  }, [sessionPaneHeightPx, session?.id, task?.id]);
+  }, [sessionPaneHeightPx, session?.id, task?.id, sessionWorkspace]);
 
   const handleSessionSplitPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -620,7 +633,9 @@ export default function TaskDetailPanel({
   }, [session?.id]);
 
   const sessionId = session?.id;
-  const sessionReadyForPty = Boolean(sessionId && session?.status === 'running');
+  const sessionReadyForPty = Boolean(
+    sessionId && session?.status === 'running' && !sessionWorkspace,
+  );
   useTerminalPtyStream({
     terminalRef,
     id: sessionId ?? '',
@@ -649,7 +664,7 @@ export default function TaskDetailPanel({
   });
 
   useEffect(() => {
-    if (!task) return;
+    if (!task || sessionWorkspace) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (assigneeChangeConfirm) return;
@@ -658,7 +673,7 @@ export default function TaskDetailPanel({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [task, onClose, assigneeChangeConfirm]);
+  }, [task, onClose, assigneeChangeConfirm, sessionWorkspace]);
 
   const assigneeSessionGuardActive = useMemo(
     () =>
@@ -691,9 +706,9 @@ export default function TaskDetailPanel({
   );
 
   useLayoutEffect(() => {
-    if (task == null) return;
+    if (task == null || sessionWorkspace) return;
     setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
-  }, [task?.id, maxDetailWidthForParent]);
+  }, [task?.id, maxDetailWidthForParent, sessionWorkspace]);
 
   const handleStartSession = async () => {
     if (!task) return;
@@ -852,23 +867,9 @@ export default function TaskDetailPanel({
   const showMarkAsDone = task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
 
-  return (
+  const panelShell = (
     <>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-label="Close task details"
-        className="absolute inset-0 z-10 bg-black/30"
-        onClick={onClose}
-      />
-      <aside
-        ref={asideRef}
-        style={{ width: detailWidth }}
-        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-detail-title"
-      >
+      {!sessionWorkspace ? (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -878,9 +879,10 @@ export default function TaskDetailPanel({
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
+      ) : null}
 
-        {/* Top bar: metadata + primary CTA + close */}
-        <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
+      {/* Top bar: metadata + primary CTA + optional close (board overlay only) */}
+      <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -940,20 +942,22 @@ export default function TaskDetailPanel({
               ) : null}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-          </button>
+          {!sessionWorkspace ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+            </button>
+          ) : null}
         </header>
 
         <div ref={taskFormSplitRef} className="flex min-h-0 flex-1 flex-col">
           <div
             className="min-h-0 min-w-0 flex-1 overflow-y-auto"
-            style={{ minHeight: MIN_TASK_FORM_PANE_PX }}
+            style={sessionWorkspace ? undefined : { minHeight: MIN_TASK_FORM_PANE_PX }}
           >
             <div className="space-y-6 px-5 py-5">
               <textarea
@@ -1492,20 +1496,22 @@ export default function TaskDetailPanel({
             </div>
           </div>
 
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize between task details and session output"
-            title="Drag to resize session. Double-click to reset."
-            tabIndex={0}
-            className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
-            onPointerDown={handleSessionSplitPointerDown}
-            onDoubleClick={handleSessionSplitDoubleClick}
-            onKeyDown={onSessionSplitKeyDown}
-          />
+          {!sessionWorkspace ? (
+            <>
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize between task details and session output"
+                title="Drag to resize session. Double-click to reset."
+                tabIndex={0}
+                className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+                onPointerDown={handleSessionSplitPointerDown}
+                onDoubleClick={handleSessionSplitDoubleClick}
+                onKeyDown={onSessionSplitKeyDown}
+              />
 
-          {/* Session: secondary when idle; compact chrome when live */}
-          <div
+              {/* Session: secondary when idle; compact chrome when live */}
+              <div
             className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-[#080809]"
             style={{ height: sessionPaneHeightPx }}
           >
@@ -1626,6 +1632,8 @@ export default function TaskDetailPanel({
               )}
             </div>
           </div>
+            </>
+          ) : null}
         </div>
 
         <div className="shrink-0 border-t border-white/[0.05] px-5 py-3">
@@ -1637,7 +1645,39 @@ export default function TaskDetailPanel({
             Delete task
           </button>
         </div>
-      </aside>
+    </>
+  );
+
+  return (
+    <>
+      {!sessionWorkspace ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Close task details"
+          className="absolute inset-0 z-10 bg-black/30"
+          onClick={onClose}
+        />
+      ) : null}
+      {createElement(
+        sessionWorkspace ? 'div' : 'aside',
+        sessionWorkspace
+          ? {
+              className: 'flex h-full min-h-0 min-w-0 flex-col bg-[#0a0a0b]',
+              role: 'region' as const,
+              'aria-label': 'Task details',
+            }
+          : {
+              ref: asideRef,
+              style: { width: detailWidth } as CSSProperties,
+              className:
+                'absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]',
+              role: 'dialog' as const,
+              'aria-modal': true as const,
+              'aria-labelledby': 'task-detail-title',
+            },
+        panelShell,
+      )}
       {assigneeChangeConfirm ? (
         <ConfirmDialog
           title="Change assignee with an active session?"

@@ -2531,6 +2531,54 @@ export default function App() {
                     }
                     onTaskPrClick={(id) => void handleTaskPrClick(id)}
                     prLoading={prLoadingTaskId === item.session.taskId}
+                    taskDetailPanel={
+                      tabTask
+                        ? {
+                            projectTasks: tasks,
+                            taskSessionStartPending: sessionStartPendingTaskIds.has(
+                              tabTask.id,
+                            ),
+                            implicitSessionAssigneeUid:
+                              project.kind === 'cloud' ? uid : undefined,
+                            onSelectTask: (id) => {
+                              leaveSettingsIfActive();
+                              setSelectedTaskId(id);
+                              setActiveTabId('board');
+                            },
+                            onClose: () => {
+                              /* Session workspace Details tab is not a dismissible overlay. */
+                            },
+                            onUpdate: handleUpdateTask,
+                            onDelete: handleDeleteTask,
+                            remoteRunner:
+                              tabTask && cloudProjectId
+                                ? findRemoteRunner(
+                                    runners.byTask.get(tabTask.id),
+                                    uid,
+                                    projectMembers,
+                                  )
+                                : null,
+                            onOpenSessionTab: handleOpenSessionTab,
+                            onArchiveSession: (id) => void handleArchiveSession(id),
+                            onMarkAsDone:
+                              tabTask.status !== 'done' && !tabTaskBlocked
+                                ? () =>
+                                    void handleMarkTaskDone(item.session.taskId, {
+                                      goToBoard: true,
+                                    })
+                                : undefined,
+                            markAsDoneBlocked: tabTaskBlocked,
+                            autoStartWhenUnblockedProject,
+                            projectMembers,
+                            cloudActiveRunnerSession:
+                              project.kind === 'cloud'
+                                ? runners.isRunningFresh(tabTask.id)
+                                : false,
+                            onTaskPrClick: (id) => void handleTaskPrClick(id),
+                            prLoading: prLoadingTaskId === item.session.taskId,
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               );

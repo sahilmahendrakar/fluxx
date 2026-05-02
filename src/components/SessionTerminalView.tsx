@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { LayoutList } from 'lucide-react';
 import type { Session, Shell, Task } from '../types';
+import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
 import { GithubPrIconButton } from './GithubPrIconButton';
 import {
   getSessionAttachShared,
@@ -51,9 +53,14 @@ interface SessionTerminalViewProps {
   onTaskPrClick?: (taskId: string) => void;
   /** True while create PR is in flight for this session’s task. */
   prLoading?: boolean;
+  /**
+   * Same callbacks/data as board `TaskDetailPanel` (except `task` and `layout`, which are set here).
+   * When omitted or `task` is null, the Details pane tab is hidden.
+   */
+  taskDetailPanel?: Omit<TaskDetailPanelProps, 'task' | 'layout'>;
 }
 
-type PaneId = 'agent' | `shell:${string}`;
+type PaneId = 'details' | 'agent' | `shell:${string}`;
 
 // We stack every pane at inset-0 and flip `visibility` instead of `display`
 // so the xterm container keeps the same size across pane switches. Reflowing
@@ -263,12 +270,20 @@ export function SessionTerminalView({
   markAsDoneBlocked = false,
   onTaskPrClick,
   prLoading = false,
+  taskDetailPanel,
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
   const running = session.status === 'running';
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
+  const showDetailsTab = Boolean(task && taskDetailPanel);
+
+  useEffect(() => {
+    if (activePane === 'details' && !showDetailsTab) {
+      setActivePane('agent');
+    }
+  }, [activePane, showDetailsTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -316,6 +331,20 @@ export function SessionTerminalView({
     <div className="flex min-h-0 flex-1 flex-col bg-[#09090b]">
       <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0b] pl-1 pr-2.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 pl-0.5">
+          {showDetailsTab ? (
+            <PaneTab
+              label="Details"
+              active={activePane === 'details'}
+              onClick={() => setActivePane('details')}
+              icon={
+                <LayoutList
+                  className="h-3.5 w-3.5 shrink-0 opacity-80"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              }
+            />
+          ) : null}
           <PaneTab
             label="Agent"
             active={activePane === 'agent'}
@@ -377,6 +406,22 @@ export function SessionTerminalView({
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
+        {showDetailsTab && task && taskDetailPanel ? (
+          <div
+            aria-hidden={!visible || activePane !== 'details'}
+            className="absolute inset-0 min-h-0 overflow-hidden"
+            style={paneVisibilityStyle(visible && activePane === 'details')}
+          >
+            <TaskDetailPanel
+              {...taskDetailPanel}
+              task={task}
+              layout="sessionWorkspace"
+              onClose={() => {
+                /* No overlay — Escape and backdrop are disabled in sessionWorkspace layout. */
+              }}
+            />
+          </div>
+        ) : null}
         <AgentPane
           session={session}
           visible={visible && activePane === 'agent'}
