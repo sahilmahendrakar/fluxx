@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Task } from '../types';
+import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { validateBlockedByTaskIds } from '../taskDependencies';
 import { normalizeTaskLabels } from '../taskLabels';
 
@@ -14,6 +15,8 @@ type TaskInput = {
   labels?: string[];
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  agentModel?: string;
+  agentYolo?: boolean;
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -167,6 +170,15 @@ export class TaskStore {
       task.createSourceBranchIfMissing = true;
     } else if (input.createSourceBranchIfMissing === false) {
       task.createSourceBranchIfMissing = false;
+    }
+    if (input.agent === 'cursor') {
+      const m = (input.agentModel ?? '').trim() || DEFAULT_CURSOR_AGENT_MODEL;
+      task.agentModel = m;
+    } else if (input.agent === 'claude-code' && (input.agentModel ?? '').trim()) {
+      task.agentModel = (input.agentModel ?? '').trim();
+    }
+    if (input.agentYolo === true) {
+      task.agentYolo = true;
     }
     this.tasks.push(task);
     await this.save();

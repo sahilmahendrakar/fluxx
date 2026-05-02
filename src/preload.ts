@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type {
   ActiveProjectKey,
   Agent,
+  AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
   LocalProject,
   OpenWorkspaceTarget,
@@ -68,6 +69,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     setDefaultTaskAgent: (agent: Agent) =>
       ipcRenderer.invoke('project:setDefaultTaskAgent', agent) as Promise<
+        { ok: true } | { error: string }
+      >,
+    patchAgentSpawnDefaults: (patch: AgentSpawnDefaultsPatch) =>
+      ipcRenderer.invoke('project:patchAgentSpawnDefaults', patch) as Promise<
         { ok: true } | { error: string }
       >,
     getRepos: () =>
@@ -165,6 +170,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       labels?: string[];
       sourceBranch?: string;
       createSourceBranchIfMissing?: boolean;
+      agentModel?: string;
+      agentYolo?: boolean;
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -295,7 +302,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   planning: {
     list: () =>
       ipcRenderer.invoke('planning:list') as Promise<PlanningSession[]>,
-    start: (payload: Agent | { agent: Agent; agentModel?: string }) =>
+    start: (
+      payload: Agent | { agent: Agent; agentModel?: string; agentYolo?: boolean },
+    ) =>
       ipcRenderer.invoke('planning:start', payload) as Promise<PlanningStartResult>,
     stop: (sessionId: string) =>
       ipcRenderer.invoke('planning:stop', sessionId) as Promise<void>,

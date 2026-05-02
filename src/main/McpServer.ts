@@ -18,6 +18,7 @@ import {
   validateStoredTaskSourceBranchName,
 } from '../taskBranches';
 import { collectRepoBranchDiscovery } from './repoGit';
+import { mergedTaskCreateAgentFields } from '../projectAgentDefaults';
 import type {
   McpBridgeMember,
   McpBridgeProjectInfoResult,
@@ -254,6 +255,18 @@ export class McpServer {
           .describe(
             'When true and sourceBranch does not exist yet, Flux creates it from the project default on first session start.',
           ),
+        agentModel: z
+          .string()
+          .optional()
+          .describe(
+            'Optional model id for Cursor/Claude task sessions; project default applies when omitted',
+          ),
+        agentYolo: z
+          .boolean()
+          .optional()
+          .describe(
+            'Fewer permission prompts (Cursor --yolo, Claude --dangerously-skip-permissions); project default when omitted',
+          ),
       },
       async (input) => {
         try {
@@ -266,6 +279,16 @@ export class McpServer {
             (active.kind === 'local'
               ? active.project.defaultTaskAgent
               : this.bindingStore.getPrefs(active.activeKey.id).defaultTaskAgent);
+          const spawnDefaultsSrc =
+            active.kind === 'local'
+              ? active.project
+              : this.bindingStore.getPrefs(active.activeKey.id);
+          const modelYolo = mergedTaskCreateAgentFields(
+            spawnDefaultsSrc,
+            agent,
+            input.agentModel,
+            input.agentYolo,
+          );
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
             const repo =
@@ -288,6 +311,7 @@ export class McpServer {
               projectId: active.project.id,
               sourceBranch: planned.sourceBranch,
               createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+              ...modelYolo,
               ...(input.blockedByTaskIds?.length
                 ? { blockedByTaskIds: input.blockedByTaskIds }
                 : {}),
@@ -314,6 +338,7 @@ export class McpServer {
             input: {
               title: input.title,
               agent,
+              ...modelYolo,
               ...(input.description != null && input.description !== ''
                 ? { description: input.description }
                 : {}),

@@ -5,6 +5,17 @@ export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
 
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
+/** Per-CLI default `--model` for planning or new tasks (stored on project / binding). */
+export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'cursor', string>>;
+
+/** Partial update for {@link LocalProject} / cloud binding agent spawn defaults. */
+export type AgentSpawnDefaultsPatch = {
+  planningModels?: Partial<AgentSessionModelDefaults>;
+  planningAgentYolo?: boolean;
+  taskDefaultModels?: Partial<AgentSessionModelDefaults>;
+  defaultTaskAgentYolo?: boolean;
+};
+
 export type ActiveProjectKind = 'local' | 'cloud';
 
 /** Remembered active workspace (local folder vs cloud Firestore project). */
@@ -67,6 +78,14 @@ export interface LocalProject {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  /** Default `--model` per CLI for planning spawns (empty claude = CLI default). */
+  planningModels?: AgentSessionModelDefaults;
+  /** Planning spawn: Cursor `--yolo` / Claude `--dangerously-skip-permissions` when true. */
+  planningAgentYolo?: boolean;
+  /** Default `--model` per CLI for new tasks (when task row does not set agentModel). */
+  taskDefaultModels?: AgentSessionModelDefaults;
+  /** New tasks inherit `agentYolo` when true unless explicitly overridden. */
+  defaultTaskAgentYolo?: boolean;
   /** Auto-start a task session when status transitions into in-progress. */
   autoStartSessionOnInProgress: boolean;
   /** When on, a task in backlog (or in progress without a running session) may auto-start once its last blocker is completed. */
@@ -94,6 +113,10 @@ export interface CloudProjectLocalBinding {
   lastOpenedAt: string;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
+  planningModels?: AgentSessionModelDefaults;
+  planningAgentYolo?: boolean;
+  taskDefaultModels?: AgentSessionModelDefaults;
+  defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
@@ -111,6 +134,10 @@ export interface CloudProject {
   rootPath: string;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
+  planningModels?: AgentSessionModelDefaults;
+  planningAgentYolo?: boolean;
+  taskDefaultModels?: AgentSessionModelDefaults;
+  defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
