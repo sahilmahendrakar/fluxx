@@ -12,6 +12,7 @@ import {
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
+import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
 
@@ -338,21 +339,24 @@ export function SessionTerminalView({
             +
           </button>
         </div>
-        {showMarkAsDone ? (
-          <button
-            type="button"
-            onClick={() => onMarkAsDone?.()}
-            disabled={markDoneDisabled}
-            title={
-              markAsDoneBlocked
-                ? 'Finish blocking tasks before marking this task done'
-                : 'Move task to Done and open the board'
-            }
-            className={markDoneDisabled ? markDoneBtnDisabled : markDoneBtn}
-          >
-            Mark as done
-          </button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
+          {showMarkAsDone ? (
+            <button
+              type="button"
+              onClick={() => onMarkAsDone?.()}
+              disabled={markDoneDisabled}
+              title={
+                markAsDoneBlocked
+                  ? 'Finish blocking tasks before marking this task done'
+                  : 'Move task to Done and open the board'
+              }
+              className={markDoneDisabled ? markDoneBtnDisabled : markDoneBtn}
+            >
+              Mark as done
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="relative min-h-0 flex-1">
         <AgentPane

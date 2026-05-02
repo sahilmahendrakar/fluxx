@@ -23,6 +23,7 @@ import {
   taskInitialPrompt,
 } from './main/agentSpawn';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
+import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
@@ -768,6 +769,18 @@ app.whenReady().then(async () => {
     } catch (err) {
       console.error('[openExternalUrl]', err);
     }
+  });
+
+  ipcMain.handle('workspace:openPath', async (_e, rawPath: unknown, rawTarget: unknown) =>
+    openWorkspacePath(rawPath, rawTarget),
+  );
+  ipcMain.handle('workspace:resolveTaskWorktree', async (_e, taskId: unknown) => {
+    if (typeof taskId !== 'string' || !taskId.trim()) return null;
+    return resolveTaskWorktreePath(
+      taskId.trim(),
+      () => daemonClient.listSessions(),
+      worktreeService.getProjectDir(),
+    );
   });
 
   // ---- Email (Resend) ----

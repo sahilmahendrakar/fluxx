@@ -4,6 +4,7 @@ import type {
   Agent,
   CloudProjectLocalBinding,
   LocalProject,
+  OpenWorkspaceTarget,
   RepoConfig,
   Session,
   SessionStartResult,
@@ -50,6 +51,13 @@ declare global {
       platform: string;
       /** Opens http(s) URLs in the system default browser (not an in-app window). */
       openExternalUrl: (url: string) => Promise<void>;
+      workspace: {
+        openPath: (
+          dirPath: string,
+          target: OpenWorkspaceTarget,
+        ) => Promise<{ ok: true } | { error: string }>;
+        resolveTaskWorktree: (taskId: string) => Promise<string | null>;
+      };
       project: {
         get: () => Promise<LocalProject | null>;
         getDir: () => Promise<string | null>;

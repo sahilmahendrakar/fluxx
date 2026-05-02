@@ -174,6 +174,9 @@ export interface Session {
   stoppedAt?: string;
 }
 
+/** Where to open a task worktree folder from the main process (`workspace:openPath`). */
+export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manager';
+
 /** Planning assistant PTY session (one of many per project in the daemon). */
 export interface PlanningSession {
   id: string;

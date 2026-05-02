@@ -4,6 +4,7 @@ import type {
   Agent,
   CloudProjectLocalBinding,
   LocalProject,
+  OpenWorkspaceTarget,
   PlanningSession,
   ProjectTabState,
   RepoConfig,
@@ -44,6 +45,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   openExternalUrl: (url: string) =>
     ipcRenderer.invoke('openExternalUrl', url) as Promise<void>,
+  workspace: {
+    openPath: (dirPath: string, target: OpenWorkspaceTarget) =>
+      ipcRenderer.invoke('workspace:openPath', dirPath, target) as Promise<
+        { ok: true } | { error: string }
+      >,
+    resolveTaskWorktree: (taskId: string) =>
+      ipcRenderer.invoke('workspace:resolveTaskWorktree', taskId) as Promise<string | null>,
+  },
   project: {
     get: () => ipcRenderer.invoke('project:get') as Promise<LocalProject | null>,
     getDir: () => ipcRenderer.invoke('project:getDir') as Promise<string | null>,

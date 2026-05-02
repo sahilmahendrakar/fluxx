@@ -43,6 +43,7 @@ import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
+import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
 const MD_READ_CLASS = [
@@ -210,6 +211,8 @@ export default function TaskDetailPanel({
   const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const assigneeMenuWrapRef = useRef<HTMLDivElement>(null);
+  /** Local path for “Open in” (running session, stopped session, or leftover worktree on disk). */
+  const [resolvedWorktreePath, setResolvedWorktreePath] = useState<string | null>(null);
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(projectTasks),
@@ -228,6 +231,29 @@ export default function TaskDetailPanel({
     setDepSearch('');
     setDescriptionEditing(false);
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task) {
+      setResolvedWorktreePath(null);
+      return;
+    }
+    let cancelled = false;
+    const refreshWorktreePath = () => {
+      void window.electronAPI.workspace.resolveTaskWorktree(task.id).then((p) => {
+        if (!cancelled) setResolvedWorktreePath(p);
+      });
+    };
+    refreshWorktreePath();
+    const unsubExit = window.electronAPI.sessions.onExit((ex) => {
+      if (ex.taskId === task.id) refreshWorktreePath();
+    });
+    const unsubTasks = window.electronAPI.tasks.onChanged(refreshWorktreePath);
+    return () => {
+      cancelled = true;
+      unsubExit();
+      unsubTasks();
+    };
+  }, [task?.id, session?.id, session?.worktreePath, taskSessionStartPending]);
 
   useEffect(() => {
     if (!task) return;
@@ -726,6 +752,7 @@ export default function TaskDetailPanel({
                   Mark as done
                 </button>
               ) : null}
+              <OpenInWorkspaceButton worktreePath={resolvedWorktreePath} size="md" />
               {!sessionRunning ? (
                 <button
                   type="button"
