@@ -15,6 +15,8 @@ export type TaskPatch = Partial<
     | 'labels'
     | 'autoStartOnUnblock'
     | 'assigneeId'
+    | 'sourceBranch'
+    | 'createSourceBranchIfMissing'
   >
 > & { workspaceCleanedAt?: string | null };
 
@@ -26,6 +28,8 @@ export type TaskCreateInput = {
   blockedByTaskIds?: string[];
   labels?: string[];
   assigneeId?: string;
+  sourceBranch?: string;
+  createSourceBranchIfMissing?: boolean;
 };
 
 /**

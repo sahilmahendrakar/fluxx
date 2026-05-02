@@ -1,5 +1,8 @@
 export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'done';
 
+/** Where a normalized short branch name exists in the clone; see `classifyGitBranchPresence`. */
+export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
+
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
 export type ActiveProjectKind = 'local' | 'cloud';
@@ -22,6 +25,25 @@ export interface ProjectTabState {
   /** Selected planning session in the board sidebar strip. */
   planningSidebarActiveSessionId?: string | null;
 }
+
+/**
+ * Main → renderer: branch names for the active repo (short names; `remoteBranches`
+ * entries may be `origin/foo` — normalizers strip the prefix).
+ */
+export interface RepoBranchDiscovery {
+  defaultBranchShort: string;
+  localBranches: string[];
+  remoteBranches: string[];
+}
+
+export type RepoBranchDiscoveryResponse = RepoBranchDiscovery & {
+  /** Present when the renderer passed a branch string to classify in the same round trip. */
+  classification?: {
+    raw: string;
+    normalizedShort: string;
+    presence: GitBranchPresence;
+  };
+};
 
 /**
  * Per-repo configuration stored locally. The schema supports multiple repos
@@ -139,6 +161,18 @@ export interface Task {
   blockedByTaskIds?: string[];
   /** If true, auto-start a session for this task when the last dependency completes, even if project “when unblocked” is off. */
   autoStartOnUnblock?: boolean;
+  /**
+   * Git branch this task is logically based on (PR merge target / conceptual base).
+   * Distinct from {@link Session.branch}, which is the generated `flux/task-<id>` work branch.
+   * When omitted on legacy rows, treat as the project default (`RepoConfig.baseBranch` / detected default).
+   */
+  sourceBranch?: string;
+  /**
+   * When the requested {@link Task.sourceBranch} does not exist yet, Flux may create it
+   * from the project default branch on first session start. Persist `false` when the branch
+   * was chosen from discovery (already exists), and `true` when the user typed a new name.
+   */
+  createSourceBranchIfMissing?: boolean;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
@@ -146,6 +180,18 @@ export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
 export type SessionStartErrorCode =
   | 'AGENT_NOT_FOUND'
   | 'WORKTREE_FAILED'
+  /** Source ref missing and {@link Task.createSourceBranchIfMissing} is false (or branch exists only remotely but could not be materialized). */
+  | 'WORKTREE_SOURCE_BRANCH_MISSING'
+  /** Local and `origin/<branch>` both exist but point at different commits. */
+  | 'WORKTREE_SOURCE_BRANCH_AMBIGUOUS'
+  /** `git branch` to create the missing source branch failed. */
+  | 'WORKTREE_SOURCE_BRANCH_CREATE_FAILED'
+  /** Project default / `RepoConfig.baseBranch` could not be resolved to create a missing source branch. */
+  | 'WORKTREE_BASE_BRANCH_UNAVAILABLE'
+  /** A required `git fetch` for the project default branch failed and no local base ref was available. */
+  | 'WORKTREE_FETCH_FAILED'
+  /** Empty branch name after normalization, or repo in a state that cannot supply a base ref. */
+  | 'WORKTREE_REPO_INVALID_STATE'
   | 'TASK_BLOCKED'
   | 'INTERNAL';
 

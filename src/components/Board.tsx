@@ -17,7 +17,13 @@ import { BoardFilterBar } from './BoardFilterBar';
 interface Props {
   allTasks: Task[];
   onDragEnd: (result: DropResult) => void;
-  onCreateTask: (title: string, agent: Agent, labels?: string[], assigneeId?: string) => void;
+  onCreateTask: (
+    title: string,
+    agent: Agent,
+    labels?: string[],
+    assigneeId?: string,
+    branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+  ) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
   onDeleteTask: (id: string) => void;
@@ -30,6 +36,8 @@ interface Props {
   onTogglePlanPanel: () => void;
   /** Cloud-only: team members for the assignee picker. */
   projectMembers?: ProjectMember[];
+  /** Configured / detected default short branch name for branch chips on cards. */
+  repoDefaultBranchShort: string;
 }
 
 export default function Board({
@@ -46,6 +54,7 @@ export default function Board({
   planPanelOpen,
   onTogglePlanPanel,
   projectMembers,
+  repoDefaultBranchShort,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -170,6 +179,7 @@ export default function Board({
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
+              repoDefaultBranchShort={repoDefaultBranchShort}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
@@ -189,8 +199,8 @@ export default function Board({
           defaultAgent={defaultTaskAgent}
           projectMembers={projectMembers}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent, labels, assigneeId) => {
-            onCreateTask(title, agent, labels, assigneeId);
+          onCreate={(title, agent, labels, assigneeId, branch) => {
+            onCreateTask(title, agent, labels, assigneeId, branch);
             setModalOpen(false);
           }}
         />

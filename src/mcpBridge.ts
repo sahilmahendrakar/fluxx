@@ -10,6 +10,7 @@ export type McpBridgeOp =
   | 'tasks.update'
   | 'tasks.delete'
   | 'projectInfo'
+  | 'repo.branchDiscovery'
   | 'members.list';
 
 /** One project member row for `members.list` / `flux__list_members` (cloud). */
@@ -30,6 +31,9 @@ export interface McpBridgeTaskCreateInput {
   blockedByTaskIds?: string[];
   labels?: string[];
   assigneeId?: string;
+  /** Short branch name; defaults from project repo when omitted. */
+  sourceBranch?: string;
+  createSourceBranchIfMissing?: boolean;
 }
 
 export interface McpBridgeTaskPatch {
@@ -41,6 +45,8 @@ export interface McpBridgeTaskPatch {
   labels?: string[];
   autoStartOnUnblock?: boolean;
   assigneeId?: string | null;
+  sourceBranch?: string;
+  createSourceBranchIfMissing?: boolean;
 }
 
 export interface McpBridgeTasksCreatePayload {
@@ -94,6 +100,14 @@ export interface McpBridgeProjectInfoResult {
     done: number;
     total: number;
   };
+  /** Short default branch name for the bound git repo, when discovery succeeds. */
+  defaultBranchShort?: string;
+  /** When branch discovery failed (e.g. missing git), explains why defaultBranchShort is absent. */
+  branchDiscoveryError?: string;
+}
+
+export interface McpBridgeRepoBranchDiscoveryPayload {
+  classifyBranch?: string;
 }
 
 /**

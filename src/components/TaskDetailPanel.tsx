@@ -23,6 +23,7 @@ import {
   DEFAULT_CURSOR_AGENT_MODEL,
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
+  type RepoBranchDiscovery,
 } from '../types';
 import type { ProjectMember } from '../renderer/projects/members';
 import {
@@ -44,6 +45,14 @@ import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
+import TaskSourceBranchPicker from './TaskSourceBranchPicker';
+import {
+  buildTaskSourceBranchPersistPatch,
+  effectiveTaskSourceBranchShort,
+  gitBranchShortNameLooksValid,
+  planTaskSourceBranchFieldsForCreate,
+  taskSourceBranchPersistIsNoOp,
+} from '../taskBranches';
 
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
 const MD_READ_CLASS = [
@@ -213,6 +222,11 @@ export default function TaskDetailPanel({
   const assigneeMenuWrapRef = useRef<HTMLDivElement>(null);
   /** Local path for “Open in” (running session, stopped session, or leftover worktree on disk). */
   const [resolvedWorktreePath, setResolvedWorktreePath] = useState<string | null>(null);
+  const [branchDiscovery, setBranchDiscovery] = useState<RepoBranchDiscovery | null>(null);
+  const [branchDiscoveryLoading, setBranchDiscoveryLoading] = useState(false);
+  const [branchDiscoveryError, setBranchDiscoveryError] = useState<string | null>(null);
+  const [branchDraft, setBranchDraft] = useState('');
+  const [anySessionForTask, setAnySessionForTask] = useState(false);
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(projectTasks),
@@ -230,6 +244,57 @@ export default function TaskDetailPanel({
     setDependencyError(null);
     setDepSearch('');
     setDescriptionEditing(false);
+    setBranchDiscovery(null);
+    setBranchDiscoveryError(null);
+    setBranchDiscoveryLoading(false);
+    setBranchDraft('');
+    setAnySessionForTask(false);
+  }, [task?.id]);
+
+  useEffect(() => {
+    if (!task) return;
+    let cancelled = false;
+    setBranchDiscoveryLoading(true);
+    setBranchDiscoveryError(null);
+    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+      if (cancelled) return;
+      setBranchDiscoveryLoading(false);
+      if ('error' in r) {
+        setBranchDiscovery(null);
+        setBranchDiscoveryError(r.error);
+        return;
+      }
+      setBranchDiscovery(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id]);
+
+  useEffect(() => {
+    if (!task || !branchDiscovery) return;
+    setBranchDraft(effectiveTaskSourceBranchShort(task, branchDiscovery.defaultBranchShort));
+  }, [task?.id, task?.sourceBranch, task?.createSourceBranchIfMissing, branchDiscovery]);
+
+  useEffect(() => {
+    if (!task) {
+      setAnySessionForTask(false);
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void window.electronAPI.sessions.getAll().then((all) => {
+        if (!cancelled) setAnySessionForTask(all.some((s) => s.taskId === task.id));
+      });
+    };
+    refresh();
+    const unsubExit = window.electronAPI.sessions.onExit(refresh);
+    const unsubTasks = window.electronAPI.tasks.onChanged(refresh);
+    return () => {
+      cancelled = true;
+      unsubExit();
+      unsubTasks();
+    };
   }, [task?.id]);
 
   useEffect(() => {
@@ -624,6 +689,27 @@ export default function TaskDetailPanel({
     onDelete(task.id);
     onClose();
   };
+
+  const branchSourceLocked = useMemo(() => {
+    if (!task) return false;
+    return Boolean(
+      taskSessionStartPending ||
+        resolvedWorktreePath ||
+        anySessionForTask ||
+        session?.id,
+    );
+  }, [task?.id, taskSessionStartPending, resolvedWorktreePath, anySessionForTask, session?.id]);
+
+  const persistBranchDraft = useCallback(() => {
+    if (!task || !branchDiscovery || branchSourceLocked) return;
+    if (!gitBranchShortNameLooksValid(branchDraft)) return;
+    const planned = planTaskSourceBranchFieldsForCreate(branchDiscovery, {
+      sourceBranch: branchDraft.trim() === '' ? undefined : branchDraft,
+    });
+    if (taskSourceBranchPersistIsNoOp(task, planned, branchDiscovery)) return;
+    const patch = buildTaskSourceBranchPersistPatch(planned, branchDiscovery);
+    onUpdate(task.id, patch);
+  }, [task, branchDiscovery, branchSourceLocked, branchDraft, onUpdate]);
 
   if (!task) {
     return null;
@@ -1048,6 +1134,32 @@ export default function TaskDetailPanel({
                   </div>
                 </div>
               ) : null}
+
+              <div className="border-t border-white/[0.04] pt-4">
+                <TaskSourceBranchPicker
+                  variant="panel"
+                  idPrefix={`task-${task.id}-branch`}
+                  branchInput={branchDraft}
+                  onBranchInputChange={setBranchDraft}
+                  discovery={branchDiscovery}
+                  discoveryLoading={branchDiscoveryLoading}
+                  discoveryError={branchDiscoveryError}
+                  editable={!branchSourceLocked}
+                  onInputBlur={persistBranchDraft}
+                />
+                {branchSourceLocked ? (
+                  <p className="mt-2 text-[11px] leading-snug text-amber-200/85">
+                    This branch is fixed once there is a worktree or any agent session for the task
+                    (including after the session ends), or while a session is starting. Metadata is
+                    shared on cloud projects; git availability is always evaluated on this computer.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] text-zinc-600">
+                    Updates when you leave the branch field. If session start fails locally, check
+                    the error message and your clone.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Description: read-first, edit on demand */}

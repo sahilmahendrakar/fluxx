@@ -12,6 +12,8 @@ type TaskInput = {
   projectId: string;
   blockedByTaskIds?: string[];
   labels?: string[];
+  sourceBranch?: string;
+  createSourceBranchIfMissing?: boolean;
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -158,6 +160,14 @@ export class TaskStore {
       }
       task.blockedByTaskIds = v.normalized;
     }
+    if (input.sourceBranch != null && input.sourceBranch.trim().length > 0) {
+      task.sourceBranch = input.sourceBranch.trim();
+    }
+    if (input.createSourceBranchIfMissing === true) {
+      task.createSourceBranchIfMissing = true;
+    } else if (input.createSourceBranchIfMissing === false) {
+      task.createSourceBranchIfMissing = false;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -179,6 +189,8 @@ export class TaskStore {
         | 'blockedByTaskIds'
         | 'labels'
         | 'autoStartOnUnblock'
+        | 'sourceBranch'
+        | 'createSourceBranchIfMissing'
       >
     > & { assigneeId?: string | null },
   ): Promise<Task> {
@@ -215,6 +227,21 @@ export class TaskStore {
         delete updated.assigneeId;
       } else {
         updated.assigneeId = patchAssigneeId;
+      }
+    }
+    if (patch.sourceBranch !== undefined) {
+      const b = patch.sourceBranch.trim();
+      if (b.length === 0) {
+        delete updated.sourceBranch;
+      } else {
+        updated.sourceBranch = b;
+      }
+    }
+    if (patch.createSourceBranchIfMissing !== undefined) {
+      if (patch.createSourceBranchIfMissing) {
+        updated.createSourceBranchIfMissing = true;
+      } else {
+        delete updated.createSourceBranchIfMissing;
       }
     }
     this.tasks[index] = updated;

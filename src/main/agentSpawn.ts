@@ -104,7 +104,7 @@ export function planningSpawnSpec(
         '--mcp-config',
         mcpConfigPath,
         '--append-system-prompt',
-        'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; create and update accept optional blockedByTaskIds and optional labels for feature grouping; delete requires explicit user intent and confirm:true). Do not write application code.',
+        'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; get_project_info and list_repo_branches for repo context; create/update accept optional blockedByTaskIds, labels, sourceBranch, and createSourceBranchIfMissing; when the user names a git branch for the work, pass sourceBranch on every related task you create; use createSourceBranchIfMissing only when they want a missing branch created on first session start; delete requires explicit user intent and confirm:true). Do not write application code.',
       );
       return { command: 'claude', args };
     }

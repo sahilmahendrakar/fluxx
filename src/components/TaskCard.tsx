@@ -1,8 +1,9 @@
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
-import { Icon, Loader2 } from 'lucide-react';
+import { GitBranch, Icon, Loader2 } from 'lucide-react';
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
+import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
 import type { ProjectMember } from '../renderer/projects/members';
@@ -27,6 +28,7 @@ interface Props {
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
+  repoDefaultBranchShort: string;
 }
 
 export default function TaskCard({
@@ -41,6 +43,7 @@ export default function TaskCard({
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
+  repoDefaultBranchShort,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
@@ -50,6 +53,12 @@ export default function TaskCard({
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
+  const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
+  const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
+  const branchChipTitle =
+    task.createSourceBranchIfMissing === true
+      ? `${branchChipLabel} — Flux will create this branch when the task starts`
+      : `Source branch: ${branchChipLabel}`;
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -128,7 +137,23 @@ export default function TaskCard({
                 </button>
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <AgentBadge agent={task.agent} title={agentBadgeTitle} />
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                  <AgentBadge agent={task.agent} title={agentBadgeTitle} />
+                  {showBranchChip ? (
+                    <span
+                      title={branchChipTitle}
+                      className="inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90"
+                    >
+                      <GitBranch className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <span className="truncate font-mono">{branchChipLabel}</span>
+                      {task.createSourceBranchIfMissing === true ? (
+                        <span className="shrink-0 text-[9px] font-sans uppercase tracking-wide text-sky-300/80">
+                          new
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (
                     <button
