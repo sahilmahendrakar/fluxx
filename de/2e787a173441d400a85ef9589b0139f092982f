@@ -1,0 +1,31 @@
+src/renderer/tasks/LocalTaskProvider.ts
+  5b10a3f272c9f36f 73-74
+src/renderer/mcp/useMcpRendererBridge.ts
+  5b10a3f272c9f36f 23,163-172
+src/cloudAutoStartUnblockAssignee.test.ts
+  5b10a3f272c9f36f 1-95
+src/cloudAutoStartUnblockAssignee.ts
+  5b10a3f272c9f36f 1-41
+src/App.tsx
+  5b10a3f272c9f36f 60,1095-1103,1236-1244,1285-1293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "de2e787a173441d400a85ef9589b0139f092982f",
+  "prompts": {
+    "5b10a3f272c9f36f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd6ab2fc-7109-446d-a530-bc8410958dbf",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 178,
+      "total_deletions": 39,
+      "accepted_lines": 177,
+      "overriden_lines": 0
+    }
+  }
+}
