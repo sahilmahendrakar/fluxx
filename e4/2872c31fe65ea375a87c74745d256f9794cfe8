@@ -1,0 +1,61 @@
+src/preload.ts
+  e0c1b8a1c6105182 5,74-77,173-174,305-307
+src/components/PlanningPanel.tsx
+  e0c1b8a1c6105182 17,36-38,204,243-282,362-377,385-401,418-420,422,428,434,627-643
+src/renderer/tasks/FirestoreTaskProvider.ts
+  e0c1b8a1c6105182 108-111,163-166
+README.md
+  e0c1b8a1c6105182 86
+src/renderer/tasks/LocalTaskProvider.ts
+  e0c1b8a1c6105182 58-59
+src/components/ProjectSettingsView.tsx
+  e0c1b8a1c6105182 2-10,12,254-263,295-298,301-326,457-502,627-632,644,646-724,726,728,730-737,750-752,754-832,834,836,838-845
+src/main/ProjectStore.ts
+  e0c1b8a1c6105182 4-10,32-35,52-64,66,79-91,125-132,164-167,309-339
+src/main/agentSpawn.ts
+  e0c1b8a1c6105182 95,104-106,122-125,128
+src/mcpBridge.ts
+  e0c1b8a1c6105182 37-38
+src/planningSessionModelPrefs.ts
+  e0c1b8a1c6105182 1-2,4-5,67-100
+src/types.ts
+  e0c1b8a1c6105182 8-18,81-88,116-119,137-140
+src/projectAgentDefaults.ts
+  e0c1b8a1c6105182 1-103
+src/renderer/tasks/TaskProvider.ts
+  e0c1b8a1c6105182 33-34
+src/cloudBindingPrefs.ts
+  e0c1b8a1c6105182 3,16-19,42-49
+src/App.tsx
+  e0c1b8a1c6105182 63,1373-1375,1380,1396
+src/main.ts
+  e0c1b8a1c6105182 33,42,58-61,78,84,88-128,567-601,968-972,975-977,998-1003,1709-1713,1802-1807,1811-1812
+src/main/McpServer.ts
+  e0c1b8a1c6105182 21,258-269,282-291,314,341
+src/main/TaskStore.ts
+  e0c1b8a1c6105182 6,18-19,174-182
+src/main/LocalBindingStore.ts
+  e0c1b8a1c6105182 4,31-43,56-61,130-133,147-169,192-197
+src/env.d.ts
+  e0c1b8a1c6105182 5,74-76,140-141,210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "e42872c31fe65ea375a87c74745d256f9794cfe8",
+  "prompts": {
+    "e0c1b8a1c6105182": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bd66a403-c863-45a0-85ae-8c050b7563ad",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 1067,
+      "total_deletions": 259,
+      "accepted_lines": 888,
+      "overriden_lines": 0
+    }
+  }
+}
