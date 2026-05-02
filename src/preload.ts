@@ -7,6 +7,7 @@ import type {
   OpenWorkspaceTarget,
   PlanningSession,
   ProjectTabState,
+  RepoBranchDiscoveryResponse,
   RepoConfig,
   Session,
   SessionStartResult,
@@ -130,7 +131,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     activateCloud: (payload: { id: string; rootPath: string }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
     clearLocalBinding: (cloudProjectId: string) =>
-      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
+      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void      >,
+  },
+  repo: {
+    getBranchDiscovery: (requestedBranch?: string) =>
+      ipcRenderer.invoke('repo:getBranchDiscovery', requestedBranch) as Promise<
+        RepoBranchDiscoveryResponse | { error: string }
+      >,
   },
   auth: {
     startGoogleLogin: () =>
@@ -158,6 +165,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agent: Agent;
       blockedByTaskIds?: string[];
       labels?: string[];
+      sourceBranch?: string;
+      createSourceBranchIfMissing?: boolean;
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -175,9 +184,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'blockedByTaskIds'
           | 'labels'
           | 'autoStartOnUnblock'
+          | 'sourceBranch'
+          | 'createSourceBranchIfMissing'
         >
       > & { githubPr?: TaskGithubPr | null },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
+    assertSourceBranchEditable: (
+      taskId: string,
+      previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+      patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+    ) =>
+      ipcRenderer.invoke(
+        'tasks:assertSourceBranchEditable',
+        taskId,
+        previous,
+        patch,
+      ) as Promise<{ ok: true } | { ok: false; message: string }>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
     createPullRequest: (payload: { taskId: string; title?: string; description?: string }) =>
@@ -193,8 +215,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   sessions: {
-    start: (task: Task, projectTasks?: Task[]) =>
-      ipcRenderer.invoke('session:start', task, projectTasks) as Promise<SessionStartResult>,
+    start: (task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
+      ipcRenderer.invoke('session:start', task, projectTasks, requesterUid) as Promise<SessionStartResult>,
     archive: (sessionId: string) =>
       ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
     deleteWorkspace: (sessionId: string) =>

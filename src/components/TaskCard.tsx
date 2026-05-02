@@ -1,8 +1,9 @@
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
-import { Icon, Loader2 } from 'lucide-react';
+import { GitBranch, Icon, Loader2 } from 'lucide-react';
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
+import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
 import type { ProjectMember } from '../renderer/projects/members';
@@ -23,9 +24,13 @@ interface Props {
   onRequestCleanupTask?: (id: string) => void;
   cleanupLoading?: boolean;
   onCardClick: (id: string) => void;
+  onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
+  repoDefaultBranchShort: string;
+  /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function TaskCard({
@@ -36,9 +41,12 @@ export default function TaskCard({
   onRequestCleanupTask,
   cleanupLoading = false,
   onCardClick,
+  onLabelClick,
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
+  repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
@@ -48,6 +56,17 @@ export default function TaskCard({
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
+  const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
+  const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
+  const branchChipTitle =
+    task.createSourceBranchIfMissing === true
+      ? `${branchChipLabel} — Flux will create this branch when the task starts`
+      : `Source branch: ${branchChipLabel}`;
+  const unblockToggleLockedByOtherAssignee = Boolean(
+    cloudUnblockAutostartClientUid &&
+      task.assigneeId?.trim() &&
+      task.assigneeId !== cloudUnblockAutostartClientUid,
+  );
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -83,15 +102,32 @@ export default function TaskCard({
                   </p>
                   {task.labels && task.labels.length > 0 ? (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {task.labels.map((lb) => (
-                        <span
-                          key={lb}
-                          className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
-                          title={lb}
-                        >
-                          {lb}
-                        </span>
-                      ))}
+                      {task.labels.map((lb) =>
+                        onLabelClick ? (
+                          <button
+                            key={lb}
+                            type="button"
+                            title="Filter by this label"
+                            aria-label={`Filter board by label ${lb}`}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onLabelClick(lb);
+                            }}
+                            className="max-w-full cursor-pointer truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-left text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10 transition hover:border-violet-400/35 hover:from-violet-500/18 hover:to-violet-600/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                          >
+                            {lb}
+                          </button>
+                        ) : (
+                          <span
+                            key={lb}
+                            className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
+                            title={lb}
+                          >
+                            {lb}
+                          </span>
+                        ),
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -109,29 +145,51 @@ export default function TaskCard({
                 </button>
               </div>
               <div className="mt-3 flex items-center justify-between gap-2">
-                <AgentBadge agent={task.agent} title={agentBadgeTitle} />
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                  <AgentBadge agent={task.agent} title={agentBadgeTitle} />
+                  {showBranchChip ? (
+                    <span
+                      title={branchChipTitle}
+                      className="inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90"
+                    >
+                      <GitBranch className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <span className="truncate font-mono">{branchChipLabel}</span>
+                      {task.createSourceBranchIfMissing === true ? (
+                        <span className="shrink-0 text-[9px] font-sans uppercase tracking-wide text-sky-300/80">
+                          new
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (
                     <button
                       type="button"
+                      disabled={unblockToggleLockedByOtherAssignee}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (unblockToggleLockedByOtherAssignee) return;
                         onToggleTaskAutoStartOnUnblock(task.id, !perTaskUnblockAuto);
                       }}
                       title={
-                        perTaskUnblockAuto
-                          ? 'Per-task auto-start when unblocked is on — click to turn off'
-                          : projectUnblockAuto
-                            ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
-                            : 'Click to auto-start a session when the last dependency completes (this task)'
+                        unblockToggleLockedByOtherAssignee
+                          ? 'Only the assignee can change per-task auto-start when unblocked for this task'
+                          : perTaskUnblockAuto
+                            ? 'Per-task auto-start when unblocked is on — click to turn off'
+                            : projectUnblockAuto
+                              ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
+                              : 'Click to auto-start a session when the last dependency completes (this task)'
                       }
                       className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide transition ${
-                        perTaskUnblockAuto
-                          ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
-                          : projectUnblockAuto
-                            ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
-                            : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
+                        unblockToggleLockedByOtherAssignee
+                          ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
+                          : perTaskUnblockAuto
+                            ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
+                            : projectUnblockAuto
+                              ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
+                              : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
                       }`}
                     >
                       {perTaskUnblockAuto

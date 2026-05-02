@@ -4,16 +4,40 @@ import type { Task } from './types';
 /** Per-project and per-task toggles, plus the existing “in progress” auto-start. */
 export type UnblockAutostartPolicy = {
   autoStartSessionOnInProgress: boolean;
+  /**
+   * Project default for dependency-unblock autostart. Only applies when the task
+   * has an assignee (per-task `autoStartOnUnblock` and in-progress autostart are separate).
+   */
   autoStartWhenUnblocked: boolean;
 };
+
+/**
+ * Cloud dependency-unblock autostart: when a task has an assignee, only that
+ * member’s client should move it to in-progress or start a session.
+ *
+ * @param clientUid When `undefined`, the gate is skipped (local main process).
+ *   When `null` or a string (cloud), an assigned task requires a matching uid.
+ */
+export function cloudUnblockAutostartAssigneeGateAllows(
+  task: Task,
+  clientUid: string | null | undefined,
+): boolean {
+  if (clientUid === undefined) return true;
+  const assignee = task.assigneeId?.trim();
+  if (!assignee) return true;
+  if (clientUid == null || String(clientUid).trim() === '') return false;
+  return assignee === String(clientUid).trim();
+}
 
 export function shouldAutostartUnblockedTask(
   task: Task,
   policy: UnblockAutostartPolicy,
 ): boolean {
   if (task.status === 'done') return false;
+  const projectWhenUnblockedApplies =
+    policy.autoStartWhenUnblocked === true && Boolean(task.assigneeId?.trim());
   return (
-    policy.autoStartWhenUnblocked === true ||
+    projectWhenUnblockedApplies ||
     task.autoStartOnUnblock === true ||
     policy.autoStartSessionOnInProgress === true
   );

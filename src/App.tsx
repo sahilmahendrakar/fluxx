@@ -95,7 +95,14 @@ function isWorkspaceSessionTabId(tabId: string): boolean {
 /** Apply debounced cloud patches onto a server task for optimistic UI (`null` clears optional fields). */
 function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefined): Task {
   if (!patch) return task;
-  const { assigneeId, workspaceCleanedAt, githubPr, ...rest } = patch;
+  const {
+    assigneeId,
+    workspaceCleanedAt,
+    githubPr,
+    sourceBranch,
+    createSourceBranchIfMissing,
+    ...rest
+  } = patch;
   let next: Task = { ...task, ...rest };
   if (assigneeId !== undefined) {
     if (assigneeId === null || assigneeId === '') {
@@ -119,6 +126,22 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       delete next.githubPr;
     } else {
       next = { ...next, githubPr };
+    }
+  }
+  if (sourceBranch !== undefined) {
+    if (typeof sourceBranch === 'string' && sourceBranch.trim() === '') {
+      next = { ...next };
+      delete next.sourceBranch;
+    } else {
+      next = { ...next, sourceBranch };
+    }
+  }
+  if (createSourceBranchIfMissing !== undefined) {
+    if (createSourceBranchIfMissing) {
+      next = { ...next, createSourceBranchIfMissing: true };
+    } else {
+      next = { ...next };
+      delete next.createSourceBranchIfMissing;
     }
   }
   return next;
@@ -202,6 +225,7 @@ export default function App() {
   const cloudInlineDoneFollowUpTaskIdsRef = useRef<Set<string>>(new Set());
   const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
+  const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -231,6 +255,29 @@ export default function App() {
 
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
+
+  useEffect(() => {
+    if (!project) {
+      setRepoDefaultBranchShort('main');
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+      if (cancelled) return;
+      if ('error' in r) {
+        const fallback =
+          project.kind === 'local' && project.repos[0]?.baseBranch?.trim()
+            ? project.repos[0].baseBranch.trim()
+            : 'main';
+        setRepoDefaultBranchShort(fallback);
+        return;
+      }
+      setRepoDefaultBranchShort(r.defaultBranchShort);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.rootPath, project?.kind]);
   const membersState = useMembers(cloudProjectId);
   useAgentHeartbeat({
     projectId: cloudProjectId,
@@ -429,7 +476,9 @@ export default function App() {
           source: 'cloud:tasks',
           logError: (msg, data) => console.error(msg, data),
           getCurrentList: () => tasksRef.current,
-          startSession: (task, all) => window.electronAPI.sessions.start(task, all),
+          cloudUnblockAutostartClientUid: uidRef.current ?? null,
+          startSession: (task, all) =>
+            window.electronAPI.sessions.start(task, all, uidRef.current ?? undefined),
           moveBacklogToInProgress: async (id) => {
             const task = tasksRef.current.find((x) => x.id === id);
             const patch: TaskPatch = { status: 'in-progress' };
@@ -437,7 +486,11 @@ export default function App() {
             const updated = await provider.update(id, patch);
             if (inProg) {
               const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
-              const r = await window.electronAPI.sessions.start(updated, all);
+              const r = await window.electronAPI.sessions.start(
+                updated,
+                all,
+                uidRef.current ?? undefined,
+              );
               if (r && typeof r === 'object' && 'error' in r) {
                 console.error('[task:unblock-autostart] session start failed', {
                   taskId: id,
@@ -452,7 +505,11 @@ export default function App() {
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
             const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
-            const r = await window.electronAPI.sessions.start(updated, all);
+            const r = await window.electronAPI.sessions.start(
+              updated,
+              all,
+              uidRef.current ?? undefined,
+            );
             if (r && typeof r === 'object' && 'error' in r) {
               console.error('[task:unblock-autostart] session start failed', {
                 taskId: id,
@@ -853,6 +910,16 @@ export default function App() {
           patchToApply = { ...patchToApply, assigneeId: uidRef.current };
         }
       }
+      if (
+        project?.kind === 'cloud' &&
+        uidRef.current &&
+        patchToApply.autoStartOnUnblock === true &&
+        !preFlushTask.assigneeId?.trim()
+      ) {
+        if (patchToApply.assigneeId === undefined) {
+          patchToApply = { ...patchToApply, assigneeId: uidRef.current };
+        }
+      }
       const needsDoneLock =
         project?.kind === 'cloud' &&
         preFlushTask.status !== 'done' &&
@@ -971,6 +1038,24 @@ export default function App() {
               delete next.autoStartOnUnblock;
             }
           }
+          if (patch.sourceBranch !== undefined) {
+            if (typeof patch.sourceBranch === 'string' && patch.sourceBranch.trim() === '') {
+              next = { ...next };
+              delete next.sourceBranch;
+            }
+          }
+          if (patch.createSourceBranchIfMissing !== undefined && !patch.createSourceBranchIfMissing) {
+            next = { ...next };
+            delete next.createSourceBranchIfMissing;
+          }
+          if (
+            project?.kind === 'cloud' &&
+            uid &&
+            patch.autoStartOnUnblock === true &&
+            !t.assigneeId?.trim()
+          ) {
+            next = { ...next, assigneeId: uid };
+          }
           return next;
         }),
       );
@@ -998,6 +1083,12 @@ export default function App() {
       if (patch.assigneeId !== undefined) {
         persistable.assigneeId = patch.assigneeId;
       }
+      if (patch.sourceBranch !== undefined) {
+        persistable.sourceBranch = patch.sourceBranch;
+      }
+      if (patch.createSourceBranchIfMissing !== undefined) {
+        persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
+      }
       if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
@@ -1005,13 +1096,22 @@ export default function App() {
       const preFlushTask =
         existing?.preFlushTask ?? tasksRef.current.find((t) => t.id === id);
       if (!preFlushTask) return;
+      if (
+        project?.kind === 'cloud' &&
+        uid &&
+        patch.autoStartOnUnblock === true &&
+        !preFlushTask.assigneeId?.trim() &&
+        persistable.assigneeId === undefined
+      ) {
+        persistable.assigneeId = uid;
+      }
       const merged: TaskPatch = { ...existing?.patch, ...persistable };
       const timer = setTimeout(() => {
         void flushUpdate(id);
       }, UPDATE_DEBOUNCE_MS);
       pendingRef.current.set(id, { patch: merged, timer, preFlushTask });
     },
-    [flushUpdate],
+    [flushUpdate, project?.kind, uid],
   );
 
   const handleDragEnd = useCallback(
@@ -1269,7 +1369,13 @@ export default function App() {
   );
 
   const handleCreateTask = useCallback(
-    async (title: string, agent: Agent, labelInput?: string[], assigneeId?: string) => {
+    async (
+      title: string,
+      agent: Agent,
+      labelInput?: string[],
+      assigneeId?: string,
+      branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+    ) => {
       if (!provider) return;
       try {
         // Append to the bottom of the backlog column.
@@ -1287,6 +1393,10 @@ export default function App() {
           orderKey,
           ...(labels.length > 0 ? { labels } : {}),
           ...(assigneeId ? { assigneeId } : {}),
+          ...(branch?.sourceBranch !== undefined ? { sourceBranch: branch.sourceBranch } : {}),
+          ...(branch?.createSourceBranchIfMissing !== undefined
+            ? { createSourceBranchIfMissing: branch.createSourceBranchIfMissing }
+            : {}),
         });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
@@ -1954,7 +2064,7 @@ export default function App() {
                 <div
                   key={item.session.id}
                   aria-hidden={!isActive || settingsRouteActive}
-                  className="absolute inset-0 flex min-h-0 flex-col"
+                  className="absolute inset-0 flex min-h-0 flex-col bg-[#09090b]"
                   style={{
                     visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
                     pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',
@@ -2013,8 +2123,10 @@ export default function App() {
                       style={{
                         flex: isFullscreenPlanTab ? '0 0 0%' : '1 1 0%',
                         minWidth: isFullscreenPlanTab ? 0 : undefined,
-                        visibility: isFullscreenPlanTab ? 'hidden' : 'visible',
-                        pointerEvents: isFullscreenPlanTab ? 'none' : 'auto',
+                        visibility:
+                          isBoardOrPlanTab && !isFullscreenPlanTab ? 'visible' : 'hidden',
+                        pointerEvents:
+                          isBoardOrPlanTab && !isFullscreenPlanTab ? 'auto' : 'none',
                       }}
                     >
                       <Board
@@ -2037,6 +2149,10 @@ export default function App() {
                           setPlanPanelOpen((v) => !v);
                         }}
                         projectMembers={projectMembers}
+                        repoDefaultBranchShort={repoDefaultBranchShort}
+                        cloudUnblockAutostartClientUid={
+                          project.kind === 'cloud' && uid ? uid : undefined
+                        }
                       />
                       <TaskDetailPanel
                         task={selectedTask}

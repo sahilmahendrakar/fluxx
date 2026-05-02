@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 import { AGENTS, type Agent, type CloudProject, type LocalProject, type RepoConfig } from '../types';
 import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
 import { TeamView } from './TeamView';
@@ -16,6 +16,119 @@ interface Props {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Category = 'project' | 'team';
+
+function SettingsSwitch({
+  checked,
+  onCheckedChange,
+  disabled,
+  ariaLabelledBy,
+  ariaBusy,
+}: {
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  disabled?: boolean;
+  /** Prefer wiring the row title via `id` + this prop for a concise switch name in assistive tech. */
+  ariaLabelledBy?: string;
+  /** True while loading prefs or persisting so assistive tech can announce activity. */
+  ariaBusy?: boolean;
+}) {
+  const busy = !!disabled;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={ariaLabelledBy}
+      aria-busy={ariaBusy || undefined}
+      disabled={busy}
+      onClick={() => {
+        if (busy) return;
+        onCheckedChange(!checked);
+      }}
+      className={[
+        'relative inline-flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.18] focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]',
+        checked ? 'justify-end bg-emerald-600' : 'justify-start bg-zinc-700',
+        busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+      ].join(' ')}
+    >
+      <span className="pointer-events-none block h-5 w-5 rounded-full bg-zinc-100 shadow-sm" />
+    </button>
+  );
+}
+
+function AutomationSettingRow({
+  title,
+  description,
+  checked,
+  onCheckedChange,
+  switchDisabled,
+  loading,
+  saveState,
+  error,
+}: {
+  title: string;
+  description: ReactNode;
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  switchDisabled: boolean;
+  /** While the initial preference value is loading from the main process. */
+  loading: boolean;
+  saveState: SaveState;
+  error: string | null;
+}) {
+  const titleId = useId();
+  const detailsId = useId();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  return (
+    <div className="py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h3 id={titleId} className="text-[13px] font-medium text-zinc-200">
+            {title}
+          </h3>
+          <button
+            type="button"
+            className="mt-1.5 text-left text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+            aria-expanded={detailsOpen}
+            aria-controls={detailsId}
+            onClick={() => setDetailsOpen((o) => !o)}
+          >
+            {detailsOpen ? 'Hide' : 'More info'}
+          </button>
+          <div
+            id={detailsId}
+            role="region"
+            aria-labelledby={titleId}
+            hidden={!detailsOpen}
+            className="mt-2 text-[12px] leading-snug text-zinc-500"
+          >
+            {description}
+          </div>
+        </div>
+        <SettingsSwitch
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          disabled={switchDisabled}
+          ariaLabelledBy={titleId}
+          ariaBusy={loading || saveState === 'saving'}
+        />
+      </div>
+      <div className="mt-2 min-h-4 text-[11px]">
+        {loading ? (
+          <span className="text-zinc-600">Loading…</span>
+        ) : saveState === 'saving' ? (
+          <span className="text-zinc-500">Saving…</span>
+        ) : saveState === 'saved' ? (
+          <span className="text-emerald-400">Saved</span>
+        ) : error ? (
+          <span className="text-red-400">{error}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 export function ProjectSettingsView({
   project,
@@ -338,108 +451,78 @@ function ProjectConfigPane({
           Configure how new task workspaces are created for {project.name}.
         </p>
 
-        <section className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[13px] font-medium text-zinc-200">
-                Auto-start sessions when tasks enter In progress
-              </h2>
-              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
-                Applies to status transitions from board drag, task detail status updates,
-                and MCP <code className="text-zinc-400">flux__update_task</code>.
-                <code className="ml-1 text-zinc-400">flux__start_task</code> always starts
-                a session regardless of this setting.
-              </p>
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
-              <input
-                type="checkbox"
-                checked={autoStartEnabled}
-                disabled={autoStartLoading || autoStartSaveState === 'saving'}
-                onChange={(e) => void handleAutoStartChange(e.target.checked)}
-                className="h-4 w-4 rounded border-white/[0.2] bg-[#09090b]"
-              />
-              Enabled
-            </label>
+        <section
+          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="project-settings-automations-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="project-settings-automations-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Automations
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              Choose when sessions start automatically and when finished workspaces are cleaned up.
+            </p>
           </div>
-          <div className="mt-2 min-h-4 text-[11px]">
-            {autoStartSaveState === 'saving' ? (
-              <span className="text-zinc-500">Saving…</span>
-            ) : autoStartSaveState === 'saved' ? (
-              <span className="text-emerald-400">Saved</span>
-            ) : autoStartError ? (
-              <span className="text-red-400">{autoStartError}</span>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[13px] font-medium text-zinc-200">
-                Auto-start when dependencies unblock
-              </h2>
-              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
-                When a task is waiting on other tasks, start a session automatically after the last
-                blocking task is completed. You can also opt in per task from the card or task detail.
-                Uses the same session start path as “In progress” (worktree, agent, model). Pair with
-                the setting above, or use this alone for dependency-driven runs.
-              </p>
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
-              <input
-                type="checkbox"
-                checked={whenUnblockedEnabled}
-                disabled={whenUnblockedLoading || whenUnblockedSaveState === 'saving'}
-                onChange={(e) => void handleWhenUnblockedChange(e.target.checked)}
-                className="h-4 w-4 rounded border-white/[0.2] bg-[#09090b]"
-              />
-              Enabled
-            </label>
-          </div>
-          <div className="mt-2 min-h-4 text-[11px]">
-            {whenUnblockedSaveState === 'saving' ? (
-              <span className="text-zinc-500">Saving…</span>
-            ) : whenUnblockedSaveState === 'saved' ? (
-              <span className="text-emerald-400">Saved</span>
-            ) : whenUnblockedError ? (
-              <span className="text-red-400">{whenUnblockedError}</span>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[13px] font-medium text-zinc-200">
-                Clean up workspace when moved to Done
-              </h2>
-              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
-                After a task reaches Done, automatically run the same cleanup as the broom on the
-                card: stop agent sessions and remove the task git worktree on this machine. The
-                task stays in Done with the broom marked complete. Applies to drags, detail status
-                changes, and MCP updates. For cloud projects this preference is stored per machine.
-              </p>
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
-              <input
-                type="checkbox"
-                checked={autoCleanupOnDoneEnabled}
-                disabled={autoCleanupOnDoneLoading || autoCleanupOnDoneSaveState === 'saving'}
-                onChange={(e) => void handleAutoCleanupOnDoneChange(e.target.checked)}
-                className="h-4 w-4 rounded border-white/[0.2] bg-[#09090b]"
-              />
-              Enabled
-            </label>
-          </div>
-          <div className="mt-2 min-h-4 text-[11px]">
-            {autoCleanupOnDoneSaveState === 'saving' ? (
-              <span className="text-zinc-500">Saving…</span>
-            ) : autoCleanupOnDoneSaveState === 'saved' ? (
-              <span className="text-emerald-400">Saved</span>
-            ) : autoCleanupOnDoneError ? (
-              <span className="text-red-400">{autoCleanupOnDoneError}</span>
-            ) : null}
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key={`${project.id}-auto-start-in-progress`}
+              title="Auto-start sessions when tasks enter In progress"
+              description={
+                <>
+                  Applies to status transitions from board drag, task detail status updates, and MCP{' '}
+                  <code className="text-zinc-400">flux__update_task</code>.{' '}
+                  <code className="text-zinc-400">flux__start_task</code> always starts a session
+                  regardless of this setting.
+                </>
+              }
+              checked={autoStartEnabled}
+              onCheckedChange={(next) => void handleAutoStartChange(next)}
+              switchDisabled={autoStartLoading || autoStartSaveState === 'saving'}
+              loading={autoStartLoading}
+              saveState={autoStartSaveState}
+              error={autoStartError}
+            />
+            <AutomationSettingRow
+              key={`${project.id}-auto-start-when-unblocked`}
+              title="Auto-start when dependencies unblock"
+              description={
+                <>
+                  When a task is waiting on other tasks, start a session automatically after the last
+                  blocking task is completed. You can also opt in per task from the card or task detail.
+                  Uses the same session start path as “In progress” (worktree, agent, model). Pair with
+                  the setting above, or use this alone for dependency-driven runs.
+                </>
+              }
+              checked={whenUnblockedEnabled}
+              onCheckedChange={(next) => void handleWhenUnblockedChange(next)}
+              switchDisabled={whenUnblockedLoading || whenUnblockedSaveState === 'saving'}
+              loading={whenUnblockedLoading}
+              saveState={whenUnblockedSaveState}
+              error={whenUnblockedError}
+            />
+            <AutomationSettingRow
+              key={`${project.id}-auto-cleanup-on-done`}
+              title="Clean up workspace when moved to Done"
+              description={
+                <>
+                  After a task reaches Done, automatically run the same cleanup as the broom on the
+                  card: stop agent sessions and remove the task git worktree on this machine. The task
+                  stays in Done with the broom marked complete. Applies to drags, detail status changes,
+                  and MCP updates. For cloud projects this preference is stored per machine.
+                </>
+              }
+              checked={autoCleanupOnDoneEnabled}
+              onCheckedChange={(next) => void handleAutoCleanupOnDoneChange(next)}
+              switchDisabled={
+                autoCleanupOnDoneLoading || autoCleanupOnDoneSaveState === 'saving'
+              }
+              loading={autoCleanupOnDoneLoading}
+              saveState={autoCleanupOnDoneSaveState}
+              error={autoCleanupOnDoneError}
+            />
           </div>
         </section>
 

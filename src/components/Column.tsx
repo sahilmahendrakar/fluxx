@@ -14,10 +14,13 @@ interface Props {
   onRequestCleanupTask?: (id: string) => void;
   cleanupLoadingTaskId?: string | null;
   onCardClick: (id: string) => void;
+  onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   emptyState?: ReactNode;
   membersMap?: Map<string, ProjectMember>;
+  repoDefaultBranchShort: string;
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function Column({
@@ -30,10 +33,13 @@ export default function Column({
   onRequestCleanupTask,
   cleanupLoadingTaskId,
   onCardClick,
+  onLabelClick,
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   emptyState,
   membersMap,
+  repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isDone = id === 'done';
@@ -94,9 +100,12 @@ export default function Column({
                 onRequestCleanupTask={onRequestCleanupTask}
                 cleanupLoading={cleanupLoadingTaskId === task.id}
                 onCardClick={onCardClick}
+                onLabelClick={onLabelClick}
                 autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                 onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
                 assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
+                repoDefaultBranchShort={repoDefaultBranchShort}
+                cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               />
             ))}
             {provided.placeholder}
