@@ -23,6 +23,13 @@ export interface ProjectMember {
   photoURL?: string;
 }
 
+/** Display string for roster rows and assignee pickers (matches Task detail panel). */
+export function projectMemberDisplayLabel(
+  m: Pick<ProjectMember, 'displayName' | 'email' | 'uid'>,
+): string {
+  return m.displayName || m.email || m.uid;
+}
+
 export function subscribeToProjectMembers(
   projectId: string,
   cb: (members: ProjectMember[]) => void,

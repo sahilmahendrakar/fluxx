@@ -1,3 +1,5 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
 import {
@@ -7,14 +9,188 @@ import {
   GitPullRequestCreate,
   Icon,
   Loader2,
+  UserCircle2,
 } from 'lucide-react';
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { modelSummaryForTask } from '../agentModelUi';
 import AgentBadge from './AgentBadge';
-import type { ProjectMember } from '../renderer/projects/members';
+import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
+
+const ASSIGNEE_MENU_MAX_H_PX = 224;
+
+function TaskCardAssigneeFooter({
+  taskId,
+  assigneeId,
+  assigneeMember,
+  cloudProjectMembers,
+  onAssigneeChange,
+}: {
+  taskId: string;
+  assigneeId: string | null | undefined;
+  assigneeMember?: ProjectMember;
+  /** Set for cloud projects (may be empty while members load). */
+  cloudProjectMembers?: ProjectMember[];
+  onAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 220 });
+
+  const hasAssigneeUid = Boolean(assigneeId?.trim());
+  const isCloudAssigneeBoard =
+    cloudProjectMembers !== undefined && typeof onAssigneeChange === 'function';
+
+  useLayoutEffect(() => {
+    if (!menuOpen || !triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const width = Math.max(220, r.width);
+    let left = r.right - width;
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+    let top = r.bottom + 4;
+    if (top + ASSIGNEE_MENU_MAX_H_PX > window.innerHeight - 8) {
+      top = r.top - 4 - ASSIGNEE_MENU_MAX_H_PX;
+    }
+    if (top < 8) top = 8;
+    setMenuPos({ top, left, width });
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onScroll = () => setMenuOpen(false);
+    window.addEventListener('scroll', onScroll, true);
+    return () => window.removeEventListener('scroll', onScroll, true);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen || !menuRef.current) return;
+    const first = menuRef.current.querySelector<HTMLButtonElement>('button[role="option"]');
+    requestAnimationFrame(() => first?.focus());
+  }, [menuOpen]);
+
+  const listboxId = `task-card-${taskId}-assignee-listbox`;
+  const triggerId = `task-card-${taskId}-assignee-trigger`;
+
+  if (!isCloudAssigneeBoard) {
+    return null;
+  }
+
+  if (assigneeMember) {
+    return <ProjectMemberAvatar member={assigneeMember} size="sm" />;
+  }
+
+  if (hasAssigneeUid) {
+    return (
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-500/[0.15] text-[10px] font-medium text-zinc-400 ring-1 ring-white/10"
+        title="Unknown member"
+        aria-label="Assignee is an unknown member"
+      >
+        ?
+      </span>
+    );
+  }
+
+  const assignMember = onAssigneeChange;
+  const menu = menuOpen
+    ? createPortal(
+        <div
+          ref={menuRef}
+          id={listboxId}
+          role="listbox"
+          aria-labelledby={triggerId}
+          className="fixed z-[300] max-h-56 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111113] py-1 shadow-xl shadow-black/50"
+          style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            maxHeight: ASSIGNEE_MENU_MAX_H_PX,
+          }}
+        >
+          {cloudProjectMembers.length === 0 ? (
+            <p className="px-2.5 py-2 text-left text-[12px] text-zinc-500">No team members yet.</p>
+          ) : (
+            cloudProjectMembers.map((m) => {
+              const selected = assigneeId === m.uid;
+              return (
+                <button
+                  key={m.uid}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
+                    selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
+                  }`}
+                  onClick={() => {
+                    assignMember(taskId, m.uid);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <ProjectMemberAvatar member={m} size="sm" />
+                  <span className="min-w-0 flex-1 truncate">{projectMemberDisplayLabel(m)}</span>
+                </button>
+              );
+            })
+          )}
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <>
+      <div ref={wrapRef} className="relative shrink-0">
+        <button
+          ref={triggerRef}
+          type="button"
+          id={triggerId}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((o) => !o);
+          }}
+          aria-haspopup="listbox"
+          aria-expanded={menuOpen}
+          aria-controls={listboxId}
+          aria-label={
+            menuOpen
+              ? 'Member menu open — choose who to assign'
+              : 'Task unassigned — open menu to assign a project member'
+          }
+          title="Assign to a project member"
+          className="-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-800/90 text-zinc-500 ring-1 ring-white/10 transition hover:bg-zinc-700/90 hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45"
+        >
+          <UserCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+        </button>
+      </div>
+      {menu}
+    </>
+  );
+}
 
 const STATUS_DOT: Record<Task['status'], string> = {
   'in-progress': 'bg-emerald-400/80',
@@ -35,6 +211,9 @@ interface Props {
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
+  /** Cloud: roster for quick assign from the card. Omit on local projects (no assignee slot on cards). */
+  cloudProjectMembers?: ProjectMember[];
+  onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
   repoDefaultBranchShort: string;
@@ -56,6 +235,8 @@ export default function TaskCard({
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
+  cloudProjectMembers,
+  onTaskAssigneeChange,
   onTaskPrClick,
   prLoading = false,
   repoDefaultBranchShort,
@@ -335,9 +516,13 @@ export default function TaskCard({
                       </button>
                     )
                   ) : null}
-                  {assigneeMember ? (
-                    <ProjectMemberAvatar member={assigneeMember} size="sm" />
-                  ) : null}
+                  <TaskCardAssigneeFooter
+                    taskId={task.id}
+                    assigneeId={task.assigneeId}
+                    assigneeMember={assigneeMember}
+                    cloudProjectMembers={cloudProjectMembers}
+                    onAssigneeChange={onTaskAssigneeChange}
+                  />
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`}
                     aria-hidden

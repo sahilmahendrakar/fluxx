@@ -25,7 +25,10 @@ import {
   resolvedCursorAgentModel,
   type RepoBranchDiscovery,
 } from '../types';
-import type { ProjectMember } from '../renderer/projects/members';
+import {
+  type ProjectMember,
+  projectMemberDisplayLabel,
+} from '../renderer/projects/members';
 import {
   getBlockingTasks,
   isTaskBlocked,
@@ -157,10 +160,6 @@ function formatCreatedLabel(iso: string): string {
     day: 'numeric',
     year: 'numeric',
   });
-}
-
-function projectMemberLabel(m: ProjectMember): string {
-  return m.displayName || m.email || m.uid;
 }
 
 function useAutosizeTextArea(value: string, minHeightPx = 0) {
@@ -1067,7 +1066,7 @@ export default function TaskDetailPanel({
                         <>
                           <ProjectMemberAvatar member={selectedAssigneeMember} size="sm" />
                           <span className="min-w-0 flex-1 truncate">
-                            {projectMemberLabel(selectedAssigneeMember)}
+                            {projectMemberDisplayLabel(selectedAssigneeMember)}
                           </span>
                         </>
                       ) : task.assigneeId ? (
@@ -1134,7 +1133,7 @@ export default function TaskDetailPanel({
                               }}
                             >
                               <ProjectMemberAvatar member={m} size="sm" />
-                              <span className="min-w-0 flex-1 truncate">{projectMemberLabel(m)}</span>
+                              <span className="min-w-0 flex-1 truncate">{projectMemberDisplayLabel(m)}</span>
                             </button>
                           );
                         })}

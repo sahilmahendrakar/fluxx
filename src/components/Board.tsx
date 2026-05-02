@@ -36,6 +36,8 @@ interface Props {
   onTogglePlanPanel: () => void;
   /** Cloud-only: team members for the assignee picker. */
   projectMembers?: ProjectMember[];
+  /** Cloud boards: persist `assigneeId` from the card footer quick-assign control. */
+  onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
   /** Configured / detected default short branch name for branch chips on cards. */
@@ -62,6 +64,7 @@ export default function Board({
   planPanelOpen,
   onTogglePlanPanel,
   projectMembers,
+  onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
   repoDefaultBranchShort,
@@ -192,6 +195,8 @@ export default function Board({
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
+              projectMembers={projectMembers}
+              onTaskAssigneeChange={onTaskAssigneeChange}
               onTaskPrClick={onTaskPrClick}
               prLoadingTaskId={prLoadingTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
