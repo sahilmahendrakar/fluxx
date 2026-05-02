@@ -372,6 +372,8 @@ export class McpServer {
           .nullable()
           .optional()
           .describe('Email to assign, or null to unassign (cloud only)'),
+        sourceBranch: z.string().optional(),
+        createSourceBranchIfMissing: z.boolean().optional(),
         githubPr: z
           .object({
             url: z.string(),
@@ -386,8 +388,6 @@ export class McpServer {
           .nullable()
           .optional()
           .describe('GitHub PR metadata to set or null to clear'),
-        sourceBranch: z.string().optional(),
-        createSourceBranchIfMissing: z.boolean().optional(),
       },
       async (input) => {
         try {

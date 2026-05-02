@@ -28,6 +28,7 @@ import {
   createPullRequestForTaskWorktree,
   ghPrViewJson,
 } from './main/githubTaskPr';
+import { githubPrRefreshViewEqual } from './githubPrMetadata';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
@@ -1117,13 +1118,7 @@ app.whenReady().then(async () => {
         () => daemonClient.listSessions(),
         projectDir,
       );
-      if (!worktreePath) {
-        return {
-          ok: false,
-          code: 'NO_WORKTREE',
-          message: 'No task worktree found (start a session or create a worktree first)',
-        };
-      }
+      const ghCwd = worktreePath || rootPath || projectDir;
       const project = projectStore.get();
       let prUrl = '';
       const fromPayload =
@@ -1142,13 +1137,16 @@ app.whenReady().then(async () => {
           message: 'No pull request URL on this task (pass githubPr.url for cloud tasks)',
         };
       }
-      const viewed = await ghPrViewJson(worktreePath, prUrl);
-      if (!viewed.ok) return viewed;
+      const viewed = await ghPrViewJson(ghCwd, prUrl);
+      if (!viewed.ok) {
+        console.warn('[tasks:refreshPullRequest] gh view failed', taskId, viewed.message);
+        return viewed;
+      }
 
       let persisted = false;
       if (project) {
         const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
-        if (row) {
+        if (row && !githubPrRefreshViewEqual(row.githubPr, viewed.githubPr)) {
           await taskStore.update(taskId, { githubPr: viewed.githubPr });
           persisted = true;
           broadcastLocalTasksChanged();

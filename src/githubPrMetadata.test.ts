@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  githubPrRefreshViewEqual,
   parseGithubPrField,
   parseGhPrViewJsonStdout,
   parseGhPrViewRecord,
@@ -97,6 +98,69 @@ describe('parseGhPrViewRecord / parseGhPrViewJsonStdout', () => {
   it('returns null for invalid JSON', () => {
     expect(parseGhPrViewJsonStdout('not json')).toBeNull();
     expect(parseGhPrViewJsonStdout('[]')).toBeNull();
+  });
+});
+
+describe('githubPrRefreshViewEqual', () => {
+  it('returns false when previous is missing', () => {
+    expect(
+      githubPrRefreshViewEqual(undefined, {
+        url: 'https://github.com/o/r/pull/1',
+        state: 'open',
+      }),
+    ).toBe(false);
+  });
+
+  it('treats open PR as unchanged when only gh timestamps differ', () => {
+    const prev = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open' as const,
+      number: 1,
+      headBranch: 'f',
+      baseBranch: 'main',
+      updatedAt: '2024-01-01T00:00:00Z',
+    };
+    const next = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open' as const,
+      number: 1,
+      headBranch: 'f',
+      baseBranch: 'main',
+      updatedAt: '2024-01-02T00:00:00Z',
+      createdAt: '2023-12-01T00:00:00Z',
+    };
+    expect(githubPrRefreshViewEqual(prev, next)).toBe(true);
+  });
+
+  it('detects merged transition', () => {
+    const prev = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open' as const,
+      number: 1,
+    };
+    const next = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'merged' as const,
+      number: 1,
+      mergedAt: '2024-02-01T10:00:00Z',
+    };
+    expect(githubPrRefreshViewEqual(prev, next)).toBe(false);
+  });
+
+  it('detects branch metadata changes', () => {
+    const prev = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open' as const,
+      headBranch: 'a',
+      baseBranch: 'main',
+    };
+    const next = {
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open' as const,
+      headBranch: 'b',
+      baseBranch: 'main',
+    };
+    expect(githubPrRefreshViewEqual(prev, next)).toBe(false);
   });
 });
 

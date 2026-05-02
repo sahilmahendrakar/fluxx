@@ -82,6 +82,29 @@ export function parseGhPrViewRecord(record: GhPrViewJson | null | undefined): Ta
   return out;
 }
 
+function trimStr(s: string | undefined): string {
+  return typeof s === 'string' ? s.trim() : '';
+}
+
+/**
+ * True when persisted `githubPr` already matches what we would store after a
+ * refresh for UI / merge detection. Ignores `createdAt` / `updatedAt` so GitHub
+ * metadata churn does not cause writes.
+ */
+export function githubPrRefreshViewEqual(
+  previous: TaskGithubPr | undefined,
+  next: TaskGithubPr,
+): boolean {
+  if (!previous) return false;
+  if (trimStr(previous.url) !== trimStr(next.url)) return false;
+  if (previous.state !== next.state) return false;
+  if (trimStr(previous.mergedAt) !== trimStr(next.mergedAt)) return false;
+  if (previous.number !== next.number) return false;
+  if (trimStr(previous.headBranch) !== trimStr(next.headBranch)) return false;
+  if (trimStr(previous.baseBranch) !== trimStr(next.baseBranch)) return false;
+  return true;
+}
+
 export function parseGhPrViewJsonStdout(jsonStr: string): TaskGithubPr | null {
   const trimmed = jsonStr.trim();
   if (!trimmed) return null;
