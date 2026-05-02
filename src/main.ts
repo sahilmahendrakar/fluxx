@@ -415,6 +415,33 @@ app.whenReady().then(async () => {
   daemonClient.onSilenceStatesSnapshot = reconcileSilenceStatesFromDaemon;
   daemonClient.startSilencePolling();
 
+  // Session-exit → needs-input transition for local projects.
+  // When an agent exits cleanly (code 0 → status 'stopped'), move the task
+  // to needs-input so the user knows it finished or is waiting for review.
+  daemonClient.onSessionExit = (session) => {
+    const taskId = sessionTaskMap.get(session.id);
+    if (!taskId) return;
+
+    const project = projectStore.get();
+    // Cloud projects handled in renderer.
+    if (!project) return;
+
+    if (session.status === 'stopped') {
+      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+      if (task && task.status === 'in-progress') {
+        console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', { taskId });
+        void taskStore.update(taskId, { status: 'needs-input' }).then(() => {
+          broadcastLocalTasksChanged();
+        });
+      }
+    } else if (session.status === 'error') {
+      console.warn('[task:status] agent exited with error, not transitioning task', {
+        taskId,
+        sessionId: session.id,
+      });
+    }
+  };
+
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
     userData,
@@ -508,23 +535,31 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Catchup: for sessions already silent when this process connects to the daemon,
-  // no stream event will fire. Run after project/taskStore are initialized so that
-  // applyAgentState can look up and update the correct task.
-  //
-  // getSessionSilenceStates() includes taskId so we can re-seed sessionTaskMap
-  // here even if the earlier listSessions() call failed.
-  try {
-    const silenceStates = await daemonClient.getSessionSilenceStates();
-    for (const { id, taskId, state } of silenceStates) {
-      // Re-seed the map in case listSessions() failed earlier.
-      if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
-      await applyAgentState(id, state);
+  // Catchup: for sessions already silent (or already exited) when this process
+  // connects to the daemon, no stream event will fire. Also re-run after
+  // stream reconnect so a brief disconnect doesn't permanently miss events.
+  async function runSilenceCatchup(): Promise<void> {
+    try {
+      const silenceStates = await daemonClient.getSessionSilenceStates();
+      for (const { id, taskId, state } of silenceStates) {
+        // Re-seed the map in case listSessions() failed earlier.
+        if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
+        await applyAgentState(id, state);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNKNOWN_METHOD')) {
+        console.warn(
+          '[main] daemon does not support getSessionSilenceStates — running sessions may not ' +
+          'auto-transition to needs-input; restart Flux to upgrade the daemon',
+        );
+      } else {
+        console.warn('[main] catchup getSessionSilenceStates failed', err);
+      }
     }
-  } catch (err) {
-    // Daemon may not be ready; new sessions will still be tracked via stream events.
-    console.warn('[main] catchup getSessionSilenceStates failed', err);
   }
+
+  await runSilenceCatchup();
 
   const authServer = new AuthServer();
   const emailService = new EmailService();

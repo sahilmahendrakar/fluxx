@@ -213,6 +213,8 @@ async function handleRpc(req: RpcRequest): Promise<RpcResponse> {
         return { id, result: daemon.listSessions() };
       case 'getSessionSilenceStates':
         return { id, result: daemon.getSessionSilenceStates() };
+      case 'capabilities':
+        return { id, result: daemon.getCapabilities() };
       case 'attachSession':
         return {
           id,

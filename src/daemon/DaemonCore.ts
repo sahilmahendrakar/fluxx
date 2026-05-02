@@ -7,6 +7,7 @@ import type {
 } from '../types';
 import type {
   AttachResult,
+  CapabilitiesResult,
   CreateSessionParams,
   CreateSessionResult,
   CreateShellParams,
@@ -140,6 +141,39 @@ export class DaemonCore {
       result.push({ id, taskId: entry.session.taskId, state: entry.detector.getCurrentState() });
     }
     return result;
+  }
+
+  /** Returns the set of RPC methods this daemon supports, for capability negotiation. */
+  getCapabilities(): CapabilitiesResult {
+    return {
+      methods: [
+        'ping',
+        'createSession',
+        'listSessions',
+        'getSessionSilenceStates',
+        'attachSession',
+        'writeSession',
+        'resizeSession',
+        'stopSession',
+        'createShell',
+        'listShells',
+        'attachShell',
+        'writeShell',
+        'resizeShell',
+        'closeShell',
+        'closeShellsForSession',
+        'startPlanning',
+        'listPlanning',
+        'stopPlanning',
+        'getPlanning',
+        'attachPlanning',
+        'writePlanning',
+        'resizePlanning',
+        'capabilities',
+        'shutdown',
+      ],
+      buildId: process.env.FLUX_BUILD_ID ?? 'dev',
+    };
   }
 
   async attachSession(id: string): Promise<AttachResult | null> {

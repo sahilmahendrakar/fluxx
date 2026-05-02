@@ -17,12 +17,14 @@ import {
   DAEMON_STREAM_SOCK,
   NdjsonSplitter,
   PROTOCOL_VERSION,
+  REQUIRED_DAEMON_CAPABILITIES,
   WIN_RPC_PIPE,
   WIN_STREAM_PIPE,
   daemonUnixSocketPaths,
   encodeLine,
   type AgentState,
   type AttachResult,
+  type CapabilitiesResult,
   type DaemonStreamCatchupPayload,
   type CreateSessionParams,
   type CreateSessionResult,
@@ -101,6 +103,9 @@ export class DaemonClient {
 
   /** Optional callback invoked when daemon reports agent silence/activity. */
   onAgentState: ((sessionId: string, state: AgentState) => void) | null = null;
+
+  /** Optional callback invoked when a session exits. */
+  onSessionExit: ((session: Session) => void) | null = null;
 
   /**
    * Low-frequency RPC reconciliation so missed `agent-state` frames still apply
@@ -434,9 +439,35 @@ export class DaemonClient {
       }
       const pong = (await this.request<PingResult>('ping')) as PingResult;
       if (pong.protocolVersion !== PROTOCOL_VERSION) {
+        console.warn('[DaemonClient] protocol mismatch on existing daemon', {
+          theirs: pong.protocolVersion,
+          ours: PROTOCOL_VERSION,
+        });
         this.tearDownSockets();
         return false;
       }
+
+      // Verify the daemon supports all required RPC methods. An older build
+      // may match the protocol version but lack newly added methods.
+      try {
+        const caps = (await this.request<CapabilitiesResult>('capabilities')) as CapabilitiesResult;
+        const methods = new Set(caps.methods);
+        const missing = REQUIRED_DAEMON_CAPABILITIES.filter((m) => !methods.has(m));
+        if (missing.length > 0) {
+          console.warn('[DaemonClient] existing daemon missing required capabilities, respawning', {
+            missing,
+            buildId: caps.buildId,
+          });
+          this.tearDownSockets();
+          return false;
+        }
+      } catch {
+        // Daemon does not even support the `capabilities` method — definitely stale.
+        console.warn('[DaemonClient] existing daemon lacks capabilities RPC, respawning');
+        this.tearDownSockets();
+        return false;
+      }
+
       return true;
     } catch {
       this.tearDownSockets();
@@ -694,6 +725,7 @@ export class DaemonClient {
       return;
     }
     if (frame.kind === 'session-exit') {
+      this.onSessionExit?.(frame.session);
       broadcast('session:exited', frame.session);
       return;
     }
@@ -783,6 +815,11 @@ export class DaemonClient {
   async getSessionSilenceStates(): Promise<{ id: string; taskId?: string; state: AgentState }[]> {
     await this.ensureRunning();
     return this.request<{ id: string; taskId?: string; state: AgentState }[]>('getSessionSilenceStates');
+  }
+
+  async getCapabilities(): Promise<CapabilitiesResult> {
+    await this.ensureRunning();
+    return this.request<CapabilitiesResult>('capabilities');
   }
 
   /**

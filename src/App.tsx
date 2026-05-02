@@ -737,6 +737,56 @@ export default function App() {
       setSessions((prev) =>
         prev.map((s) => (s.id === exited.id ? { ...s, status: exited.status } : s)),
       );
+
+      // Cloud projects: clean exit (code 0 → 'stopped') moves task to needs-input.
+      if (exited.status !== 'stopped' || !exited.taskId) {
+        if (exited.status === 'error' && exited.taskId) {
+          console.warn('[task:status] agent exited with error, not transitioning task (cloud)', {
+            taskId: exited.taskId,
+            sessionId: exited.id,
+          });
+        }
+        return;
+      }
+
+      if (projectRef.current?.kind !== 'cloud') return;
+
+      const task = tasksRef.current.find((t) => t.id === exited.taskId);
+      if (!task || task.status !== 'in-progress') {
+        if (task) {
+          console.log('[task:status] session exit skip: task not in-progress', {
+            taskId: exited.taskId,
+            status: task.status,
+          });
+        }
+        return;
+      }
+
+      const currentUid = uidRef.current;
+      if (!currentUid || task.assigneeId !== currentUid) {
+        console.log('[task:status] session exit skip: assignee mismatch', {
+          taskId: exited.taskId,
+          assigneeId: task.assigneeId,
+          currentUid,
+        });
+        return;
+      }
+
+      console.log('[task:status] in-progress → needs-input (agent exited cleanly, cloud)', {
+        taskId: exited.taskId,
+        assigneeId: task.assigneeId,
+      });
+      setTasks((prev) =>
+        prev.map((t) => (t.id === exited.taskId ? { ...t, status: 'needs-input' } : t)),
+      );
+      void providerRef.current
+        ?.update(exited.taskId, { status: 'needs-input' })
+        .catch((err) => {
+          console.error('[task:status] Firestore write failed (needs-input, exit)', {
+            taskId: exited.taskId,
+            err,
+          });
+        });
     });
     return () => unsub();
   }, []);
@@ -791,14 +841,34 @@ export default function App() {
         if (state !== 'silent') return;
 
         // Cloud-only feature for now.
-        if (projectRef.current?.kind !== 'cloud') return;
+        if (projectRef.current?.kind !== 'cloud') {
+          console.log('[task:status] silence skip: project not cloud', { taskId });
+          return;
+        }
 
         const task = tasksRef.current.find((t) => t.id === taskId);
-        if (!task || task.status !== 'in-progress') return;
+        if (!task || task.status !== 'in-progress') {
+          if (task) {
+            console.log('[task:status] silence skip: task not in-progress', {
+              taskId,
+              status: task.status,
+            });
+          } else {
+            console.log('[task:status] silence skip: task not found', { taskId });
+          }
+          return;
+        }
 
         // Only the assignee may mutate task status.
         const currentUid = uidRef.current;
-        if (!currentUid || task.assigneeId !== currentUid) return;
+        if (!currentUid || task.assigneeId !== currentUid) {
+          console.log('[task:status] silence skip: assignee mismatch', {
+            taskId,
+            assigneeId: task.assigneeId,
+            currentUid,
+          });
+          return;
+        }
 
         console.log('[task:status] in-progress → needs-input (silence detected)', {
           taskId,
