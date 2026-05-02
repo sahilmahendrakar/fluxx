@@ -1,0 +1,25 @@
+src/components/TaskDetailPanel.tsx
+  ea9cbee4a83bd7d8 49,101-105,205,229-231,254,638-641,645-675,1152,1172,1590-1602
+src/App.tsx
+  ea9cbee4a83bd7d8 2519-2523
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "647df10a62d1aec83692f9ec34b676031ec46d96",
+  "prompts": {
+    "ea9cbee4a83bd7d8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e985a980-cba9-428c-8cd3-660651d4974b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 71,
+      "total_deletions": 15,
+      "accepted_lines": 66,
+      "overriden_lines": 0
+    }
+  }
+}
