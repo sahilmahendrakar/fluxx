@@ -46,6 +46,7 @@ import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
+import ConfirmDialog from './ConfirmDialog';
 import {
   buildTaskSourceBranchPersistPatch,
   effectiveTaskSourceBranchShort,
@@ -97,6 +98,11 @@ interface TaskDetailPanelProps {
   autoStartWhenUnblockedProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
+  /**
+   * Cloud only: true when any project member has a fresh `running` runner heartbeat
+   * for this task (see `useRunners` / Firestore). Used to confirm assignee edits.
+   */
+  cloudActiveRunnerSession?: boolean;
   /**
    * Cloud projects only: signed-in user uid. When starting a session, if the task
    * has no assignee yet, `assigneeId` is set to this value alongside in-progress.
@@ -196,6 +202,7 @@ export default function TaskDetailPanel({
   markAsDoneBlocked = false,
   autoStartWhenUnblockedProject = false,
   projectMembers,
+  cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
 }: TaskDetailPanelProps) {
   const asideRef = useRef<HTMLElement>(null);
@@ -219,6 +226,9 @@ export default function TaskDetailPanel({
   const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
   const agentSettingsWrapRef = useRef<HTMLDivElement>(null);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
+  const [assigneeChangeConfirm, setAssigneeChangeConfirm] = useState<{
+    nextAssigneeId: string | null;
+  } | null>(null);
   const assigneeMenuWrapRef = useRef<HTMLDivElement>(null);
   /** Local path for “Open in” (running session, stopped session, or leftover worktree on disk). */
   const [resolvedWorktreePath, setResolvedWorktreePath] = useState<string | null>(null);
@@ -241,6 +251,7 @@ export default function TaskDetailPanel({
   useEffect(() => {
     setAgentSettingsOpen(false);
     setAssigneeMenuOpen(false);
+    setAssigneeChangeConfirm(null);
     setDependencyError(null);
     setDepSearch('');
     setDescriptionEditing(false);
@@ -624,11 +635,44 @@ export default function TaskDetailPanel({
   useEffect(() => {
     if (!task) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (assigneeChangeConfirm) return;
+        onClose();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [task, onClose]);
+  }, [task, onClose, assigneeChangeConfirm]);
+
+  const assigneeSessionGuardActive = useMemo(
+    () =>
+      Boolean(
+        cloudActiveRunnerSession ||
+          taskSessionStartPending ||
+          session?.status === 'running',
+      ),
+    [cloudActiveRunnerSession, taskSessionStartPending, session?.status],
+  );
+
+  const requestAssigneeChange = useCallback(
+    (nextAssigneeId: string | null) => {
+      if (!task) return;
+      const cur = task.assigneeId?.trim() || null;
+      const next = nextAssigneeId?.trim() || null;
+      if (cur === next) {
+        setAssigneeMenuOpen(false);
+        return;
+      }
+      if (!assigneeSessionGuardActive) {
+        onUpdate(task.id, { assigneeId: nextAssigneeId });
+        setAssigneeMenuOpen(false);
+        return;
+      }
+      setAssigneeMenuOpen(false);
+      setAssigneeChangeConfirm({ nextAssigneeId });
+    },
+    [task, assigneeSessionGuardActive, onUpdate],
+  );
 
   useLayoutEffect(() => {
     if (task == null) return;
@@ -1105,10 +1149,7 @@ export default function TaskDetailPanel({
                           role="option"
                           aria-selected={!task.assigneeId}
                           className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] text-zinc-200 hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
-                          onClick={() => {
-                            onUpdate(task.id, { assigneeId: null });
-                            setAssigneeMenuOpen(false);
-                          }}
+                          onClick={() => requestAssigneeChange(null)}
                         >
                           <UserCircle2
                             className="h-5 w-5 shrink-0 text-zinc-500"
@@ -1128,10 +1169,7 @@ export default function TaskDetailPanel({
                               className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
                                 selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
                               }`}
-                              onClick={() => {
-                                onUpdate(task.id, { assigneeId: m.uid });
-                                setAssigneeMenuOpen(false);
-                              }}
+                              onClick={() => requestAssigneeChange(m.uid)}
                             >
                               <ProjectMemberAvatar member={m} size="sm" />
                               <span className="min-w-0 flex-1 truncate">{projectMemberLabel(m)}</span>
@@ -1549,6 +1587,19 @@ export default function TaskDetailPanel({
           </button>
         </div>
       </aside>
+      {assigneeChangeConfirm ? (
+        <ConfirmDialog
+          title="Change assignee with an active session?"
+          description="Are you sure you want to change the assignee?"
+          confirmLabel="Change assignee"
+          onConfirm={() => {
+            if (!task) return;
+            onUpdate(task.id, { assigneeId: assigneeChangeConfirm.nextAssigneeId });
+            setAssigneeChangeConfirm(null);
+          }}
+          onCancel={() => setAssigneeChangeConfirm(null)}
+        />
+      ) : null}
     </>
   );
 }

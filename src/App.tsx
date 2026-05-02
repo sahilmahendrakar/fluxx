@@ -2516,6 +2516,11 @@ export default function App() {
                         )}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                         remoteRunner={remoteRunnerForSelected}
+                        cloudActiveRunnerSession={
+                          project.kind === 'cloud' && selectedTask
+                            ? runners.isRunningFresh(selectedTask.id)
+                            : false
+                        }
                         onOpenSessionTab={handleOpenSessionTab}
                         onArchiveSession={(id) => void handleArchiveSession(id)}
                         projectMembers={projectMembers}
