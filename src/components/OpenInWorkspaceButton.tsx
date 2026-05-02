@@ -45,9 +45,9 @@ export function OpenInWorkspaceButton({
       ? 'gap-1 px-3 py-1.5 text-[12px]'
       : 'gap-1.5 px-3 py-2 text-[13px]';
   const triggerIdle =
-    'rounded-lg bg-white/[0.04] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
+    'rounded-lg bg-flux-hover/8 font-medium text-flux-fg ring-1 ring-inset ring-flux-border/12 transition hover:bg-flux-hover/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flux-ring/30';
   const triggerDisabled =
-    'cursor-not-allowed rounded-lg bg-zinc-800/50 font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+    'cursor-not-allowed rounded-lg bg-flux-fg-subtle/10 font-medium text-flux-fg-muted ring-1 ring-inset ring-flux-border/8';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -123,14 +123,14 @@ export function OpenInWorkspaceButton({
         <div
           role="menu"
           aria-label="Open workspace in"
-          className="absolute right-0 top-full z-40 mt-1 min-w-[12.5rem] rounded-lg border border-white/[0.08] bg-[#121214] py-1 shadow-lg ring-1 ring-black/40"
+          className="absolute right-0 top-full z-40 mt-1 min-w-[12.5rem] rounded-lg border border-flux-border/12 bg-flux-elevated py-1 shadow-lg ring-1 ring-flux-border/8"
         >
           {menuItems().map(({ target, label }) => (
             <button
               key={target}
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] text-zinc-200 transition hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] text-flux-fg transition hover:bg-flux-hover/8 focus-visible:bg-flux-hover/8 focus-visible:outline-none"
               onClick={() => void handlePick(target)}
             >
               <OpenWorkspaceTargetIcon target={target} />
@@ -141,7 +141,7 @@ export function OpenInWorkspaceButton({
       ) : null}
       {openError ? (
         <p
-          className="mt-1 max-w-[14rem] text-[11px] leading-snug text-red-300/90"
+          className="mt-1 max-w-[14rem] text-[11px] leading-snug text-flux-danger"
           role="status"
           aria-live="polite"
         >

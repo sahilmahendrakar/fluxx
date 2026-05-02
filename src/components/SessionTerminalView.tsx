@@ -108,15 +108,15 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
         <div className="relative h-full min-h-0">
           {!attachReady ? (
             <div
-              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-flux-border/12 bg-flux-canvas/95 text-[13px] text-flux-fg-muted backdrop-blur-sm"
               aria-live="polite"
               aria-busy="true"
             >
               <span
-                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-flux-border/30 border-t-flux-fg-muted"
                 aria-hidden
               />
-              <span className="font-medium text-zinc-300">Starting…</span>
+              <span className="font-medium text-flux-fg">Starting…</span>
             </div>
           ) : null}
           <Terminal
@@ -130,7 +130,7 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
           />
         </div>
       ) : (
-        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
+        <div className="flex h-full items-center justify-center text-[13px] text-flux-fg-muted">
           This session is no longer running.
         </div>
       )}
@@ -184,7 +184,7 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
           autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
         />
       ) : (
-        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
+        <div className="flex h-full items-center justify-center text-[13px] text-flux-fg-muted">
           Shell exited.
         </div>
       )}
@@ -213,8 +213,8 @@ function PaneTab({
       className={[
         'group flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors',
         active
-          ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-          : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200',
+          ? 'bg-flux-selected/12 text-flux-fg ring-1 ring-inset ring-flux-border/10'
+          : 'text-flux-fg-muted hover:bg-flux-hover/8 hover:text-flux-fg',
       ].join(' ')}
     >
       <button type="button" onClick={onClick} className="flex items-center gap-1.5">
@@ -224,7 +224,7 @@ function PaneTab({
           <span
             className={[
               'inline-block h-1.5 w-1.5 rounded-full',
-              running ? 'bg-emerald-400' : 'bg-zinc-600',
+              running ? 'bg-flux-success' : 'bg-flux-fg-subtle',
             ].join(' ')}
             aria-hidden
           />
@@ -239,7 +239,7 @@ function PaneTab({
             e.stopPropagation();
             onClose();
           }}
-          className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+          className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-flux-fg-subtle opacity-60 transition hover:bg-flux-hover/10 hover:text-flux-fg hover:opacity-100"
         >
           <span className="text-[12px] leading-none" aria-hidden>
             ×
@@ -301,13 +301,13 @@ export function SessionTerminalView({
   );
 
   const markDoneBtn =
-    'shrink-0 rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
+    'shrink-0 rounded-lg bg-flux-elevated px-3 py-1.5 text-[12px] font-medium text-flux-fg ring-1 ring-inset ring-flux-border/12 transition hover:bg-flux-hover/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flux-ring/30';
   const markDoneBtnDisabled =
-    'shrink-0 cursor-not-allowed rounded-lg bg-zinc-800/50 px-3 py-1.5 text-[12px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+    'shrink-0 cursor-not-allowed rounded-lg bg-flux-elevated/50 px-3 py-1.5 text-[12px] font-medium text-flux-fg-muted ring-1 ring-inset ring-flux-border/8';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-flux-canvas">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0b] pl-1 pr-2.5 py-1">
+      <div className="flex shrink-0 items-center gap-2 border-b border-flux-border/10 bg-flux-elevated pl-1 pr-2.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 pl-0.5">
           <PaneTab
             label="Agent"
@@ -334,8 +334,8 @@ export function SessionTerminalView({
             className={[
               'ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[16px] leading-none transition',
               running
-                ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
-                : 'cursor-not-allowed text-zinc-700',
+                ? 'text-flux-fg-muted hover:bg-flux-hover/10 hover:text-flux-fg'
+                : 'cursor-not-allowed text-flux-fg-subtle',
             ].join(' ')}
           >
             +

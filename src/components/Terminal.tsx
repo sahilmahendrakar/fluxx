@@ -7,6 +7,8 @@ import {
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { fluxXtermTheme } from '../terminal/fluxXtermTheme';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 
 export interface TerminalProps {
   sessionId: string | null;
@@ -52,6 +54,11 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   { sessionId, onData, onResize, hideCursor = false, visible = true, autoFit = true },
   ref,
 ) {
+  const { theme: fluxTheme } = useFluxTheme();
+  const fluxThemeRef = useRef(fluxTheme);
+  fluxThemeRef.current = fluxTheme;
+  const hideCursorRef = useRef(hideCursor);
+  hideCursorRef.current = hideCursor;
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const scheduleFitRef = useRef<((afterFit?: () => void) => void) | null>(
@@ -117,19 +124,11 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     }
 
     const term = new XTerm({
-      theme: {
-        background: '#09090b',
-        foreground: '#d4d4d8',
-        cursor: hideCursor ? 'rgba(0,0,0,0)' : '#a1a1aa',
-        cursorAccent: '#09090b',
-        selectionBackground: 'rgba(255,255,255,0.12)',
-        black: '#09090b',
-        brightBlack: '#52525b',
-      },
+      theme: fluxXtermTheme(fluxThemeRef.current, hideCursorRef.current),
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: 12,
       lineHeight: 1.4,
-      cursorBlink: !hideCursor,
+      cursorBlink: !hideCursorRef.current,
       cursorStyle: 'block',
       cursorInactiveStyle: 'none',
       scrollback: 1000,
@@ -286,6 +285,17 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     };
   }, [sessionId, autoFit]);
 
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = fluxXtermTheme(fluxTheme, hideCursor);
+    term.options.cursorBlink = !hideCursor;
+    const rows = term.rows;
+    if (rows > 0) {
+      term.refresh(0, rows - 1);
+    }
+  }, [fluxTheme, hideCursor]);
+
   // Parents mark the pane/tab hidden by passing visible=false. We don't toggle
   // display on the container (that would reflow xterm and wipe the rendered
   // history); instead the wrapper flips CSS visibility. When visible flips
@@ -319,7 +329,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
   if (!sessionId) {
     return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-[13px] leading-relaxed text-zinc-600">
+      <div className="flex h-full items-center justify-center px-4 text-center text-[13px] leading-relaxed text-flux-fg-muted">
         No active session — start a session to use the terminal.
       </div>
     );

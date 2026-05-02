@@ -1454,7 +1454,7 @@ export default function TaskDetailPanel({
             aria-label="Resize between task details and session output"
             title="Drag to resize session. Double-click to reset."
             tabIndex={0}
-            className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+            className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-flux-border/10 bg-flux-elevated outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-flux-border/15 before:content-[''] hover:before:bg-flux-border/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-flux-ring/25"
             onPointerDown={handleSessionSplitPointerDown}
             onDoubleClick={handleSessionSplitDoubleClick}
             onKeyDown={onSessionSplitKeyDown}
@@ -1462,27 +1462,27 @@ export default function TaskDetailPanel({
 
           {/* Session: secondary when idle; compact chrome when live */}
           <div
-            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-[#080809]"
+            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-flux-canvas"
             style={{ height: sessionPaneHeightPx }}
           >
             {sessionRunning && session ? (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.04] px-4 py-2.5">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-flux-border/10 bg-flux-elevated/80 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/90" />
-                  <span className="truncate text-xs font-medium text-zinc-400">Session running</span>
+                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-flux-success" />
+                  <span className="truncate text-xs font-medium text-flux-fg-muted">Session running</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={handleOpenInTab}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-flux-fg-muted transition hover:bg-flux-hover/10 hover:text-flux-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flux-ring/25"
                   >
                     Open in tab
                   </button>
                   <button
                     type="button"
                     onClick={handleArchiveFromPanel}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/30"
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-flux-fg-muted transition hover:bg-flux-danger/10 hover:text-flux-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flux-danger/30"
                     title="Archive — kill agent and terminals, keep worktree"
                   >
                     Archive
@@ -1490,8 +1490,8 @@ export default function TaskDetailPanel({
                 </div>
               </div>
             ) : (
-              <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-flux-border/10 bg-flux-elevated/50 px-4 py-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-flux-fg-muted">
                   <Terminal className="h-3.5 w-3.5 opacity-70" strokeWidth={2} aria-hidden />
                   {sessionIdleAfterRun ? 'Session output (ended)' : 'Output'}
                 </div>
@@ -1500,8 +1500,8 @@ export default function TaskDetailPanel({
 
             <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3">
               {remoteRunner && !session ? (
-                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-6 text-center">
-                  <div className="flex items-center gap-2.5 text-sm text-zinc-200">
+                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-flux-border/12 bg-flux-surface/60 px-4 py-6 text-center">
+                  <div className="flex items-center gap-2.5 text-sm text-flux-fg">
                     <ProjectMemberAvatar
                       member={{
                         uid: remoteRunner.uid,
@@ -1510,12 +1510,12 @@ export default function TaskDetailPanel({
                       }}
                       size="sm"
                     />
-                    <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                    <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-flux-success" />
                     <span className="min-w-0 font-medium">
                       {remoteRunner.displayName ?? 'A teammate'} is running an agent
                     </span>
                   </div>
-                  <p className="max-w-[18rem] text-xs leading-relaxed text-zinc-500">
+                  <p className="max-w-[18rem] text-xs leading-relaxed text-flux-fg-muted">
                     Terminal output stays on their machine for now. You will see status updates here as
                     they work.
                   </p>
@@ -1524,28 +1524,28 @@ export default function TaskDetailPanel({
                 <div className="relative flex h-full min-h-[6.5rem] flex-col">
                   {showSessionStarting ? (
                     <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-[#0a0a0b]/95 text-[13px] text-zinc-400"
+                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border border-flux-border/12 bg-flux-canvas/95 text-[13px] text-flux-fg-muted backdrop-blur-sm"
                       aria-live="polite"
                       aria-busy="true"
                     >
                       <span
-                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-flux-border/30 border-t-flux-fg-muted"
                         aria-hidden
                       />
-                      <span className="font-medium text-zinc-300">Starting…</span>
+                      <span className="font-medium text-flux-fg">Starting…</span>
                     </div>
                   ) : null}
                   {blocked && !sessionRunning && !session ? (
                     <p
-                      className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
+                      className="mb-2 rounded-lg border border-flux-warning/30 bg-flux-warning/10 px-3 py-2 text-xs text-flux-warning"
                       role="status"
                     >
                       Start session is off until blockers are cleared.
                     </p>
                   ) : null}
-                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5 text-center">
-                    <p className="text-sm text-zinc-500">No live session in this panel</p>
-                    <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
+                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-flux-border/15 bg-flux-surface/50 px-4 py-5 text-center">
+                    <p className="text-sm text-flux-fg-muted">No live session in this panel</p>
+                    <p className="max-w-sm text-xs leading-relaxed text-flux-fg-subtle">
                       {blocked
                         ? 'Unblock the task, then use Start session above. Output streams here and in a workspace tab.'
                         : 'When you start a session, the agent’s terminal streams here. Open in a tab for the full view.'}
@@ -1556,15 +1556,15 @@ export default function TaskDetailPanel({
                 <div className="relative h-full min-h-[120px]">
                   {showSessionStarting ? (
                     <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
+                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-flux-border/12 bg-flux-canvas/95 text-[13px] text-flux-fg-muted backdrop-blur-sm"
                       aria-live="polite"
                       aria-busy="true"
                     >
                       <span
-                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-flux-border/30 border-t-flux-fg-muted"
                         aria-hidden
                       />
-                      <span className="font-medium text-zinc-300">Starting…</span>
+                      <span className="font-medium text-flux-fg">Starting…</span>
                     </div>
                   ) : null}
                   <TerminalComponent

@@ -61,7 +61,7 @@ const ESC = String.fromCharCode(27);
 const ANSI_ESCAPE_PATTERN = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'g');
 
 const prefsMenuItemClass =
-  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-zinc-200 transition hover:bg-white/[0.06]';
+  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-flux-fg transition hover:bg-flux-hover/8';
 
 function stripAnsi(s: string): string {
   return s.replace(ANSI_ESCAPE_PATTERN, '');
@@ -498,7 +498,7 @@ export function PlanningPanel({
       ? createPortal(
           <div
             ref={prefsDropdownRef}
-            className="fixed z-[200] max-h-[min(22rem,calc(100vh-5rem))] overflow-y-auto rounded-md border border-white/[0.12] bg-[#121214] py-1 shadow-xl shadow-black/50"
+            className="fixed z-[200] max-h-[min(22rem,calc(100vh-5rem))] overflow-y-auto rounded-md border border-flux-border/15 bg-flux-elevated py-1 shadow-xl ring-1 ring-flux-border/8"
             style={{
               top: prefsPos.top,
               left: prefsPos.left,
@@ -507,8 +507,8 @@ export function PlanningPanel({
             role="dialog"
             aria-label="Next planning session"
           >
-            <div className="border-b border-white/[0.06] px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            <div className="border-b border-flux-border/10 px-2.5 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-flux-fg-muted">
                 Agent
               </p>
               <div className="mt-1 flex flex-col gap-0.5">
@@ -518,17 +518,17 @@ export function PlanningPanel({
                     <button
                       key={a.id}
                       type="button"
-                      className={`${prefsMenuItemClass} rounded ${sel ? 'bg-white/[0.06]' : ''}`}
+                      className={`${prefsMenuItemClass} rounded ${sel ? 'bg-flux-selected/10' : ''}`}
                       onClick={() => handleAgentPick(a.id)}
                     >
-                      <span className="font-medium text-zinc-100">{a.label}</span>
+                      <span className="font-medium text-flux-fg">{a.label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
             <div className="px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-flux-fg-muted">
                 Model
               </p>
               {mk ? (
@@ -536,11 +536,11 @@ export function PlanningPanel({
                   {mk === 'claude-code' ? (
                     <button
                       type="button"
-                      className={`${prefsMenuItemClass} mt-1 rounded ${!claudeModelId.trim() ? 'bg-white/[0.06]' : ''}`}
+                      className={`${prefsMenuItemClass} mt-1 rounded ${!claudeModelId.trim() ? 'bg-flux-selected/10' : ''}`}
                       onClick={() => handleModelPick('claude-code', '')}
                     >
-                      <span className="font-medium text-zinc-100">Default</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-zinc-500">CLI</span>
+                      <span className="font-medium text-flux-fg">Default</span>
+                      <span className="ml-auto shrink-0 text-[10px] text-flux-fg-muted">CLI</span>
                     </button>
                   ) : null}
                   {modelChoices.map((p) => {
@@ -552,21 +552,21 @@ export function PlanningPanel({
                       <button
                         key={p.id}
                         type="button"
-                        className={`${prefsMenuItemClass} rounded ${selected ? 'bg-white/[0.06]' : ''}`}
+                        className={`${prefsMenuItemClass} rounded ${selected ? 'bg-flux-selected/10' : ''}`}
                         onClick={() => handleModelPick(mk, p.id)}
                       >
-                        <span className="min-w-0 flex-1 truncate font-medium text-zinc-100">
+                        <span className="min-w-0 flex-1 truncate font-medium text-flux-fg">
                           {p.label}
                         </span>
-                        <span className="shrink-0 font-mono text-[9px] text-zinc-500">{p.id}</span>
+                        <span className="shrink-0 font-mono text-[9px] text-flux-fg-muted">{p.id}</span>
                       </button>
                     );
                   })}
-                  <div className="mx-0.5 my-1 border-t border-white/[0.08] pt-1">
+                  <div className="mx-0.5 my-1 border-t border-flux-border/10 pt-1">
                     {!addModelOpen ? (
                       <button
                         type="button"
-                        className={`${prefsMenuItemClass} text-zinc-300`}
+                        className={`${prefsMenuItemClass} text-flux-fg-muted`}
                         onClick={() => {
                           setAddModelOpen(true);
                           setAddModelError(null);
@@ -576,29 +576,29 @@ export function PlanningPanel({
                       </button>
                     ) : (
                       <div className="space-y-1.5 px-1 py-1">
-                        <p className="text-[10px] leading-snug text-zinc-500">
+                        <p className="text-[10px] leading-snug text-flux-fg-muted">
                           Model id your CLI accepts (same list as task sessions).
                         </p>
                         <input
                           value={addModelId}
                           onChange={(e) => setAddModelId(e.target.value)}
                           placeholder="Model id"
-                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 font-mono text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
+                          className="w-full rounded border border-flux-border/15 bg-flux-surface px-2 py-1 font-mono text-[10px] text-flux-fg outline-none focus-visible:border-flux-border/30"
                         />
                         <input
                           value={addModelLabel}
                           onChange={(e) => setAddModelLabel(e.target.value)}
                           placeholder="Display name (optional)"
-                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
+                          className="w-full rounded border border-flux-border/15 bg-flux-surface px-2 py-1 text-[10px] text-flux-fg outline-none focus-visible:border-flux-border/30"
                         />
                         {addModelError ? (
-                          <p className="text-[10px] text-red-300/90">{addModelError}</p>
+                          <p className="text-[10px] text-flux-danger">{addModelError}</p>
                         ) : null}
                         <div className="flex flex-wrap gap-1">
                           <button
                             type="button"
                             onClick={() => handleAddCustomModel(mk)}
-                            className="rounded border border-emerald-500/25 bg-emerald-500/[0.1] px-2 py-0.5 text-[10px] font-medium text-emerald-100/90"
+                            className="rounded border border-flux-success/30 bg-flux-success/10 px-2 py-0.5 text-[10px] font-medium text-flux-success"
                           >
                             Add
                           </button>
@@ -610,7 +610,7 @@ export function PlanningPanel({
                               setAddModelLabel('');
                               setAddModelError(null);
                             }}
-                            className="rounded px-2 py-0.5 text-[10px] text-zinc-500 hover:bg-white/[0.06]"
+                            className="rounded px-2 py-0.5 text-[10px] text-flux-fg-muted hover:bg-flux-hover/8"
                           >
                             Cancel
                           </button>
@@ -620,24 +620,24 @@ export function PlanningPanel({
                   </div>
                 </>
               ) : (
-                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
+                <p className="mt-1 text-[10px] leading-snug text-flux-fg-muted">
                   Codex uses its default model for planning in this version.
                 </p>
               )}
             </div>
-            <div className="border-t border-white/[0.06] px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+            <div className="border-t border-flux-border/10 px-2.5 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-flux-fg-muted">
                 Skip permission prompts
               </p>
               <button
                 type="button"
-                className={`${prefsMenuItemClass} mt-1 w-full justify-between rounded ${planningYolo ? 'bg-white/[0.06]' : ''}`}
+                className={`${prefsMenuItemClass} mt-1 w-full justify-between rounded ${planningYolo ? 'bg-flux-selected/10' : ''}`}
                 onClick={() => void persistPlanningYolo(!planningYolo)}
               >
-                <span className="font-medium text-zinc-100">YOLO</span>
-                <span className="text-[10px] text-zinc-500">{planningYolo ? 'On' : 'Off'}</span>
+                <span className="font-medium text-flux-fg">YOLO</span>
+                <span className="text-[10px] text-flux-fg-muted">{planningYolo ? 'On' : 'Off'}</span>
               </button>
-              <p className="mt-1 text-[9px] leading-snug text-zinc-600">
+              <p className="mt-1 text-[9px] leading-snug text-flux-fg-subtle">
                 Cursor adds <span className="font-mono">--yolo</span>; Claude adds{' '}
                 <span className="font-mono">--dangerously-skip-permissions</span>.
               </p>
@@ -648,20 +648,20 @@ export function PlanningPanel({
       : null;
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-800 px-2.5">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-flux-border/10 bg-flux-canvas">
+      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-flux-border/10 bg-flux-elevated px-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              sessionRunning ? 'bg-green-500' : 'bg-gray-600'
+              sessionRunning ? 'bg-flux-success' : 'bg-flux-fg-subtle'
             }`}
             aria-hidden
           />
-          <span className="truncate text-xs font-medium text-gray-200">
+          <span className="truncate text-xs font-medium text-flux-fg">
             Planning assistant
           </span>
           {sessionRunning && needsInput ? (
-            <span className="shrink-0 rounded-full border border-amber-900 bg-amber-950 px-1.5 py-0.5 text-[9px] text-amber-400">
+            <span className="shrink-0 rounded-full border border-flux-warning/35 bg-flux-warning/10 px-1.5 py-0.5 text-[9px] text-flux-warning">
               needs input
             </span>
           ) : null}
@@ -672,17 +672,17 @@ export function PlanningPanel({
               type="button"
               disabled={loading}
               onClick={() => void handleStopOne(activeSession.id)}
-              className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-300 transition hover:bg-gray-800 disabled:opacity-50"
+              className="rounded-md border border-flux-border/15 bg-flux-surface px-2 py-1 text-[10px] font-medium text-flux-fg transition hover:bg-flux-hover/10 disabled:opacity-50"
             >
               Stop
             </button>
           ) : null}
-          <div ref={splitAnchorRef} className="flex shrink-0 overflow-hidden rounded-md border border-gray-700">
+          <div ref={splitAnchorRef} className="flex shrink-0 overflow-hidden rounded-md border border-flux-border/15">
             <button
               type="button"
               disabled={loading || !planningApi}
               onClick={() => void handleStart()}
-              className="flex min-w-0 items-center gap-1 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-200 transition hover:bg-gray-800 disabled:opacity-40"
+              className="flex min-w-0 items-center gap-1 bg-flux-surface px-2 py-1 text-[10px] font-medium text-flux-fg transition hover:bg-flux-hover/10 disabled:opacity-40"
               aria-label="Start new planning session"
               title={`Start session · ${AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent} · ${modelSummary}`}
             >
@@ -692,7 +692,7 @@ export function PlanningPanel({
               type="button"
               disabled={loading || !planningApi}
               onClick={() => setPrefsOpen((o) => !o)}
-              className="flex w-7 shrink-0 items-center justify-center border-l border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200 disabled:opacity-40"
+              className="flex w-7 shrink-0 items-center justify-center border-l border-flux-border/15 bg-flux-surface text-flux-fg-muted transition hover:bg-flux-hover/10 hover:text-flux-fg disabled:opacity-40"
               aria-label="Choose agent and model for the next session"
               aria-expanded={prefsOpen}
               aria-haspopup="dialog"
@@ -704,7 +704,7 @@ export function PlanningPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-800 hover:text-gray-200"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-flux-fg-muted transition hover:bg-flux-hover/10 hover:text-flux-fg"
             aria-label="Close planning panel"
           >
             ×
@@ -712,7 +712,7 @@ export function PlanningPanel({
         </div>
       </header>
 
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-800/80 px-2 py-1.5">
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-flux-border/10 bg-flux-elevated/50 px-2 py-1.5">
         {sessions.map((s, i) => {
           const sel = s.id === activeSessionId;
           const running = s.status === 'running';
@@ -722,8 +722,8 @@ export function PlanningPanel({
               className={[
                 'flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px]',
                 sel
-                  ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-100'
-                  : 'border-gray-800 bg-gray-900/60 text-gray-400',
+                  ? 'border-flux-success/35 bg-flux-success/10 text-flux-fg'
+                  : 'border-flux-border/10 bg-flux-elevated/80 text-flux-fg-muted',
               ].join(' ')}
             >
               <button
@@ -735,7 +735,7 @@ export function PlanningPanel({
                 <span
                   className={[
                     'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                    running ? 'bg-emerald-400' : 'bg-zinc-600',
+                    running ? 'bg-flux-success' : 'bg-flux-fg-subtle',
                   ].join(' ')}
                   aria-hidden
                 />
@@ -744,7 +744,7 @@ export function PlanningPanel({
               {onOpenInMainTab ? (
                 <button
                   type="button"
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-800 hover:text-gray-200"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-flux-fg-muted hover:bg-flux-hover/10 hover:text-flux-fg"
                   aria-label="Open planning session in a new tab"
                   title="Open in new tab"
                   onClick={() => onOpenInMainTab(s.id)}
@@ -754,7 +754,7 @@ export function PlanningPanel({
               ) : null}
               <button
                 type="button"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-red-950/50 hover:text-red-300"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-flux-fg-muted hover:bg-flux-danger/10 hover:text-flux-danger"
                 aria-label={`Close ${planningTabLabel(s, i)}`}
                 title="Close tab and stop session"
                 onClick={() => void handleStopOne(s.id)}
@@ -769,19 +769,19 @@ export function PlanningPanel({
       </div>
 
       {error ? (
-        <div className="shrink-0 border-b border-red-900/50 bg-red-950/40 px-2.5 py-1.5 text-[10px] text-red-300">
+        <div className="shrink-0 border-b border-flux-danger/25 bg-flux-danger/10 px-2.5 py-1.5 text-[10px] text-flux-danger">
           {error}
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0a]">
+      <div className="flex min-h-0 flex-1 flex-col bg-flux-canvas">
         {!planningApi ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-500">Planning assistant unavailable</p>
-            <p className="text-[10px] leading-relaxed text-gray-600">
+            <p className="text-xs text-flux-fg-muted">Planning assistant unavailable</p>
+            <p className="text-[10px] leading-relaxed text-flux-fg-subtle">
               This build does not expose planning IPC yet. Sessions will work once
               the main process and preload wire up{' '}
-              <span className="font-mono text-gray-500">electronAPI.planning</span>
+              <span className="font-mono text-flux-fg-muted">electronAPI.planning</span>
               .
             </p>
           </div>
@@ -802,22 +802,22 @@ export function PlanningPanel({
           </div>
         ) : activeSession && !sessionRunning ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-500">This planning session has ended</p>
-            <p className="text-[10px] text-gray-600">
+            <p className="text-xs text-flux-fg-muted">This planning session has ended</p>
+            <p className="text-[10px] text-flux-fg-subtle">
               Close the tab or start another session from the header.
             </p>
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-600">Select a session or start a new one</p>
-            <p className="text-[10px] leading-relaxed text-gray-700">
+            <p className="text-xs text-flux-fg-muted">Select a session or start a new one</p>
+            <p className="text-[10px] leading-relaxed text-flux-fg-subtle">
               Multiple assistants can run at once — switch tabs without stopping others.
             </p>
             <button
               type="button"
               disabled={loading}
               onClick={() => void handleStart()}
-              className="mt-2 rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800 disabled:opacity-50"
+              className="mt-2 rounded-md border border-flux-success/30 bg-flux-success/15 px-3 py-1.5 text-xs font-medium text-flux-success transition-colors hover:bg-flux-success/25 disabled:opacity-50"
             >
               {loading ? 'Starting…' : 'Start session'}
             </button>
