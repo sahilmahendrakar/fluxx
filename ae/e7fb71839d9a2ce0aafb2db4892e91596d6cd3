@@ -1,0 +1,51 @@
+src/env.d.ts
+  6d850d2772d65462 8,122-126,134-135,153-154
+src/main.ts
+  6d850d2772d65462 36,41-47,554-590,878-885,891-907,959-984,1070-1071,1144-1145
+src/main/McpServer.ts
+  6d850d2772d65462 15-16,74-75,241-252,266-276,281-282,317-320,367-368,393-394,407-412,440-441,455-459
+src/taskBranches.test.ts
+  6d850d2772d65462 1-126
+src/types.ts
+  6d850d2772d65462 3-5,29-47,164-175
+src/main/WorktreeService.ts
+  6d850d2772d65462 6-9,28-35,64-67,96-98,105-129
+src/main/TaskStore.ts
+  6d850d2772d65462 15-16,163-170,192-193,232-246
+src/main/TaskStore.test.ts
+  6d850d2772d65462 1-45
+src/main/repoGit.ts
+  6d850d2772d65462 1-124
+src/renderer/tasks/TaskProvider.ts
+  6d850d2772d65462 18-19,31-32
+src/taskBranches.ts
+  6d850d2772d65462 1-122
+src/renderer/tasks/FirestoreTaskProvider.ts
+  6d850d2772d65462 18,78-85,94-95,144-145,205-219,271-272,308-324
+src/mcpBridge.ts
+  6d850d2772d65462 33-35,47-48
+src/preload.ts
+  6d850d2772d65462 10,132-138,166-167,185-186
+src/renderer/tasks/LocalTaskProvider.ts
+  6d850d2772d65462 60-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "aee7fb71839d9a2ce0aafb2db4892e91596d6cd3",
+  "prompts": {
+    "6d850d2772d65462": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3446e495-130b-4a31-af7f-3804f6092f2d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 787,
+      "total_deletions": 42,
+      "accepted_lines": 758,
+      "overriden_lines": 0
+    }
+  }
+}
