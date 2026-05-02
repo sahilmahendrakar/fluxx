@@ -23,6 +23,7 @@ import {
   encodeLine,
   type AgentState,
   type AttachResult,
+  type DaemonStreamCatchupPayload,
   type CreateSessionParams,
   type CreateSessionResult,
   type CreateShellParams,
@@ -38,6 +39,11 @@ import {
 
 const HANDSHAKE_TIMEOUT_MS = 3000;
 const SPAWN_CONNECT_TIMEOUT_MS = 5000;
+const STREAM_RECONNECT_BACKOFF_START_MS = 250;
+const STREAM_RECONNECT_BACKOFF_MAX_MS = 30_000;
+const SILENCE_POLL_MS = 30_000;
+
+export type SilenceSnapshotReason = 'poll' | 'stream-reconnect';
 
 function broadcast(channel: string, payload?: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -96,6 +102,34 @@ export class DaemonClient {
   /** Optional callback invoked when daemon reports agent silence/activity. */
   onAgentState: ((sessionId: string, state: AgentState) => void) | null = null;
 
+  /**
+   * Low-frequency RPC reconciliation so missed `agent-state` frames still apply
+   * (local task store) after stalls or reconnects.
+   */
+  onSilenceStatesSnapshot:
+    | ((
+        states: { id: string; taskId?: string; state: AgentState }[],
+        meta: { reason: SilenceSnapshotReason },
+      ) => void | Promise<void>)
+    | null = null;
+
+  private intentionalDisconnect = false;
+
+  private streamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private streamBackoffMs = STREAM_RECONNECT_BACKOFF_START_MS;
+  private streamReconnectAttemptScheduled = false;
+
+  private silencePollInterval: ReturnType<typeof setInterval> | null = null;
+
+  /** Diagnostics (stream drops / freezes). */
+  streamDisconnectCount = 0;
+  streamReconnectSuccessCount = 0;
+  private lastStreamCloseAt: number | null = null;
+  private lastStreamOpenAt: number | null = null;
+  private lastStreamFrameAt: number | null = null;
+  private lastAgentStateAt: number | null = null;
+  private readonly lastDataSeqByKey = new Map<string, number>();
+
   private readonly userData: string;
   private readonly rpcPath: string;
   private readonly streamPath: string;
@@ -117,6 +151,208 @@ export class DaemonClient {
     this.daemonLogPath = path.join(this.userData, DAEMON_LOG_FILE);
   }
 
+  /** Call once after assigning {@link onSilenceStatesSnapshot}. */
+  startSilencePolling(): void {
+    this.ensureSilencePollRunning();
+  }
+
+  private ensureSilencePollRunning(): void {
+    if (this.silencePollInterval) return;
+    if (!this.onSilenceStatesSnapshot) return;
+    this.silencePollInterval = setInterval(
+      () => void this.runSilencePollTick(),
+      SILENCE_POLL_MS,
+    );
+    this.silencePollInterval.unref?.();
+  }
+
+  private clearSilencePoll(): void {
+    if (this.silencePollInterval) {
+      clearInterval(this.silencePollInterval);
+      this.silencePollInterval = null;
+    }
+  }
+
+  private async runSilencePollTick(): Promise<void> {
+    if (!this.rpc || this.rpc.destroyed || !this.onSilenceStatesSnapshot) return;
+    try {
+      const states = await this.request<{ id: string; taskId?: string; state: AgentState }[]>(
+        'getSessionSilenceStates',
+      );
+      await this.onSilenceStatesSnapshot(states, { reason: 'poll' });
+    } catch (err) {
+      console.warn('[DaemonClient] silence poll failed', err);
+    }
+  }
+
+  private cancelStreamReconnect(): void {
+    if (this.streamReconnectTimer) {
+      clearTimeout(this.streamReconnectTimer);
+      this.streamReconnectTimer = null;
+    }
+    this.streamReconnectAttemptScheduled = false;
+  }
+
+  private resetStreamBackoff(): void {
+    this.streamBackoffMs = STREAM_RECONNECT_BACKOFF_START_MS;
+  }
+
+  private scheduleStreamReconnect(): void {
+    if (this.intentionalDisconnect) return;
+    if (this.streamReconnectAttemptScheduled) return;
+    this.streamReconnectAttemptScheduled = true;
+    const delay = Math.min(this.streamBackoffMs, STREAM_RECONNECT_BACKOFF_MAX_MS);
+    this.streamBackoffMs = Math.min(
+      Math.floor(this.streamBackoffMs * 1.5),
+      STREAM_RECONNECT_BACKOFF_MAX_MS,
+    );
+    this.streamReconnectTimer = setTimeout(() => {
+      this.streamReconnectTimer = null;
+      this.streamReconnectAttemptScheduled = false;
+      void this.runStreamReconnectAttempt();
+    }, delay);
+    this.streamReconnectTimer.unref?.();
+    console.warn('[DaemonClient] scheduling stream reconnect', {
+      delayMs: delay,
+      nextBackoffMs: this.streamBackoffMs,
+      rpcUp: Boolean(this.rpc && !this.rpc.destroyed),
+      ...this.streamDiagnosticsSummary(),
+    });
+  }
+
+  private async runStreamReconnectAttempt(): Promise<void> {
+    if (this.intentionalDisconnect) return;
+    if (this.stream && !this.stream.destroyed) {
+      this.resetStreamBackoff();
+      return;
+    }
+    console.warn('[DaemonClient] attempting daemon stream reconnect', this.streamDiagnosticsSummary());
+    try {
+      if (this.rpc && !this.rpc.destroyed) {
+        const ok = await this.connectStreamOnly();
+        if (ok) {
+          this.streamReconnectSuccessCount++;
+          this.resetStreamBackoff();
+          this.lastStreamOpenAt = Date.now();
+          await this.afterStreamReconnected('stream-only');
+          return;
+        }
+      }
+      await this.ensureRunning();
+      this.streamReconnectSuccessCount++;
+      this.resetStreamBackoff();
+      this.lastStreamOpenAt = Date.now();
+      await this.afterStreamReconnected('full');
+    } catch (err) {
+      console.warn('[DaemonClient] stream reconnect attempt failed', err);
+      this.scheduleStreamReconnect();
+    }
+  }
+
+  private async afterStreamReconnected(
+    mode: DaemonStreamCatchupPayload['mode'],
+  ): Promise<void> {
+    const disconnectedMs =
+      this.lastStreamCloseAt != null ? Date.now() - this.lastStreamCloseAt : undefined;
+    let states: { id: string; taskId?: string; state: AgentState }[] = [];
+    try {
+      states = await this.request<{ id: string; taskId?: string; state: AgentState }[]>(
+        'getSessionSilenceStates',
+      );
+    } catch (err) {
+      console.warn('[DaemonClient] getSessionSilenceStates after reconnect failed', err);
+    }
+
+    const lastDataSeq: Record<string, number> = {};
+    for (const [k, v] of this.lastDataSeqByKey) {
+      lastDataSeq[k] = v;
+    }
+
+    console.log('[DaemonClient] stream recovered', {
+      mode,
+      disconnectedMs,
+      runningSessions: states.length,
+      lastStreamFrameAt: this.lastStreamFrameAt,
+      lastAgentStateAt: this.lastAgentStateAt,
+      lastDataSeq,
+    });
+
+    for (const { id, state } of states) {
+      broadcast(`session:agent-state:${id}`, { state });
+    }
+
+    const payload: DaemonStreamCatchupPayload = {
+      reason: 'reconnect',
+      mode,
+      disconnectedMs,
+      runningSessions: states.length,
+      lastStreamFrameAt: this.lastStreamFrameAt ?? undefined,
+      lastAgentStateAt: this.lastAgentStateAt ?? undefined,
+      lastDataSeq,
+    };
+    broadcast('daemon:streamCatchup', payload);
+
+    try {
+      await this.onSilenceStatesSnapshot?.(states, { reason: 'stream-reconnect' });
+    } catch (err) {
+      console.warn('[DaemonClient] silence snapshot after reconnect failed', err);
+    }
+  }
+
+  private streamDiagnosticsSummary(): Record<string, unknown> {
+    const lastDataSeq: Record<string, number> = {};
+    for (const [k, v] of this.lastDataSeqByKey) {
+      lastDataSeq[k] = v;
+    }
+    return {
+      streamDisconnectCount: this.streamDisconnectCount,
+      streamReconnectSuccessCount: this.streamReconnectSuccessCount,
+      lastStreamCloseAt: this.lastStreamCloseAt,
+      lastStreamOpenAt: this.lastStreamOpenAt,
+      lastStreamFrameAt: this.lastStreamFrameAt,
+      lastAgentStateAt: this.lastAgentStateAt,
+      lastDataSeq,
+    };
+  }
+
+  private recordIncomingStreamFrame(frame: StreamFrame): void {
+    this.lastStreamFrameAt = Date.now();
+    if (frame.kind === 'agent-state') {
+      this.lastAgentStateAt = this.lastStreamFrameAt;
+      return;
+    }
+    if (frame.kind === 'data' && frame.seq != null) {
+      this.lastDataSeqByKey.set(`${frame.target}:${frame.id}`, frame.seq);
+    }
+  }
+
+  /**
+   * Attach only the stream socket while RPC is still healthy (avoids a second RPC client).
+   */
+  private async connectStreamOnly(): Promise<boolean> {
+    const rpc = this.rpc;
+    if (!rpc || rpc.destroyed) return false;
+    const stream = await this.connectSocket(this.streamPath);
+    if (!stream) return false;
+    try {
+      await this.finishHandshake(stream, 'stream');
+      this.attachStreamListener(stream);
+      this.stream = stream;
+      this.lastStreamOpenAt = Date.now();
+      this.ensureSilencePollRunning();
+      console.log('[DaemonClient] stream socket reattached (RPC unchanged)');
+      return true;
+    } catch (err) {
+      console.warn('[DaemonClient] stream-only connect failed', err);
+      try {
+        stream.destroy();
+      } catch {
+        /* ignore */
+      }
+      return false;
+    }
+  }
+
   async ensureRunning(): Promise<void> {
     if (this.rpc && !this.rpc.destroyed && this.stream && !this.stream.destroyed) {
       return;
@@ -124,6 +360,9 @@ export class DaemonClient {
     if (this.connecting) return this.connecting;
     this.connecting = (async () => {
       try {
+        // Replace half-open pairs cleanly and supersede any pending stream backoff timer.
+        this.cancelStreamReconnect();
+        this.destroySocketsOnly();
         await this.connectOrSpawn();
       } finally {
         this.connecting = null;
@@ -282,6 +521,8 @@ export class DaemonClient {
     this.attachStreamListener(stream);
     this.rpc = rpc;
     this.stream = stream;
+    this.lastStreamOpenAt = Date.now();
+    this.ensureSilencePollRunning();
     return true;
   }
 
@@ -378,12 +619,26 @@ export class DaemonClient {
       }
     });
     socket.on('close', () => {
-      console.warn('[DaemonClient] rpc socket closed');
+      console.warn('[DaemonClient] rpc socket closed', this.streamDiagnosticsSummary());
       this.rpc = null;
+      const orphanStream = this.stream;
+      this.stream = null;
+      if (orphanStream && !orphanStream.destroyed) {
+        try {
+          orphanStream.removeAllListeners();
+          orphanStream.destroy();
+        } catch {
+          /* ignore */
+        }
+      }
+      this.clearSilencePoll();
       for (const waiter of this.pending.values()) {
         waiter.reject(new Error('daemon rpc socket closed'));
       }
       this.pending.clear();
+      if (!this.intentionalDisconnect) {
+        this.scheduleStreamReconnect();
+      }
     });
     socket.on('error', (err) => {
       console.error('[DaemonClient] rpc socket error', err.message);
@@ -406,15 +661,27 @@ export class DaemonClient {
       }
     });
     socket.on('close', () => {
-      console.warn('[DaemonClient] stream socket closed');
-      this.stream = null;
+      console.warn('[DaemonClient] stream socket closed', this.streamDiagnosticsSummary());
+      if (this.stream === socket) {
+        this.stream = null;
+      }
+      this.streamDisconnectCount++;
+      this.lastStreamCloseAt = Date.now();
+      if (!this.intentionalDisconnect) {
+        this.scheduleStreamReconnect();
+      }
     });
     socket.on('error', (err) => {
-      console.error('[DaemonClient] stream socket error', err.message);
+      console.error(
+        '[DaemonClient] stream socket error',
+        err.message,
+        this.streamDiagnosticsSummary(),
+      );
     });
   }
 
   private dispatchStreamFrame(frame: StreamFrame): void {
+    this.recordIncomingStreamFrame(frame);
     if (frame.kind === 'data') {
       const payload = { data: frame.data, seq: frame.seq };
       if (frame.target === 'session') {
@@ -444,22 +711,37 @@ export class DaemonClient {
     }
   }
 
-  private tearDownSockets(): void {
-    try {
-      this.rpc?.destroy();
-    } catch {
-      // ignore
-    }
-    try {
-      this.stream?.destroy();
-    } catch {
-      // ignore
-    }
+  private destroySocketsOnly(): void {
+    const rpc = this.rpc;
+    const stream = this.stream;
     this.rpc = null;
     this.stream = null;
+    if (stream && !stream.destroyed) {
+      try {
+        stream.removeAllListeners();
+        stream.destroy();
+      } catch {
+        // ignore
+      }
+    }
+    if (rpc && !rpc.destroyed) {
+      try {
+        rpc.removeAllListeners();
+        rpc.destroy();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private tearDownSockets(): void {
+    this.cancelStreamReconnect();
+    this.destroySocketsOnly();
   }
 
   disconnect(): void {
+    this.intentionalDisconnect = true;
+    this.clearSilencePoll();
     this.tearDownSockets();
   }
 

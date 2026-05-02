@@ -30,6 +30,7 @@ import {
   WIN_STREAM_PIPE,
   daemonUnixSocketPaths,
   encodeLine,
+  isStreamControlFrame,
 } from './protocol';
 import type {
   CreateSessionParams,
@@ -112,13 +113,78 @@ function removePidfile(): void {
 
 let streamClient: net.Socket | null = null;
 
-function broadcast(frame: StreamFrame): void {
-  if (!streamClient || streamClient.destroyed) return;
+/** Prefer exits + agent-state ahead of bulk PTY output so automation does not starve. */
+const streamControlQueue: StreamFrame[] = [];
+const streamDataQueue: StreamFrame[] = [];
+let streamPumpScheduled = false;
+/** Max `data` lines per event-loop turn; control frames always drain first. */
+const STREAM_DATA_BURST = 48;
+/** Safety cap so one turn cannot block the process indefinitely. */
+const STREAM_MAX_WRITES_PER_TURN = 512;
+
+function scheduleStreamPump(): void {
+  if (streamPumpScheduled) return;
+  streamPumpScheduled = true;
+  setImmediate(runStreamPump);
+}
+
+function runStreamPump(): void {
+  streamPumpScheduled = false;
+  const sock = streamClient;
+  if (!sock || sock.destroyed) {
+    streamControlQueue.length = 0;
+    streamDataQueue.length = 0;
+    return;
+  }
   try {
-    streamClient.write(encodeLine(frame));
+    let writes = 0;
+    while (sock && !sock.destroyed && writes < STREAM_MAX_WRITES_PER_TURN) {
+      while (streamControlQueue.length > 0 && writes < STREAM_MAX_WRITES_PER_TURN) {
+        const f = streamControlQueue.shift()!;
+        sock.write(encodeLine(f));
+        writes++;
+      }
+      let burst = 0;
+      while (
+        burst < STREAM_DATA_BURST &&
+        streamDataQueue.length > 0 &&
+        writes < STREAM_MAX_WRITES_PER_TURN
+      ) {
+        sock.write(encodeLine(streamDataQueue.shift()!));
+        burst++;
+        writes++;
+      }
+      if (streamControlQueue.length === 0 && streamDataQueue.length === 0) {
+        return;
+      }
+      if (streamControlQueue.length > 0) {
+        continue;
+      }
+      if (streamDataQueue.length > 0) {
+        scheduleStreamPump();
+        return;
+      }
+    }
+    if (
+      streamClient &&
+      !streamClient.destroyed &&
+      (streamControlQueue.length > 0 || streamDataQueue.length > 0)
+    ) {
+      scheduleStreamPump();
+    }
   } catch (err) {
     log('stream write failed', err);
   }
+}
+
+function broadcast(frame: StreamFrame): void {
+  if (!streamClient || streamClient.destroyed) return;
+  if (isStreamControlFrame(frame)) {
+    streamControlQueue.push(frame);
+  } else {
+    streamDataQueue.push(frame);
+  }
+  scheduleStreamPump();
 }
 
 const daemon = new DaemonCore(broadcast);
@@ -360,7 +426,12 @@ const streamServer = net.createServer((socket) => {
     },
     () => {
       log('stream client disconnected');
-      if (streamClient === socket) streamClient = null;
+      if (streamClient === socket) {
+        streamClient = null;
+        streamControlQueue.length = 0;
+        streamDataQueue.length = 0;
+        streamPumpScheduled = false;
+      }
     },
   );
 });

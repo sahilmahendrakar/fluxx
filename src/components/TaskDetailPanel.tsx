@@ -34,7 +34,10 @@ import {
 import { projectLabelCatalog } from '../taskLabels';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
-import { getSessionAttachShared } from '../terminal/warmAttach';
+import {
+  getSessionAttachShared,
+  invalidateSessionAttachCache,
+} from '../terminal/warmAttach';
 import {
   MIRROR_TERMINAL_VIEW_POLICY,
   terminalShouldAutoFit,
@@ -619,6 +622,10 @@ export default function TaskDetailPanel({
     },
     onStreamData: (id, cb) => window.electronAPI.sessions.onData(id, cb),
     onAttachComplete: () => setSessionStreamReady(true),
+    invalidateAttachCache: () => {
+      const sid = sessionId;
+      if (sid) invalidateSessionAttachCache(sid);
+    },
   });
 
   useEffect(() => {

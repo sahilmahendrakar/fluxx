@@ -246,6 +246,32 @@ export type StreamFrame =
   | { kind: 'planning-exit'; id: string; session: PlanningSession }
   | { kind: 'agent-state'; id: string; state: AgentState };
 
+/** IPC payload when the main↔daemon stream socket reconnects after a drop. */
+export interface DaemonStreamCatchupPayload {
+  reason: 'reconnect';
+  /** `stream-only` if RPC stayed up; `full` after a combined reconnect. */
+  mode: 'stream-only' | 'full';
+  /** Approximate time the stream was unusable (client-side), when known. */
+  disconnectedMs?: number;
+  /** Running task sessions reported by the daemon at reconnect time. */
+  runningSessions: number;
+  /** Last NDJSON frame observed on the prior stream (ms since epoch). */
+  lastStreamFrameAt?: number;
+  /** Last `agent-state` frame observed on the prior stream. */
+  lastAgentStateAt?: number;
+  /** Last seen PTY `seq` per `target:id` key from `data` frames. */
+  lastDataSeq: Record<string, number>;
+}
+
+export function isStreamControlFrame(frame: StreamFrame): boolean {
+  return (
+    frame.kind === 'agent-state' ||
+    frame.kind === 'session-exit' ||
+    frame.kind === 'shell-exit' ||
+    frame.kind === 'planning-exit'
+  );
+}
+
 // ---------------------------------------------------------------------------
 // NDJSON framer
 // ---------------------------------------------------------------------------

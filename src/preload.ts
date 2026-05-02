@@ -18,7 +18,12 @@ import type {
   TaskPullRequestIpcResult,
   TaskSessionStartProgress,
 } from './types';
-import type { AgentState, AttachResult, PlanningAttachResult } from './daemon/protocol';
+import type {
+  AgentState,
+  AttachResult,
+  DaemonStreamCatchupPayload,
+  PlanningAttachResult,
+} from './daemon/protocol';
 import {
   MCP_BRIDGE_READY_CHANNEL,
   MCP_BRIDGE_REQUEST_CHANNEL,
@@ -278,6 +283,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('session:getSilenceStates') as Promise<
         { id: string; taskId?: string; state: AgentState }[]
       >,
+    onDaemonStreamCatchup: (cb: (payload: DaemonStreamCatchupPayload) => void) => {
+      const channel = 'daemon:streamCatchup';
+      const handler = (_e: unknown, payload: DaemonStreamCatchupPayload) => cb(payload);
+      ipcRenderer.on(channel, handler);
+      return () => ipcRenderer.removeListener(channel, handler);
+    },
     onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => {
       const ch = 'session:taskStartProgress' as const;
       const handler = (

@@ -398,6 +398,19 @@ app.whenReady().then(async () => {
 
   daemonClient.onAgentState = applyAgentState;
 
+  async function reconcileSilenceStatesFromDaemon(
+    states: { id: string; taskId?: string; state: AgentState }[],
+    _meta?: unknown,
+  ): Promise<void> {
+    for (const { id, taskId, state } of states) {
+      if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
+      await applyAgentState(id, state);
+    }
+  }
+
+  daemonClient.onSilenceStatesSnapshot = reconcileSilenceStatesFromDaemon;
+  daemonClient.startSilencePolling();
+
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
     userData,
