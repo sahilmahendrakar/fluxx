@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import { ThemeModeCompactToggle } from './ThemeModeCompactToggle';
 
 export type PlanningDocFile = { relativePath: string };
 
@@ -272,19 +273,22 @@ export function Sidebar({
   return (
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-flux-border/10 bg-flux-sidebar text-flux-fg">
       <div className="px-3 pb-3 pt-3.5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1">
           <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle">
             Flux
           </div>
-          <button
-            type="button"
-            onClick={onCollapse}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-            className="-mr-1 shrink-0 rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg"
-          >
-            <SidebarCollapseIcon />
-          </button>
+          <div className="-mr-1 flex shrink-0 items-center gap-0.5">
+            <ThemeModeCompactToggle className="rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg" />
+            <button
+              type="button"
+              onClick={onCollapse}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar"
+              className="rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg"
+            >
+              <SidebarCollapseIcon />
+            </button>
+          </div>
         </div>
         <div className="mt-1 flex items-center gap-1.5">
           <span
