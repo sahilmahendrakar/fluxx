@@ -219,6 +219,7 @@ export default function TaskDetailPanel({
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [depSearch, setDepSearch] = useState('');
+  const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const taskFormSplitRef = useRef<HTMLDivElement>(null);
@@ -257,6 +258,7 @@ export default function TaskDetailPanel({
     setAssigneeChangeConfirm(null);
     setDependencyError(null);
     setDepSearch('');
+    setDependencyAddOpen(false);
     setDescriptionEditing(false);
     setBranchDiscovery(null);
     setBranchDiscoveryError(null);
@@ -788,6 +790,7 @@ export default function TaskDetailPanel({
   const pickCandidates = projectTasks.filter(
     (t) =>
       t.id !== task.id &&
+      t.status !== 'done' &&
       !(task.blockedByTaskIds ?? []).includes(t.id) &&
       (depQueryLower === '' || t.title.toLowerCase().includes(depQueryLower)),
   );
@@ -1405,45 +1408,72 @@ export default function TaskDetailPanel({
                 )}
 
                 <div className="pt-1">
-                  <input
-                    type="search"
-                    value={depSearch}
-                    onChange={(e) => setDepSearch(e.target.value)}
-                    placeholder="Add dependency by search…"
-                    className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
-                    aria-label="Search tasks to add as dependencies"
-                  />
+                  {dependencyAddOpen ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-zinc-500">Add a blocker or dependency</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDependencyAddOpen(false);
+                            setDepSearch('');
+                            setDependencyError(null);
+                          }}
+                          className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <input
+                        type="search"
+                        value={depSearch}
+                        onChange={(e) => setDepSearch(e.target.value)}
+                        placeholder="Add dependency by search…"
+                        className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                        aria-label="Search tasks to add as dependencies"
+                      />
+                      {dependencyError ? (
+                        <p className="text-xs text-red-300/90" role="alert">
+                          {dependencyError}
+                        </p>
+                      ) : null}
+                      {pickCandidates.length > 0 ? (
+                        <ul
+                          className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
+                          role="listbox"
+                          aria-label="Tasks matching your search"
+                        >
+                          {pickCandidates.slice(0, 50).map((t) => {
+                            const stLabel =
+                              COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
+                            return (
+                              <li key={t.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => addBlocker(t.id)}
+                                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
+                                >
+                                  <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
+                                  <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : depSearch.trim() ? (
+                        <p className="text-xs text-zinc-600">No matching tasks.</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDependencyAddOpen(true)}
+                      className="w-full rounded-lg border border-dashed border-white/[0.1] bg-transparent px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:border-white/[0.14] hover:bg-white/[0.02] hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      Add dependency
+                    </button>
+                  )}
                 </div>
-                {dependencyError ? (
-                  <p className="text-xs text-red-300/90" role="alert">
-                    {dependencyError}
-                  </p>
-                ) : null}
-                {pickCandidates.length > 0 ? (
-                  <ul
-                    className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
-                    role="listbox"
-                    aria-label="Tasks matching your search"
-                  >
-                    {pickCandidates.slice(0, 50).map((t) => {
-                      const stLabel = COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
-                      return (
-                        <li key={t.id}>
-                          <button
-                            type="button"
-                            onClick={() => addBlocker(t.id)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
-                          >
-                            <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
-                            <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : depSearch.trim() ? (
-                  <p className="text-xs text-zinc-600">No matching tasks.</p>
-                ) : null}
               </section>
             </div>
           </div>
