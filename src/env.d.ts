@@ -29,7 +29,14 @@ import type {
   McpBridgeResponse,
 } from './mcpBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
-import type { PlanningDocsApplyFirestoreSnapshotResult } from './planningDocs/syncTypes';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsPersistConflictResult,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+} from './planningDocs/syncTypes';
 import type {
   PlanningDocFileEntry,
   PlanningDocsCloudMigrationPersistedV1,
@@ -283,6 +290,15 @@ declare global {
           }>;
           removedDocIds: string[];
         }) => Promise<PlanningDocsApplyFirestoreSnapshotResult>;
+        listPushCandidates: (
+          projectId: string,
+        ) => Promise<PlanningDocsListPushCandidatesResult>;
+        recordPushSuccess: (
+          payload: PlanningDocsRecordPushSuccessPayload,
+        ) => Promise<PlanningDocsRecordPushSuccessResult>;
+        persistConflict: (
+          payload: PlanningDocsPersistConflictPayload,
+        ) => Promise<PlanningDocsPersistConflictResult>;
         onChanged: (cb: () => void) => () => void;
         cloudMigration: {
           getState: (

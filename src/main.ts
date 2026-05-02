@@ -40,19 +40,32 @@ import {
   createPlanningDocsWatcher,
   notifyPlanningDocsChanged,
 } from './main/PlanningDocsWatcher';
-import { applyFirestorePlanningDocsSnapshot } from './main/planningDocsFirestoreHydrate';
+import {
+  applyFirestorePlanningDocsSnapshot,
+  persistPlanningDocsConflictLocal,
+  recordPlanningDocsPushSuccess,
+} from './main/planningDocsFirestoreHydrate';
+import { listPlanningDocsPushCandidates } from './main/planningDocsFirestorePush';
 import {
   applyPlanningDocsFirestoreHydrationPlan,
   patchPlanningDocsCloudMigrationState,
   readPlanningDocsCloudMigrationState,
 } from './main/planningDocsMigrationDisk';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
-import type { PlanningDocsApplyFirestoreSnapshotResult } from './planningDocs/syncTypes';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsConflictRecordV1,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+} from './planningDocs/syncTypes';
 import type { PlanningDocsCloudMigrationPersistedV1 } from './planningDocs/types';
 import {
   createPlanningDocsProviderBundle,
   planningDocsProviderForActiveProject,
 } from './planningDocs/selectPlanningDocsProvider';
+import { normalizePlanningDocRelativePath } from './planningDocs/path';
 import type { PlanningDocsProvider } from './planningDocs/FilesystemPlanningDocsProvider';
 import type {
   ActiveProjectKey,
@@ -2464,6 +2477,68 @@ app.whenReady().then(async () => {
         notifyPlanningDocsChanged();
       }
       return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:listPushCandidates',
+    async (_e, projectId: string): Promise<PlanningDocsListPushCandidatesResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      const candidates = await listPlanningDocsPushCandidates(planningDir, projectId);
+      return { ok: true, candidates };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:recordPushSuccess',
+    async (_e, payload: PlanningDocsRecordPushSuccessPayload): Promise<PlanningDocsRecordPushSuccessResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const norm = normalizePlanningDocRelativePath(payload.relativePath);
+      if (!norm) return { ok: false, code: 'INVALID_PATH' };
+      if (typeof payload.contentSha256 !== 'string' || typeof payload.newRemoteRevision !== 'string') {
+        return { ok: false, code: 'INVALID_PATH' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      await recordPlanningDocsPushSuccess(planningDir, norm, payload.contentSha256, payload.newRemoteRevision);
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:persistConflict',
+    async (_e, payload: PlanningDocsPersistConflictPayload) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.projectId) {
+        return { ok: false as const, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const rec = payload.record as PlanningDocsConflictRecordV1;
+      if (
+        !rec ||
+        rec.schemaVersion !== 1 ||
+        typeof rec.relativePath !== 'string' ||
+        typeof rec.createdAt !== 'string' ||
+        !(rec.baseRemoteRevision === null || typeof rec.baseRemoteRevision === 'string') ||
+        typeof rec.localMarkdown !== 'string' ||
+        typeof rec.remoteMarkdown !== 'string' ||
+        typeof rec.remoteRevision !== 'string' ||
+        typeof rec.remoteUpdatedBy !== 'string' ||
+        typeof rec.localUpdatedBy !== 'string'
+      ) {
+        return { ok: false as const, code: 'INVALID_RECORD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false as const, code: 'NO_PLANNING_DIR' };
+      const conflictFileBasename = await persistPlanningDocsConflictLocal(planningDir, rec);
+      return { ok: true as const, conflictFileBasename };
     },
   );
 

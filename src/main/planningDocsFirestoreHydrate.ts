@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { PlanningDocsApplyFirestoreSnapshotPayload } from '../planningDocs/syncTypes';
+import type {
+  PlanningDocsApplyFirestoreSnapshotPayload,
+  PlanningDocsConflictRecordV1,
+} from '../planningDocs/syncTypes';
 import {
   normalizePlanningDocRelativePath,
   planningFirestoreDocIdToRelativePath,
@@ -9,8 +12,12 @@ import {
   safeResolvePlanningMarkdownAbsPath,
 } from '../planningDocs/path';
 
-const SYNC_DIR = '.flux-docs-sync';
+/** Dot-directory next to mirrored markdown — sync state and conflict artifacts. */
+export const PLANNING_DOCS_DISK_SYNC_DIR = '.flux-docs-sync';
+
+const SYNC_DIR = PLANNING_DOCS_DISK_SYNC_DIR;
 const STATE_FILENAME = 'state.json';
+const CONFLICTS_SUBDIR = 'conflicts';
 
 export interface PlanningDocsDiskSyncStateV1 {
   schemaVersion: 1;
@@ -22,6 +29,11 @@ export interface PlanningDocsDiskSyncStateV1 {
       lastSyncedContentHash: string;
     }
   >;
+  /**
+   * Paths where upload hit a revision conflict — excluded from push retries until a
+   * successful remote hydrate updates the file or this entry is cleared manually.
+   */
+  pausedPushPaths?: Record<string, { at: string }>;
 }
 
 function sha256Utf8(content: string): string {
@@ -46,7 +58,12 @@ export async function readPlanningDocsSyncState(
       typeof (parsed as PlanningDocsDiskSyncStateV1).files === 'object' &&
       (parsed as PlanningDocsDiskSyncStateV1).files !== null
     ) {
-      return parsed as PlanningDocsDiskSyncStateV1;
+      const st = parsed as PlanningDocsDiskSyncStateV1;
+      return {
+        ...st,
+        pausedPushPaths:
+          st.pausedPushPaths && typeof st.pausedPushPaths === 'object' ? st.pausedPushPaths : undefined,
+      };
     }
   } catch (err: unknown) {
     if (err && typeof err === 'object' && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -138,6 +155,11 @@ export async function applyFirestorePlanningDocsSnapshot(
     await fs.writeFile(abs, doc.markdown, 'utf8');
     changed = true;
 
+    const nextPaused = state.pausedPushPaths ? { ...state.pausedPushPaths } : undefined;
+    if (nextPaused && normPath in nextPaused) {
+      delete nextPaused[normPath];
+    }
+
     state = {
       ...state,
       files: {
@@ -147,6 +169,7 @@ export async function applyFirestorePlanningDocsSnapshot(
           lastSyncedContentHash: incomingHash,
         },
       },
+      pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,
     };
   }
 
@@ -181,7 +204,15 @@ export async function applyFirestorePlanningDocsSnapshot(
 
     const nextFiles = { ...state.files };
     delete nextFiles[normPath];
-    state = { ...state, files: nextFiles };
+    const nextPaused = state.pausedPushPaths ? { ...state.pausedPushPaths } : undefined;
+    if (nextPaused && normPath in nextPaused) {
+      delete nextPaused[normPath];
+    }
+    state = {
+      ...state,
+      files: nextFiles,
+      pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,
+    };
   }
 
   if (changed) {
@@ -189,4 +220,53 @@ export async function applyFirestorePlanningDocsSnapshot(
   }
 
   return { ok: true, changed };
+}
+
+export async function recordPlanningDocsPushSuccess(
+  planningDir: string,
+  normPath: string,
+  contentHash: string,
+  newRemoteRevision: string,
+): Promise<void> {
+  let state = await readPlanningDocsSyncState(planningDir);
+  const nextPaused = state.pausedPushPaths ? { ...state.pausedPushPaths } : undefined;
+  if (nextPaused && normPath in nextPaused) {
+    delete nextPaused[normPath];
+  }
+  state = {
+    ...state,
+    files: {
+      ...state.files,
+      [normPath]: {
+        remoteRevision: newRemoteRevision,
+        lastSyncedContentHash: contentHash,
+      },
+    },
+    pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,
+  };
+  await writePlanningDocsSyncState(planningDir, state);
+}
+
+export async function persistPlanningDocsConflictLocal(
+  planningDir: string,
+  record: PlanningDocsConflictRecordV1,
+): Promise<string> {
+  const dir = path.join(planningDir, SYNC_DIR, CONFLICTS_SUBDIR);
+  await fs.mkdir(dir, { recursive: true });
+  const safePath = Buffer.from(record.relativePath, 'utf8').toString('base64url').slice(0, 200);
+  const basename = `${record.createdAt.replace(/[:.]/g, '-')}_${safePath}.json`;
+  const abs = path.join(dir, basename);
+  await fs.writeFile(abs, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+
+  let state = await readPlanningDocsSyncState(planningDir);
+  state = {
+    ...state,
+    pausedPushPaths: {
+      ...(state.pausedPushPaths ?? {}),
+      [record.relativePath]: { at: record.createdAt },
+    },
+  };
+  await writePlanningDocsSyncState(planningDir, state);
+
+  return basename;
 }

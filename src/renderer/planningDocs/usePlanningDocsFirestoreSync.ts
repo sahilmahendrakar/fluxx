@@ -6,31 +6,8 @@ import {
   normalizePlanningDocRelativePath,
   planningRelativePathToFirestoreDocId,
 } from '../../planningDocs/path';
+import { revisionFromFirestoreUpdatedAt } from '../../planningDocs/firestoreRevision';
 import { getFirebaseFirestore, isFirebaseConfigured } from '../firebase';
-
-function revisionFromUpdatedAt(updatedAt: unknown): string {
-  if (
-    updatedAt &&
-    typeof updatedAt === 'object' &&
-    'seconds' in updatedAt &&
-    typeof (updatedAt as { seconds: unknown }).seconds === 'number'
-  ) {
-    const s = (updatedAt as { seconds: number }).seconds;
-    const n =
-      'nanoseconds' in updatedAt && typeof (updatedAt as { nanoseconds: unknown }).nanoseconds === 'number'
-        ? (updatedAt as { nanoseconds: number }).nanoseconds
-        : 0;
-    return `${s}_${n}`;
-  }
-  if (
-    updatedAt &&
-    typeof updatedAt === 'object' &&
-    typeof (updatedAt as { toMillis?: () => number }).toMillis === 'function'
-  ) {
-    return `ms_${(updatedAt as { toMillis: () => number }).toMillis()}`;
-  }
-  return 'unknown';
-}
 
 function parsePlanningDocSnapshot(snapshot: QueryDocumentSnapshot): PlanningDocsFirestoreDocPayload | null {
   const data = snapshot.data() as Partial<FirestorePlanningDocDocumentV1>;
@@ -44,7 +21,7 @@ function parsePlanningDocSnapshot(snapshot: QueryDocumentSnapshot): PlanningDocs
     docId: snapshot.id,
     relativePath: norm,
     markdown: data.markdown,
-    remoteRevision: revisionFromUpdatedAt(data.updatedAt),
+    remoteRevision: revisionFromFirestoreUpdatedAt(data.updatedAt),
   };
 }
 

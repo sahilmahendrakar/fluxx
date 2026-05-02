@@ -32,7 +32,14 @@ import {
   type McpBridgeResponse,
 } from './mcpBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
-import type { PlanningDocsApplyFirestoreSnapshotResult } from './planningDocs/syncTypes';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsPersistConflictResult,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+} from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
   PlanningDocsListResult,
@@ -410,6 +417,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'planningDocs:applyFirestoreSnapshot',
         payload,
       ) as Promise<PlanningDocsApplyFirestoreSnapshotResult>,
+    listPushCandidates: (projectId: string) =>
+      ipcRenderer.invoke(
+        'planningDocs:listPushCandidates',
+        projectId,
+      ) as Promise<PlanningDocsListPushCandidatesResult>,
+    recordPushSuccess: (payload: PlanningDocsRecordPushSuccessPayload) =>
+      ipcRenderer.invoke(
+        'planningDocs:recordPushSuccess',
+        payload,
+      ) as Promise<PlanningDocsRecordPushSuccessResult>,
+    persistConflict: (payload: PlanningDocsPersistConflictPayload) =>
+      ipcRenderer.invoke(
+        'planningDocs:persistConflict',
+        payload,
+      ) as Promise<PlanningDocsPersistConflictResult>,
     onChanged: (cb: () => void) => {
       const handler = () => cb();
       ipcRenderer.on('planningDocs:changed', handler);

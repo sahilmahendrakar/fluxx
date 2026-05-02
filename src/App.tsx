@@ -61,6 +61,7 @@ import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
+import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlanningDocsFirestorePush';
 import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { isFirebaseConfigured } from './renderer/firebase';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
@@ -469,6 +470,12 @@ export default function App() {
   usePlanningDocsFirestoreSync({
     enabled: project?.kind === 'cloud' && !!uid && isFirebaseConfigured(),
     projectId: project?.kind === 'cloud' ? project.id : null,
+  });
+
+  usePlanningDocsFirestorePush({
+    enabled: project?.kind === 'cloud' && !!uid && isFirebaseConfigured(),
+    projectId: project?.kind === 'cloud' ? project.id : null,
+    uid,
   });
 
   useEffect(() => {

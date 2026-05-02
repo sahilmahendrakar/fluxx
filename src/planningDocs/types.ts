@@ -54,6 +54,7 @@ export type PlanningDocsReadResult =
  *
  * - `docId` is a stable encoding of `relativePath` — see `planningRelativePathToFirestoreDocId`.
  * - Team members may create/update docs; `updatedBy` must match the writer uid.
+ * - Push conflicts are appended under `planningDocs/{docId}/conflicts/*` (see `appendPlanningDocFirestoreConflict`).
  */
 export interface FirestorePlanningDocDocumentV1 {
   schemaVersion: 1;
