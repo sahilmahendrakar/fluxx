@@ -113,15 +113,16 @@ export default function Board({
     return allTasks.filter((t) => t.status === 'done').length;
   }, [allTasks, boardFilter.hideDone]);
 
-  const tasksByStatus: Record<TaskStatus, Task[]> = {
-    backlog: [],
-    'in-progress': [],
-    'needs-input': [],
-    done: [],
-  };
-  for (const task of visibleTasks) {
-    tasksByStatus[task.status].push(task);
-  }
+  const tasksByStatus = useMemo(() => {
+    const by = {} as Record<TaskStatus, Task[]>;
+    for (const c of COLUMNS) {
+      by[c.id] = [];
+    }
+    for (const task of visibleTasks) {
+      by[task.status].push(task);
+    }
+    return by;
+  }, [visibleTasks]);
 
   const projectIsEmpty = allTasks.length === 0;
   const noMatches = !projectIsEmpty && visibleTasks.length === 0;

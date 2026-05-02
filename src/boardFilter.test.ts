@@ -18,6 +18,7 @@ const base: BoardFilterState = {
   search: '',
   includeDescription: true,
   agent: 'all',
+  status: 'all',
   label: null,
   hideDone: false,
 };
@@ -39,6 +40,7 @@ describe('applyBoardFilters', () => {
       labels: ['Auth'],
     }),
     task('4', { title: 'N', status: 'backlog', agent: 'cursor' }),
+    task('5', { title: 'PR up', status: 'review', agent: 'cursor' }),
   ];
 
   it('returns all when no constraints', () => {
@@ -47,6 +49,7 @@ describe('applyBoardFilters', () => {
       '2',
       '3',
       '4',
+      '5',
     ]);
   });
 
@@ -88,12 +91,18 @@ describe('applyBoardFilters', () => {
       applyBoardFilters(list, { ...base, label: UNLABELED_VALUE }).map(
         (x) => x.id,
       ),
-    ).toEqual(['1', '4']);
+    ).toEqual(['1', '4', '5']);
   });
 
   it('hides done when requested', () => {
     expect(
       applyBoardFilters(list, { ...base, hideDone: true }).map((x) => x.id),
-    ).toEqual(['1', '2', '4']);
+    ).toEqual(['1', '2', '4', '5']);
+  });
+
+  it('filters by status column', () => {
+    expect(applyBoardFilters(list, { ...base, status: 'review' }).map((x) => x.id)).toEqual([
+      '5',
+    ]);
   });
 });

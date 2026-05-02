@@ -152,6 +152,7 @@ const STATUS_CHIP: Record<TaskStatus, string> = {
   backlog: 'bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]',
   'in-progress': 'bg-emerald-500/[0.12] text-emerald-200/95 ring-1 ring-inset ring-emerald-500/15',
   'needs-input': 'bg-amber-500/[0.12] text-amber-200/90 ring-1 ring-inset ring-amber-500/18',
+  review: 'bg-sky-500/[0.12] text-sky-200/95 ring-1 ring-inset ring-sky-500/18',
   done: 'bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.05]',
 };
 

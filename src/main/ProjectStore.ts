@@ -212,7 +212,7 @@ You have access to the following Flux tools for task management:
 - \`flux__list_repo_branches\` — full local + origin remote branch lists, default branch, and optional \`classifyBranch\` to see whether a name exists or is missing-but-creatable before batch-creating tasks
 - \`flux__list_members\` — cloud projects only: team roster (\`email\`, \`displayName\`, \`role\`) for assignee lookup; local projects return an empty list with a note
 
-Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the usual way to mark work as actively in flight (\`in-progress\`). Use \`flux__update_task\` for other status changes (e.g. **Needs input**, **Done**) or edits to title/description/agent.
+Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the usual way to mark work as actively in flight (\`in-progress\`). Use \`flux__update_task\` for other status changes (e.g. **Needs input**, **Review**, **Done**) or edits to title/description/agent.
 
 **Task branches:** When the user names a base branch (e.g. “do this on \`feature/auth\`”), pass that as \`sourceBranch\` on **each** subtask you create so work stays on their branch. Use \`createSourceBranchIfMissing: true\` only when they want a new branch created on first start. If they did not specify a branch, omit \`sourceBranch\` so Flux uses the project default.
 

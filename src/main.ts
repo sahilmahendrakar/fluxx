@@ -1900,8 +1900,11 @@ app.whenReady().then(async () => {
     if (project) {
       // Local mode is out of scope for the current cloud-only requirement.
       const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-      if (task?.status === 'needs-input') {
-        console.log('[task:status] needs-input → in-progress (user submitted query, local)', { taskId });
+      if (task?.status === 'needs-input' || task?.status === 'review') {
+        console.log('[task:status] needs-input/review → in-progress (user submitted query, local)', {
+          taskId,
+          from: task.status,
+        });
         void taskStore.update(taskId, { status: 'in-progress' }).then(() => {
           broadcastLocalTasksChanged();
         });

@@ -22,6 +22,7 @@ import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 const STATUS_DOT: Record<Task['status'], string> = {
   'in-progress': 'bg-emerald-400/80',
   'needs-input': 'bg-amber-400/80',
+  review: 'bg-sky-400/85',
   backlog: 'bg-zinc-600',
   done: 'bg-zinc-600',
 };
@@ -66,6 +67,7 @@ export default function TaskCard({
   hasWorktree = false,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
+  const isReview = task.status === 'review';
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const agentBadgeTitle = modelSummaryForTask(task);
@@ -116,7 +118,7 @@ export default function TaskCard({
           {...provided.draggableProps}
           className={`group rounded-md border border-white/[0.06] bg-[#141416] shadow-sm transition-colors ${
             isNeedsInput ? 'border-l-[3px] border-l-amber-400/65' : ''
-          } ${isDone ? 'opacity-55' : ''} ${
+          } ${isReview ? 'border-l-[3px] border-l-sky-400/60' : ''} ${isDone ? 'opacity-55' : ''} ${
             snapshot.isDragging
               ? 'border-white/[0.12] bg-[#18181b] shadow-lg ring-1 ring-white/[0.08]'
               : 'hover:border-white/[0.1] hover:bg-[#161618]'
