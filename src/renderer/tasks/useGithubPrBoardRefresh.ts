@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '../../types';
 import { githubPrRefreshViewEqual } from '../../githubPrMetadata';
-import type { TaskProvider } from './TaskProvider';
+import { shouldAutoMarkDoneAfterPrMergeRefresh } from '../../autoMarkDoneWhenPrMerged';
+import { keyForInsert, sortColumn } from './orderKey';
+import type { TaskPatch, TaskProvider } from './TaskProvider';
 
 const DEBOUNCE_MS = 1800;
 const POLL_MS = 7 * 60 * 1000;
@@ -34,8 +36,23 @@ export function useGithubPrBoardRefresh(input: {
   provider: TaskProvider | null;
   tasks: Task[];
   enabled: boolean;
+  /** When true, merged PR metadata may move cloud tasks to Done (see `shouldAutoMarkDoneAfterPrMergeRefresh`). */
+  autoMarkDoneWhenPrMerged: boolean;
+  /**
+   * After a cloud task is written as Done from merged PR metadata, run the same
+   * follow-up as an explicit Done transition (unblock autostart, optional cleanup).
+   */
+  onCloudPrMergedAutoDone?: (args: { previous: Task; updated: Task }) => Promise<void>;
 }): void {
-  const { projectId, projectKind, provider, tasks, enabled } = input;
+  const {
+    projectId,
+    projectKind,
+    provider,
+    tasks,
+    enabled,
+    autoMarkDoneWhenPrMerged,
+    onCloudPrMergedAutoDone,
+  } = input;
   const generationRef = useRef(0);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
@@ -43,6 +60,10 @@ export function useGithubPrBoardRefresh(input: {
   providerRef.current = provider;
   const kindRef = useRef(projectKind);
   kindRef.current = projectKind;
+  const autoMarkDoneRef = useRef(autoMarkDoneWhenPrMerged);
+  autoMarkDoneRef.current = autoMarkDoneWhenPrMerged;
+  const onCloudPrMergedAutoDoneRef = useRef(onCloudPrMergedAutoDone);
+  onCloudPrMergedAutoDoneRef.current = onCloudPrMergedAutoDone;
 
   const tasksGithubPrKey = useMemo(() => {
     return tasks
@@ -82,7 +103,34 @@ export function useGithubPrBoardRefresh(input: {
         }
         if (githubPrRefreshViewEqual(task.githubPr, result.githubPr)) return;
         if (kind === 'cloud') {
-          await prov.update(task.id, { githubPr: result.githubPr });
+          const list = tasksRef.current;
+          const patch: TaskPatch = { githubPr: result.githubPr };
+          if (
+            shouldAutoMarkDoneAfterPrMergeRefresh({
+              task,
+              refreshedGithubPr: result.githubPr,
+              prefEnabled: autoMarkDoneRef.current,
+              allTasks: list,
+            })
+          ) {
+            const destCol = sortColumn(
+              list.filter((t) => t.id !== task.id),
+              'done',
+            );
+            let nextOrderKey: string;
+            try {
+              nextOrderKey = keyForInsert(destCol, destCol.length);
+            } catch (err) {
+              console.error('[githubPrRefresh] keyForInsert failed', task.id, err);
+              nextOrderKey = String(Date.now());
+            }
+            patch.status = 'done';
+            patch.orderKey = nextOrderKey;
+          }
+          const updated = await prov.update(task.id, patch);
+          if (patch.status === 'done' && onCloudPrMergedAutoDoneRef.current) {
+            await onCloudPrMergedAutoDoneRef.current({ previous: task, updated });
+          }
         }
       } catch (err) {
         console.warn('[githubPrRefresh] error', task.id, err);

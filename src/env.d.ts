@@ -93,6 +93,10 @@ declare global {
         setAutoCleanupWorkspaceWhenDone: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getAutoMarkDoneWhenPrMerged: () => Promise<boolean>;
+        setAutoMarkDoneWhenPrMerged: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;

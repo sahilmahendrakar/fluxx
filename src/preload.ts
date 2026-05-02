@@ -105,6 +105,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setAutoCleanupWorkspaceWhenDone', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getAutoMarkDoneWhenPrMerged: () =>
+      ipcRenderer.invoke('project:getAutoMarkDoneWhenPrMerged') as Promise<boolean>,
+    setAutoMarkDoneWhenPrMerged: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setAutoMarkDoneWhenPrMerged', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
   },
   projects: {
     listLocal: () =>

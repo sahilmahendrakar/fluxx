@@ -95,6 +95,11 @@ export interface LocalProject {
    * the Done card): worktrees removed and agent sessions stopped; the task stays in Done.
    */
   autoCleanupWorkspaceWhenDone: boolean;
+  /**
+   * When on, refreshing linked GitHub PR metadata that shows the PR merged can move the task
+   * to Done from In progress or Needs input (not backlog), if it is not dependency-blocked.
+   */
+  autoMarkDoneWhenPrMerged: boolean;
   repos: RepoConfig[];
 }
 
@@ -120,6 +125,7 @@ export interface CloudProjectLocalBinding {
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
+  autoMarkDoneWhenPrMerged?: boolean;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
 }
@@ -141,6 +147,7 @@ export interface CloudProject {
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
+  autoMarkDoneWhenPrMerged?: boolean;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
 }

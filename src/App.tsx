@@ -574,14 +574,6 @@ export default function App() {
     return unsub;
   }, [provider]);
 
-  useGithubPrBoardRefresh({
-    projectId: project?.id,
-    projectKind: project?.kind,
-    provider,
-    tasks,
-    enabled: Boolean(project && !activationLoading && provider),
-  });
-
   const tasksWorktreeIdsKey = useMemo(
     () =>
       tasks
@@ -1117,6 +1109,56 @@ export default function App() {
     },
     [stripLocalSessionStateForTask],
   );
+
+  const handleCloudPrRefreshMergedAutoDone = useCallback(
+    async ({ previous, updated }: { previous: Task; updated: Task }) => {
+      if (project?.kind !== 'cloud' || !provider) return;
+      if (previous.status === 'done' || updated.status !== 'done') return;
+      const allAfter = tasksRef.current.map((t) => (t.id === updated.id ? updated : t));
+      cloudInlineDoneFollowUpTaskIdsRef.current.add(updated.id);
+      try {
+        const follow = await runCloudDoneTransitionFollowUp({
+          previous,
+          updated,
+          allAfter,
+          provider,
+          actorUid: null,
+          unblockInFlight: cloudUnblockInFlightRef.current,
+          getTasks: () => tasksRef.current.map((t) => (t.id === updated.id ? updated : t)),
+          setCleanupLoadingTaskId: (tid) => setCleanupLoadingTaskId(tid),
+          onStripSessions: stripLocalSessionStateForTask,
+        });
+        maybeStripSessionsAfterNewWorkspaceClean(
+          previous,
+          follow.workspaceCleaned ? follow.task : updated,
+        );
+        if (follow.workspaceCleaned) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === follow.task.id ? mergeTaskRowPreserveMissing(t, follow.task) : t,
+            ),
+          );
+        } else {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === updated.id ? mergeTaskRowPreserveMissing(t, updated) : t)),
+          );
+        }
+      } finally {
+        cloudInlineDoneFollowUpTaskIdsRef.current.delete(updated.id);
+      }
+    },
+    [project?.kind, provider, stripLocalSessionStateForTask, maybeStripSessionsAfterNewWorkspaceClean],
+  );
+
+  useGithubPrBoardRefresh({
+    projectId: project?.id,
+    projectKind: project?.kind,
+    provider,
+    tasks,
+    enabled: Boolean(project && !activationLoading && provider),
+    autoMarkDoneWhenPrMerged: project?.autoMarkDoneWhenPrMerged === true,
+    onCloudPrMergedAutoDone: handleCloudPrRefreshMergedAutoDone,
+  });
 
   useMcpRendererBridge({
     project,
