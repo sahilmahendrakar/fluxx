@@ -26,6 +26,7 @@ import {
   type McpBridgeRequest,
   type McpBridgeResponse,
 } from './mcpBridge';
+import { ipcSubscribe } from './ipcSubscribe';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -255,18 +256,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ) => {
       const channel = `session:data:${sessionId}`;
       const handler = (
-        _e: unknown,
+        _e: IpcRendererEvent,
         arg: string | { data: string; seq?: number },
       ) => {
         if (typeof arg === 'string') cb(arg);
         else cb(arg.data, arg.seq);
       };
-      ipcRenderer.on(channel, handler);
-      return () => ipcRenderer.removeAllListeners(channel);
+      return ipcSubscribe(ipcRenderer, channel, handler);
     },
     onExit: (cb: (session: Session) => void) => {
-      ipcRenderer.on('session:exited', (_event, session: Session) => cb(session));
-      return () => ipcRenderer.removeAllListeners('session:exited');
+      const handler = (_e: IpcRendererEvent, session: Session) => cb(session);
+      return ipcSubscribe(ipcRenderer, 'session:exited', handler);
     },
     onAgentState: (sessionId: string, cb: (state: AgentState) => void) => {
       const channel = `session:agent-state:${sessionId}`;
@@ -306,18 +306,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onData: (shellId: string, cb: (data: string, streamSeq?: number) => void) => {
       const channel = `shell:data:${shellId}`;
       const handler = (
-        _e: unknown,
+        _e: IpcRendererEvent,
         arg: string | { data: string; seq?: number },
       ) => {
         if (typeof arg === 'string') cb(arg);
         else cb(arg.data, arg.seq);
       };
-      ipcRenderer.on(channel, handler);
-      return () => ipcRenderer.removeAllListeners(channel);
+      return ipcSubscribe(ipcRenderer, channel, handler);
     },
     onExit: (cb: (shell: Shell) => void) => {
-      ipcRenderer.on('shell:exited', (_event, shell: Shell) => cb(shell));
-      return () => ipcRenderer.removeAllListeners('shell:exited');
+      const handler = (_e: IpcRendererEvent, shell: Shell) => cb(shell);
+      return ipcSubscribe(ipcRenderer, 'shell:exited', handler);
     },
   },
   planning: {
@@ -349,14 +348,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         if (typeof arg === 'string') cb(arg);
         else cb(arg.data, arg.seq);
       };
-      ipcRenderer.on(channel, handler);
-      return () => ipcRenderer.removeAllListeners(channel);
+      return ipcSubscribe(ipcRenderer, channel, handler);
     },
     onExit: (cb: (session: PlanningSession) => void) => {
       const handler = (_e: IpcRendererEvent, session: PlanningSession) =>
         cb(session);
-      ipcRenderer.on('planning:exited', handler);
-      return () => ipcRenderer.removeListener('planning:exited', handler);
+      return ipcSubscribe(ipcRenderer, 'planning:exited', handler);
     },
   },
   cursorAgent: {
