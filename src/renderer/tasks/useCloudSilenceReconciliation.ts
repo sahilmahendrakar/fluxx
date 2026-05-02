@@ -48,8 +48,25 @@ export async function reconcileCloudSilenceFromDaemon(p: {
     if (!taskId) continue;
     const task = taskById.get(taskId);
     if (!task || task.projectId !== projectId) continue;
-    if (state !== 'silent' || task.status !== 'in-progress') continue;
-    if (!uid || task.assigneeId !== uid) continue;
+    if (state !== 'silent' || task.status !== 'in-progress') {
+      if (state === 'silent' && task.status !== 'in-progress') {
+        console.log('[task:status] reconcile skip: task not in-progress', {
+          taskId,
+          status: task.status,
+          source,
+        });
+      }
+      continue;
+    }
+    if (!uid || task.assigneeId !== uid) {
+      console.log('[task:status] reconcile skip: assignee mismatch', {
+        taskId,
+        assigneeId: task.assigneeId,
+        currentUid: uid,
+        source,
+      });
+      continue;
+    }
 
     console.log('[task:status] in-progress → needs-input (silence reconcile)', {
       taskId,
