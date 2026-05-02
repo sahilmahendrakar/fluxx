@@ -580,35 +580,104 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Silence-based needs-input detection: subscribe to agent-state for running sessions.
+  // Stable refs so agent-state callbacks always see the latest values without
+  // needing to be torn down and recreated when project/provider changes.
+  const providerRef = useRef(provider);
   useEffect(() => {
-    const running = sessions.filter((s) => s.status === 'running');
-    const unsubs = running.map((s) =>
-      window.electronAPI.sessions.onAgentState(s.id, (state) => {
-        const taskId = s.taskId;
-        if (!taskId) return;
-        setTasks((prev) =>
-          prev.map((t) => {
-            if (t.id !== taskId) return t;
-            if (state === 'silent' && t.status === 'in-progress') {
-              return { ...t, status: 'needs-input' };
-            }
-            if (state === 'active' && t.status === 'needs-input') {
-              return { ...t, status: 'in-progress' };
-            }
-            return t;
-          }),
-        );
-        // Persist to backend (local or cloud).
-        if (state === 'silent') {
-          provider?.update(taskId, { status: 'needs-input' });
-        } else if (state === 'active') {
-          provider?.update(taskId, { status: 'in-progress' });
-        }
-      }),
+    providerRef.current = provider;
+  }, [provider]);
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  // Silence-based needs-input detection: subscribe to agent-state for running sessions.
+  // Subscriptions are managed incrementally to avoid a teardown+recreate gap on every
+  // sessions state change (which would allow events to be silently dropped).
+  const agentStateUnsubsRef = useRef<Map<string, () => void>>(new Map());
+  useEffect(() => {
+    const runningIds = new Set(
+      sessions.filter((s) => s.status === 'running').map((s) => s.id),
     );
-    return () => unsubs.forEach((u) => u());
-  }, [sessions, provider]);
+
+    // Remove subscriptions for sessions that are no longer running.
+    for (const [id, unsub] of [...agentStateUnsubsRef.current.entries()]) {
+      if (!runningIds.has(id)) {
+        unsub();
+        agentStateUnsubsRef.current.delete(id);
+      }
+    }
+
+    // Add subscriptions for newly running sessions.
+    for (const s of sessions) {
+      if (s.status !== 'running' || agentStateUnsubsRef.current.has(s.id) || !s.taskId) continue;
+      const { id, taskId } = s;
+      const unsub = window.electronAPI.sessions.onAgentState(id, (state) => {
+        // Only silence triggers an automatic status change here. The
+        // needs-input → in-progress transition is driven exclusively by the
+        // user sending a message (session:write); see the task:userInput
+        // listener below.
+        if (state !== 'silent') return;
+
+        // Cloud-only feature for now.
+        if (projectRef.current?.kind !== 'cloud') return;
+
+        const task = tasksRef.current.find((t) => t.id === taskId);
+        if (!task || task.status !== 'in-progress') return;
+
+        // Only the assignee may mutate task status.
+        const currentUid = uidRef.current;
+        if (!currentUid || task.assigneeId !== currentUid) return;
+
+        console.log('[task:status] in-progress → needs-input (silence detected)', {
+          taskId,
+          assigneeId: task.assigneeId,
+        });
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
+        );
+        void providerRef.current
+          ?.update(taskId, { status: 'needs-input' })
+          .catch((err) => {
+            console.error('[task:status] Firestore write failed (needs-input)', { taskId, err });
+          });
+      });
+      agentStateUnsubsRef.current.set(id, unsub);
+    }
+  }, [sessions]);
+
+  // Clean up all agent-state subscriptions on unmount.
+  useEffect(() => {
+    return () => {
+      for (const unsub of agentStateUnsubsRef.current.values()) unsub();
+    };
+  }, []);
+
+  // Cloud projects: transition needs-input → in-progress when the user submits
+  // a query. SENDING A QUERY IS THE ONLY WAY TO BREAK SILENCE.
+  useEffect(() => {
+    if (project?.kind !== 'cloud') return;
+    return window.electronAPI.tasks.onUserInput(({ taskId }) => {
+      const task = tasksRef.current.find((t) => t.id === taskId);
+      if (!task || task.status !== 'needs-input') return;
+
+      const currentUid = uidRef.current;
+      if (!currentUid || task.assigneeId !== currentUid) return;
+
+      console.log('[task:status] needs-input → in-progress (user submitted query)', {
+        taskId,
+        assigneeId: task.assigneeId,
+      });
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, status: 'in-progress' } : t)),
+      );
+      void providerRef.current
+        ?.update(taskId, { status: 'in-progress' })
+        .catch((err) => {
+          console.error('[task:status] Firestore write failed (in-progress)', { taskId, err });
+        });
+    });
+  }, [project?.kind]);
 
   useEffect(() => {
     setSessionStartPendingTaskIds(new Set());
@@ -712,6 +781,82 @@ export default function App() {
         if (cancelled) return;
         const projectSessions = all.filter((s) => s.projectId === project.id);
         setSessions(projectSessions);
+
+        // Cloud startup catchup: the main process cannot write to Firestore, so
+        // the renderer must reconcile task status against the daemon's current
+        // silence state on every load.  For local projects applyAgentState in the
+        // main process handles this before the window even opens, so we skip it.
+        if (project.kind === 'cloud') {
+          void (async () => {
+            try {
+              // Run both requests in parallel — IPC is fast, Firestore slower.
+              const [silenceStates, initialTasks] = await Promise.all([
+                window.electronAPI.sessions.getSilenceStates(),
+                // Wait up to 5 s for the Firestore provider to emit its first
+                // non-empty batch for this project (it's async, IPC is faster).
+                new Promise<Task[]>((resolve) => {
+                  const currentProvider = providerRef.current;
+                  if (!currentProvider) { resolve([]); return; }
+                  const timeout = setTimeout(() => { unsub(); resolve([]); }, 5_000);
+                  const unsub = currentProvider.subscribe((all) => {
+                    const mine = all.filter((t) => t.projectId === project.id);
+                    if (mine.length > 0) {
+                      clearTimeout(timeout);
+                      unsub();
+                      resolve(mine);
+                    }
+                  });
+                }),
+              ]);
+
+              const currentProvider = providerRef.current;
+              if (!currentProvider || cancelled) return;
+
+              // Build session → task lookup from live sessions + daemon report.
+              const sessionToTask = new Map<string, string>();
+              for (const s of projectSessions) {
+                if (s.taskId) sessionToTask.set(s.id, s.taskId);
+              }
+              for (const { id, taskId } of silenceStates) {
+                if (taskId && !sessionToTask.has(id)) sessionToTask.set(id, taskId);
+              }
+
+              const taskById = new Map<string, Task>(initialTasks.map((t) => [t.id, t]));
+
+              const currentUid = uidRef.current;
+              for (const { id, state } of silenceStates) {
+                const taskId = sessionToTask.get(id);
+                if (!taskId) continue;
+                const task = taskById.get(taskId);
+                if (!task) continue;
+
+                if (state !== 'silent' || task.status !== 'in-progress') continue;
+                // Only the assignee may mutate the task status.
+                if (!currentUid || task.assigneeId !== currentUid) continue;
+
+                console.log('[task:status] in-progress → needs-input (silence detected, startup catchup)', {
+                  taskId,
+                  assigneeId: task.assigneeId,
+                });
+                setTasks((prev) =>
+                  prev.map((t) =>
+                    t.id === taskId ? { ...t, status: 'needs-input' } : t,
+                  ),
+                );
+                void currentProvider
+                  .update(taskId, { status: 'needs-input' })
+                  .catch((err) => {
+                    console.error('[task:status] Firestore write failed (needs-input, startup catchup)', {
+                      taskId,
+                      err,
+                    });
+                  });
+              }
+            } catch (err) {
+              console.warn('[task:status] startup catchup getSilenceStates failed', err);
+            }
+          })();
+        }
 
         const persisted = await window.electronAPI.projects.getTabs(projectKey);
         if (cancelled) return;

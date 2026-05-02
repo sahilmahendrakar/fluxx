@@ -43,7 +43,7 @@ import {
 } from './taskDependencies';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
-import type { AttachResult, PlanningAttachResult } from './daemon/protocol';
+import type { AgentState, AttachResult, PlanningAttachResult } from './daemon/protocol';
 
 function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
@@ -275,30 +275,40 @@ app.whenReady().then(async () => {
   }
 
   // Map session ID → task ID for silence-based status transitions.
-  // Seed from any sessions already running in the daemon.
+  // Seeded eagerly here; also re-seeded from getSessionSilenceStates() during
+  // startup catchup so a listSessions() failure does not silently break catchup.
   const sessionTaskMap = new Map<string, string>();
   try {
     const existing = await daemonClient.listSessions();
     for (const s of existing) {
       if (s.taskId) sessionTaskMap.set(s.id, s.taskId);
     }
-  } catch {
-    // Daemon may not be ready yet; new sessions will still be tracked.
+  } catch (err) {
+    console.warn('[main] listSessions failed — will re-seed from getSessionSilenceStates()', err);
   }
 
-  daemonClient.onAgentState = async (sessionId, state) => {
+  async function applyAgentState(sessionId: string, state: AgentState): Promise<void> {
+    // Only handle the silent transition. needs-input → in-progress is
+    // triggered exclusively by session:write (user submitting a query).
+    if (state !== 'silent') return;
+
     const taskId = sessionTaskMap.get(sessionId);
     if (!taskId) return;
+
     const project = projectStore.get();
+    // Cloud project (no local projectStore) — the renderer owns the Firestore write.
     if (!project) return;
+
     const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
     if (!task) return;
-    if (state === 'silent' && task.status === 'in-progress') {
+    if (task.status === 'in-progress') {
+      console.log('[task:status] in-progress → needs-input (silence detected, local)', { taskId });
       await taskStore.update(taskId, { status: 'needs-input' });
-    } else if (state === 'active' && task.status === 'needs-input') {
-      await taskStore.update(taskId, { status: 'in-progress' });
+      broadcastLocalTasksChanged();
     }
-  };
+  }
+
+  daemonClient.onAgentState = applyAgentState;
 
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
@@ -391,6 +401,24 @@ app.whenReady().then(async () => {
       worktreeService.setRootPath('');
       worktreeService.setProjectDir('');
     }
+  }
+
+  // Catchup: for sessions already silent when this process connects to the daemon,
+  // no stream event will fire. Run after project/taskStore are initialized so that
+  // applyAgentState can look up and update the correct task.
+  //
+  // getSessionSilenceStates() includes taskId so we can re-seed sessionTaskMap
+  // here even if the earlier listSessions() call failed.
+  try {
+    const silenceStates = await daemonClient.getSessionSilenceStates();
+    for (const { id, taskId, state } of silenceStates) {
+      // Re-seed the map in case listSessions() failed earlier.
+      if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
+      await applyAgentState(id, state);
+    }
+  } catch (err) {
+    // Daemon may not be ready; new sessions will still be tracked via stream events.
+    console.warn('[main] catchup getSessionSilenceStates failed', err);
   }
 
   const authServer = new AuthServer();
@@ -889,7 +917,11 @@ app.whenReady().then(async () => {
     const existing = (await daemonClient.listSessions()).find(
       (s) => s.taskId === task.id && s.status === 'running',
     );
-    if (existing) return existing;
+    if (existing) {
+      // Ensure the mapping exists even if this session was created after startup seeding.
+      if (!sessionTaskMap.has(existing.id)) sessionTaskMap.set(existing.id, task.id);
+      return existing;
+    }
 
     const taskId = task.id;
     const sendTaskStartProgress = (payload: {
@@ -1221,10 +1253,46 @@ app.whenReady().then(async () => {
 
   ipcMain.on('session:write', (_e, sessionId: string, data: string) => {
     daemonClient.writeSession(sessionId, data);
+
+    const taskId = sessionTaskMap.get(sessionId);
+    if (!taskId) return;
+
+    // SENDING A QUERY IS THE ONLY WAY TO BREAK SILENCE.
+    // Treat the input as a "submission" only when it contains Enter (CR/LF).
+    // This filters out individual keystrokes mid-typing, focus-tracking
+    // escape sequences (\x1b[I / \x1b[O), arrow keys, etc.
+    const submitted = data.includes('\r') || data.includes('\n');
+    if (!submitted) return;
+
+    const project = projectStore.get();
+    if (project) {
+      // Local mode is out of scope for the current cloud-only requirement.
+      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+      if (task?.status === 'needs-input') {
+        console.log('[task:status] needs-input → in-progress (user submitted query, local)', { taskId });
+        void taskStore.update(taskId, { status: 'in-progress' }).then(() => {
+          broadcastLocalTasksChanged();
+        });
+      }
+      return;
+    }
+
+    // Cloud project: notify all renderer windows so they can update Firestore.
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('task:userInput', { sessionId, taskId });
+    }
   });
 
   ipcMain.on('session:resize', (_e, sessionId: string, cols: number, rows: number) => {
     daemonClient.resizeSession(sessionId, cols, rows);
+  });
+
+  ipcMain.handle('session:getSilenceStates', async () => {
+    try {
+      return await daemonClient.getSessionSilenceStates();
+    } catch {
+      return [];
+    }
   });
 
   const mcpRendererBridge = new McpRendererBridge(() => mainWindow);

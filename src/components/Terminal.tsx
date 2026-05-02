@@ -228,9 +228,13 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
           }
           term.scrollToBottom();
           scrollContainerToBottom(container);
-          // Focus here too so a remount (e.g. sessionId change) that doesn't
-          // flip the `visible` prop still picks up keystrokes immediately.
-          term.focus();
+          // Only focus interactive terminals. Read-only mirrors (onData=undefined)
+          // must NOT steal focus — and must not trigger focus-tracking escape
+          // sequences that the agent would interpret as activity, causing a
+          // false needs-input → in-progress reversion.
+          if (onDataRef.current) {
+            term.focus();
+          }
         });
       });
     };
@@ -300,7 +304,10 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }
       term.scrollToBottom();
       scrollContainerToBottom(containerRef.current);
-      term.focus();
+      // Only focus interactive terminals — same reasoning as initFit above.
+      if (onDataRef.current) {
+        term.focus();
+      }
     };
     const scheduleFit = scheduleFitRef.current;
     if (scheduleFit && autoFit) {

@@ -35,7 +35,7 @@ import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
 import { getSessionAttachShared } from '../terminal/warmAttach';
 import {
-  INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY,
+  MIRROR_TERMINAL_VIEW_POLICY,
   terminalShouldAutoFit,
   terminalShouldForwardInput,
 } from '../terminal/terminalGeometryPolicy';
@@ -511,7 +511,7 @@ export default function TaskDetailPanel({
     terminalRef,
     id: sessionId ?? '',
     enabled: sessionReadyForPty,
-    viewPolicy: INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY,
+    viewPolicy: MIRROR_TERMINAL_VIEW_POLICY,
     getAttach: () => {
       const id = sessionId;
       if (!id) {
@@ -1359,11 +1359,11 @@ export default function TaskDetailPanel({
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
                     onData={
-                      terminalShouldForwardInput(INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY)
+                      terminalShouldForwardInput(MIRROR_TERMINAL_VIEW_POLICY)
                         ? handleTerminalData
                         : undefined
                     }
-                    autoFit={terminalShouldAutoFit(INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY)}
+                    autoFit={terminalShouldAutoFit(MIRROR_TERMINAL_VIEW_POLICY)}
                     hideCursor
                   />
                 </div>

@@ -498,6 +498,11 @@ export class DaemonClient {
     return this.request<Session[]>('listSessions');
   }
 
+  async getSessionSilenceStates(): Promise<{ id: string; taskId?: string; state: AgentState }[]> {
+    await this.ensureRunning();
+    return this.request<{ id: string; taskId?: string; state: AgentState }[]>('getSessionSilenceStates');
+  }
+
   /**
    * Full `AttachResult` from the daemon (legacy `replay` + optional v3
    * `snapshot`). The RPC/IPC layers pass the object through without

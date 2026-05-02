@@ -81,9 +81,11 @@ export class DaemonCore {
       startedAt: new Date().toISOString(),
     };
 
-    const detector = new SilenceDetector((state) => {
-      this.broadcast({ kind: 'agent-state', id, state });
-    });
+    const detector = new SilenceDetector(
+      (state) => this.broadcast({ kind: 'agent-state', id, state }),
+      undefined,
+      id,
+    );
 
     let runtime: SessionRuntime;
     try {
@@ -130,6 +132,16 @@ export class DaemonCore {
     return [...this.sessions.values()].map((e) => ({ ...e.session }));
   }
 
+  /** Returns the current silence state for every running session. Used for catchup on reconnect. */
+  getSessionSilenceStates(): { id: string; taskId?: string; state: import('./SilenceDetector').SilenceState }[] {
+    const result: { id: string; taskId?: string; state: import('./SilenceDetector').SilenceState }[] = [];
+    for (const [id, entry] of this.sessions) {
+      if (entry.session.status !== 'running') continue;
+      result.push({ id, taskId: entry.session.taskId, state: entry.detector.getCurrentState() });
+    }
+    return result;
+  }
+
   async attachSession(id: string): Promise<AttachResult | null> {
     const entry = this.sessions.get(id);
     if (!entry) return null;
@@ -141,7 +153,12 @@ export class DaemonCore {
   }
 
   resizeSession(id: string, cols: number, rows: number): void {
-    this.sessions.get(id)?.runtime.resize(cols, rows);
+    const entry = this.sessions.get(id);
+    if (!entry) return;
+    // Notify the detector before the resize so the SIGWINCH-triggered redraw
+    // is suppressed and does not falsely transition the task to in-progress.
+    entry.detector.notifyResize();
+    entry.runtime.resize(cols, rows);
   }
 
   /** Kill + forget. Worktree removal is main's job. */

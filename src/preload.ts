@@ -170,6 +170,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('tasks:changed', handler);
       return () => ipcRenderer.removeListener('tasks:changed', handler);
     },
+    // Fires when the user writes to a session whose task was in needs-input.
+    // Used by cloud projects to update Firestore (local is handled in main.ts).
+    onUserInput: (cb: (p: { sessionId: string; taskId: string }) => void) => {
+      const handler = (_e: unknown, p: { sessionId: string; taskId: string }) => cb(p);
+      ipcRenderer.on('task:userInput', handler);
+      return () => ipcRenderer.removeListener('task:userInput', handler as Parameters<typeof ipcRenderer.removeListener>[1]);
+    },
   },
   sessions: {
     start: (task: Task, projectTasks?: Task[]) =>
@@ -213,6 +220,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.removeListener(channel, handler);
     },
+    getSilenceStates: () =>
+      ipcRenderer.invoke('session:getSilenceStates') as Promise<
+        { id: string; taskId?: string; state: AgentState }[]
+      >,
     onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => {
       const ch = 'session:taskStartProgress' as const;
       const handler = (
