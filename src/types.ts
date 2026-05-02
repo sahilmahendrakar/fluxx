@@ -180,6 +180,18 @@ export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
 export type SessionStartErrorCode =
   | 'AGENT_NOT_FOUND'
   | 'WORKTREE_FAILED'
+  /** Source ref missing and {@link Task.createSourceBranchIfMissing} is false (or branch exists only remotely but could not be materialized). */
+  | 'WORKTREE_SOURCE_BRANCH_MISSING'
+  /** Local and `origin/<branch>` both exist but point at different commits. */
+  | 'WORKTREE_SOURCE_BRANCH_AMBIGUOUS'
+  /** `git branch` to create the missing source branch failed. */
+  | 'WORKTREE_SOURCE_BRANCH_CREATE_FAILED'
+  /** Project default / `RepoConfig.baseBranch` could not be resolved to create a missing source branch. */
+  | 'WORKTREE_BASE_BRANCH_UNAVAILABLE'
+  /** A required `git fetch` for the project default branch failed and no local base ref was available. */
+  | 'WORKTREE_FETCH_FAILED'
+  /** Empty branch name after normalization, or repo in a state that cannot supply a base ref. */
+  | 'WORKTREE_REPO_INVALID_STATE'
   | 'TASK_BLOCKED'
   | 'INTERNAL';
 

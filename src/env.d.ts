@@ -155,6 +155,11 @@ declare global {
           >
         >,
       ) => Promise<Task>;
+        assertSourceBranchEditable: (
+          taskId: string,
+          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+          patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;

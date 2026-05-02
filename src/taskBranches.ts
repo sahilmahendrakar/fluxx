@@ -121,6 +121,126 @@ export function resolveCreateSourceBranchIfMissingForStart(
   return true;
 }
 
+/** `true` only when the task row explicitly requests create-on-start for a missing branch. */
+export function persistedCreateSourceBranchIfMissing(
+  task: Pick<Task, 'createSourceBranchIfMissing'>,
+): boolean {
+  return task.createSourceBranchIfMissing === true;
+}
+
+export function persistedSourceBranchShort(
+  task: Pick<Task, 'sourceBranch'>,
+): string | undefined {
+  const t = (task.sourceBranch ?? '').trim();
+  return t.length > 0 ? normalizeGitBranchShortName(t) : undefined;
+}
+
+/**
+ * Whether applying `patch` would change stored source-branch metadata compared
+ * to `previous` (after the same normalization rules as {@link TaskStore}).
+ */
+export function nextPersistedSourceBranchShortAfterPatch(
+  previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+  patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+): string | undefined {
+  let nextSrc = persistedSourceBranchShort(previous);
+  if (patch.sourceBranch !== undefined) {
+    const b = patch.sourceBranch.trim();
+    nextSrc = b.length === 0 ? undefined : normalizeGitBranchShortName(b);
+  }
+  return nextSrc;
+}
+
+export function nextPersistedCreateSourceBranchIfMissingAfterPatch(
+  previous: Pick<Task, 'createSourceBranchIfMissing'>,
+  patch: { createSourceBranchIfMissing?: boolean },
+): boolean {
+  if (patch.createSourceBranchIfMissing !== undefined) {
+    return patch.createSourceBranchIfMissing;
+  }
+  return persistedCreateSourceBranchIfMissing(previous);
+}
+
+export function taskSourceBranchMetadataWouldChange(
+  previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+  patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+): boolean {
+  if (patch.sourceBranch === undefined && patch.createSourceBranchIfMissing === undefined) {
+    return false;
+  }
+  const nextSrc = nextPersistedSourceBranchShortAfterPatch(previous, patch);
+  const nextCreate = nextPersistedCreateSourceBranchIfMissingAfterPatch(previous, patch);
+  const prevSrc = persistedSourceBranchShort(previous);
+  const prevCreate = persistedCreateSourceBranchIfMissing(previous);
+  return prevSrc !== nextSrc || prevCreate !== nextCreate;
+}
+
+function hasAsciiControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Validates a normalized short branch name before persisting (create/update).
+ * Mirrors common `git check-ref-format` constraints for a branch-like ref.
+ */
+export function validateStoredTaskSourceBranchName(
+  normalizedShort: string,
+): { ok: true } | { ok: false; message: string } {
+  const s = normalizedShort.trim();
+  if (!s) {
+    return { ok: false, message: 'Source branch name is empty after normalization.' };
+  }
+  if (hasAsciiControlChar(s)) {
+    return {
+      ok: false,
+      message: 'Invalid source branch name: contains ASCII control characters.',
+    };
+  }
+  const disallowed = /[ ~^:?*[\]\\]/;
+  if (disallowed.test(s)) {
+    return {
+      ok: false,
+      message:
+        'Invalid source branch name: contains disallowed characters (space, ~ ^ : ? * [ \\ ).',
+    };
+  }
+  if (s.includes('..') || s.includes('@{')) {
+    return {
+      ok: false,
+      message: 'Invalid source branch name: cannot contain ".." or "@{".',
+    };
+  }
+  if (s.endsWith('.lock')) {
+    return { ok: false, message: 'Invalid source branch name: cannot end with .lock.' };
+  }
+  if (s.startsWith('/') || s.endsWith('/')) {
+    return { ok: false, message: 'Invalid source branch name: cannot start or end with /.' };
+  }
+  const segments = s.split('/');
+  for (const seg of segments) {
+    if (!seg || seg === '.' || seg === '..') {
+      return { ok: false, message: 'Invalid source branch name: empty or "." path segment.' };
+    }
+    if (seg.startsWith('.') || seg.endsWith('.')) {
+      return {
+        ok: false,
+        message: 'Invalid source branch name: path segments cannot start or end with ".".',
+      };
+    }
+    if (seg.endsWith('.lock')) {
+      return { ok: false, message: 'Invalid source branch name: segment cannot end with .lock.' };
+    }
+    if (seg.startsWith('@')) {
+      return { ok: false, message: 'Invalid source branch name: segment cannot start with "@".' };
+    }
+  }
+  return { ok: true };
+}
+
 /** True when the board should surface a compact branch hint on the card. */
 export function taskCardShouldShowSourceBranchChip(
   task: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
@@ -138,27 +258,13 @@ export function taskCardShouldShowSourceBranchChip(
 }
 
 /**
- * Best-effort validation for a single git branch segment (short name).
- * Matches common `git check-ref-format --branch` constraints closely enough for UI gating.
+ * Best-effort validation for raw branch input in the UI (delegates to
+ * {@link validateStoredTaskSourceBranchName} on the normalized short name).
  */
 export function gitBranchShortNameLooksValid(raw: string): boolean {
   const s = normalizeGitBranchShortName(raw);
   if (!s) return false;
-  if (s === '.' || s === '..') return false;
-  if (s.startsWith('/')) return false;
-  if (s.includes('..')) return false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return false;
-    const ch = s.charAt(i);
-    if (' ~^:?*[]\\'.includes(ch)) return false;
-  }
-  if (s.includes('@{')) return false;
-  if (s.endsWith('.') || s.endsWith('/')) return false;
-  if (s.endsWith('.lock')) return false;
-  if (s === '@') return false;
-  if (s.startsWith('.')) return false;
-  return true;
+  return validateStoredTaskSourceBranchName(s).ok;
 }
 
 /** Sorted unique short branch names for pickers (includes configured default). */

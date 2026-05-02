@@ -101,24 +101,60 @@ export async function resolveLocalOrOriginRef(
   cwd: string,
   branchShort: string,
 ): Promise<string | null> {
+  const r = await resolveLocalOrOriginRefWithAmbiguity(cwd, branchShort);
+  if (r.kind === 'ok') return r.ref;
+  return null;
+}
+
+export type ResolveLocalOrOriginRefResult =
+  | { kind: 'ok'; ref: string }
+  | { kind: 'missing' }
+  | { kind: 'ambiguous'; localSha: string; remoteSha: string };
+
+/**
+ * Resolves a rev-parse-able ref for `branchShort`, preferring a local branch
+ * name when local and `origin/<short>` agree. When both exist but differ,
+ * returns `ambiguous` so the caller can surface a structured error.
+ */
+export async function resolveLocalOrOriginRefWithAmbiguity(
+  cwd: string,
+  branchShort: string,
+): Promise<ResolveLocalOrOriginRefResult> {
   const short = normalizeGitBranchShortName(branchShort);
-  if (!short) return null;
+  if (!short) return { kind: 'missing' };
+
+  let localSha: string | null = null;
   try {
-    await execFile('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${short}`], {
-      cwd,
-    });
-    return short;
-  } catch {
-    /* try remote */
-  }
-  try {
-    await execFile(
+    const { stdout } = await execFile(
       'git',
-      ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${short}`],
-      { cwd },
+      ['rev-parse', '--verify', `refs/heads/${short}^{commit}`],
+      { cwd, encoding: 'utf8' },
     );
-    return `origin/${short}`;
+    localSha = stdout.trim();
   } catch {
-    return null;
+    localSha = null;
   }
+
+  let remoteSha: string | null = null;
+  try {
+    const { stdout } = await execFile(
+      'git',
+      ['rev-parse', '--verify', `refs/remotes/origin/${short}^{commit}`],
+      { cwd, encoding: 'utf8' },
+    );
+    remoteSha = stdout.trim();
+  } catch {
+    remoteSha = null;
+  }
+
+  if (localSha && remoteSha && localSha !== remoteSha) {
+    return { kind: 'ambiguous', localSha, remoteSha };
+  }
+  if (localSha) {
+    return { kind: 'ok', ref: short };
+  }
+  if (remoteSha) {
+    return { kind: 'ok', ref: `origin/${short}` };
+  }
+  return { kind: 'missing' };
 }

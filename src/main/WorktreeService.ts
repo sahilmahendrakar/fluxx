@@ -5,17 +5,21 @@ import { promisify } from 'node:util';
 import type { RepoConfig } from '../types';
 import {
   fetchOriginBranchBestEffort,
-  resolveLocalOrOriginRef,
+  resolveLocalOrOriginRefWithAmbiguity,
 } from './repoGit';
+import { WorktreeCreateError } from './worktreeCreateError';
+import { fluxTaskWorkBranchName } from './fluxTaskBranch';
 
 const execFile = promisify(execFileCallback);
 
-function sanitiseTaskId(taskId: string): string {
-  return taskId.replace(/[^a-zA-Z0-9]/g, '-');
-}
-
-function branchForTaskId(taskId: string): string {
-  return `flux/task-${sanitiseTaskId(taskId)}`;
+function gitErrText(err: unknown): string {
+  if (err && typeof err === 'object' && 'stderr' in err) {
+    const s = (err as NodeJS.ErrnoException & { stderr?: Buffer | string }).stderr;
+    const t = s != null ? String(s).trim() : '';
+    if (t) return t;
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 /**
@@ -72,7 +76,7 @@ export class WorktreeService {
       throw new Error('WorktreeService: no project directory set');
     }
 
-    const branch = branchForTaskId(taskId);
+    const branch = fluxTaskWorkBranchName(taskId);
     const worktreesRoot = path.join(this.projectDir, 'worktrees');
     await fs.mkdir(worktreesRoot, { recursive: true });
     const worktreePath = path.join(worktreesRoot, taskId);
@@ -93,7 +97,14 @@ export class WorktreeService {
       ? await this.repoConfigGetter(this.rootPath).catch(() => null)
       : null;
 
-    const sourceShort = sourceOpts.sourceBranchShort;
+    const sourceShort = sourceOpts.sourceBranchShort.trim();
+    if (!sourceShort) {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_INVALID_STATE',
+        'Task source branch resolved to an empty name after normalization. Set a valid base branch on the task or in project settings.',
+      );
+    }
+
     await fetchOriginBranchBestEffort(this.rootPath, sourceShort);
 
     try {
@@ -102,25 +113,56 @@ export class WorktreeService {
           cwd: this.rootPath,
         });
       } else {
-        let startRef = await resolveLocalOrOriginRef(this.rootPath, sourceShort);
+        const resolved = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort);
+        if (resolved.kind === 'ambiguous') {
+          throw new WorktreeCreateError(
+            'WORKTREE_SOURCE_BRANCH_AMBIGUOUS',
+            `Branch '${sourceShort}' exists locally and as origin/${sourceShort}, but they point to different commits (${resolved.localSha.slice(0, 7)} vs ${resolved.remoteSha.slice(0, 7)}). Merge or reset one side, or rename, before starting this task.`,
+            sourceShort,
+          );
+        }
+        let startRef = resolved.kind === 'ok' ? resolved.ref : null;
         if (!startRef && sourceOpts.createSourceBranchIfMissing) {
-          const parentRef = await this.resolveBaseRef(repoConfig?.baseBranch);
-          if (!parentRef) {
-            throw new Error(
-              `Cannot create missing source branch '${sourceShort}': project base is not available (check remotes and RepoConfig.baseBranch).`,
+          const base = await this.resolveBaseRef(repoConfig?.baseBranch);
+          if (!base.ref) {
+            const hint = base.fetchError
+              ? ` Last fetch attempt failed: ${base.fetchError}`
+              : '';
+            const code =
+              base.fetchError != null ? 'WORKTREE_FETCH_FAILED' : 'WORKTREE_BASE_BRANCH_UNAVAILABLE';
+            throw new WorktreeCreateError(
+              code,
+              `Cannot create missing source branch '${sourceShort}': project default branch '${base.defaultBranchShort}' is not available (check remotes and RepoConfig.baseBranch).${hint}`,
+              sourceShort,
             );
           }
-          await execFile('git', ['branch', sourceShort, parentRef], {
-            cwd: this.rootPath,
-          });
-          startRef = await resolveLocalOrOriginRef(this.rootPath, sourceShort);
+          try {
+            await execFile('git', ['branch', sourceShort, base.ref], {
+              cwd: this.rootPath,
+            });
+          } catch (branchErr: unknown) {
+            const detail = gitErrText(branchErr);
+            throw new WorktreeCreateError(
+              'WORKTREE_SOURCE_BRANCH_CREATE_FAILED',
+              `Could not create local source branch '${sourceShort}' from project default: ${detail}`,
+              sourceShort,
+            );
+          }
+          const again = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort);
+          if (again.kind === 'ambiguous') {
+            throw new WorktreeCreateError(
+              'WORKTREE_SOURCE_BRANCH_AMBIGUOUS',
+              `Branch '${sourceShort}' is ambiguous after creation (local vs origin/${sourceShort} differ).`,
+              sourceShort,
+            );
+          }
+          startRef = again.kind === 'ok' ? again.ref : null;
         }
         if (!startRef) {
-          throw new Error(
-            sourceOpts.createSourceBranchIfMissing
-              ? `Could not resolve or create source branch '${sourceShort}'.`
-              : `Source branch '${sourceShort}' does not exist locally or as origin/<branch>, and creating it is disabled for this task.`,
-          );
+          const msg = sourceOpts.createSourceBranchIfMissing
+            ? `Could not resolve or create source branch '${sourceShort}' after setup.`
+            : `Source branch '${sourceShort}' does not exist locally or as origin/${sourceShort}, and creating it is disabled for this task.`;
+          throw new WorktreeCreateError('WORKTREE_SOURCE_BRANCH_MISSING', msg, sourceShort);
         }
         await execFile(
           'git',
@@ -129,13 +171,13 @@ export class WorktreeService {
         );
       }
     } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'stderr' in err
-          ? String((err as NodeJS.ErrnoException & { stderr?: Buffer | string }).stderr ?? '')
-          : err instanceof Error
-            ? err.message
-            : String(err);
-      throw new Error(message.trim() || 'git worktree add failed');
+      if (err instanceof WorktreeCreateError) throw err;
+      const message = gitErrText(err);
+      throw new WorktreeCreateError(
+        'WORKTREE_FAILED',
+        message.trim() || 'git worktree add failed',
+        sourceShort,
+      );
     }
 
     if (repoConfig?.env && repoConfig.env.length > 0) {
@@ -218,7 +260,7 @@ export class WorktreeService {
     }
 
     const taskId = path.basename(worktreePath);
-    const branch = branchForTaskId(taskId);
+    const branch = fluxTaskWorkBranchName(taskId);
 
     try {
       await execFile('git', ['worktree', 'remove', worktreePath, '--force'], {
@@ -265,14 +307,15 @@ export class WorktreeService {
   }
 
   /**
-   * Resolve the base ref for a brand-new task branch. When `configuredBranch`
-   * is provided (from the project's RepoConfig), it takes precedence;
-   * otherwise we fall back to detecting the remote default via `origin/HEAD`.
-   * Either way we fetch the chosen branch best-effort so the worktree starts
-   * from up-to-date code and return `origin/<branch>`. Returns null when
-   * there is no usable remote ref so the caller falls back to local HEAD.
+   * Resolve the base ref for creating a missing task source branch. Prefers
+   * `origin/<branch>` after a best-effort fetch, then a local `refs/heads`
+   * branch matching the project default name.
    */
-  private async resolveBaseRef(configuredBranch?: string): Promise<string | null> {
+  private async resolveBaseRef(configuredBranch?: string): Promise<{
+    ref: string | null;
+    defaultBranchShort: string;
+    fetchError?: string;
+  }> {
     let defaultBranch = configuredBranch?.trim() || 'main';
     if (!configuredBranch) {
       try {
@@ -290,12 +333,14 @@ export class WorktreeService {
       }
     }
 
+    let fetchError: string | undefined;
     try {
       await execFile('git', ['fetch', 'origin', defaultBranch], {
         cwd: this.rootPath,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      fetchError = message;
       console.warn(
         `[WorktreeService.create] git fetch origin ${defaultBranch} failed; using local ref`,
         message,
@@ -308,9 +353,20 @@ export class WorktreeService {
         ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${defaultBranch}`],
         { cwd: this.rootPath },
       );
-      return `origin/${defaultBranch}`;
+      return { ref: `origin/${defaultBranch}`, defaultBranchShort: defaultBranch };
     } catch {
-      return null;
+      /* fall through */
+    }
+
+    try {
+      await execFile(
+        'git',
+        ['rev-parse', '--verify', '--quiet', `refs/heads/${defaultBranch}`],
+        { cwd: this.rootPath },
+      );
+      return { ref: defaultBranch, defaultBranchShort: defaultBranch, fetchError };
+    } catch {
+      return { ref: null, defaultBranchShort: defaultBranch, fetchError };
     }
   }
 

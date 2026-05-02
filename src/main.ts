@@ -41,10 +41,18 @@ import type {
 import {
   classifyGitBranchPresence,
   effectiveTaskSourceBranchShort,
+  nextPersistedSourceBranchShortAfterPatch,
   planTaskSourceBranchFieldsForCreate,
   resolveCreateSourceBranchIfMissingForStart,
+  validateStoredTaskSourceBranchName,
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
+import { isWorktreeCreateError } from './main/worktreeCreateError';
+import {
+  taskHasBlockingWorkspaceState,
+  taskSourceBranchSettingsWouldChange,
+} from './main/taskSourceBranchGuard';
+import { fluxTaskWorkBranchName } from './main/fluxTaskBranch';
 import {
   getTaskBlockedStartInfo,
   isTaskBlocked,
@@ -899,12 +907,89 @@ app.whenReady().then(async () => {
         sourceBranch: input.sourceBranch,
         createSourceBranchIfMissing: input.createSourceBranchIfMissing,
       });
+      const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
+      if (!branchOk.ok) {
+        throw new Error(branchOk.message);
+      }
       return taskStore.create({
         ...input,
         projectId: project.id,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
       });
+    },
+  );
+  ipcMain.handle(
+    'tasks:assertSourceBranchEditable',
+    async (
+      _e,
+      taskId: unknown,
+      previousFields: unknown,
+      patchFields: unknown,
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      if (typeof taskId !== 'string' || !taskId.trim()) {
+        return { ok: false, message: 'Invalid task id' };
+      }
+      const tid = taskId.trim();
+      const prev =
+        previousFields && typeof previousFields === 'object'
+          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          : {};
+      const patch =
+        patchFields && typeof patchFields === 'object'
+          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          : {};
+      try {
+        const projectDir = activeProjectDir();
+        const repos = await projectStore.getReposAt(projectDir);
+        const project = projectStore.get();
+        const rootPathForRepo =
+          project?.rootPath ?? repos.find((r) => r.rootPath)?.rootPath ?? repos[0]?.rootPath;
+        if (!rootPathForRepo) {
+          return { ok: false, message: 'No repository root configured for this project' };
+        }
+        const repo = repos.find((r) => r.rootPath === rootPathForRepo) ?? repos[0];
+        const discovery = await collectRepoBranchDiscovery(
+          rootPathForRepo,
+          repo?.baseBranch ?? 'main',
+        );
+        const previousTask = {
+          id: tid,
+          title: '',
+          status: 'backlog' as const,
+          agent: 'claude-code' as const,
+          createdAt: '',
+          projectId: project?.id ?? 'cloud',
+          ...prev,
+        } as Task;
+        if (!taskSourceBranchSettingsWouldChange(previousTask, patch, discovery.defaultBranchShort)) {
+          return { ok: true };
+        }
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: tid,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir(),
+          rootPath: worktreeService.getRootPath(),
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(tid);
+          return {
+            ok: false,
+            message: `Cannot change this task's source branch while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          };
+        }
+        const candidate = nextPersistedSourceBranchShortAfterPatch(previousTask, patch);
+        if (candidate !== undefined) {
+          const v = validateStoredTaskSourceBranchName(candidate);
+          if (!v.ok) {
+            return { ok: false, message: v.message };
+          }
+        }
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, message };
+      }
     },
   );
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
@@ -967,7 +1052,10 @@ app.whenReady().then(async () => {
       project.rootPath,
       repo?.baseBranch ?? 'main',
     );
-    const sourceEff = effectiveTaskSourceBranchShort(task, discovery.defaultBranchShort);
+    const sourceEff =
+      effectiveTaskSourceBranchShort(task, discovery.defaultBranchShort) ||
+      discovery.defaultBranchShort ||
+      'main';
     const { presence } = classifyGitBranchPresence(
       sourceEff,
       discovery.localBranches,
@@ -1072,6 +1160,16 @@ app.whenReady().then(async () => {
         worktreePath = created.worktreePath;
         branch = created.branch;
       } catch (err: unknown) {
+        if (isWorktreeCreateError(err)) {
+          console.error('[session:start] worktree create failed', {
+            taskId: task.id,
+            projectId: project.id,
+            code: err.code,
+            branchName: err.branchName,
+            message: err.message,
+          });
+          return finish({ error: err.code, message: err.message });
+        }
         const message = err instanceof Error ? err.message : String(err);
         console.error('[session:start] worktree create failed', {
           taskId: task.id,
@@ -1296,6 +1394,40 @@ app.whenReady().then(async () => {
       }
       patchToApply = { ...patch, blockedByTaskIds: v.normalized };
     }
+    const touchesSourceBranch =
+      patchToApply.sourceBranch !== undefined ||
+      patchToApply.createSourceBranchIfMissing !== undefined;
+    if (touchesSourceBranch) {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
+      const discovery = await collectRepoBranchDiscovery(
+        project.rootPath,
+        repo?.baseBranch ?? 'main',
+      );
+      if (taskSourceBranchSettingsWouldChange(previous, patchToApply, discovery.defaultBranchShort)) {
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: id,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir(),
+          rootPath: worktreeService.getRootPath(),
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(id);
+          throw new Error(
+            `Cannot change this task's source branch while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          );
+        }
+      }
+      const candidate = nextPersistedSourceBranchShortAfterPatch(previous, patchToApply);
+      if (candidate !== undefined) {
+        const v = validateStoredTaskSourceBranchName(candidate);
+        if (!v.ok) {
+          throw new Error(v.message);
+        }
+      }
+    }
+
     const updated = await taskStore.update(id, patchToApply);
     await maybeAutoStartSessionOnInProgressTransition(previous, updated, source, options);
     if (updated.status === 'done' && previous.status !== 'done') {
