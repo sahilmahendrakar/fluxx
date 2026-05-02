@@ -1,0 +1,31 @@
+src/renderer/tasks/useGithubPrBoardRefresh.ts
+  1d74c39746a359ca 1-125
+src/githubPrMetadata.ts
+  1d74c39746a359ca 85-107
+src/main.ts
+  1d74c39746a359ca 31,968,987-991,996
+src/githubPrMetadata.test.ts
+  1d74c39746a359ca 3,104-166
+src/App.tsx
+  1d74c39746a359ca 50,479-486
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "bc9bf72e0903175116827fc84576936fa684d2c2",
+  "prompts": {
+    "1d74c39746a359ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cee998ef-187b-4bf7-af99-1faf227f9d40",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 243,
+      "total_deletions": 24,
+      "accepted_lines": 229,
+      "overriden_lines": 0
+    }
+  }
+}
