@@ -20,6 +20,8 @@ import {
   type ActiveProjectKey,
   type PlanningSession,
   type ProjectTabState,
+  type TaskPrErrorCode,
+  type TaskPullRequestIpcResult,
 } from './types';
 import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
@@ -147,6 +149,23 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
   return next;
 }
 
+const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
+  NO_PROJECT: 'Open a project workspace in Flux, then try again.',
+  NO_WORKTREE:
+    'Start a session for this task (or ensure a git worktree exists) so Flux has a branch to open a PR from.',
+  GH_NOT_INSTALLED: 'Install the GitHub CLI (`gh`) and ensure it is on your PATH.',
+  GH_AUTH_FAILED: 'Run `gh auth login` in a terminal, then try again.',
+  NO_GITHUB_REMOTE: 'Point `origin` at GitHub or add a `github.com` remote, then try again.',
+  BRANCH_PUSH_FAILED: 'Fix the push error shown above (permissions, network, or diverged history), then retry.',
+  PR_CREATE_FAILED: 'Check the GitHub CLI output for details, then retry.',
+  TASK_METADATA_REQUIRED: 'Ensure this task has a title (edit the task if needed), then try again.',
+};
+
+function formatTaskPullRequestError(result: Extract<TaskPullRequestIpcResult, { ok: false }>): string {
+  const hint = TASK_PR_ERROR_HINTS[result.code];
+  return hint ? `${result.message}\n${hint}` : result.message;
+}
+
 const PLANNING_PANEL_WIDTH_KEY = 'flux.planningPanelWidth';
 const DEFAULT_PLANNING_PANEL_WIDTH = 288;
 const MIN_PLANNING_PANEL_WIDTH = 260;
@@ -192,6 +211,8 @@ export default function App() {
   const [cleanupConfirmTaskId, setCleanupConfirmTaskId] = useState<string | null>(null);
   const [cleanupLoadingTaskId, setCleanupLoadingTaskId] = useState<string | null>(null);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
+  const [prLoadingTaskId, setPrLoadingTaskId] = useState<string | null>(null);
+  const [taskPrError, setTaskPrError] = useState<string | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
@@ -223,6 +244,7 @@ export default function App() {
   const cloudUnblockInFlightRef = useRef<Set<string>>(new Set());
   /** Skips duplicate unblock handling in the cloud snapshot effect while we finalize Done inline. */
   const cloudInlineDoneFollowUpTaskIdsRef = useRef<Set<string>>(new Set());
+  const createPrInflightTaskIdRef = useRef<string | null>(null);
   const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
   const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
@@ -1449,6 +1471,61 @@ export default function App() {
     [tasks],
   );
 
+  const handleTaskPrClick = useCallback(
+    async (taskId: string) => {
+      const task = tasksRef.current.find((t) => t.id === taskId);
+      if (!task) return;
+      const existingUrl = task.githubPr?.url?.trim();
+      if (existingUrl) {
+        setTaskPrError(null);
+        void window.electronAPI.openExternalUrl(existingUrl);
+        return;
+      }
+      if (!provider) {
+        setTaskPrError('Task list is not ready yet. Try again in a moment.');
+        return;
+      }
+      if (createPrInflightTaskIdRef.current === taskId) return;
+      createPrInflightTaskIdRef.current = taskId;
+      setPrLoadingTaskId(taskId);
+      setTaskPrError(null);
+      try {
+        const title = task.title.trim();
+        const result = await window.electronAPI.tasks.createPullRequest({
+          taskId,
+          ...(title ? { title } : {}),
+          ...(task.description !== undefined ? { description: task.description } : {}),
+        });
+        if (!result.ok) {
+          setTaskPrError(formatTaskPullRequestError(result));
+          return;
+        }
+        if (!result.persisted) {
+          try {
+            const updated = await provider.update(taskId, { githubPr: result.githubPr });
+            setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+          } catch (err) {
+            console.error('[tasks.update] githubPr after createPullRequest failed', err);
+            setTaskPrError(
+              'The pull request was created, but saving its link on this task failed. Open the repo on GitHub to find the PR.',
+            );
+            return;
+          }
+        }
+        void window.electronAPI.openExternalUrl(result.githubPr.url);
+      } catch (err) {
+        console.error('[tasks.createPullRequest] failed', err);
+        setTaskPrError(
+          err instanceof Error ? err.message : 'Could not create the pull request.',
+        );
+      } finally {
+        createPrInflightTaskIdRef.current = null;
+        setPrLoadingTaskId(null);
+      }
+    },
+    [provider],
+  );
+
   const cancelCleanupTask = useCallback(() => {
     setCleanupConfirmTaskId(null);
   }, []);
@@ -1487,6 +1564,8 @@ export default function App() {
     setCleanupConfirmTaskId(null);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
+    setPrLoadingTaskId(null);
+    setTaskPrError(null);
     setPlanPanelOpen(false);
     replaceProjectWorkspaceRoute();
     setActiveTabId('board');
@@ -1508,6 +1587,8 @@ export default function App() {
     setCleanupConfirmTaskId(null);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
+    setPrLoadingTaskId(null);
+    setTaskPrError(null);
     setPlanPanelOpen(false);
     replaceProjectWorkspaceRoute();
     setDocsSidebarExpanded(false);
@@ -2005,6 +2086,21 @@ export default function App() {
             </button>
           </div>
         ) : null}
+        {taskPrError ? (
+          <div
+            role="alert"
+            className="flex shrink-0 items-start gap-2 border-b border-rose-500/20 bg-rose-500/[0.08] px-4 py-2 text-[13px] text-rose-100/95"
+          >
+            <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{taskPrError}</p>
+            <button
+              type="button"
+              onClick={() => setTaskPrError(null)}
+              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-rose-200/90 hover:bg-rose-500/15"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
         <AppShell
           project={project}
           onClearProject={() => void handleClearProject()}
@@ -2142,6 +2238,8 @@ export default function App() {
                         onToggleTaskAutoStartOnUnblock={(id, enabled) =>
                           void handleUpdateTask(id, { autoStartOnUnblock: enabled })
                         }
+                        onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                        prLoadingTaskId={prLoadingTaskId}
                         planPanelOpen={planPanelOpen}
                         onTogglePlanPanel={() => {
                           leaveSettingsIfActive();

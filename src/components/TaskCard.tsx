@@ -1,6 +1,6 @@
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
-import { GitBranch, Icon, Loader2 } from 'lucide-react';
+import { GitBranch, GitMerge, GitPullRequest, Github, Icon, Loader2 } from 'lucide-react';
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
@@ -28,6 +28,8 @@ interface Props {
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
+  onTaskPrClick?: (taskId: string) => void;
+  prLoading?: boolean;
   repoDefaultBranchShort: string;
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
@@ -45,6 +47,8 @@ export default function TaskCard({
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
+  onTaskPrClick,
+  prLoading = false,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
 }: Props) {
@@ -56,6 +60,9 @@ export default function TaskCard({
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
+  const prUrl = task.githubPr?.url?.trim() ?? '';
+  const prMerged = task.githubPr?.state === 'merged';
+  const prOpen = Boolean(prUrl) && !prMerged;
   const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
   const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
   const branchChipTitle =
@@ -206,6 +213,55 @@ export default function TaskCard({
                     >
                       Blocks {blocksCount}
                     </span>
+                  ) : null}
+                  {onTaskPrClick ? (
+                    <button
+                      type="button"
+                      disabled={prLoading}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTaskPrClick(task.id);
+                      }}
+                      className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        prMerged
+                          ? 'text-violet-400 hover:bg-violet-500/15 hover:text-violet-300'
+                          : prOpen
+                            ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
+                            : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                      }`}
+                      aria-label={
+                        prLoading
+                          ? 'Working with pull request…'
+                          : prMerged
+                            ? 'Open merged pull request'
+                            : prOpen
+                              ? 'Open pull request'
+                              : 'Create GitHub pull request'
+                      }
+                      title={
+                        prLoading
+                          ? 'Please wait…'
+                          : prMerged
+                            ? 'Open merged pull request'
+                            : prOpen
+                              ? 'Open pull request'
+                              : 'Create GitHub pull request'
+                      }
+                    >
+                      {prLoading ? (
+                        <Loader2
+                          className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                          aria-hidden
+                        />
+                      ) : prMerged ? (
+                        <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      ) : prOpen ? (
+                        <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      ) : (
+                        <Github className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      )}
+                    </button>
                   ) : null}
                   {isDone && onRequestCleanupTask ? (
                     workspaceCleaned ? (

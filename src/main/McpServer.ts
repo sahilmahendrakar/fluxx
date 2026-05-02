@@ -426,14 +426,14 @@ export class McpServer {
             if (input.autoStartOnUnblock !== undefined) {
               patch.autoStartOnUnblock = input.autoStartOnUnblock;
             }
+            if (input.githubPr !== undefined) {
+              patch.githubPr = input.githubPr;
+            }
             if (input.sourceBranch !== undefined) {
               patch.sourceBranch = input.sourceBranch;
             }
             if (input.createSourceBranchIfMissing !== undefined) {
               patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
-            }
-            if (input.githubPr !== undefined) {
-              patch.githubPr = input.githubPr;
             }
             const updated = await this.taskActions.updateTask(input.id, patch);
             this.notifyTasksChanged();
@@ -477,14 +477,14 @@ export class McpServer {
           if (input.autoStartOnUnblock !== undefined) {
             patch.autoStartOnUnblock = input.autoStartOnUnblock;
           }
+          if (input.githubPr !== undefined) {
+            patch.githubPr = input.githubPr;
+          }
           if (input.sourceBranch !== undefined) {
             patch.sourceBranch = input.sourceBranch;
           }
           if (input.createSourceBranchIfMissing !== undefined) {
             patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
-          }
-          if (input.githubPr !== undefined) {
-            patch.githubPr = input.githubPr;
           }
           if (assigneeId !== undefined) patch.assigneeId = assigneeId;
           const payload: McpBridgeTasksUpdatePayload = { taskId: input.id, patch };
