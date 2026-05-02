@@ -104,6 +104,6 @@ export interface McpBridgeProjectInfoResult {
 export interface McpBridgeTasksUpdateResult {
   previous: Task | null;
   updated: Task;
-  /** Cloud + auto workspace cleanup on Done: broom-equivalent ran after reaching Done. */
+  /** Cloud + auto workspace cleanup on Done: broom-equivalent ran when the MCP user was assignee. */
   workspaceCleanedAfterDone?: boolean;
 }
