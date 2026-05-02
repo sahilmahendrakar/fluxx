@@ -23,6 +23,7 @@ interface Props {
   onRequestCleanupTask?: (id: string) => void;
   cleanupLoading?: boolean;
   onCardClick: (id: string) => void;
+  onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
@@ -36,6 +37,7 @@ export default function TaskCard({
   onRequestCleanupTask,
   cleanupLoading = false,
   onCardClick,
+  onLabelClick,
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
@@ -83,15 +85,32 @@ export default function TaskCard({
                   </p>
                   {task.labels && task.labels.length > 0 ? (
                     <div className="mt-1.5 flex flex-wrap gap-1">
-                      {task.labels.map((lb) => (
-                        <span
-                          key={lb}
-                          className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
-                          title={lb}
-                        >
-                          {lb}
-                        </span>
-                      ))}
+                      {task.labels.map((lb) =>
+                        onLabelClick ? (
+                          <button
+                            key={lb}
+                            type="button"
+                            title="Filter by this label"
+                            aria-label={`Filter board by label ${lb}`}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onLabelClick(lb);
+                            }}
+                            className="max-w-full cursor-pointer truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-left text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10 transition hover:border-violet-400/35 hover:from-violet-500/18 hover:to-violet-600/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                          >
+                            {lb}
+                          </button>
+                        ) : (
+                          <span
+                            key={lb}
+                            className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
+                            title={lb}
+                          >
+                            {lb}
+                          </span>
+                        ),
+                      )}
                     </div>
                   ) : null}
                 </div>

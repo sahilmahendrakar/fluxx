@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
 import { Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
@@ -82,6 +82,10 @@ export default function Board({
     [allTasks, boardFilter],
   );
 
+  const onLabelClick = useCallback((label: string) => {
+    setBoardFilter((prev) => ({ ...prev, label }));
+  }, []);
+
   const doneHiddenCount = useMemo(() => {
     if (!boardFilter.hideDone) return 0;
     return allTasks.filter((t) => t.status === 'done').length;
@@ -162,6 +166,7 @@ export default function Board({
               onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}
               cleanupLoadingTaskId={col.id === 'done' ? cleanupLoadingTaskId : null}
               onCardClick={onCardClick}
+              onLabelClick={onLabelClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}

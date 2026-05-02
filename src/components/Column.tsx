@@ -14,6 +14,7 @@ interface Props {
   onRequestCleanupTask?: (id: string) => void;
   cleanupLoadingTaskId?: string | null;
   onCardClick: (id: string) => void;
+  onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   emptyState?: ReactNode;
@@ -30,6 +31,7 @@ export default function Column({
   onRequestCleanupTask,
   cleanupLoadingTaskId,
   onCardClick,
+  onLabelClick,
   autoStartWhenUnblockedProject,
   onToggleTaskAutoStartOnUnblock,
   emptyState,
@@ -94,6 +96,7 @@ export default function Column({
                 onRequestCleanupTask={onRequestCleanupTask}
                 cleanupLoading={cleanupLoadingTaskId === task.id}
                 onCardClick={onCardClick}
+                onLabelClick={onLabelClick}
                 autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                 onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
                 assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
