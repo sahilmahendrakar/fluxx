@@ -1,0 +1,32 @@
+src/autoMarkDoneWhenPrMerged.ts
+  9e406a6abd2d742f 11
+src/components/ProjectSettingsView.tsx
+  9e406a6abd2d742f 675
+src/autoMarkDoneWhenPrMerged.test.ts
+  9e406a6abd2d742f 111-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "817de5f19835d578e420e77effe9b7b45b5b6a5b",
+  "prompts": {
+    "9e406a6abd2d742f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "69c55413-b246-480b-8e2b-c9ea6a870ff1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 1,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_d2c1d28943b3a6": {
+      "author": "Sahil Mahendrakar"
+    }
+  }
+}
