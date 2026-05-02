@@ -1937,7 +1937,7 @@ export default function App() {
                 <div
                   key={item.session.id}
                   aria-hidden={!isActive || settingsRouteActive}
-                  className="absolute inset-0 flex min-h-0 flex-col"
+                  className="absolute inset-0 flex min-h-0 flex-col bg-[#09090b]"
                   style={{
                     visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
                     pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',
@@ -1996,8 +1996,10 @@ export default function App() {
                       style={{
                         flex: isFullscreenPlanTab ? '0 0 0%' : '1 1 0%',
                         minWidth: isFullscreenPlanTab ? 0 : undefined,
-                        visibility: isFullscreenPlanTab ? 'hidden' : 'visible',
-                        pointerEvents: isFullscreenPlanTab ? 'none' : 'auto',
+                        visibility:
+                          isBoardOrPlanTab && !isFullscreenPlanTab ? 'visible' : 'hidden',
+                        pointerEvents:
+                          isBoardOrPlanTab && !isFullscreenPlanTab ? 'auto' : 'none',
                       }}
                     >
                       <Board
