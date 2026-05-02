@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "1bc2f6997e131cc136d52f39403144f291be583e",
+  "prompts": {
+    "60a7a76eb93aac8f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fba1e557-5426-4e2b-b548-c2a91d6ec319",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 26,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
