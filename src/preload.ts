@@ -187,6 +187,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         >
       >,
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
+    assertSourceBranchEditable: (
+      taskId: string,
+      previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+      patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+    ) =>
+      ipcRenderer.invoke(
+        'tasks:assertSourceBranchEditable',
+        taskId,
+        previous,
+        patch,
+      ) as Promise<{ ok: true } | { ok: false; message: string }>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
     cleanupResources: (id: string) =>

@@ -6,6 +6,8 @@ import {
   normalizeGitBranchShortName,
   planTaskSourceBranchFieldsForCreate,
   resolveCreateSourceBranchIfMissingForStart,
+  taskSourceBranchMetadataWouldChange,
+  validateStoredTaskSourceBranchName,
 } from './taskBranches';
 
 describe('normalizeGitBranchShortName', () => {
@@ -122,5 +124,66 @@ describe('planTaskSourceBranchFieldsForCreate', () => {
       createSourceBranchIfMissing: false,
     });
     expect(p.createSourceBranchIfMissing).toBe(false);
+  });
+});
+
+describe('validateStoredTaskSourceBranchName', () => {
+  it('accepts typical branch names', () => {
+    expect(validateStoredTaskSourceBranchName('main').ok).toBe(true);
+    expect(validateStoredTaskSourceBranchName('feature/foo-bar').ok).toBe(true);
+  });
+
+  it('rejects empty', () => {
+    const r = validateStoredTaskSourceBranchName('');
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects spaces and control chars', () => {
+    expect(validateStoredTaskSourceBranchName('bad name').ok).toBe(false);
+    expect(validateStoredTaskSourceBranchName('x\ny').ok).toBe(false);
+  });
+
+  it('rejects forbidden sequences', () => {
+    expect(validateStoredTaskSourceBranchName('a..b').ok).toBe(false);
+    expect(validateStoredTaskSourceBranchName('x@{y').ok).toBe(false);
+    expect(validateStoredTaskSourceBranchName('z.lock').ok).toBe(false);
+  });
+});
+
+describe('taskSourceBranchMetadataWouldChange', () => {
+  it('is false when patch omits branch fields', () => {
+    expect(
+      taskSourceBranchMetadataWouldChange(
+        { sourceBranch: 'main', createSourceBranchIfMissing: false },
+        {},
+      ),
+    ).toBe(false);
+  });
+
+  it('detects sourceBranch change', () => {
+    expect(
+      taskSourceBranchMetadataWouldChange(
+        { sourceBranch: 'main' } as Task,
+        { sourceBranch: 'develop' },
+      ),
+    ).toBe(true);
+  });
+
+  it('detects createSourceBranchIfMissing toggle', () => {
+    expect(
+      taskSourceBranchMetadataWouldChange(
+        { sourceBranch: 'x', createSourceBranchIfMissing: false },
+        { createSourceBranchIfMissing: true },
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when values match after normalization', () => {
+    expect(
+      taskSourceBranchMetadataWouldChange(
+        { sourceBranch: 'main' } as Task,
+        { sourceBranch: '  main  ' },
+      ),
+    ).toBe(false);
   });
 });

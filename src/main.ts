@@ -41,10 +41,14 @@ import type {
 import {
   classifyGitBranchPresence,
   effectiveTaskSourceBranchShort,
+  nextPersistedSourceBranchShortAfterPatch,
   planTaskSourceBranchFieldsForCreate,
   resolveCreateSourceBranchIfMissingForStart,
+  taskSourceBranchMetadataWouldChange,
+  validateStoredTaskSourceBranchName,
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
+import { assertTaskSourceBranchMetadataEditable } from './main/taskSourceBranchEditGuard';
 import {
   getTaskBlockedStartInfo,
   isTaskBlocked,
@@ -899,12 +903,58 @@ app.whenReady().then(async () => {
         sourceBranch: input.sourceBranch,
         createSourceBranchIfMissing: input.createSourceBranchIfMissing,
       });
+      const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
+      if (!branchOk.ok) {
+        throw new Error(branchOk.message);
+      }
       return taskStore.create({
         ...input,
         projectId: project.id,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
       });
+    },
+  );
+  ipcMain.handle(
+    'tasks:assertSourceBranchEditable',
+    async (
+      _e,
+      taskId: unknown,
+      previousFields: unknown,
+      patchFields: unknown,
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      if (typeof taskId !== 'string' || !taskId.trim()) {
+        return { ok: false, message: 'Invalid task id' };
+      }
+      const tid = taskId.trim();
+      const prev =
+        previousFields && typeof previousFields === 'object'
+          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          : {};
+      const patch =
+        patchFields && typeof patchFields === 'object'
+          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          : {};
+      try {
+        if (!taskSourceBranchMetadataWouldChange(prev, patch)) {
+          return { ok: true };
+        }
+        const projectDir = activeProjectDir();
+        await assertTaskSourceBranchMetadataEditable(tid, projectDir, () =>
+          daemonClient.listSessions(),
+        );
+        const candidate = nextPersistedSourceBranchShortAfterPatch(prev, patch);
+        if (candidate !== undefined) {
+          const v = validateStoredTaskSourceBranchName(candidate);
+          if (!v.ok) {
+            return { ok: false, message: v.message };
+          }
+        }
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, message };
+      }
     },
   );
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
@@ -1295,6 +1345,24 @@ app.whenReady().then(async () => {
         throw new Error(v.message);
       }
       patchToApply = { ...patch, blockedByTaskIds: v.normalized };
+    }
+    if (
+      patch.sourceBranch !== undefined ||
+      patch.createSourceBranchIfMissing !== undefined
+    ) {
+      if (taskSourceBranchMetadataWouldChange(previous, patch)) {
+        const projectDir = activeProjectDir();
+        await assertTaskSourceBranchMetadataEditable(id, projectDir, () =>
+          daemonClient.listSessions(),
+        );
+        const candidate = nextPersistedSourceBranchShortAfterPatch(previous, patch);
+        if (candidate !== undefined) {
+          const v = validateStoredTaskSourceBranchName(candidate);
+          if (!v.ok) {
+            throw new Error(v.message);
+          }
+        }
+      }
     }
     const updated = await taskStore.update(id, patchToApply);
     await maybeAutoStartSessionOnInProgressTransition(previous, updated, source, options);

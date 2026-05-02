@@ -15,7 +15,10 @@ import {
 import type { Agent, Task, TaskStatus } from '../../types';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { normalizeTaskLabels } from '../../taskLabels';
-import { planTaskSourceBranchFieldsForCreate } from '../../taskBranches';
+import {
+  planTaskSourceBranchFieldsForCreate,
+  validateStoredTaskSourceBranchName,
+} from '../../taskBranches';
 import { getFirebaseFirestore } from '../firebase';
 import type {
   TaskCreateInput,
@@ -83,6 +86,10 @@ export class FirestoreTaskProvider implements TaskProvider {
       sourceBranch: input.sourceBranch,
       createSourceBranchIfMissing: input.createSourceBranchIfMissing,
     });
+    const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
+    if (!branchOk.ok) {
+      throw new Error(branchOk.message);
+    }
     const data = {
       title: input.title,
       status: input.status ?? ('backlog' as TaskStatus),
@@ -153,6 +160,28 @@ export class FirestoreTaskProvider implements TaskProvider {
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {
+    if (patch.sourceBranch !== undefined || patch.createSourceBranchIfMissing !== undefined) {
+      const previous = this.tasks.find((t) => t.id === id);
+      if (!previous) {
+        throw new Error(`Task not found: ${id}`);
+      }
+      const gate = await window.electronAPI.tasks.assertSourceBranchEditable(
+        id,
+        {
+          sourceBranch: previous.sourceBranch,
+          createSourceBranchIfMissing: previous.createSourceBranchIfMissing,
+        },
+        {
+          ...(patch.sourceBranch !== undefined ? { sourceBranch: patch.sourceBranch } : {}),
+          ...(patch.createSourceBranchIfMissing !== undefined
+            ? { createSourceBranchIfMissing: patch.createSourceBranchIfMissing }
+            : {}),
+        },
+      );
+      if (!gate.ok) {
+        throw new Error(gate.message);
+      }
+    }
     const db = getFirebaseFirestore();
     const ref = doc(db, 'projects', this.projectId, 'tasks', id);
     const updates: DocumentData = {

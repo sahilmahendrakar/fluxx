@@ -10,6 +10,7 @@ import type {
 import type {
   McpBridgeMember,
   McpBridgeProjectInfoResult,
+  McpBridgeRepoBranchDiscoveryPayload,
   McpBridgeRequest,
   McpBridgeResponse,
   McpBridgeTasksCreatePayload,
@@ -258,13 +259,40 @@ async function handleRequest(
           else if (t.status === 'needs-input') taskCounts['needs-input']++;
           else if (t.status === 'done') taskCounts.done++;
         }
+        let defaultBranchShort: string | undefined;
+        let branchDiscoveryError: string | undefined;
+        try {
+          const disc = await window.electronAPI.repo.getBranchDiscovery();
+          if ('error' in disc) {
+            branchDiscoveryError = disc.error;
+          } else {
+            defaultBranchShort = disc.defaultBranchShort;
+          }
+        } catch (err) {
+          branchDiscoveryError = err instanceof Error ? err.message : String(err);
+        }
         const result: McpBridgeProjectInfoResult = {
           name: project.name,
           activeKey: currentKey,
           uid: uid ?? null,
           taskCounts,
+          ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
+          ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
         };
         return { id: req.id, ok: true, data: result };
+      }
+      case 'repo.branchDiscovery': {
+        const payload = (req.payload ?? {}) as McpBridgeRepoBranchDiscoveryPayload;
+        const raw = await window.electronAPI.repo.getBranchDiscovery(payload.classifyBranch);
+        if ('error' in raw) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'PROVIDER_ERROR',
+            message: raw.error,
+          };
+        }
+        return { id: req.id, ok: true, data: raw };
       }
       default:
         return {
