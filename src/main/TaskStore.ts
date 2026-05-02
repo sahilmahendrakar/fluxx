@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task } from '../types';
+import type { Agent, Task, TaskGithubPr } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { validateBlockedByTaskIds } from '../taskDependencies';
 import { normalizeTaskLabels } from '../taskLabels';
@@ -204,7 +204,7 @@ export class TaskStore {
         | 'sourceBranch'
         | 'createSourceBranchIfMissing'
       >
-    > & { assigneeId?: string | null },
+    > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null },
   ): Promise<Task> {
     if (!this.filePath) {
       throw new Error('No project directory open for tasks');
@@ -214,7 +214,7 @@ export class TaskStore {
       throw new Error(`Task not found: ${id}`);
     }
     const current = this.tasks[index];
-    const { assigneeId: patchAssigneeId, ...patchRest } = patch;
+    const { assigneeId: patchAssigneeId, githubPr: patchGithubPr, ...patchRest } = patch;
     const updated: Task = {
       ...current,
       ...patchRest,
@@ -241,6 +241,13 @@ export class TaskStore {
         updated.assigneeId = patchAssigneeId;
       }
     }
+    if (patchGithubPr !== undefined) {
+      if (patchGithubPr === null) {
+        delete updated.githubPr;
+      } else {
+        updated.githubPr = patchGithubPr;
+      }
+    }
     if (patch.sourceBranch !== undefined) {
       const b = patch.sourceBranch.trim();
       if (b.length === 0) {
@@ -254,6 +261,13 @@ export class TaskStore {
         updated.createSourceBranchIfMissing = true;
       } else {
         delete updated.createSourceBranchIfMissing;
+      }
+    }
+    if (patchGithubPr !== undefined) {
+      if (patchGithubPr === null) {
+        delete updated.githubPr;
+      } else {
+        updated.githubPr = patchGithubPr;
       }
     }
     this.tasks[index] = updated;

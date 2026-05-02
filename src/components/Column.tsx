@@ -19,6 +19,8 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   emptyState?: ReactNode;
   membersMap?: Map<string, ProjectMember>;
+  onTaskPrClick?: (taskId: string) => void;
+  prLoadingTaskId?: string | null;
   repoDefaultBranchShort: string;
   cloudUnblockAutostartClientUid?: string;
 }
@@ -38,6 +40,8 @@ export default function Column({
   onToggleTaskAutoStartOnUnblock,
   emptyState,
   membersMap,
+  onTaskPrClick,
+  prLoadingTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
 }: Props) {
@@ -104,6 +108,8 @@ export default function Column({
                 autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                 onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
                 assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
+                onTaskPrClick={onTaskPrClick}
+                prLoading={prLoadingTaskId === task.id}
                 repoDefaultBranchShort={repoDefaultBranchShort}
                 cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               />

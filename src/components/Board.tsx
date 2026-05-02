@@ -36,6 +36,8 @@ interface Props {
   onTogglePlanPanel: () => void;
   /** Cloud-only: team members for the assignee picker. */
   projectMembers?: ProjectMember[];
+  onTaskPrClick?: (taskId: string) => void;
+  prLoadingTaskId?: string | null;
   /** Configured / detected default short branch name for branch chips on cards. */
   repoDefaultBranchShort: string;
   /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
@@ -56,6 +58,8 @@ export default function Board({
   planPanelOpen,
   onTogglePlanPanel,
   projectMembers,
+  onTaskPrClick,
+  prLoadingTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
 }: Props) {
@@ -182,6 +186,8 @@ export default function Board({
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
+              onTaskPrClick={onTaskPrClick}
+              prLoadingTaskId={prLoadingTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               emptyState={

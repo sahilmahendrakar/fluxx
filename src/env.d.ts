@@ -14,6 +14,8 @@ import type {
   PlanningSession,
   ActiveProjectKey,
   ProjectTabState,
+  TaskGithubPr,
+  TaskPullRequestIpcResult,
   TaskSessionStartProgress,
 } from './types';
 import type { AgentState, AttachResult, PlanningAttachResult } from './daemon/protocol';
@@ -159,14 +161,25 @@ declare global {
             | 'sourceBranch'
             | 'createSourceBranchIfMissing'
           >
-        >,
+        > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
         assertSourceBranchEditable: (
           taskId: string,
-          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+            githubPr?: TaskGithubPr;
+          },
           patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
+        createPullRequest: (payload: {
+          taskId: string;
+          title?: string;
+          description?: string;
+        }) => Promise<TaskPullRequestIpcResult>;
+        refreshPullRequest: (payload: {
+          taskId: string;
+          githubPr?: TaskGithubPr;
+        }) => Promise<TaskPullRequestIpcResult>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
       };

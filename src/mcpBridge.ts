@@ -1,4 +1,4 @@
-import type { ActiveProjectKey, Agent, Task, TaskStatus } from './types';
+import type { ActiveProjectKey, Agent, Task, TaskGithubPr, TaskStatus } from './types';
 
 export const MCP_BRIDGE_REQUEST_CHANNEL = 'mcp:rendererBridge:request';
 export const MCP_BRIDGE_RESPONSE_CHANNEL = 'mcp:rendererBridge:response';
@@ -47,8 +47,10 @@ export interface McpBridgeTaskPatch {
   labels?: string[];
   autoStartOnUnblock?: boolean;
   assigneeId?: string | null;
+  githubPr?: TaskGithubPr | null;
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  githubPr?: TaskGithubPr | null;
 }
 
 export interface McpBridgeTasksCreatePayload {

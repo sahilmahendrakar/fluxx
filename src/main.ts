@@ -24,6 +24,12 @@ import {
 } from './main/agentSpawn';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
+import {
+  createPullRequestForTaskWorktree,
+  ghPrViewJson,
+  prMetadataRefMismatchWarning,
+} from './main/githubTaskPr';
+import { githubPrRefreshViewEqual } from './githubPrMetadata';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
@@ -38,6 +44,8 @@ import type {
   RepoConfig,
   SessionStartResult,
   Task,
+  TaskGithubPr,
+  TaskPullRequestIpcResult,
 } from './types';
 import {
   classifyGitBranchPresence,
@@ -1024,7 +1032,9 @@ app.whenReady().then(async () => {
       const tid = taskId.trim();
       const prev =
         previousFields && typeof previousFields === 'object'
-          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+              githubPr?: TaskGithubPr;
+            })
           : {};
       const patch =
         patchFields && typeof patchFields === 'object'
@@ -1055,6 +1065,18 @@ app.whenReady().then(async () => {
         } as Task;
         if (!taskSourceBranchSettingsWouldChange(previousTask, patch, discovery.defaultBranchShort)) {
           return { ok: true };
+        }
+        const localRow =
+          project && project.kind === 'local'
+            ? taskStore.getAll(project.id).find((t) => t.id === tid)
+            : undefined;
+        const linkedPrUrl = (localRow?.githubPr?.url ?? prev.githubPr?.url)?.trim();
+        if (linkedPrUrl) {
+          return {
+            ok: false,
+            message:
+              'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the base branch.',
+          };
         }
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
@@ -1099,6 +1121,163 @@ app.whenReady().then(async () => {
   );
 
   ipcMain.handle('tasks:delete', async (_e, id) => taskStore.delete(id));
+
+  ipcMain.handle(
+    'tasks:createPullRequest',
+    async (_e, raw: unknown): Promise<TaskPullRequestIpcResult> => {
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
+      }
+      const o = raw as { taskId?: unknown; title?: unknown; description?: unknown };
+      const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
+      if (!taskId) {
+        return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
+      }
+      const rootPath = worktreeService.getRootPath();
+      const projectDir = worktreeService.getProjectDir();
+      if (!rootPath || !projectDir) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
+      }
+      const worktreePath = await resolveTaskWorktreePath(
+        taskId,
+        () => daemonClient.listSessions(),
+        projectDir,
+      );
+      if (!worktreePath) {
+        return {
+          ok: false,
+          code: 'NO_WORKTREE',
+          message: 'No task worktree found (start a session or create a worktree first)',
+        };
+      }
+      const project = projectStore.get();
+      let title = typeof o.title === 'string' ? o.title.trim() : '';
+      let description = typeof o.description === 'string' ? o.description : '';
+      if (project) {
+        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
+        if (row) {
+          if (!title) title = row.title.trim();
+          if (o.description === undefined && row.description) {
+            description = row.description;
+          }
+        }
+      }
+      if (!title) {
+        return {
+          ok: false,
+          code: 'TASK_METADATA_REQUIRED',
+          message: 'Task title is required (open a local task or pass title in the payload)',
+        };
+      }
+      let repoDefaultBranch = 'main';
+      try {
+        const repos = await projectStore.getReposAt(activeProjectDir());
+        const norm = (p: string) => path.normalize(p);
+        const match =
+          repos.find((r) => norm(r.rootPath) === norm(rootPath)) ?? repos[0];
+        const b = (match?.baseBranch ?? 'main').trim();
+        if (b) repoDefaultBranch = b;
+      } catch {
+        /* keep default */
+      }
+      const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
+      const prBaseBranch = effectiveTaskSourceBranchShort(taskRow ?? {}, repoDefaultBranch);
+      const body = description.trim() || `_Task_: ${title}`;
+      const result = await createPullRequestForTaskWorktree({
+        worktreePath,
+        gitRootPath: rootPath,
+        taskId,
+        title,
+        body,
+        baseBranch: prBaseBranch,
+      });
+      if (!result.ok) return result;
+
+      let persisted = false;
+      if (project) {
+        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
+        if (row) {
+          await taskStore.update(taskId, { githubPr: result.githubPr });
+          persisted = true;
+          broadcastLocalTasksChanged();
+        }
+      }
+      return {
+        ok: true,
+        githubPr: result.githubPr,
+        persisted,
+        pushedBaseBranch: result.pushedBaseBranch,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'tasks:refreshPullRequest',
+    async (_e, raw: unknown): Promise<TaskPullRequestIpcResult> => {
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
+      }
+      const o = raw as { taskId?: unknown; githubPr?: unknown };
+      const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
+      if (!taskId) {
+        return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
+      }
+      const rootPath = worktreeService.getRootPath();
+      const projectDir = worktreeService.getProjectDir();
+      if (!rootPath || !projectDir) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
+      }
+      const worktreePath = await resolveTaskWorktreePath(
+        taskId,
+        () => daemonClient.listSessions(),
+        projectDir,
+      );
+      const ghCwd = worktreePath || rootPath || projectDir;
+      const project = projectStore.get();
+      let prUrl = '';
+      const fromPayload =
+        o.githubPr && typeof o.githubPr === 'object' && typeof (o.githubPr as TaskGithubPr).url === 'string'
+          ? String((o.githubPr as TaskGithubPr).url).trim()
+          : '';
+      if (fromPayload) prUrl = fromPayload;
+      if (!prUrl && project) {
+        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
+        prUrl = row?.githubPr?.url?.trim() ?? '';
+      }
+      if (!prUrl) {
+        return {
+          ok: false,
+          code: 'NO_PR_URL',
+          message: 'No pull request URL on this task (pass githubPr.url for cloud tasks)',
+        };
+      }
+      const viewed = await ghPrViewJson(ghCwd, prUrl);
+      if (!viewed.ok) {
+        console.warn('[tasks:refreshPullRequest] gh view failed', taskId, viewed.message);
+        return viewed;
+      }
+
+      const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
+      const metadataMismatchWarning = row?.githubPr
+        ? prMetadataRefMismatchWarning(row.githubPr, viewed.githubPr)
+        : undefined;
+
+      let persisted = false;
+      if (project) {
+        if (row && !githubPrRefreshViewEqual(row.githubPr, viewed.githubPr)) {
+          await taskStore.update(taskId, { githubPr: viewed.githubPr });
+          persisted = true;
+          broadcastLocalTasksChanged();
+        }
+      }
+      return {
+        ok: true,
+        githubPr: viewed.githubPr,
+        persisted,
+        ...(metadataMismatchWarning ? { metadataMismatchWarning } : {}),
+      };
+    },
+  );
 
   ipcMain.handle('cursor:listAgentModels', async () => listCursorAgentModels());
 
@@ -1349,7 +1528,7 @@ app.whenReady().then(async () => {
       | 'sourceBranch'
       | 'createSourceBranchIfMissing'
     >
-  >;
+  > & { githubPr?: TaskGithubPr | null };
 
   const unblockAutostartInFlight = new Set<string>();
 
@@ -1513,6 +1692,11 @@ app.whenReady().then(async () => {
         repo?.baseBranch ?? 'main',
       );
       if (taskSourceBranchSettingsWouldChange(previous, patchToApply, discovery.defaultBranchShort)) {
+        if (previous.githubPr?.url?.trim()) {
+          throw new Error(
+            'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first.',
+          );
+        }
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
           listSessions: () => daemonClient.listSessions(),

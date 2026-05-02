@@ -147,6 +147,47 @@ export interface CloudProject {
 
 export type Project = LocalProject | CloudProject;
 
+export type TaskGithubPrState = 'open' | 'closed' | 'merged';
+
+/** GitHub pull request linked to a task (persisted locally and in Firestore). */
+export interface TaskGithubPr {
+  url: string;
+  number?: number;
+  state?: TaskGithubPrState;
+  mergedAt?: string;
+  headBranch?: string;
+  baseBranch?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Structured errors from `tasks:createPullRequest` / `tasks:refreshPullRequest`. */
+export type TaskPrErrorCode =
+  | 'NO_PROJECT'
+  | 'NO_WORKTREE'
+  | 'NO_PR_URL'
+  | 'TASK_METADATA_REQUIRED'
+  | 'GH_NOT_INSTALLED'
+  | 'GH_AUTH_FAILED'
+  | 'NO_GITHUB_REMOTE'
+  | 'BRANCH_PUSH_FAILED'
+  | 'PR_CREATE_FAILED'
+  | 'PR_VIEW_FAILED'
+  | 'PR_BASE_BRANCH_MISSING_REMOTE'
+  | 'PR_BASE_BRANCH_PUSH_FAILED';
+
+export type TaskPullRequestIpcResult =
+  | {
+      ok: true;
+      githubPr: TaskGithubPr;
+      persisted: boolean;
+      /** True when the base branch was pushed to origin so the PR could be opened. */
+      pushedBaseBranch?: boolean;
+      /** Human-readable note when GitHub ref names differ from stored PR metadata (refresh only). */
+      metadataMismatchWarning?: string;
+    }
+  | { ok: false; code: TaskPrErrorCode; message: string };
+
 export interface Task {
   id: string;
   title: string;
@@ -200,6 +241,8 @@ export interface Task {
    * was chosen from discovery (already exists), and `true` when the user typed a new name.
    */
   createSourceBranchIfMissing?: boolean;
+  /** Linked GitHub PR metadata (optional). */
+  githubPr?: TaskGithubPr;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
