@@ -1151,6 +1151,21 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('tasks:delete', async (_e, id) => taskStore.delete(id));
 
+  ipcMain.handle('tasks:resolveWorktrees', async (_e, raw: unknown): Promise<Record<string, boolean>> => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) return {};
+    const ids = Array.isArray(raw)
+      ? raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
+      : [];
+    const capped = ids.slice(0, 400);
+    const out: Record<string, boolean> = {};
+    for (const taskId of capped) {
+      const p = await resolveTaskWorktreePath(taskId, () => daemonClient.listSessions(), projectDir);
+      out[taskId] = Boolean(p);
+    }
+    return out;
+  });
+
   ipcMain.handle(
     'tasks:createPullRequest',
     async (_e, raw: unknown): Promise<TaskPullRequestIpcResult> => {

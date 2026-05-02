@@ -227,6 +227,8 @@ export default function App() {
   const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [prLoadingTaskId, setPrLoadingTaskId] = useState<string | null>(null);
   const [taskPrError, setTaskPrError] = useState<string | null>(null);
+  /** Per-task: Flux task worktree exists on disk or is tied to a session worktree path. */
+  const [taskHasWorktreeById, setTaskHasWorktreeById] = useState<Record<string, boolean>>({});
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
@@ -259,6 +261,7 @@ export default function App() {
   /** Skips duplicate unblock handling in the cloud snapshot effect while we finalize Done inline. */
   const cloudInlineDoneFollowUpTaskIdsRef = useRef<Set<string>>(new Set());
   const createPrInflightTaskIdRef = useRef<string | null>(null);
+  const worktreeResolveGenRef = useRef(0);
   const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
   const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
@@ -576,6 +579,57 @@ export default function App() {
     tasks,
     enabled: Boolean(project && !activationLoading && provider),
   });
+
+  const tasksWorktreeIdsKey = useMemo(
+    () =>
+      tasks
+        .map((t) => t.id)
+        .sort()
+        .join('\0'),
+    [tasks],
+  );
+
+  const sessionsWorktreeKey = useMemo(
+    () =>
+      sessions
+        .map((s) => `${s.taskId}\t${s.worktreePath ?? ''}\t${s.status}`)
+        .sort()
+        .join('|'),
+    [sessions],
+  );
+
+  useEffect(() => {
+    if (!project) {
+      setTaskHasWorktreeById({});
+      return;
+    }
+    const api = window.electronAPI.tasks;
+    if (typeof api.resolveWorktrees !== 'function') {
+      setTaskHasWorktreeById({});
+      return;
+    }
+    const ids = tasksRef.current.map((t) => t.id);
+    if (ids.length === 0) {
+      setTaskHasWorktreeById({});
+      return;
+    }
+    const gen = ++worktreeResolveGenRef.current;
+    const handle = window.setTimeout(() => {
+      void api
+        .resolveWorktrees(ids)
+        .then((map) => {
+          if (worktreeResolveGenRef.current !== gen) return;
+          setTaskHasWorktreeById(map);
+        })
+        .catch((err) => {
+          console.warn('[tasks.resolveWorktrees]', err);
+        });
+    }, 320);
+    return () => {
+      worktreeResolveGenRef.current += 1;
+      window.clearTimeout(handle);
+    };
+  }, [project?.id, tasksWorktreeIdsKey, sessionsWorktreeKey]);
 
   // ----- Initial active-project hydration -----
   useEffect(() => {
@@ -2435,6 +2489,8 @@ export default function App() {
                         cloudUnblockAutostartClientUid={
                           project.kind === 'cloud' && uid ? uid : undefined
                         }
+                        sessions={sessions}
+                        taskHasWorktreeById={taskHasWorktreeById}
                       />
                       <TaskDetailPanel
                         task={selectedTask}

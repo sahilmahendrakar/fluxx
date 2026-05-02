@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
-import { Task, TaskStatus, COLUMNS, Agent } from '../types';
+import { Session, Task, TaskStatus, COLUMNS, Agent } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
 import type { ProjectMember } from '../renderer/projects/members';
 import {
@@ -42,6 +42,10 @@ interface Props {
   repoDefaultBranchShort: string;
   /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
   cloudUnblockAutostartClientUid?: string;
+  /** Active daemon sessions (used with disk resolution to know if a task worktree exists). */
+  sessions: Session[];
+  /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
+  taskHasWorktreeById: Record<string, boolean>;
 }
 
 export default function Board({
@@ -62,6 +66,8 @@ export default function Board({
   prLoadingTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
+  sessions,
+  taskHasWorktreeById,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -190,6 +196,8 @@ export default function Board({
               prLoadingTaskId={prLoadingTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
+              sessions={sessions}
+              taskHasWorktreeById={taskHasWorktreeById}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'

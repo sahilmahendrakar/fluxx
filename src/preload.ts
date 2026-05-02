@@ -215,6 +215,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('tasks:createPullRequest', payload) as Promise<TaskPullRequestIpcResult>,
     refreshPullRequest: (payload: { taskId: string; githubPr?: TaskGithubPr }) =>
       ipcRenderer.invoke('tasks:refreshPullRequest', payload) as Promise<TaskPullRequestIpcResult>,
+    resolveWorktrees: (taskIds: string[]) =>
+      ipcRenderer.invoke('tasks:resolveWorktrees', taskIds) as Promise<Record<string, boolean>>,
     cleanupResources: (id: string) =>
       ipcRenderer.invoke('tasks:cleanupResources', id) as Promise<{ errors: string[] }>,
     onChanged: (cb: () => void) => {

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
-import { Task, TaskStatus } from '../types';
+import { Session, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
 import type { ProjectMember } from '../renderer/projects/members';
 
@@ -23,6 +23,8 @@ interface Props {
   prLoadingTaskId?: string | null;
   repoDefaultBranchShort: string;
   cloudUnblockAutostartClientUid?: string;
+  sessions: Session[];
+  taskHasWorktreeById: Record<string, boolean>;
 }
 
 export default function Column({
@@ -44,6 +46,8 @@ export default function Column({
   prLoadingTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
+  sessions,
+  taskHasWorktreeById,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isDone = id === 'done';
@@ -94,26 +98,34 @@ export default function Column({
               snapshot.isDraggingOver ? 'bg-white/[0.02]' : ''
             }`}
           >
-            {tasks.map((task, index) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                allTasks={allTasks}
-                index={index}
-                onDelete={onDeleteTask}
-                onRequestCleanupTask={onRequestCleanupTask}
-                cleanupLoading={cleanupLoadingTaskId === task.id}
-                onCardClick={onCardClick}
-                onLabelClick={onLabelClick}
-                autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-                onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
-                assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
-                onTaskPrClick={onTaskPrClick}
-                prLoading={prLoadingTaskId === task.id}
-                repoDefaultBranchShort={repoDefaultBranchShort}
-                cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
-              />
-            ))}
+            {tasks.map((task, index) => {
+              const sessionWorktree = sessions.some(
+                (s) => s.taskId === task.id && Boolean(s.worktreePath?.trim()),
+              );
+              const diskWorktree = taskHasWorktreeById[task.id] === true;
+              const hasWorktree = sessionWorktree || diskWorktree;
+              return (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  allTasks={allTasks}
+                  index={index}
+                  onDelete={onDeleteTask}
+                  onRequestCleanupTask={onRequestCleanupTask}
+                  cleanupLoading={cleanupLoadingTaskId === task.id}
+                  onCardClick={onCardClick}
+                  onLabelClick={onLabelClick}
+                  autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                  onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+                  assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
+                  onTaskPrClick={onTaskPrClick}
+                  prLoading={prLoadingTaskId === task.id}
+                  repoDefaultBranchShort={repoDefaultBranchShort}
+                  cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
+                  hasWorktree={hasWorktree}
+                />
+              );
+            })}
             {provided.placeholder}
             {tasks.length === 0 && emptyState ? (
               <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-[13px] leading-relaxed text-zinc-600">

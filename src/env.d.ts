@@ -180,6 +180,7 @@ declare global {
           taskId: string;
           githubPr?: TaskGithubPr;
         }) => Promise<TaskPullRequestIpcResult>;
+        resolveWorktrees: (taskIds: string[]) => Promise<Record<string, boolean>>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
         onUserInput: (

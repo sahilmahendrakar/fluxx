@@ -40,6 +40,8 @@ interface Props {
   repoDefaultBranchShort: string;
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
+  /** When false, the GitHub PR control is hidden (no local/session worktree). */
+  hasWorktree?: boolean;
 }
 
 export default function TaskCard({
@@ -58,6 +60,7 @@ export default function TaskCard({
   prLoading = false,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
+  hasWorktree = false,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
@@ -225,7 +228,7 @@ export default function TaskCard({
                       Blocks {blocksCount}
                     </span>
                   ) : null}
-                  {onTaskPrClick ? (
+                  {onTaskPrClick && hasWorktree ? (
                     <button
                       type="button"
                       disabled={prLoading}
