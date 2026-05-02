@@ -2459,6 +2459,8 @@ export default function App() {
                         ? () => void handleMarkTaskDone(item.session.taskId, { goToBoard: true })
                         : undefined
                     }
+                    onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                    prLoading={prLoadingTaskId === item.session.taskId}
                   />
                 </div>
               );
@@ -2570,6 +2572,10 @@ export default function App() {
                         onOpenSessionTab={handleOpenSessionTab}
                         onArchiveSession={(id) => void handleArchiveSession(id)}
                         projectMembers={projectMembers}
+                        onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                        prLoading={
+                          selectedTask ? prLoadingTaskId === selectedTask.id : false
+                        }
                       />
                     </div>
                     <div

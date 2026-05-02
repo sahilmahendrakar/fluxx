@@ -51,6 +51,7 @@ import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
+import { GithubPrIconButton } from './GithubPrIconButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 import ConfirmDialog from './ConfirmDialog';
 import {
@@ -114,6 +115,10 @@ interface TaskDetailPanelProps {
    * has no assignee yet, `assigneeId` is set to this value alongside in-progress.
    */
   implicitSessionAssigneeUid?: string | null;
+  /** Open linked PR or start create flow (same as board / session chrome). */
+  onTaskPrClick?: (taskId: string) => void;
+  /** True while create PR is in flight for this task. */
+  prLoading?: boolean;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -207,6 +212,8 @@ export default function TaskDetailPanel({
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
+  onTaskPrClick,
+  prLoading = false,
 }: TaskDetailPanelProps) {
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
@@ -902,6 +909,13 @@ export default function TaskDetailPanel({
                 </button>
               ) : null}
               <OpenInWorkspaceButton worktreePath={resolvedWorktreePath} size="md" />
+              <GithubPrIconButton
+                githubPr={task.githubPr}
+                taskId={task.id}
+                hasWorktree={Boolean(resolvedWorktreePath?.trim())}
+                onTaskPrClick={onTaskPrClick}
+                prLoading={prLoading}
+              />
               {!sessionRunning ? (
                 <button
                   type="button"

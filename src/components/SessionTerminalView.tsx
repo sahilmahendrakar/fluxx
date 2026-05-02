@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Session, Shell, Task } from '../types';
+import { GithubPrIconButton } from './GithubPrIconButton';
 import {
   getSessionAttachShared,
   getShellAttachShared,
@@ -46,6 +47,10 @@ interface SessionTerminalViewProps {
   onMarkAsDone?: () => void;
   /** Dependency blockers not finished — Mark as done stays visible but disabled. */
   markAsDoneBlocked?: boolean;
+  /** Open linked PR or start create flow (same IPC as board `TaskCard`). */
+  onTaskPrClick?: (taskId: string) => void;
+  /** True while create PR is in flight for this session’s task. */
+  prLoading?: boolean;
 }
 
 type PaneId = 'agent' | `shell:${string}`;
@@ -256,6 +261,8 @@ export function SessionTerminalView({
   task = null,
   onMarkAsDone,
   markAsDoneBlocked = false,
+  onTaskPrClick,
+  prLoading = false,
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
@@ -343,6 +350,15 @@ export function SessionTerminalView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
+          {task ? (
+            <GithubPrIconButton
+              githubPr={task.githubPr}
+              taskId={task.id}
+              hasWorktree={Boolean(session.worktreePath?.trim())}
+              onTaskPrClick={onTaskPrClick}
+              prLoading={prLoading}
+            />
+          ) : null}
           {showMarkAsDone ? (
             <button
               type="button"
