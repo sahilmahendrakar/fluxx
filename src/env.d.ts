@@ -29,6 +29,7 @@ import type {
   McpBridgeResponse,
 } from './mcpBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type { PlanningDocsApplyFirestoreSnapshotResult } from './planningDocs/syncTypes';
 import type {
   PlanningDocFileEntry,
   PlanningDocsCloudMigrationPersistedV1,
@@ -272,6 +273,16 @@ declare global {
         read: (relativePath: string) => Promise<
           { content: string } | { error: string }
         >;
+        applyFirestoreSnapshot: (payload: {
+          projectId: string;
+          docs: Array<{
+            docId: string;
+            relativePath: string;
+            markdown: string;
+            remoteRevision: string;
+          }>;
+          removedDocIds: string[];
+        }) => Promise<PlanningDocsApplyFirestoreSnapshotResult>;
         onChanged: (cb: () => void) => () => void;
         cloudMigration: {
           getState: (

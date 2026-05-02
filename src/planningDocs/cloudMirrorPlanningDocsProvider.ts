@@ -2,9 +2,9 @@ import type { PlanningDocsProvider } from './FilesystemPlanningDocsProvider';
 import type { PlanningDocsBackendKind, PlanningDocsListResult, PlanningDocsReadResult } from './types';
 
 /**
- * Cloud planning docs today: read the local workspace mirror under
- * `.flux/<project>/planning/` (same tree as agents). Firestore-backed sync
- * hydrates that mirror on first open — see `cloudPlanningDocsMigration.ts` and
+ * Cloud workspaces mirror Firestore `planningDocs` into the on-disk `planning/` tree
+ * (same folder agents use) via `usePlanningDocsFirestoreSync`; first-run conflict
+ * backups and seed offers live in `cloudPlanningDocsMigration.ts` /
  * `useCloudPlanningDocsMigration.tsx`.
  */
 export class CloudMirrorPlanningDocsProvider implements PlanningDocsProvider {

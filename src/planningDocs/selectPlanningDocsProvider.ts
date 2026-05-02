@@ -18,7 +18,7 @@ export function createPlanningDocsProviderBundle(
 
 /**
  * Select the planning-docs backend for IPC. Local workspaces use authoritative
- * disk; cloud workspaces use the mirror disk provider until Firestore is wired.
+ * disk; cloud workspaces read the same tree after Firestore hydration fills it.
  */
 export function planningDocsProviderForActiveProject(
   activeKey: ActiveProjectKey | null | undefined,

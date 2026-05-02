@@ -32,6 +32,7 @@ import {
   type McpBridgeResponse,
 } from './mcpBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type { PlanningDocsApplyFirestoreSnapshotResult } from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
   PlanningDocsListResult,
@@ -395,6 +396,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
         { content: string } | { error: string }
       >,
+    applyFirestoreSnapshot: (payload: {
+      projectId: string;
+      docs: Array<{
+        docId: string;
+        relativePath: string;
+        markdown: string;
+        remoteRevision: string;
+      }>;
+      removedDocIds: string[];
+    }) =>
+      ipcRenderer.invoke(
+        'planningDocs:applyFirestoreSnapshot',
+        payload,
+      ) as Promise<PlanningDocsApplyFirestoreSnapshotResult>,
     onChanged: (cb: () => void) => {
       const handler = () => cb();
       ipcRenderer.on('planningDocs:changed', handler);

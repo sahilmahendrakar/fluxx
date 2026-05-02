@@ -8,8 +8,8 @@ const PLANNING_DOCS_CHANGED_CHANNEL = 'planningDocs:changed';
 const DEBOUNCE_MS = 300;
 const POLL_INTERVAL_MS = 2500;
 
-/** Notify all windows that planning markdown changed (used by FS watcher and migration hydrate). */
-export function broadcastPlanningDocsChanged(): void {
+/** Notify all windows that planning markdown changed (FS watcher, snapshot hydrate, migration). */
+export function notifyPlanningDocsChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(PLANNING_DOCS_CHANGED_CHANNEL);
@@ -24,17 +24,22 @@ export function broadcastPlanningDocsChanged(): void {
  */
 export function createPlanningDocsWatcher(
   getPlanningDir: () => string | null,
-): { sync: () => void; dispose: () => void } {
+): {
+  sync: () => void;
+  dispose: () => void;
+  suppressFsNotifications: (ms: number) => void;
+} {
   let watcher: fs.FSWatcher | null = null;
   let watchingPath: string | null = null;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let ignoreFsUntil = 0;
 
   function scheduleNotify(): void {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      broadcastPlanningDocsChanged();
+      notifyPlanningDocsChanged();
     }, DEBOUNCE_MS);
   }
 
@@ -53,6 +58,7 @@ export function createPlanningDocsWatcher(
   function attachWatcher(resolvedDir: string): void {
     stopWatcher();
     const onFsEvent = (): void => {
+      if (Date.now() < ignoreFsUntil) return;
       scheduleNotify();
     };
     try {
@@ -96,6 +102,9 @@ export function createPlanningDocsWatcher(
 
   return {
     sync,
+    suppressFsNotifications: (ms: number) => {
+      ignoreFsUntil = Date.now() + Math.max(0, ms);
+    },
     dispose: () => {
       if (pollTimer) {
         clearInterval(pollTimer);
