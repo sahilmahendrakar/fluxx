@@ -77,6 +77,67 @@ describe('resolveLocalOrOriginRefWithAmbiguity', () => {
     }
   });
 
+  it('returns origin ref when local and origin differ and onDivergence is prefer-origin', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-git-'));
+    try {
+      await initGitRepo(cwd);
+      const { stdout: baseOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd,
+        encoding: 'utf8',
+      });
+      const baseSha = baseOut.trim();
+      await execFile('git', ['checkout', '-b', 'diverge2'], { cwd });
+      await fs.appendFile(path.join(cwd, 'f.txt'), 'b\n', 'utf8');
+      await execFile('git', ['commit', '-am', 'second'], { cwd });
+      const { stdout: localOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd,
+        encoding: 'utf8',
+      });
+      const localSha = localOut.trim();
+      await execFile('git', ['checkout', 'main'], { cwd });
+      await execFile('git', ['branch', '-D', 'diverge2'], { cwd });
+      await execFile('git', ['update-ref', `refs/remotes/origin/diverge2`, baseSha], { cwd });
+      await execFile('git', ['branch', 'diverge2', localSha], { cwd });
+      const r = await resolveLocalOrOriginRefWithAmbiguity(cwd, 'diverge2', {
+        onDivergence: 'prefer-origin',
+      });
+      expect(r).toEqual({ kind: 'ok', ref: 'origin/diverge2' });
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('returns local ref when local and origin differ and onDivergence is prefer-local', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-git-'));
+    try {
+      await initGitRepo(cwd);
+      const { stdout: baseOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd,
+        encoding: 'utf8',
+      });
+      const baseSha = baseOut.trim();
+      await execFile('git', ['checkout', '-b', 'diverge3'], { cwd });
+      await fs.appendFile(path.join(cwd, 'f.txt'), 'b\n', 'utf8');
+      await execFile('git', ['commit', '-am', 'second'], { cwd });
+      const { stdout: localOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd,
+        encoding: 'utf8',
+      });
+      const localSha = localOut.trim();
+      await execFile('git', ['checkout', 'main'], { cwd });
+      await execFile('git', ['branch', '-D', 'diverge3'], { cwd });
+      await execFile('git', ['update-ref', `refs/remotes/origin/diverge3`, baseSha], { cwd });
+      await execFile('git', ['branch', 'diverge3', localSha], { cwd });
+      const r = await resolveLocalOrOriginRefWithAmbiguity(cwd, 'diverge3', {
+        onDivergence: 'prefer-local',
+      });
+      expect(r).toEqual({ kind: 'ok', ref: 'diverge3' });
+      expect(localSha).not.toBe(baseSha);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('returns ok when local and origin match', async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-git-'));
     try {

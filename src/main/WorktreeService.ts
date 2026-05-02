@@ -113,7 +113,9 @@ export class WorktreeService {
           cwd: this.rootPath,
         });
       } else {
-        const resolved = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort);
+        const resolved = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort, {
+          onDivergence: 'prefer-origin',
+        });
         if (resolved.kind === 'ambiguous') {
           throw new WorktreeCreateError(
             'WORKTREE_SOURCE_BRANCH_AMBIGUOUS',
@@ -148,7 +150,9 @@ export class WorktreeService {
               sourceShort,
             );
           }
-          const again = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort);
+          const again = await resolveLocalOrOriginRefWithAmbiguity(this.rootPath, sourceShort, {
+            onDivergence: 'prefer-local',
+          });
           if (again.kind === 'ambiguous') {
             throw new WorktreeCreateError(
               'WORKTREE_SOURCE_BRANCH_AMBIGUOUS',

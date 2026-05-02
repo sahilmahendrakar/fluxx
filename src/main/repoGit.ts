@@ -111,14 +111,25 @@ export type ResolveLocalOrOriginRefResult =
   | { kind: 'missing' }
   | { kind: 'ambiguous'; localSha: string; remoteSha: string };
 
+export type ResolveLocalOrOriginRefWithAmbiguityOptions = {
+  /**
+   * When local `refs/heads/<short>` and `refs/remotes/origin/<short>` both
+   * exist at different commits. Defaults to `ambiguous` (preserve legacy
+   * callers); task worktrees use `prefer-origin` then `prefer-local` after
+   * creating a missing source branch.
+   */
+  onDivergence?: 'ambiguous' | 'prefer-origin' | 'prefer-local';
+};
+
 /**
  * Resolves a rev-parse-able ref for `branchShort`, preferring a local branch
  * name when local and `origin/<short>` agree. When both exist but differ,
- * returns `ambiguous` so the caller can surface a structured error.
+ * behavior is controlled by `options.onDivergence` (default: `ambiguous`).
  */
 export async function resolveLocalOrOriginRefWithAmbiguity(
   cwd: string,
   branchShort: string,
+  options?: ResolveLocalOrOriginRefWithAmbiguityOptions,
 ): Promise<ResolveLocalOrOriginRefResult> {
   const short = normalizeGitBranchShortName(branchShort);
   if (!short) return { kind: 'missing' };
@@ -148,6 +159,13 @@ export async function resolveLocalOrOriginRefWithAmbiguity(
   }
 
   if (localSha && remoteSha && localSha !== remoteSha) {
+    const mode = options?.onDivergence ?? 'ambiguous';
+    if (mode === 'prefer-origin') {
+      return { kind: 'ok', ref: `origin/${short}` };
+    }
+    if (mode === 'prefer-local') {
+      return { kind: 'ok', ref: short };
+    }
     return { kind: 'ambiguous', localSha, remoteSha };
   }
   if (localSha) {

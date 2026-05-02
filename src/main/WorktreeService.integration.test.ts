@@ -80,6 +80,47 @@ describe('WorktreeService.create integration', () => {
     }
   });
 
+  it('bases worktree on origin/main when local main has diverged', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      const { stdout: originTipOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd: gitRoot,
+        encoding: 'utf8',
+      });
+      const originMainSha = originTipOut.trim();
+      await execFile('git', ['update-ref', 'refs/remotes/origin/main', originMainSha], {
+        cwd: gitRoot,
+      });
+      await fs.appendFile(path.join(gitRoot, 'f.txt'), 'local-only\n', 'utf8');
+      await execFile('git', ['commit', '-am', 'ahead of origin'], { cwd: gitRoot });
+      const { stdout: localMainOut } = await execFile('git', ['rev-parse', 'main'], {
+        cwd: gitRoot,
+        encoding: 'utf8',
+      });
+      const localMainSha = localMainOut.trim();
+      expect(localMainSha).not.toBe(originMainSha);
+
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const { worktreePath } = await svc.create('task-origin-main', {
+        sourceBranchShort: 'main',
+        createSourceBranchIfMissing: false,
+      });
+      const { stdout: wtHeadOut } = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd: worktreePath,
+        encoding: 'utf8',
+      });
+      expect(wtHeadOut.trim()).toBe(originMainSha);
+      expect(wtHeadOut.trim()).not.toBe(localMainSha);
+
+      await svc.remove(worktreePath);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('reuses existing flux task branch without rebasing onto a changed task source', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-'));
     const gitRoot = path.join(root, 'repo');
