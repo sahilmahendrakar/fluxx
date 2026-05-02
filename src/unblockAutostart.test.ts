@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from './types';
 import {
+  cloudUnblockAutostartAssigneeGateAllows,
   findDependentsForUnblockAutostart,
   isFullUnblockTransition,
   shouldAutostartUnblockedTask,
@@ -23,8 +24,19 @@ describe('shouldAutostartUnblockedTask', () => {
     expect(shouldAutostartUnblockedTask(base({ id: 'x', title: '', status: 'done' }), p(true, true))).toBe(false);
   });
 
-  it('is true when project “when unblocked” is on', () => {
-    expect(shouldAutostartUnblockedTask(base({ id: 'x', title: '', status: 'backlog' }), p(false, true))).toBe(true);
+  it('is false when project “when unblocked” is on but task is unassigned', () => {
+    expect(shouldAutostartUnblockedTask(base({ id: 'x', title: '', status: 'backlog' }), p(false, true))).toBe(
+      false,
+    );
+  });
+
+  it('is true when project “when unblocked” is on and task has an assignee', () => {
+    expect(
+      shouldAutostartUnblockedTask(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'alice' }),
+        p(false, true),
+      ),
+    ).toBe(true);
   });
 
   it('is true when per-task auto is on', () => {
@@ -76,6 +88,53 @@ describe('isFullUnblockTransition', () => {
     const before = [a, b, d];
     const after = [a, { ...b, status: 'done' as const }, d];
     expect(isFullUnblockTransition(d, before, after)).toBe(true);
+  });
+});
+
+describe('cloudUnblockAutostartAssigneeGateAllows', () => {
+  it('skips gate when clientUid is undefined (local)', () => {
+    expect(
+      cloudUnblockAutostartAssigneeGateAllows(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'someone' }),
+        undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it('allows unassigned task when cloud uid is null', () => {
+    expect(
+      cloudUnblockAutostartAssigneeGateAllows(
+        base({ id: 'x', title: '', status: 'backlog' }),
+        null,
+      ),
+    ).toBe(true);
+  });
+
+  it('denies assigned task when cloud uid is null', () => {
+    expect(
+      cloudUnblockAutostartAssigneeGateAllows(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'alice' }),
+        null,
+      ),
+    ).toBe(false);
+  });
+
+  it('allows when assignee matches client uid', () => {
+    expect(
+      cloudUnblockAutostartAssigneeGateAllows(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'alice' }),
+        'alice',
+      ),
+    ).toBe(true);
+  });
+
+  it('denies when assignee differs from client uid', () => {
+    expect(
+      cloudUnblockAutostartAssigneeGateAllows(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'alice' }),
+        'bob',
+      ),
+    ).toBe(false);
   });
 });
 

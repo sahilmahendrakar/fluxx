@@ -193,6 +193,7 @@ export type SessionStartErrorCode =
   /** Empty branch name after normalization, or repo in a state that cannot supply a base ref. */
   | 'WORKTREE_REPO_INVALID_STATE'
   | 'TASK_BLOCKED'
+  | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';
 
 export type SessionStartResult =

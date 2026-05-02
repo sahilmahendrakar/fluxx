@@ -1073,6 +1073,7 @@ app.whenReady().then(async () => {
   async function startSessionForTask(
     task: Task,
     projectTasks?: Task[],
+    requesterUid?: string | null,
   ): Promise<SessionStartResult> {
     const project = await resolveProjectForStart();
 
@@ -1107,6 +1108,21 @@ app.whenReady().then(async () => {
         blockerIds: info.blockerIds,
         blockers: info.blockers,
       };
+    }
+
+    if (
+      project.kind === 'cloud' &&
+      requesterUid &&
+      typeof requesterUid === 'string' &&
+      requesterUid.trim() !== ''
+    ) {
+      const assignee = merged.assigneeId?.trim();
+      if (assignee && assignee !== requesterUid.trim()) {
+        return {
+          error: 'NOT_TASK_ASSIGNEE',
+          message: 'Only the task assignee can start a session for this task.',
+        };
+      }
     }
 
     // Local tasks.json: a started session should match the "In progress" column.
@@ -1511,8 +1527,10 @@ app.whenReady().then(async () => {
     return updated;
   }
 
-  ipcMain.handle('session:start', async (_e, task: Task, projectTasks?: Task[]) =>
-    startSessionForTask(task, projectTasks),
+  ipcMain.handle(
+    'session:start',
+    async (_e, task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
+      startSessionForTask(task, projectTasks, requesterUid),
   );
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {

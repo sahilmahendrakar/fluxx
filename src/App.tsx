@@ -466,7 +466,9 @@ export default function App() {
           source: 'cloud:tasks',
           logError: (msg, data) => console.error(msg, data),
           getCurrentList: () => tasksRef.current,
-          startSession: (task, all) => window.electronAPI.sessions.start(task, all),
+          cloudUnblockAutostartClientUid: uidRef.current ?? null,
+          startSession: (task, all) =>
+            window.electronAPI.sessions.start(task, all, uidRef.current ?? undefined),
           moveBacklogToInProgress: async (id) => {
             const task = tasksRef.current.find((x) => x.id === id);
             const patch: TaskPatch = { status: 'in-progress' };
@@ -474,7 +476,11 @@ export default function App() {
             const updated = await provider.update(id, patch);
             if (inProg) {
               const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
-              const r = await window.electronAPI.sessions.start(updated, all);
+              const r = await window.electronAPI.sessions.start(
+                updated,
+                all,
+                uidRef.current ?? undefined,
+              );
               if (r && typeof r === 'object' && 'error' in r) {
                 console.error('[task:unblock-autostart] session start failed', {
                   taskId: id,
@@ -489,7 +495,11 @@ export default function App() {
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
             const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
-            const r = await window.electronAPI.sessions.start(updated, all);
+            const r = await window.electronAPI.sessions.start(
+              updated,
+              all,
+              uidRef.current ?? undefined,
+            );
             if (r && typeof r === 'object' && 'error' in r) {
               console.error('[task:unblock-autostart] session start failed', {
                 taskId: id,
@@ -882,6 +892,16 @@ export default function App() {
           patchToApply = { ...patchToApply, assigneeId: uidRef.current };
         }
       }
+      if (
+        project?.kind === 'cloud' &&
+        uidRef.current &&
+        patchToApply.autoStartOnUnblock === true &&
+        !preFlushTask.assigneeId?.trim()
+      ) {
+        if (patchToApply.assigneeId === undefined) {
+          patchToApply = { ...patchToApply, assigneeId: uidRef.current };
+        }
+      }
       const needsDoneLock =
         project?.kind === 'cloud' &&
         preFlushTask.status !== 'done' &&
@@ -1010,6 +1030,14 @@ export default function App() {
             next = { ...next };
             delete next.createSourceBranchIfMissing;
           }
+          if (
+            project?.kind === 'cloud' &&
+            uid &&
+            patch.autoStartOnUnblock === true &&
+            !t.assigneeId?.trim()
+          ) {
+            next = { ...next, assigneeId: uid };
+          }
           return next;
         }),
       );
@@ -1050,13 +1078,22 @@ export default function App() {
       const preFlushTask =
         existing?.preFlushTask ?? tasksRef.current.find((t) => t.id === id);
       if (!preFlushTask) return;
+      if (
+        project?.kind === 'cloud' &&
+        uid &&
+        patch.autoStartOnUnblock === true &&
+        !preFlushTask.assigneeId?.trim() &&
+        persistable.assigneeId === undefined
+      ) {
+        persistable.assigneeId = uid;
+      }
       const merged: TaskPatch = { ...existing?.patch, ...persistable };
       const timer = setTimeout(() => {
         void flushUpdate(id);
       }, UPDATE_DEBOUNCE_MS);
       pendingRef.current.set(id, { patch: merged, timer, preFlushTask });
     },
-    [flushUpdate],
+    [flushUpdate, project?.kind, uid],
   );
 
   const handleDragEnd = useCallback(
@@ -2095,6 +2132,9 @@ export default function App() {
                         }}
                         projectMembers={projectMembers}
                         repoDefaultBranchShort={repoDefaultBranchShort}
+                        cloudUnblockAutostartClientUid={
+                          project.kind === 'cloud' && uid ? uid : undefined
+                        }
                       />
                       <TaskDetailPanel
                         task={selectedTask}

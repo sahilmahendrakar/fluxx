@@ -1,6 +1,7 @@
 import { isTaskBlocked } from './taskDependencies';
 import type { Task } from './types';
 import {
+  cloudUnblockAutostartAssigneeGateAllows,
   findDependentsForUnblockAutostart,
   shouldAutostartUnblockedTask,
   type UnblockAutostartPolicy,
@@ -11,6 +12,12 @@ export type UnblockAutostartApplyContext = {
   source: string;
   logError: (msg: string, data: Record<string, unknown>) => void;
   getCurrentList: () => Task[];
+  /**
+   * Cloud renderer / done follow-up: when set (including `null` before auth),
+   * skip unblock autostart for tasks assigned to someone else. Omit for local
+   * main (single-user).
+   */
+  cloudUnblockAutostartClientUid?: string | null;
   startSession: (task: Task, all: Task[]) => Promise<unknown>;
   /**
    * Move a backlog task to in-progress. Use the environment’s main-process
@@ -57,6 +64,12 @@ export async function applyUnblockAutostartForCompletedBlocker(
     try {
       const columnTasks = ctx.getCurrentList();
       const current = columnTasks.find((t) => t.id === d.id) ?? d;
+      if (
+        ctx.cloudUnblockAutostartClientUid !== undefined &&
+        !cloudUnblockAutostartAssigneeGateAllows(current, ctx.cloudUnblockAutostartClientUid)
+      ) {
+        continue;
+      }
       if (current.status === 'done' || isTaskBlocked(current, columnTasks)) {
         continue;
       }

@@ -20,6 +20,7 @@ interface Props {
   emptyState?: ReactNode;
   membersMap?: Map<string, ProjectMember>;
   repoDefaultBranchShort: string;
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function Column({
@@ -38,6 +39,7 @@ export default function Column({
   emptyState,
   membersMap,
   repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isDone = id === 'done';
@@ -103,6 +105,7 @@ export default function Column({
                 onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
                 assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
                 repoDefaultBranchShort={repoDefaultBranchShort}
+                cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               />
             ))}
             {provided.placeholder}
