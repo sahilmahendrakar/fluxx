@@ -31,6 +31,7 @@ import {
   type McpBridgeRequest,
   type McpBridgeResponse,
 } from './mcpBridge';
+import type { PlanningDocsListResult } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
@@ -385,10 +386,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   planningDocs: {
     list: () =>
-      ipcRenderer.invoke('planningDocs:list') as Promise<
-        | { files: { relativePath: string }[] }
-        | { error: 'NO_PROJECT' | 'IO_ERROR' }
-      >,
+      ipcRenderer.invoke('planningDocs:list') as Promise<PlanningDocsListResult>,
     read: (relativePath: string) =>
       ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
         { content: string } | { error: string }

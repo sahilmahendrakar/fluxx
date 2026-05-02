@@ -28,6 +28,7 @@ import type {
   McpBridgeRequest,
   McpBridgeResponse,
 } from './mcpBridge';
+import type { PlanningDocFileEntry } from './planningDocs/types';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -261,7 +262,7 @@ declare global {
       };
       planningDocs: {
         list: () => Promise<
-          | { files: { relativePath: string }[] }
+          | { files: PlanningDocFileEntry[] }
           | { error: 'NO_PROJECT' | 'IO_ERROR' }
         >;
         read: (relativePath: string) => Promise<

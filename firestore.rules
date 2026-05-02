@@ -73,6 +73,32 @@ service cloud.firestore {
         }
       }
 
+      // Planning markdown mirrors (`relativePath` ends with `.md`); not machine-local Flux config.
+      match /planningDocs/{docId} {
+        allow read: if isMember(pid);
+
+        allow create: if isMember(pid)
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.relativePath is string
+          && request.resource.data.relativePath.size() > 0
+          && request.resource.data.relativePath.size() < 2048
+          && request.resource.data.markdown is string
+          && request.resource.data.markdown.size() < 950000
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt is timestamp;
+
+        allow update: if isMember(pid)
+          && resource.data.schemaVersion == 1
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.relativePath == resource.data.relativePath
+          && request.resource.data.markdown is string
+          && request.resource.data.markdown.size() < 950000
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt is timestamp;
+
+        allow delete: if isMember(pid);
+      }
+
       match /invites/{email} {
         // An invited user can see their own invites; members can see any.
         allow read: if isMember(pid)
