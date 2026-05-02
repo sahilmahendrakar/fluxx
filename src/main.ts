@@ -26,6 +26,7 @@ import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
   createPullRequestForTaskWorktree,
+  ghPrViewCurrentBranchOpen,
   ghPrViewJson,
   prMetadataRefMismatchWarning,
 } from './main/githubTaskPr';
@@ -1268,24 +1269,27 @@ app.whenReady().then(async () => {
           ? String((o.githubPr as TaskGithubPr).url).trim()
           : '';
       if (fromPayload) prUrl = fromPayload;
+      const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       if (!prUrl && project) {
-        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
         prUrl = row?.githubPr?.url?.trim() ?? '';
       }
-      if (!prUrl) {
-        return {
-          ok: false,
-          code: 'NO_PR_URL',
-          message: 'No pull request URL on this task (pass githubPr.url for cloud tasks)',
-        };
-      }
-      const viewed = await ghPrViewJson(ghCwd, prUrl);
+      const viewed = prUrl
+        ? await ghPrViewJson(ghCwd, prUrl)
+        : worktreePath
+          ? await ghPrViewCurrentBranchOpen(worktreePath)
+          : ({
+              ok: false,
+              code: 'NO_WORKTREE',
+              message: 'No task worktree found to discover a pull request',
+            } as const);
       if (!viewed.ok) {
+        if (viewed.code === 'NO_OPEN_PR' || viewed.code === 'NO_WORKTREE') {
+          return viewed;
+        }
         console.warn('[tasks:refreshPullRequest] gh view failed', taskId, viewed.message);
         return viewed;
       }
 
-      const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const metadataMismatchWarning = row?.githubPr
         ? prMetadataRefMismatchWarning(row.githubPr, viewed.githubPr)
         : undefined;

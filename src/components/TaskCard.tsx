@@ -1,6 +1,13 @@
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
-import { GitBranch, GitMerge, GitPullRequest, Github, Icon, Loader2 } from 'lucide-react';
+import {
+  GitBranch,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestCreate,
+  Icon,
+  Loader2,
+} from 'lucide-react';
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
@@ -61,8 +68,12 @@ export default function TaskCard({
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
   const prUrl = task.githubPr?.url?.trim() ?? '';
-  const prMerged = task.githubPr?.state === 'merged';
-  const prOpen = Boolean(prUrl) && !prMerged;
+  const prState = task.githubPr?.state;
+  const prMergedAt = task.githubPr?.mergedAt?.trim() ?? '';
+  const prMerged = prState === 'merged' || prMergedAt.length > 0;
+  const prIsOpen = prState === 'open';
+  const prIsClosed = prState === 'closed';
+  const prLinked = Boolean(prUrl) && !prMerged;
   const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
   const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
   const branchChipTitle =
@@ -225,28 +236,38 @@ export default function TaskCard({
                       }}
                       className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
                         prMerged
-                          ? 'text-violet-400 hover:bg-violet-500/15 hover:text-violet-300'
-                          : prOpen
-                            ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
-                            : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                          ? 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90'
+                          : prIsOpen
+                            ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
+                            : prLinked
+                              ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
+                              : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
                       }`}
                       aria-label={
                         prLoading
                           ? 'Working with pull request…'
                           : prMerged
                             ? 'Open merged pull request'
-                            : prOpen
+                            : prIsOpen
                               ? 'Open pull request'
-                              : 'Create GitHub pull request'
+                              : prIsClosed
+                                ? 'Open closed pull request'
+                                : prLinked
+                                  ? 'Open pull request'
+                                  : 'Create GitHub pull request'
                       }
                       title={
                         prLoading
                           ? 'Please wait…'
                           : prMerged
                             ? 'Open merged pull request'
-                            : prOpen
+                            : prIsOpen
                               ? 'Open pull request'
-                              : 'Create GitHub pull request'
+                              : prIsClosed
+                                ? 'Open closed pull request'
+                                : prLinked
+                                  ? 'Open pull request'
+                                  : 'Create GitHub pull request'
                       }
                     >
                       {prLoading ? (
@@ -256,10 +277,10 @@ export default function TaskCard({
                         />
                       ) : prMerged ? (
                         <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                      ) : prOpen ? (
+                      ) : prLinked ? (
                         <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       ) : (
-                        <Github className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                        <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       )}
                     </button>
                   ) : null}

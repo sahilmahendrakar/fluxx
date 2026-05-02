@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGhPrCreateArgs,
   classifyRemotePrBaseReadiness,
+  extractPrUrlFromGhOutput,
   mergeTaskPrPersistFields,
   prMetadataRefMismatchWarning,
 } from './main/githubTaskPr';
@@ -24,7 +25,7 @@ describe('classifyRemotePrBaseReadiness', () => {
 });
 
 describe('buildGhPrCreateArgs', () => {
-  it('passes --base and --head for gh pr create', () => {
+  it('passes stable flags supported by gh pr create', () => {
     expect(
       buildGhPrCreateArgs({
         title: 'T',
@@ -43,9 +44,20 @@ describe('buildGhPrCreateArgs', () => {
       'feature/foo',
       '--head',
       'flux/task-abc',
-      '--json',
-      'url,number,state,mergedAt,headRefName,baseRefName,createdAt,updatedAt',
     ]);
+  });
+});
+
+describe('extractPrUrlFromGhOutput', () => {
+  it('extracts the created GitHub PR URL from gh stdout', () => {
+    expect(
+      extractPrUrlFromGhOutput('Creating pull request for flux/task-abc into main\n\nhttps://github.com/o/r/pull/12\n'),
+    ).toBe('https://github.com/o/r/pull/12');
+  });
+
+  it('returns null when gh output does not include a GitHub PR URL', () => {
+    expect(extractPrUrlFromGhOutput('')).toBeNull();
+    expect(extractPrUrlFromGhOutput('https://github.com/o/r/issues/12')).toBeNull();
   });
 });
 

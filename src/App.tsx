@@ -104,7 +104,6 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     githubPr,
     sourceBranch,
     createSourceBranchIfMissing,
-    githubPr,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -148,15 +147,20 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       delete next.createSourceBranchIfMissing;
     }
   }
-  if (githubPr !== undefined) {
-    if (githubPr === null) {
-      next = { ...next };
-      delete next.githubPr;
-    } else {
-      next = { ...next, githubPr };
-    }
-  }
   return next;
+}
+
+/** Server rows can omit optional fields; keep local values unless the server set them. */
+function mergeTaskRowPreserveMissing(local: Task, server: Task): Task {
+  return { ...local, ...server };
+}
+
+function mergeServerTaskWithPendingPatchOntoLocal(
+  local: Task,
+  server: Task,
+  patch: TaskPatch | undefined,
+): Task {
+  return mergeServerTaskWithPendingPatch(mergeTaskRowPreserveMissing(local, server), patch);
 }
 
 const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
@@ -1120,7 +1124,7 @@ export default function App() {
         try {
           const updated = await provider.update(id, patchToApply);
           const newer = pendingRef.current.get(id);
-          const mergedTask = mergeServerTaskWithPendingPatch(updated, newer?.patch);
+          const mergedTask = mergeServerTaskWithPendingPatchOntoLocal(preFlushTask, updated, newer?.patch);
           let rowLocked = false;
           if (project?.kind === 'cloud') {
             const allTasksForSession = tasksRef.current.map((t) =>
@@ -1155,7 +1159,9 @@ export default function App() {
               );
               if (follow.workspaceCleaned) {
                 setTasks((prev) =>
-                  prev.map((t) => (t.id === follow.task.id ? follow.task : t)),
+                  prev.map((t) =>
+                    t.id === follow.task.id ? mergeTaskRowPreserveMissing(t, follow.task) : t,
+                  ),
                 );
                 rowLocked = true;
               }
@@ -1165,9 +1171,11 @@ export default function App() {
           }
           if (!rowLocked) {
             setTasks((prev) =>
-              prev.map((t) =>
-                t.id === id ? mergeServerTaskWithPendingPatch(updated, newer?.patch) : t,
-              ),
+              prev.map((t) => {
+                if (t.id !== id) return t;
+                const localRow = t;
+                return mergeServerTaskWithPendingPatchOntoLocal(localRow, updated, newer?.patch);
+              }),
             );
           }
         } finally {
@@ -1364,7 +1372,13 @@ export default function App() {
           try {
             const updated = await provider.update(draggableId, dragPatch);
             const pending = pendingRef.current.get(draggableId);
-            const merged = mergeServerTaskWithPendingPatch(updated, pending?.patch);
+            const localBeforeServer =
+              tasksRef.current.find((t) => t.id === draggableId) ?? previous;
+            const merged = mergeServerTaskWithPendingPatchOntoLocal(
+              localBeforeServer,
+              updated,
+              pending?.patch,
+            );
             let rowLocked = false;
             if (project?.kind === 'cloud') {
               const allTasksForSession = tasksRef.current.map((t) =>
@@ -1399,7 +1413,9 @@ export default function App() {
                 );
                 if (follow.workspaceCleaned) {
                   setTasks((prev) =>
-                    prev.map((t) => (t.id === follow.task.id ? follow.task : t)),
+                    prev.map((t) =>
+                      t.id === follow.task.id ? mergeTaskRowPreserveMissing(t, follow.task) : t,
+                    ),
                   );
                   rowLocked = true;
                 }
@@ -1409,11 +1425,10 @@ export default function App() {
             }
             if (!rowLocked) {
               setTasks((prev) =>
-                prev.map((t) =>
-                  t.id === draggableId
-                    ? mergeServerTaskWithPendingPatch(updated, pending?.patch)
-                    : t,
-                ),
+                prev.map((t) => {
+                  if (t.id !== draggableId) return t;
+                  return mergeServerTaskWithPendingPatchOntoLocal(t, updated, pending?.patch);
+                }),
               );
             }
           } finally {
@@ -1495,7 +1510,9 @@ export default function App() {
           });
           let rowLocked = false;
           if (project?.kind === 'cloud' && task.status !== 'done' && updated.status === 'done') {
-            const allAfter = tasksRef.current.map((t) => (t.id === taskId ? updated : t));
+            const allAfter = tasksRef.current.map((t) =>
+              t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t,
+            );
             const follow = await runCloudDoneTransitionFollowUp({
               previous: task,
               updated,
@@ -1513,7 +1530,9 @@ export default function App() {
             );
             if (follow.workspaceCleaned) {
               setTasks((prev) =>
-                prev.map((t) => (t.id === follow.task.id ? follow.task : t)),
+                prev.map((t) =>
+                  t.id === follow.task.id ? mergeTaskRowPreserveMissing(t, follow.task) : t,
+                ),
               );
               rowLocked = true;
             }
@@ -1521,7 +1540,9 @@ export default function App() {
             maybeStripSessionsAfterNewWorkspaceClean(task, updated);
           }
           if (!rowLocked) {
-            setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+            setTasks((prev) =>
+              prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
+            );
           }
         } finally {
           if (localCleanupSpinnerId) setCleanupLoadingTaskId(null);
@@ -1662,7 +1683,9 @@ export default function App() {
         if (!result.persisted) {
           try {
             const updated = await provider.update(taskId, { githubPr: result.githubPr });
-            setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+            setTasks((prev) =>
+              prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
+            );
           } catch (err) {
             console.error('[tasks.update] githubPr after createPullRequest failed', err);
             setTaskPrError(
@@ -1705,7 +1728,9 @@ export default function App() {
           const updated = await provider.update(taskId, {
             workspaceCleanedAt: new Date().toISOString(),
           });
-          setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+          setTasks((prev) =>
+            prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
+          );
         } catch (err) {
           console.error('[tasks.update] workspaceCleanedAt failed', err);
         }

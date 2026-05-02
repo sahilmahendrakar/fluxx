@@ -46,11 +46,10 @@ export function useGithubPrBoardRefresh(input: {
 
   const tasksGithubPrKey = useMemo(() => {
     return tasks
-      .flatMap((t) => {
+      .map((t) => {
         const g = t.githubPr;
         const url = g?.url?.trim();
-        if (!url || !g) return [];
-        return [`${t.id}:${url}:${g.state ?? ''}:${g.mergedAt ?? ''}:${g.number ?? ''}`];
+        return `${t.id}:${url ?? ''}:${g?.state ?? ''}:${g?.mergedAt ?? ''}:${g?.number ?? ''}`;
       })
       .sort()
       .join('|');
@@ -62,13 +61,12 @@ export function useGithubPrBoardRefresh(input: {
     const prov = providerRef.current;
     const kind = kindRef.current;
     if (!enabled || !projectId || !kind || !prov) return;
-    const list = tasksRef.current.filter((t) => t.githubPr?.url?.trim());
+    const list = tasksRef.current.filter((t) => t.githubPr?.url?.trim() || !t.workspaceCleanedAt);
     if (list.length === 0) return;
     const gen = generationRef.current;
     await runPool(list, CONCURRENCY, async (task) => {
       if (generationRef.current !== gen) return;
       const pr = task.githubPr;
-      if (!pr?.url?.trim()) return;
       try {
         const result = await window.electronAPI.tasks.refreshPullRequest({
           taskId: task.id,
@@ -76,6 +74,9 @@ export function useGithubPrBoardRefresh(input: {
         });
         if (generationRef.current !== gen) return;
         if (!result.ok) {
+          if (result.code === 'NO_OPEN_PR' || result.code === 'NO_WORKTREE' || result.code === 'NO_PR_URL') {
+            return;
+          }
           console.warn('[githubPrRefresh]', task.id, result.code, result.message);
           return;
         }

@@ -218,9 +218,12 @@ export function buildGhPrCreateArgs(input: {
     input.baseBranch,
     '--head',
     input.headBranch,
-    '--json',
-    PR_VIEW_FIELDS,
   ];
+}
+
+export function extractPrUrlFromGhOutput(output: string): string | null {
+  const match = output.match(/https?:\/\/github\.com\/[^\s"'<>]+\/pull\/\d+/i);
+  return match?.[0] ?? null;
 }
 
 /** True when `origin` already advertises `refs/heads/<branchShort>`. */
@@ -387,6 +390,58 @@ export async function ghPrViewJson(
   return { ok: true, githubPr: parsed };
 }
 
+function noOpenPullRequest(message = 'No open pull request found for this task worktree'): TaskPrError {
+  return { ok: false, code: 'NO_OPEN_PR', message };
+}
+
+export async function ghPrViewCurrentBranchOpen(worktreePath: string): Promise<TaskPrOk | TaskPrError> {
+  const pre = await assertGhAvailable(worktreePath);
+  if (pre) return pre;
+
+  const viewed = await gh(['pr', 'view', '--json', PR_VIEW_FIELDS], worktreePath);
+  if (viewed.ok) {
+    const parsed = parseGhPrViewJsonStdout(viewed.stdout);
+    if (parsed?.state === 'open') {
+      return { ok: true, githubPr: parsed };
+    }
+  } else if (viewed.notFound) {
+    return { ok: false, code: 'GH_NOT_INSTALLED', message: viewed.message };
+  }
+
+  const branchResult = await readCurrentBranch(worktreePath);
+  if (typeof branchResult !== 'string') {
+    return noOpenPullRequest(branchResult.message);
+  }
+
+  const listed = await gh(
+    [
+      'pr',
+      'list',
+      '--state',
+      'open',
+      '--head',
+      branchResult,
+      '--limit',
+      '1',
+      '--json',
+      PR_VIEW_FIELDS,
+    ],
+    worktreePath,
+  );
+  if (!listed.ok) {
+    if (listed.notFound) {
+      return { ok: false, code: 'GH_NOT_INSTALLED', message: listed.message };
+    }
+    return { ok: false, code: 'PR_VIEW_FAILED', message: listed.stderr || listed.message };
+  }
+
+  const parsed = parseGhPrViewJsonStdout(listed.stdout);
+  if (parsed?.state === 'open') {
+    return { ok: true, githubPr: parsed };
+  }
+  return noOpenPullRequest();
+}
+
 export async function createPullRequestForTaskWorktree(params: {
   worktreePath: string;
   gitRootPath: string;
@@ -425,74 +480,68 @@ export async function createPullRequestForTaskWorktree(params: {
   const pushErr = await gitPushHead(worktreePath);
   if (pushErr) return pushErr;
 
-  const jsonArgs = buildGhPrCreateArgs({
+  const existing = await gh(['pr', 'view', '--json', PR_VIEW_FIELDS], worktreePath);
+  if (existing.ok) {
+    const parsedExisting = parseGhPrViewJsonStdout(existing.stdout);
+    if (parsedExisting?.state === 'open') {
+      return {
+        ok: true,
+        pushedBaseBranch,
+        githubPr: mergeTaskPrPersistFields(parsedExisting, branchResult, prBase),
+      };
+    }
+  }
+
+  const createArgs = buildGhPrCreateArgs({
     title,
     body,
     baseBranch: prBase,
     headBranch: branchResult,
   });
-  const r = await gh(jsonArgs, worktreePath);
-  if (!r.ok) {
-    const fallback = await gh(
-      [
-        'pr',
-        'create',
-        '--title',
-        title,
-        '--body',
-        body,
-        '--base',
-        prBase,
-        '--head',
-        branchResult,
-      ],
-      worktreePath,
-    );
-    if (!fallback.ok) {
-      const msg = r.stderr || r.message || fallback.stderr || fallback.message;
-      if (r.notFound || fallback.notFound) {
-        return { ok: false, code: 'GH_NOT_INSTALLED', message: r.message || fallback.message };
-      }
-      const low = msg.toLowerCase();
-      if (low.includes('authentication') || low.includes('401') || low.includes('denied')) {
-        return { ok: false, code: 'GH_AUTH_FAILED', message: msg };
-      }
-      if (low.includes('not found') && low.includes('branch')) {
-        return {
-          ok: false,
-          code: 'BRANCH_PUSH_FAILED',
-          message: msg,
-        };
-      }
-      return { ok: false, code: 'PR_CREATE_FAILED', message: msg };
+  const created = await gh(createArgs, worktreePath);
+  if (!created.ok) {
+    const msg = created.stderr || created.message;
+    if (created.notFound) {
+      return { ok: false, code: 'GH_NOT_INSTALLED', message: created.message };
     }
-    const line = fallback.stdout.split('\n').find((l) => l.includes('http'));
-    if (line) {
-      const url = line.replace(/\s/g, '');
+    const low = msg.toLowerCase();
+    if (low.includes('authentication') || low.includes('401') || low.includes('denied')) {
+      return { ok: false, code: 'GH_AUTH_FAILED', message: msg };
+    }
+    if (low.includes('not found') && low.includes('branch')) {
       return {
-        ok: true,
-        pushedBaseBranch,
-        githubPr: mergeTaskPrPersistFields({ url }, branchResult, prBase),
+        ok: false,
+        code: 'BRANCH_PUSH_FAILED',
+        message: msg,
       };
     }
+    return { ok: false, code: 'PR_CREATE_FAILED', message: msg };
+  }
+
+  const url = extractPrUrlFromGhOutput(`${created.stdout}\n${created.stderr}`);
+  if (!url) {
     return {
       ok: false,
       code: 'PR_CREATE_FAILED',
-      message: fallback.stdout || 'gh pr create produced no URL',
+      message: created.stdout || created.stderr || 'gh pr create produced no URL',
     };
   }
 
-  const parsed = parseGhPrViewJsonStdout(r.stdout);
-  if (!parsed) {
-    return {
-      ok: false,
-      code: 'PR_CREATE_FAILED',
-      message: 'gh pr create succeeded but JSON could not be parsed',
-    };
+  const viewed = await gh(['pr', 'view', url, '--json', PR_VIEW_FIELDS], worktreePath);
+  if (viewed.ok) {
+    const parsed = parseGhPrViewJsonStdout(viewed.stdout);
+    if (parsed) {
+      return {
+        ok: true,
+        pushedBaseBranch,
+        githubPr: mergeTaskPrPersistFields(parsed, branchResult, prBase),
+      };
+    }
   }
+
   return {
     ok: true,
     pushedBaseBranch,
-    githubPr: mergeTaskPrPersistFields(parsed, branchResult, prBase),
+    githubPr: mergeTaskPrPersistFields({ url }, branchResult, prBase),
   };
 }

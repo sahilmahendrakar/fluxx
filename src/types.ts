@@ -166,6 +166,7 @@ export type TaskPrErrorCode =
   | 'NO_PROJECT'
   | 'NO_WORKTREE'
   | 'NO_PR_URL'
+  | 'NO_OPEN_PR'
   | 'TASK_METADATA_REQUIRED'
   | 'GH_NOT_INSTALLED'
   | 'GH_AUTH_FAILED'
