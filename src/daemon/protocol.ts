@@ -149,6 +149,16 @@ export interface TerminalModes {
  * Filled by the daemon once `SessionRuntime` wires `@xterm/addon-serialize`;
  * geometry must match `cols` / `rows` on the attach response.
  */
+/** Alternate-buffer stats from the headless emulator (optional attach diagnostics). */
+export interface TerminalSnapshotAltBufferDebug {
+  lines: number;
+  nonEmptyLines: number;
+  totalChars: number;
+  cursorX: number;
+  cursorY: number;
+  sampleLines: string[];
+}
+
 export interface TerminalSnapshot {
   /** Screen state from SerializeAddon (or equivalent), safe to write into a fresh terminal. */
   snapshotAnsi: string;
@@ -157,6 +167,17 @@ export interface TerminalSnapshot {
   modes: TerminalModes;
   cols: number;
   rows: number;
+  /** Working directory from OSC 7 when the headless emulator has parsed it. */
+  cwd?: string;
+  /** Active buffer line count at snapshot time (headless emulator diagnostics). */
+  scrollbackLines?: number;
+  /** Headless emulator diagnostics (not required for warm reattach). */
+  debug?: {
+    xtermBufferType: string;
+    hasAltScreenEntry: boolean;
+    altBuffer?: TerminalSnapshotAltBufferDebug;
+    normalBufferLines?: number;
+  };
 }
 
 /** Warm-reattach payload for agent sessions and shell panes. */

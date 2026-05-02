@@ -12,7 +12,8 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import type { Agent, Task, TaskStatus } from '../../types';
+import type { Agent, Task, TaskGithubPr, TaskStatus } from '../../types';
+import { parseGithubPrField } from '../../githubPrMetadata';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { normalizeTaskLabels } from '../../taskLabels';
 import {
@@ -246,6 +247,13 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.createSourceBranchIfMissing = deleteField();
       }
     }
+    if (patch.githubPr !== undefined) {
+      if (patch.githubPr === null) {
+        updates.githubPr = deleteField();
+      } else {
+        updates.githubPr = githubPrToFirestore(patch.githubPr);
+      }
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
     return toTask(
@@ -299,7 +307,28 @@ function toTask(
     ...parseAutoStartOnUnblockField(data.autoStartOnUnblock),
     ...parseSourceBranchField(data.sourceBranch),
     ...parseCreateSourceBranchIfMissingField(data.createSourceBranchIfMissing),
+    ...parseGithubPrFirestoreField(data.githubPr),
   };
+}
+
+function githubPrToFirestore(pr: TaskGithubPr): Record<string, unknown> {
+  const out: Record<string, unknown> = { url: pr.url };
+  if (pr.number !== undefined) out.number = pr.number;
+  if (pr.state !== undefined) out.state = pr.state;
+  if (pr.mergedAt !== undefined) out.mergedAt = pr.mergedAt;
+  if (pr.headBranch !== undefined) out.headBranch = pr.headBranch;
+  if (pr.baseBranch !== undefined) out.baseBranch = pr.baseBranch;
+  if (pr.createdAt !== undefined) out.createdAt = pr.createdAt;
+  if (pr.updatedAt !== undefined) out.updatedAt = pr.updatedAt;
+  return out;
+}
+
+function parseGithubPrFirestoreField(
+  val: unknown,
+): { githubPr: TaskGithubPr } | Record<string, never> {
+  const parsed = parseGithubPrField(val);
+  if (!parsed) return {};
+  return { githubPr: parsed };
 }
 
 function parseAssigneeIdField(

@@ -99,6 +99,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     workspaceCleanedAt,
     sourceBranch,
     createSourceBranchIfMissing,
+    githubPr,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -132,6 +133,14 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     } else {
       next = { ...next };
       delete next.createSourceBranchIfMissing;
+    }
+  }
+  if (githubPr !== undefined) {
+    if (githubPr === null) {
+      next = { ...next };
+      delete next.githubPr;
+    } else {
+      next = { ...next, githubPr };
     }
   }
   return next;
