@@ -329,7 +329,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     <div
       ref={containerRef}
       className={[
-        'flex h-full min-h-0 w-full min-w-0 flex-col rounded-md border border-white/[0.06] bg-[#09090b]',
+        'flex h-full min-h-0 w-full min-w-0 flex-col rounded-md border border-flux-border/10 bg-flux-surface',
         autoFit ? 'overflow-hidden' : 'overflow-auto',
       ].join(' ')}
     />

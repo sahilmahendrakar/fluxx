@@ -2,18 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Matches workspace zinc base; avoids flash before the app paints. */
+/*
+  Flux theme tokens — consumed as `bg-flux-*`, `text-flux-*`, etc. via tailwind.config.js.
+  Switch themes with `<html data-theme="dark"|"light">` (see `applyThemeToDocument` / head bootstrap).
+*/
+:root[data-theme='dark'],
+:root:not([data-theme]) {
+  --flux-canvas: 9 9 11;
+  --flux-sidebar: 12 12 14;
+  --flux-surface: 9 9 11;
+  --flux-elevated: 12 12 14;
+  /* Border / chrome strokes (use with low alpha, e.g. border-flux-border/10) */
+  --flux-border: 255 255 255;
+  --flux-hover: 255 255 255;
+  --flux-selected: 255 255 255;
+  --flux-ring: 255 255 255;
+  --flux-fg: 244 244 245;
+  --flux-fg-muted: 161 161 170;
+  --flux-fg-subtle: 113 113 122;
+  --flux-danger: 248 113 113;
+  --flux-warning: 251 191 36;
+  --flux-success: 52 211 153;
+  /* Decorative (projects picker hero) */
+  --flux-hero-fade: 0 0 0;
+  --flux-grid-line: 255 255 255;
+  --flux-grid-line-alpha: 0.028;
+}
+
+:root[data-theme='light'] {
+  --flux-canvas: 250 250 250;
+  --flux-sidebar: 244 244 245;
+  --flux-surface: 255 255 255;
+  --flux-elevated: 244 244 245;
+  --flux-border: 24 24 27;
+  --flux-hover: 24 24 27;
+  --flux-selected: 24 24 27;
+  --flux-ring: 99 102 241;
+  --flux-fg: 24 24 27;
+  --flux-fg-muted: 82 82 91;
+  --flux-fg-subtle: 113 113 122;
+  --flux-danger: 220 38 38;
+  --flux-warning: 180 83 9;
+  --flux-success: 5 122 85;
+  --flux-hero-fade: 250 250 250;
+  --flux-grid-line: 24 24 27;
+  --flux-grid-line-alpha: 0.06;
+}
+
+/* Base surfaces — use theme variables so first paint matches stored preference (head script). */
 html,
 body {
   margin: 0;
   min-height: 100%;
   height: 100%;
-  background-color: #09090b;
+  background-color: rgb(var(--flux-canvas));
+  color: rgb(var(--flux-fg));
 }
 
 #root {
   min-height: 100%;
-  background-color: #09090b;
+  background-color: rgb(var(--flux-canvas));
 }
 
 /* macOS custom title bar (`hiddenInset`): native drag chrome is gone. */
@@ -23,4 +71,26 @@ body {
 
 .app-window-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* Optional: grid overlay on marketing-style screens (see ProjectsListView). */
+.flux-bg-grid-overlay {
+  background-image: linear-gradient(
+      rgb(var(--flux-grid-line) / var(--flux-grid-line-alpha)) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgb(var(--flux-grid-line) / var(--flux-grid-line-alpha)) 1px,
+      transparent 1px
+    );
+}
+
+.flux-hero-vignette {
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    transparent,
+    rgb(var(--flux-hero-fade) / 0.5)
+  );
 }

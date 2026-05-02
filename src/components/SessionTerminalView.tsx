@@ -306,7 +306,7 @@ export function SessionTerminalView({
     'shrink-0 cursor-not-allowed rounded-lg bg-zinc-800/50 px-3 py-1.5 text-[12px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#09090b]">
+    <div className="flex min-h-0 flex-1 flex-col bg-flux-canvas">
       <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0b] pl-1 pr-2.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 pl-0.5">
           <PaneTab

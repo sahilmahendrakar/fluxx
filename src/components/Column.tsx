@@ -75,7 +75,7 @@ export default function Column({
         : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
 
   return (
-    <div className="flex min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">
+    <div className="flex min-w-[272px] flex-1 flex-col rounded-lg border border-flux-border/10 bg-flux-elevated/80">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2

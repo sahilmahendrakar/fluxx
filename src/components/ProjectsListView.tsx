@@ -12,6 +12,8 @@ import type { InvitesState } from '../renderer/invites/useInvites';
 import { acceptInvite } from '../renderer/invites/invites';
 import { CreateCloudProjectModal } from './CreateCloudProjectModal';
 import { InviteTeammateModal } from './InviteTeammateModal';
+import { ThemeAppearanceControl } from './ThemeAppearanceControl';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -41,6 +43,7 @@ export function ProjectsListView({
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
+  const { theme } = useFluxTheme();
   const uid = auth.user?.uid ?? null;
 
   const refreshLocal = async () => {
@@ -191,16 +194,27 @@ export function ProjectsListView({
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-y-auto bg-[#09090b] text-zinc-100">
+    <div className="relative flex h-full w-full flex-col overflow-y-auto bg-flux-canvas text-flux-fg">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-violet-600/[0.12] blur-[100px]" />
-        <div className="absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-sky-600/[0.1] blur-[100px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+        <div
+          className={
+            theme === 'light'
+              ? 'absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-violet-600/[0.06] blur-[100px]'
+              : 'absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-violet-600/[0.12] blur-[100px]'
+          }
+        />
+        <div
+          className={
+            theme === 'light'
+              ? 'absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-sky-600/[0.05] blur-[100px]'
+              : 'absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-sky-600/[0.1] blur-[100px]'
+          }
+        />
+        <div className="flux-hero-vignette pointer-events-none absolute inset-0" />
       </div>
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.4]"
+        className="flux-bg-grid-overlay pointer-events-none absolute inset-0 opacity-[0.4]"
         style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)`,
           backgroundSize: '64px 64px',
           maskImage:
             'radial-gradient(ellipse 80% 60% at 50% 40%, black, transparent)',
@@ -208,18 +222,17 @@ export function ProjectsListView({
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
-            <span className="text-base font-semibold tracking-tight text-white">
-              F
-            </span>
+        <div className="flex w-full items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-flux-border/12 bg-flux-hover/6 ring-1 ring-inset ring-flux-border/8 backdrop-blur-md">
+              <span className="text-base font-semibold tracking-tight text-flux-fg">F</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-flux-fg">Flux</h1>
+              <p className="text-[13px] text-flux-fg-muted">Projects</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">
-              Flux
-            </h1>
-            <p className="text-[13px] text-zinc-500">Projects</p>
-          </div>
+          <ThemeAppearanceControl />
         </div>
 
         {authSlot ? <div className="mt-8">{authSlot}</div> : null}

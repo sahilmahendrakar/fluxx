@@ -44,7 +44,7 @@ export function PlanningDocsView({
   }, [api, selectedPath, fileRevision]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#09090b]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-flux-canvas">
       {!selectedPath ? (
         <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-600">
           Choose a document from the sidebar, or expand <span className="px-1 font-medium text-zinc-500">Docs</span> to see what is in{' '}
