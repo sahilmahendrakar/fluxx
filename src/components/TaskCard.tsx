@@ -1,11 +1,14 @@
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
 import {
+  Ban,
+  CirclePlay,
   GitBranch,
   GitMerge,
   GitPullRequest,
   GitPullRequestCreate,
   Icon,
+  Layers2,
   Loader2,
 } from 'lucide-react';
 import { Task } from '../types';
@@ -88,6 +91,22 @@ export default function TaskCard({
       task.assigneeId?.trim() &&
       task.assigneeId !== cloudUnblockAutostartClientUid,
   );
+
+  const unblockChipTitle = unblockToggleLockedByOtherAssignee
+    ? 'Only the assignee can change per-task auto-start when unblocked for this task'
+    : perTaskUnblockAuto
+      ? 'Per-task auto-start when unblocked is on — click to turn off'
+      : projectUnblockAuto
+        ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
+        : 'Click to auto-start a session when the last dependency completes (this task)';
+
+  const unblockChipAriaLabel = unblockToggleLockedByOtherAssignee
+    ? 'Blocked: only the assignee can change per-task auto-start when unblocked for this task'
+    : perTaskUnblockAuto
+      ? 'Blocked: per-task auto-start when unblocked is on; click to turn off'
+      : projectUnblockAuto
+        ? 'Blocked: this project auto-starts when unblocked; click to add a per-task override to turn auto-start on for this task'
+        : 'Blocked: click to enable auto-start when unblocked for this task';
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -194,16 +213,9 @@ export default function TaskCard({
                         if (unblockToggleLockedByOtherAssignee) return;
                         onToggleTaskAutoStartOnUnblock(task.id, !perTaskUnblockAuto);
                       }}
-                      title={
-                        unblockToggleLockedByOtherAssignee
-                          ? 'Only the assignee can change per-task auto-start when unblocked for this task'
-                          : perTaskUnblockAuto
-                            ? 'Per-task auto-start when unblocked is on — click to turn off'
-                            : projectUnblockAuto
-                              ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
-                              : 'Click to auto-start a session when the last dependency completes (this task)'
-                      }
-                      className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide transition ${
+                      title={unblockChipTitle}
+                      aria-label={unblockChipAriaLabel}
+                      className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border transition ${
                         unblockToggleLockedByOtherAssignee
                           ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
                           : perTaskUnblockAuto
@@ -213,11 +225,13 @@ export default function TaskCard({
                               : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
                       }`}
                     >
-                      {perTaskUnblockAuto
-                        ? 'Auto (task)'
-                        : projectUnblockAuto
-                          ? 'Auto (project)'
-                          : 'Blocked'}
+                      {perTaskUnblockAuto ? (
+                        <CirclePlay className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                      ) : projectUnblockAuto ? (
+                        <Layers2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                      ) : (
+                        <Ban className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                      )}
                     </button>
                   ) : null}
                   {blocksCount > 0 ? (
