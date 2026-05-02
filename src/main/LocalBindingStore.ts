@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, CloudProjectLocalBinding } from '../types';
+import type { Agent, AgentSessionModelDefaults, CloudProjectLocalBinding } from '../types';
 import { resolvedPrefsFromBinding } from '../cloudBindingPrefs';
 
 /**
@@ -28,6 +28,19 @@ function isAgent(value: unknown): value is Agent {
   );
 }
 
+function parseAgentSessionModelDefaultsField(raw: unknown): AgentSessionModelDefaults | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: AgentSessionModelDefaults = {};
+  if (typeof o['claude-code'] === 'string') {
+    out['claude-code'] = o['claude-code'];
+  }
+  if (typeof o.cursor === 'string') {
+    out.cursor = o.cursor;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function parseBindingEntry(_id: string, value: unknown): LocalBinding | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
@@ -40,6 +53,12 @@ function parseBindingEntry(_id: string, value: unknown): LocalBinding | null {
   };
   if (isAgent(v.planningAgent)) binding.planningAgent = v.planningAgent;
   if (isAgent(v.defaultTaskAgent)) binding.defaultTaskAgent = v.defaultTaskAgent;
+  const pm = parseAgentSessionModelDefaultsField(v.planningModels);
+  if (pm) binding.planningModels = pm;
+  if (v.planningAgentYolo === true) binding.planningAgentYolo = true;
+  const tm = parseAgentSessionModelDefaultsField(v.taskDefaultModels);
+  if (tm) binding.taskDefaultModels = tm;
+  if (v.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
   if (typeof v.autoStartSessionOnInProgress === 'boolean') {
     binding.autoStartSessionOnInProgress = v.autoStartSessionOnInProgress;
   }
@@ -108,6 +127,10 @@ export class LocalBindingStore {
     prefs: Partial<{
       planningAgent: Agent;
       defaultTaskAgent: Agent;
+      planningModels: Partial<AgentSessionModelDefaults>;
+      planningAgentYolo: boolean;
+      taskDefaultModels: Partial<AgentSessionModelDefaults>;
+      defaultTaskAgentYolo: boolean;
       autoStartSessionOnInProgress: boolean;
       autoStartWhenUnblocked: boolean;
       autoCleanupWorkspaceWhenDone: boolean;
@@ -120,6 +143,29 @@ export class LocalBindingStore {
     }
     if (prefs.defaultTaskAgent !== undefined) {
       existing.defaultTaskAgent = prefs.defaultTaskAgent;
+    }
+    if (prefs.planningModels !== undefined) {
+      existing.planningModels = { ...(existing.planningModels ?? {}), ...prefs.planningModels };
+    }
+    if (prefs.planningAgentYolo !== undefined) {
+      if (prefs.planningAgentYolo) {
+        existing.planningAgentYolo = true;
+      } else {
+        delete existing.planningAgentYolo;
+      }
+    }
+    if (prefs.taskDefaultModels !== undefined) {
+      existing.taskDefaultModels = {
+        ...(existing.taskDefaultModels ?? {}),
+        ...prefs.taskDefaultModels,
+      };
+    }
+    if (prefs.defaultTaskAgentYolo !== undefined) {
+      if (prefs.defaultTaskAgentYolo) {
+        existing.defaultTaskAgentYolo = true;
+      } else {
+        delete existing.defaultTaskAgentYolo;
+      }
     }
     if (prefs.autoStartSessionOnInProgress !== undefined) {
       existing.autoStartSessionOnInProgress = prefs.autoStartSessionOnInProgress;
@@ -143,6 +189,12 @@ export class LocalBindingStore {
     if (prev) {
       if (prev.planningAgent !== undefined) binding.planningAgent = prev.planningAgent;
       if (prev.defaultTaskAgent !== undefined) binding.defaultTaskAgent = prev.defaultTaskAgent;
+      if (prev.planningModels !== undefined) binding.planningModels = { ...prev.planningModels };
+      if (prev.planningAgentYolo === true) binding.planningAgentYolo = true;
+      if (prev.taskDefaultModels !== undefined) {
+        binding.taskDefaultModels = { ...prev.taskDefaultModels };
+      }
+      if (prev.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
       if (prev.autoStartSessionOnInProgress !== undefined) {
         binding.autoStartSessionOnInProgress = prev.autoStartSessionOnInProgress;
       }

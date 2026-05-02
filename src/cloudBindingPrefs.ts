@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentSessionModelDefaults,
   CloudProject,
   CloudProjectLocalBinding,
   LocalProject,
@@ -12,6 +13,10 @@ export const CLOUD_BINDING_DEFAULT_TASK_AGENT: Agent = 'claude-code';
 export interface ResolvedCloudBindingPrefs {
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  planningModels?: AgentSessionModelDefaults;
+  planningAgentYolo?: boolean;
+  taskDefaultModels?: AgentSessionModelDefaults;
+  defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress: boolean;
   autoStartWhenUnblocked: boolean;
   autoCleanupWorkspaceWhenDone: boolean;
@@ -34,6 +39,14 @@ export function resolvedPrefsFromBinding(
     defaultTaskAgent: isAgent(binding?.defaultTaskAgent)
       ? binding.defaultTaskAgent
       : CLOUD_BINDING_DEFAULT_TASK_AGENT,
+    ...(binding?.planningModels && Object.keys(binding.planningModels).length > 0
+      ? { planningModels: binding.planningModels }
+      : {}),
+    ...(binding?.planningAgentYolo === true ? { planningAgentYolo: true } : {}),
+    ...(binding?.taskDefaultModels && Object.keys(binding.taskDefaultModels).length > 0
+      ? { taskDefaultModels: binding.taskDefaultModels }
+      : {}),
+    ...(binding?.defaultTaskAgentYolo === true ? { defaultTaskAgentYolo: true } : {}),
     autoStartSessionOnInProgress: binding?.autoStartSessionOnInProgress === true,
     autoStartWhenUnblocked: binding?.autoStartWhenUnblocked === true,
     autoCleanupWorkspaceWhenDone:

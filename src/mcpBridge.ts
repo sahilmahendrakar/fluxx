@@ -34,6 +34,8 @@ export interface McpBridgeTaskCreateInput {
   /** Short branch name; defaults from project repo when omitted. */
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  agentModel?: string;
+  agentYolo?: boolean;
 }
 
 export interface McpBridgeTaskPatch {

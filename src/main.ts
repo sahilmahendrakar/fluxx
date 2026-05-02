@@ -36,6 +36,7 @@ import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
 import type {
   ActiveProjectKey,
   Agent,
+  AgentSpawnDefaultsPatch,
   ProjectTabState,
   LocalProject,
   Project,
@@ -62,6 +63,11 @@ import {
 } from './main/taskSourceBranchGuard';
 import { fluxTaskWorkBranchName } from './main/fluxTaskBranch';
 import {
+  mergedTaskCreateAgentFields,
+  resolvedPlanningModelForSpawn,
+  resolvedPlanningYoloForSpawn,
+} from './projectAgentDefaults';
+import {
   getTaskBlockedStartInfo,
   isTaskBlocked,
   validateBlockedByTaskIds,
@@ -77,16 +83,57 @@ function isPlanningAgent(value: unknown): value is Agent {
 function parsePlanningStartPayload(payload: unknown): {
   agent: Agent;
   agentModel?: string;
+  agentYolo?: boolean;
 } | null {
   if (isPlanningAgent(payload)) {
     return { agent: payload };
   }
   if (!payload || typeof payload !== 'object') return null;
-  const o = payload as { agent?: unknown; agentModel?: unknown };
+  const o = payload as { agent?: unknown; agentModel?: unknown; agentYolo?: unknown };
   if (!isPlanningAgent(o.agent)) return null;
   const agentModel =
     typeof o.agentModel === 'string' ? o.agentModel : undefined;
-  return { agent: o.agent, agentModel };
+  const agentYolo = typeof o.agentYolo === 'boolean' ? o.agentYolo : undefined;
+  return { agent: o.agent, agentModel, agentYolo };
+}
+
+function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const o = payload as Record<string, unknown>;
+  const patch: AgentSpawnDefaultsPatch = {};
+  if (o.planningModels && typeof o.planningModels === 'object') {
+    const pm = o.planningModels as Record<string, unknown>;
+    const next: AgentSpawnDefaultsPatch['planningModels'] = {};
+    if (typeof pm['claude-code'] === 'string') {
+      next['claude-code'] = pm['claude-code'];
+    }
+    if (typeof pm.cursor === 'string') {
+      next.cursor = pm.cursor;
+    }
+    if (Object.keys(next).length > 0) {
+      patch.planningModels = next;
+    }
+  }
+  if (o.taskDefaultModels && typeof o.taskDefaultModels === 'object') {
+    const tm = o.taskDefaultModels as Record<string, unknown>;
+    const next: AgentSpawnDefaultsPatch['taskDefaultModels'] = {};
+    if (typeof tm['claude-code'] === 'string') {
+      next['claude-code'] = tm['claude-code'];
+    }
+    if (typeof tm.cursor === 'string') {
+      next.cursor = tm.cursor;
+    }
+    if (Object.keys(next).length > 0) {
+      patch.taskDefaultModels = next;
+    }
+  }
+  if (typeof o.planningAgentYolo === 'boolean') {
+    patch.planningAgentYolo = o.planningAgentYolo;
+  }
+  if (typeof o.defaultTaskAgentYolo === 'boolean') {
+    patch.defaultTaskAgentYolo = o.defaultTaskAgentYolo;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -525,6 +572,41 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle(
+    'project:patchAgentSpawnDefaults',
+    async (
+      _e,
+      raw: unknown,
+    ): Promise<{ ok: true } | { error: string }> => {
+      const patch = parseAgentSpawnDefaultsPatch(raw);
+      if (!patch) {
+        return { error: 'INVALID_PAYLOAD' };
+      }
+      try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            ...(patch.planningModels !== undefined ? { planningModels: patch.planningModels } : {}),
+            ...(patch.planningAgentYolo !== undefined
+              ? { planningAgentYolo: patch.planningAgentYolo }
+              : {}),
+            ...(patch.taskDefaultModels !== undefined
+              ? { taskDefaultModels: patch.taskDefaultModels }
+              : {}),
+            ...(patch.defaultTaskAgentYolo !== undefined
+              ? { defaultTaskAgentYolo: patch.defaultTaskAgentYolo }
+              : {}),
+          });
+          return { ok: true };
+        }
+        await projectStore.patchAgentSpawnDefaults(patch);
+        return { ok: true };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle('project:open', async () => {
     const parent = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
@@ -898,6 +980,8 @@ app.whenReady().then(async () => {
         labels?: string[];
         sourceBranch?: string;
         createSourceBranchIfMissing?: boolean;
+        agentModel?: string;
+        agentYolo?: boolean;
       },
     ) => {
       const project = projectStore.get();
@@ -919,8 +1003,15 @@ app.whenReady().then(async () => {
       if (!branchOk.ok) {
         throw new Error(branchOk.message);
       }
+      const extra = mergedTaskCreateAgentFields(
+        project,
+        input.agent,
+        input.agentModel,
+        input.agentYolo,
+      );
       return taskStore.create({
         ...input,
+        ...extra,
         projectId: project.id,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
@@ -1799,7 +1890,11 @@ app.whenReady().then(async () => {
       if (!parsed) {
         return { error: 'INVALID_PARAMS', message: 'Invalid planning start payload' };
       }
-      const { agent: requestedAgent, agentModel: requestedModel } = parsed;
+      const {
+        agent: requestedAgent,
+        agentModel: requestedModel,
+        agentYolo: requestedYolo,
+      } = parsed;
 
       const activeKey = appStateStore.get().activeProjectKey;
       if (!activeKey) {
@@ -1888,10 +1983,17 @@ app.whenReady().then(async () => {
         await ensurePlanningDirCursorMcp(planningDir);
       }
 
+      const spawnModel = resolvedPlanningModelForSpawn(
+        project,
+        planningAgent,
+        requestedModel,
+      );
+      const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
       const { command, args } = planningSpawnSpec(
         planningAgent,
         mcpConfigPath,
-        requestedModel,
+        spawnModel,
+        spawnYolo,
       );
       const result = await daemonClient.startPlanning({
         projectId: project.id,

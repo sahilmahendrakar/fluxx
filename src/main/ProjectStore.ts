@@ -1,7 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Agent, LocalProject, RepoConfig } from '../types';
+import type {
+  Agent,
+  AgentSessionModelDefaults,
+  AgentSpawnDefaultsPatch,
+  LocalProject,
+  RepoConfig,
+} from '../types';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
@@ -23,6 +29,10 @@ interface ConfigFile {
   addedAt: string;
   planningAgent: Agent;
   defaultTaskAgent: Agent;
+  planningModels?: AgentSessionModelDefaults;
+  planningAgentYolo?: boolean;
+  taskDefaultModels?: AgentSessionModelDefaults;
+  defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress: boolean;
   autoStartWhenUnblocked: boolean;
   autoCleanupWorkspaceWhenDone: boolean;
@@ -39,8 +49,21 @@ function errnoCode(err: unknown): string | undefined {
     : undefined;
 }
 
+function parseAgentSessionModelDefaultsField(raw: unknown): AgentSessionModelDefaults | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: AgentSessionModelDefaults = {};
+  if (typeof o['claude-code'] === 'string') {
+    out['claude-code'] = o['claude-code'];
+  }
+  if (typeof o.cursor === 'string') {
+    out.cursor = o.cursor;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function configToLocalProject(c: ConfigFile): LocalProject {
-  return {
+  const lp: LocalProject = {
     id: c.id,
     kind: 'local',
     name: c.name,
@@ -53,6 +76,19 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     autoCleanupWorkspaceWhenDone: c.autoCleanupWorkspaceWhenDone === true,
     repos: c.repos,
   };
+  if (c.planningModels && Object.keys(c.planningModels).length > 0) {
+    lp.planningModels = { ...c.planningModels };
+  }
+  if (c.planningAgentYolo === true) {
+    lp.planningAgentYolo = true;
+  }
+  if (c.taskDefaultModels && Object.keys(c.taskDefaultModels).length > 0) {
+    lp.taskDefaultModels = { ...c.taskDefaultModels };
+  }
+  if (c.defaultTaskAgentYolo === true) {
+    lp.defaultTaskAgentYolo = true;
+  }
+  return lp;
 }
 
 function parseRepoConfig(value: unknown): RepoConfig | null {
@@ -86,6 +122,14 @@ function parseConfig(raw: string): ConfigFile | null {
   ) {
     return null;
   }
+  const planningModels = parseAgentSessionModelDefaultsField(
+    (p as { planningModels?: unknown }).planningModels,
+  );
+  const taskDefaultModels = parseAgentSessionModelDefaultsField(
+    (p as { taskDefaultModels?: unknown }).taskDefaultModels,
+  );
+  const py = (p as { planningAgentYolo?: unknown }).planningAgentYolo;
+  const ty = (p as { defaultTaskAgentYolo?: unknown }).defaultTaskAgentYolo;
   const repos: RepoConfig[] = Array.isArray(p.repos)
     ? p.repos.map(parseRepoConfig).filter((r): r is RepoConfig => r !== null)
     : [];
@@ -117,6 +161,10 @@ function parseConfig(raw: string): ConfigFile | null {
       p.autoCleanupWorkspaceWhenDone === true ||
       (p as { autoDeleteTaskWhenDone?: boolean }).autoDeleteTaskWhenDone === true,
     repos,
+    ...(planningModels ? { planningModels } : {}),
+    ...(py === true ? { planningAgentYolo: true } : {}),
+    ...(taskDefaultModels ? { taskDefaultModels } : {}),
+    ...(ty === true ? { defaultTaskAgentYolo: true } : {}),
   };
 }
 
@@ -256,6 +304,37 @@ export class ProjectStore {
       throw new Error('ProjectStore: invalid default task agent');
     }
     await this.mutateConfig((c) => ({ ...c, defaultTaskAgent: agent }));
+  }
+
+  /** Merge planning/task model strings and YOLO defaults into config.json. */
+  async patchAgentSpawnDefaults(patch: AgentSpawnDefaultsPatch): Promise<void> {
+    if (!this.projectDir || !this.project) {
+      throw new Error('ProjectStore: no active local project');
+    }
+    await this.mutateConfig((c) => {
+      const next: ConfigFile = { ...c };
+      if (patch.planningModels !== undefined) {
+        next.planningModels = { ...(c.planningModels ?? {}), ...patch.planningModels };
+      }
+      if (patch.planningAgentYolo !== undefined) {
+        if (patch.planningAgentYolo) {
+          next.planningAgentYolo = true;
+        } else {
+          delete next.planningAgentYolo;
+        }
+      }
+      if (patch.taskDefaultModels !== undefined) {
+        next.taskDefaultModels = { ...(c.taskDefaultModels ?? {}), ...patch.taskDefaultModels };
+      }
+      if (patch.defaultTaskAgentYolo !== undefined) {
+        if (patch.defaultTaskAgentYolo) {
+          next.defaultTaskAgentYolo = true;
+        } else {
+          delete next.defaultTaskAgentYolo;
+        }
+      }
+      return next;
+    });
   }
 
   /**

@@ -1,7 +1,8 @@
+import { DEFAULT_CURSOR_AGENT_MODEL } from './types';
+
 /**
- * Per-project planning model defaults (renderer-only).
- * Agent choice persists via `project.setPlanningAgent`; models live here so we avoid
- * extending LocalBindingStore / config.json until product adds a first-class field.
+ * Legacy per-project planning model defaults (renderer localStorage).
+ * New installs use `project.patchAgentSpawnDefaults` / config.json and cloud bindings.
  */
 
 const STORAGE_KEY = 'flux.planningSessionModels.v1';
@@ -62,4 +63,38 @@ export function writePlanningModelForProject(
   const prev = store.byProject[projectId] ?? {};
   store.byProject[projectId] = { ...prev, [kind]: modelId };
   writeStore(store);
+}
+
+function clearPlanningModelsFromLocalStore(projectId: string): void {
+  const store = readStore();
+  if (!store.byProject[projectId]) return;
+  delete store.byProject[projectId];
+  writeStore(store);
+}
+
+/**
+ * One-time import from legacy localStorage when the project has no planning models in main yet.
+ * @returns whether the caller should refresh the active project from main.
+ */
+export async function migrateLegacyPlanningModelsIfNeeded(
+  projectId: string,
+  mainHasPlanningModels: boolean,
+): Promise<boolean> {
+  if (mainHasPlanningModels) return false;
+  const legacy = readPlanningModelsForProject(projectId);
+  const nonDefault =
+    legacy['claude-code'].trim() !== '' ||
+    (legacy.cursor.trim() !== '' && legacy.cursor !== DEFAULT_CURSOR_AGENT_MODEL);
+  if (!nonDefault) return false;
+  const api = window.electronAPI?.project;
+  if (!api?.patchAgentSpawnDefaults) return false;
+  const res = await api.patchAgentSpawnDefaults({
+    planningModels: {
+      ...(legacy['claude-code'].trim() ? { 'claude-code': legacy['claude-code'] } : {}),
+      ...(legacy.cursor.trim() ? { cursor: legacy.cursor } : {}),
+    },
+  });
+  if (res && 'error' in res) return false;
+  clearPlanningModelsFromLocalStore(projectId);
+  return true;
 }

@@ -106,6 +106,10 @@ export class FirestoreTaskProvider implements TaskProvider {
       ...(input.assigneeId !== undefined && input.assigneeId !== ''
         ? { assigneeId: input.assigneeId }
         : {}),
+      ...(input.agentModel !== undefined && String(input.agentModel).trim() !== ''
+        ? { agentModel: input.agentModel.trim() }
+        : {}),
+      ...(input.agentYolo === true ? { agentYolo: true } : {}),
     };
     const ref = await addDoc(col, data);
     let normalizedDeps: string[] | undefined;
@@ -157,6 +161,10 @@ export class FirestoreTaskProvider implements TaskProvider {
       ...(input.assigneeId !== undefined && input.assigneeId !== ''
         ? { assigneeId: input.assigneeId }
         : {}),
+      ...(input.agentModel !== undefined && String(input.agentModel).trim() !== ''
+        ? { agentModel: input.agentModel.trim() }
+        : {}),
+      ...(input.agentYolo === true ? { agentYolo: true } : {}),
     };
   }
 

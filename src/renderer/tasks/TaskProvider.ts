@@ -30,6 +30,8 @@ export type TaskCreateInput = {
   assigneeId?: string;
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  agentModel?: string;
+  agentYolo?: boolean;
 };
 
 /**

@@ -63,6 +63,7 @@ import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
 } from './cloudBindingPrefs';
+import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
   leaveSettingsIfActive,
@@ -1418,10 +1419,14 @@ export default function App() {
           orderKey = undefined;
         }
         const labels = normalizeTaskLabels(labelInput);
+        const spawnFields = project
+          ? mergedTaskCreateAgentFields(project, agent, undefined, undefined)
+          : {};
         const task = await provider.create({
           title,
           agent,
           orderKey,
+          ...spawnFields,
           ...(labels.length > 0 ? { labels } : {}),
           ...(assigneeId ? { assigneeId } : {}),
           ...(branch?.sourceBranch !== undefined ? { sourceBranch: branch.sourceBranch } : {}),
@@ -1437,7 +1442,7 @@ export default function App() {
         console.error('[tasks.create] failed', err);
       }
     },
-    [provider, tasks],
+    [provider, project, tasks],
   );
 
   const handleDeleteTask = useCallback(

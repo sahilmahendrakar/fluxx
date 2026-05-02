@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
-import { AGENTS, type Agent, type CloudProject, type LocalProject, type RepoConfig } from '../types';
+import {
+  AGENTS,
+  DEFAULT_CURSOR_AGENT_MODEL,
+  type Agent,
+  type AgentSpawnDefaultsPatch,
+  type CloudProject,
+  type LocalProject,
+  type RepoConfig,
+} from '../types';
 import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
+import AgentModelPicker from './AgentModelPicker';
 import { TeamView } from './TeamView';
 
 interface Props {
@@ -242,6 +251,16 @@ function ProjectConfigPane({
   const [planningAgentError, setPlanningAgentError] = useState<string | null>(null);
   const [defaultTaskAgentSaveState, setDefaultTaskAgentSaveState] = useState<SaveState>('idle');
   const [defaultTaskAgentError, setDefaultTaskAgentError] = useState<string | null>(null);
+  const [planClaudeModel, setPlanClaudeModel] = useState('');
+  const [planCursorModel, setPlanCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [planYolo, setPlanYolo] = useState(false);
+  const [taskClaudeModel, setTaskClaudeModel] = useState('');
+  const [taskCursorModel, setTaskCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [taskYolo, setTaskYolo] = useState(false);
+  const [planSpawnSaveState, setPlanSpawnSaveState] = useState<SaveState>('idle');
+  const [planSpawnError, setPlanSpawnError] = useState<string | null>(null);
+  const [taskSpawnSaveState, setTaskSpawnSaveState] = useState<SaveState>('idle');
+  const [taskSpawnError, setTaskSpawnError] = useState<string | null>(null);
 
   const planningAgentValue: Agent =
     project.kind === 'local'
@@ -273,7 +292,37 @@ function ProjectConfigPane({
     setPlanningAgentSaveState('idle');
     setDefaultTaskAgentError(null);
     setDefaultTaskAgentSaveState('idle');
+    setPlanSpawnSaveState('idle');
+    setPlanSpawnError(null);
+    setTaskSpawnSaveState('idle');
+    setTaskSpawnError(null);
   }, [project.id]);
+
+  const planningModelsKey = JSON.stringify(project.planningModels ?? {});
+  const taskModelsKey = JSON.stringify(project.taskDefaultModels ?? {});
+
+  useEffect(() => {
+    setPlanClaudeModel(project.planningModels?.['claude-code'] ?? '');
+    setPlanCursorModel(
+      project.planningModels?.cursor?.trim()
+        ? (project.planningModels.cursor as string)
+        : DEFAULT_CURSOR_AGENT_MODEL,
+    );
+    setPlanYolo(project.planningAgentYolo === true);
+    setTaskClaudeModel(project.taskDefaultModels?.['claude-code'] ?? '');
+    setTaskCursorModel(
+      project.taskDefaultModels?.cursor?.trim()
+        ? (project.taskDefaultModels.cursor as string)
+        : DEFAULT_CURSOR_AGENT_MODEL,
+    );
+    setTaskYolo(project.defaultTaskAgentYolo === true);
+  }, [
+    project.id,
+    planningModelsKey,
+    project.planningAgentYolo,
+    taskModelsKey,
+    project.defaultTaskAgentYolo,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -405,6 +454,52 @@ function ProjectConfigPane({
     [onProjectAgentPrefsRefresh],
   );
 
+  const handleSavePlanningSpawnRow = useCallback(async () => {
+    setPlanSpawnSaveState('saving');
+    setPlanSpawnError(null);
+    const patch: AgentSpawnDefaultsPatch = {
+      planningModels: {
+        'claude-code': planClaudeModel,
+        cursor: planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+      },
+      planningAgentYolo: planYolo,
+    };
+    const res = await window.electronAPI.project.patchAgentSpawnDefaults(patch);
+    if ('error' in res) {
+      setPlanSpawnSaveState('error');
+      setPlanSpawnError(res.error);
+      return;
+    }
+    await onProjectAgentPrefsRefresh?.();
+    setPlanSpawnSaveState('saved');
+    window.setTimeout(() => {
+      setPlanSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
+    }, 1500);
+  }, [onProjectAgentPrefsRefresh, planClaudeModel, planCursorModel, planYolo]);
+
+  const handleSaveTaskSpawnRow = useCallback(async () => {
+    setTaskSpawnSaveState('saving');
+    setTaskSpawnError(null);
+    const patch: AgentSpawnDefaultsPatch = {
+      taskDefaultModels: {
+        'claude-code': taskClaudeModel,
+        cursor: taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+      },
+      defaultTaskAgentYolo: taskYolo,
+    };
+    const res = await window.electronAPI.project.patchAgentSpawnDefaults(patch);
+    if ('error' in res) {
+      setTaskSpawnSaveState('error');
+      setTaskSpawnError(res.error);
+      return;
+    }
+    await onProjectAgentPrefsRefresh?.();
+    setTaskSpawnSaveState('saved');
+    window.setTimeout(() => {
+      setTaskSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
+    }, 1500);
+  }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskYolo]);
+
   const handleAutoStartChange = useCallback(async (enabled: boolean) => {
     setAutoStartEnabled(enabled);
     setAutoStartSaveState('saving');
@@ -529,9 +624,12 @@ function ProjectConfigPane({
         <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
           <h2 className="text-[13px] font-medium text-zinc-200">Default agents</h2>
           <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
-            These apply to this project on this machine. Planning defaults match the Planning
-            sidebar; the task default is used for new tasks and when MCP tools create a task
-            without specifying an agent.
+            These apply to this project on this machine. Each row sets the default agent, the same
+            model dropdown as tasks (choices follow the selected provider), and optional YOLO (
+            <span className="font-mono text-zinc-400">--yolo</span> /{' '}
+            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span>). Agent
+            changes save immediately; use Save on the same row to persist models and YOLO for that
+            flow.
           </p>
 
           <div className="mt-4 flex flex-col gap-4">
@@ -543,32 +641,100 @@ function ProjectConfigPane({
                 Planning assistant
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
-                Agent for new planning sessions (same control as in the Planning panel).
+                Same defaults as the Planning panel. Codex ignores model/YOLO here.
               </p>
-              <select
-                id="project-settings-planning-agent"
-                aria-label="Planning assistant default"
-                value={planningAgentValue}
-                disabled={planningAgentSaveState === 'saving'}
-                onChange={(e) => {
-                  const next = e.target.value as Agent;
-                  void handlePlanningAgentChange(next);
-                }}
-                className="mt-2 block w-full max-w-xs cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-2 pl-3 pr-8 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {AGENTS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-1.5 min-h-4 text-[11px]">
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Agent
+                  </span>
+                  <select
+                    id="project-settings-planning-agent"
+                    aria-label="Planning assistant default"
+                    value={planningAgentValue}
+                    disabled={planningAgentSaveState === 'saving'}
+                    onChange={(e) => {
+                      const next = e.target.value as Agent;
+                      void handlePlanningAgentChange(next);
+                    }}
+                    className="h-[34px] min-w-[9.5rem] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-0 pl-2.5 pr-7 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {AGENTS.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex min-w-0 flex-1 basis-[8rem] flex-col gap-0.5 sm:max-w-xs">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Model
+                  </span>
+                  {planningAgentValue === 'codex' ? (
+                    <span
+                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
+                      title="Model selection is not wired for Codex in this version."
+                    >
+                      Default model
+                    </span>
+                  ) : (
+                    <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                      <AgentModelPicker
+                        kind={planningAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        modelId={
+                          planningAgentValue === 'cursor'
+                            ? planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
+                            : planClaudeModel
+                        }
+                        onModelIdChange={(id) => {
+                          if (planningAgentValue === 'cursor') {
+                            setPlanCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else {
+                            setPlanClaudeModel(id.trim());
+                          }
+                        }}
+                        aria-label="Planning default model"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
+                  <span
+                    className="text-[10px] text-zinc-500"
+                    title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                  >
+                    YOLO?
+                  </span>
+                  <SettingsSwitch
+                    checked={planYolo}
+                    onCheckedChange={(n) => setPlanYolo(n)}
+                    disabled={planSpawnSaveState === 'saving'}
+                    ariaBusy={planSpawnSaveState === 'saving'}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={planSpawnSaveState === 'saving'}
+                  onClick={() => void handleSavePlanningSpawnRow()}
+                  className="h-[34px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {planSpawnSaveState === 'saving' ? '…' : 'Save'}
+                </button>
+              </div>
+              <div className="mt-1.5 flex min-h-4 flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
                 {planningAgentSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Saving…</span>
+                  <span className="text-zinc-500">Agent: saving…</span>
                 ) : planningAgentSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Saved</span>
+                  <span className="text-emerald-400">Agent: saved</span>
                 ) : planningAgentError ? (
-                  <span className="text-red-400">{planningAgentError}</span>
+                  <span className="text-red-400">Agent: {planningAgentError}</span>
+                ) : null}
+                {planSpawnSaveState === 'saving' ? (
+                  <span className="text-zinc-500">Models/YOLO: saving…</span>
+                ) : planSpawnSaveState === 'saved' ? (
+                  <span className="text-emerald-400">Models/YOLO: saved</span>
+                ) : planSpawnError ? (
+                  <span className="text-red-400">Models/YOLO: {planSpawnError}</span>
                 ) : null}
               </div>
             </div>
@@ -581,32 +747,102 @@ function ProjectConfigPane({
                 Default task agent
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
-                Used when creating new tasks and when tools create tasks without an agent.
+                New tasks and MCP{' '}
+                <code className="font-mono text-zinc-500">flux__create_task</code> when no agent is
+                given. Codex ignores model/YOLO here.
               </p>
-              <select
-                id="project-settings-default-task-agent"
-                aria-label="Default task agent"
-                value={defaultTaskAgentValue}
-                disabled={defaultTaskAgentSaveState === 'saving'}
-                onChange={(e) => {
-                  const next = e.target.value as Agent;
-                  void handleDefaultTaskAgentChange(next);
-                }}
-                className="mt-2 block w-full max-w-xs cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-2 pl-3 pr-8 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {AGENTS.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.label}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-1.5 min-h-4 text-[11px]">
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Agent
+                  </span>
+                  <select
+                    id="project-settings-default-task-agent"
+                    aria-label="Default task agent"
+                    value={defaultTaskAgentValue}
+                    disabled={defaultTaskAgentSaveState === 'saving'}
+                    onChange={(e) => {
+                      const next = e.target.value as Agent;
+                      void handleDefaultTaskAgentChange(next);
+                    }}
+                    className="h-[34px] min-w-[9.5rem] cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] py-0 pl-2.5 pr-7 text-[13px] text-zinc-100 outline-none focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {AGENTS.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex min-w-0 flex-1 basis-[8rem] flex-col gap-0.5 sm:max-w-xs">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    Model
+                  </span>
+                  {defaultTaskAgentValue === 'codex' ? (
+                    <span
+                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
+                      title="Model selection is not wired for Codex in this version."
+                    >
+                      Default model
+                    </span>
+                  ) : (
+                    <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                      <AgentModelPicker
+                        kind={defaultTaskAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        modelId={
+                          defaultTaskAgentValue === 'cursor'
+                            ? taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
+                            : taskClaudeModel
+                        }
+                        onModelIdChange={(id) => {
+                          if (defaultTaskAgentValue === 'cursor') {
+                            setTaskCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else {
+                            setTaskClaudeModel(id.trim());
+                          }
+                        }}
+                        aria-label="Default task model"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
+                  <span
+                    className="text-[10px] text-zinc-500"
+                    title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                  >
+                    YOLO?
+                  </span>
+                  <SettingsSwitch
+                    checked={taskYolo}
+                    onCheckedChange={(n) => setTaskYolo(n)}
+                    disabled={taskSpawnSaveState === 'saving'}
+                    ariaBusy={taskSpawnSaveState === 'saving'}
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={taskSpawnSaveState === 'saving'}
+                  onClick={() => void handleSaveTaskSpawnRow()}
+                  className="h-[34px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {taskSpawnSaveState === 'saving' ? '…' : 'Save'}
+                </button>
+              </div>
+              <div className="mt-1.5 flex min-h-4 flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
                 {defaultTaskAgentSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Saving…</span>
+                  <span className="text-zinc-500">Agent: saving…</span>
                 ) : defaultTaskAgentSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Saved</span>
+                  <span className="text-emerald-400">Agent: saved</span>
                 ) : defaultTaskAgentError ? (
-                  <span className="text-red-400">{defaultTaskAgentError}</span>
+                  <span className="text-red-400">Agent: {defaultTaskAgentError}</span>
+                ) : null}
+                {taskSpawnSaveState === 'saving' ? (
+                  <span className="text-zinc-500">Models/YOLO: saving…</span>
+                ) : taskSpawnSaveState === 'saved' ? (
+                  <span className="text-emerald-400">Models/YOLO: saved</span>
+                ) : taskSpawnError ? (
+                  <span className="text-red-400">Models/YOLO: {taskSpawnError}</span>
                 ) : null}
               </div>
             </div>

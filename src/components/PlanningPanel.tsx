@@ -14,8 +14,8 @@ import {
   labelForModelId,
 } from '../agentModelUi';
 import {
+  migrateLegacyPlanningModelsIfNeeded,
   readPlanningModelsForProject,
-  writePlanningModelForProject,
 } from '../planningSessionModelPrefs';
 import {
   AGENTS,
@@ -33,12 +33,9 @@ import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import Terminal, { type TerminalHandle } from './Terminal';
 
 /**
- * Header “Add session” prefs (for PR / product notes):
- * - **Agent** changes in the menu call `project.setPlanningAgent` immediately (same persistence
- *   as the legacy header `<select>`), including cloud `LocalBindingStore` prefs.
- * - **Model** is stored in renderer `localStorage` via `planningSessionModelPrefs` (per project id),
- *   not in the binding store; it is applied on each new planning spawn together with the agent.
- * - Next-session agent/model are global for this panel (not tied to which session tab is focused).
+ * Header “Add session” prefs:
+ * - **Agent** → `project.setPlanningAgent` (config.json / cloud binding).
+ * - **Model** and **YOLO** → `project.patchAgentSpawnDefaults`; legacy `localStorage` is migrated once.
  */
 
 export interface PlanningPanelProps {
@@ -204,6 +201,7 @@ export function PlanningPanel({
   const [selectedAgent, setSelectedAgent] = useState<Agent>(() => defaultPlanningAgent(project));
   const [claudeModelId, setClaudeModelId] = useState('');
   const [cursorModelId, setCursorModelId] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [planningYolo, setPlanningYolo] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [extrasGen, setExtrasGen] = useState(0);
   const [addModelOpen, setAddModelOpen] = useState(false);
@@ -242,18 +240,46 @@ export function PlanningPanel({
   }, [project]);
 
   useEffect(() => {
-    const m = readPlanningModelsForProject(project.id);
-    setClaudeModelId(m['claude-code']);
-    setCursorModelId(m.cursor);
-    setError(null);
-    setNeedsInput(false);
-    outputBufferRef.current = '';
-    setPrefsOpen(false);
-    setAddModelOpen(false);
-    setAddModelId('');
-    setAddModelLabel('');
-    setAddModelError(null);
-  }, [project.id]);
+    let cancelled = false;
+    void (async () => {
+      const mainHas =
+        project.planningModels != null &&
+        Object.keys(project.planningModels).length > 0;
+      const migrated = await migrateLegacyPlanningModelsIfNeeded(project.id, mainHas);
+      if (migrated) {
+        await onLocalProjectRefresh?.();
+      }
+      if (cancelled) return;
+      const fallback = readPlanningModelsForProject(project.id);
+      const claude =
+        typeof project.planningModels?.['claude-code'] === 'string'
+          ? project.planningModels['claude-code']
+          : fallback['claude-code'];
+      const cursor =
+        typeof project.planningModels?.cursor === 'string'
+          ? project.planningModels.cursor
+          : fallback.cursor;
+      setClaudeModelId(claude);
+      setCursorModelId(cursor);
+      setPlanningYolo(project.planningAgentYolo === true);
+      setError(null);
+      setNeedsInput(false);
+      outputBufferRef.current = '';
+      setPrefsOpen(false);
+      setAddModelOpen(false);
+      setAddModelId('');
+      setAddModelLabel('');
+      setAddModelError(null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project.id,
+    JSON.stringify(project.planningModels ?? {}),
+    project.planningAgentYolo,
+    onLocalProjectRefresh,
+  ]);
 
   useEffect(() => {
     if (!planningApi) return;
@@ -329,18 +355,49 @@ export function PlanningPanel({
   const handleModelPick = (kind: AgentModelUiKind, id: string) => {
     if (kind === 'claude-code') {
       setClaudeModelId(id);
-      writePlanningModelForProject(project.id, 'claude-code', id);
     } else {
       const norm = id.trim() || DEFAULT_CURSOR_AGENT_MODEL;
       setCursorModelId(norm);
-      writePlanningModelForProject(project.id, 'cursor', norm);
     }
+    void (async () => {
+      const patch =
+        kind === 'claude-code'
+          ? { planningModels: { 'claude-code': id } as const }
+          : {
+              planningModels: {
+                cursor: (id.trim() || DEFAULT_CURSOR_AGENT_MODEL) as string,
+              },
+            };
+      const res = await window.electronAPI.project.patchAgentSpawnDefaults(patch);
+      if ('error' in res) {
+        setError(res.error);
+        return;
+      }
+      await onLocalProjectRefresh?.();
+    })();
     setPrefsOpen(false);
     setAddModelOpen(false);
     setAddModelId('');
     setAddModelLabel('');
     setAddModelError(null);
   };
+
+  const persistPlanningYolo = useCallback(
+    async (next: boolean) => {
+      setPlanningYolo(next);
+      const res = await window.electronAPI.project.patchAgentSpawnDefaults({
+        planningAgentYolo: next,
+      });
+      if ('error' in res) {
+        setError(res.error);
+        setPlanningYolo(!next);
+        return;
+      }
+      setError(null);
+      await onLocalProjectRefresh?.();
+    },
+    [onLocalProjectRefresh],
+  );
 
   const handleAddCustomModel = (kind: AgentModelUiKind) => {
     setAddModelError(null);
@@ -358,19 +415,23 @@ export function PlanningPanel({
     handleModelPick(kind, id);
   };
 
-  const buildStartPayload = (): Agent | { agent: Agent; agentModel?: string } => {
+  const buildStartPayload = ():
+    | Agent
+    | { agent: Agent; agentModel?: string; agentYolo?: boolean } => {
     if (selectedAgent === 'codex') {
-      return { agent: selectedAgent };
+      return { agent: selectedAgent, agentYolo: planningYolo };
     }
     if (selectedAgent === 'cursor') {
       return {
         agent: selectedAgent,
         agentModel: cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+        agentYolo: planningYolo,
       };
     }
     return {
       agent: selectedAgent,
       agentModel: claudeModelId.trim(),
+      agentYolo: planningYolo,
     };
   };
 
@@ -562,6 +623,23 @@ export function PlanningPanel({
                   Codex uses its default model for planning in this version.
                 </p>
               )}
+            </div>
+            <div className="border-t border-white/[0.06] px-2.5 py-1.5">
+              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                Skip permission prompts
+              </p>
+              <button
+                type="button"
+                className={`${prefsMenuItemClass} mt-1 w-full justify-between rounded ${planningYolo ? 'bg-white/[0.06]' : ''}`}
+                onClick={() => void persistPlanningYolo(!planningYolo)}
+              >
+                <span className="font-medium text-zinc-100">YOLO</span>
+                <span className="text-[10px] text-zinc-500">{planningYolo ? 'On' : 'Off'}</span>
+              </button>
+              <p className="mt-1 text-[9px] leading-snug text-zinc-600">
+                Cursor adds <span className="font-mono">--yolo</span>; Claude adds{' '}
+                <span className="font-mono">--dangerously-skip-permissions</span>.
+              </p>
             </div>
           </div>,
           document.body,

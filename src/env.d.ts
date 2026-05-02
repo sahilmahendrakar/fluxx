@@ -2,6 +2,7 @@
 import type {
   Task,
   Agent,
+  AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
   LocalProject,
   OpenWorkspaceTarget,
@@ -72,6 +73,9 @@ declare global {
         setDefaultTaskAgent: (
           agent: Agent,
         ) => Promise<{ ok: true } | { error: string }>;
+        patchAgentSpawnDefaults: (
+          patch: AgentSpawnDefaultsPatch,
+        ) => Promise<{ ok: true } | { error: string }>;
         getRepos: () => Promise<RepoConfig[]>;
         updateRepo: (payload: {
           rootPath: string;
@@ -135,6 +139,8 @@ declare global {
           labels?: string[];
           sourceBranch?: string;
           createSourceBranchIfMissing?: boolean;
+          agentModel?: string;
+          agentYolo?: boolean;
         }) => Promise<Task>;
         update: (
           id: string,
@@ -214,7 +220,7 @@ declare global {
       planning: {
         list: () => Promise<PlanningSession[]>;
         start: (
-          payload: Agent | { agent: Agent; agentModel?: string },
+          payload: Agent | { agent: Agent; agentModel?: string; agentYolo?: boolean },
         ) => Promise<PlanningStartResult>;
         stop: (sessionId: string) => Promise<void>;
         get: (sessionId: string) => Promise<PlanningSession | null>;

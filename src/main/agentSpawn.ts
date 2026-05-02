@@ -92,6 +92,7 @@ export function planningSpawnSpec(
   agent: Agent,
   mcpConfigPath: string,
   agentModel?: string,
+  agentYolo?: boolean,
 ): { command: string; args: string[] } {
   switch (agent) {
     case 'claude-code': {
@@ -99,6 +100,9 @@ export function planningSpawnSpec(
       const args: string[] = [];
       if (model) {
         args.push('--model', model);
+      }
+      if (agentYolo === true) {
+        args.push('--dangerously-skip-permissions');
       }
       args.push(
         '--mcp-config',
@@ -115,9 +119,13 @@ export function planningSpawnSpec(
       };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
+      const args: string[] = ['--model', model, '--approve-mcps'];
+      if (agentYolo === true) {
+        args.push('--yolo');
+      }
       return {
         command: 'agent',
-        args: ['--model', model, '--approve-mcps'],
+        args,
       };
     }
   }
