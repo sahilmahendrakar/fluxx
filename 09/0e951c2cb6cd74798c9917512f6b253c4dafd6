@@ -1,0 +1,126 @@
+src/components/TaskCard.tsx
+  369ce045a1d70911 3,31-32,50-51,63-65,217-265
+src/renderer/tasks/useGithubPrBoardRefresh.ts
+  1d74c39746a359ca 1-125
+src/components/Column.tsx
+  369ce045a1d70911 22-23,43-44,111-112
+src/main/McpServer.ts
+  c19c0d42978304aa 398-402,474-487
+  e2b47707ed98a2ef 14,82,405-418,446,457-459,466-468,502,514-516,523-524
+src/githubTaskPrPolicy.test.ts
+  550ff65787a8438b 1-98
+src/taskBranch.ts
+  e2b47707ed98a2ef 1-8
+src/App.tsx
+  369ce045a1d70911 23-24,162-178,224-225,257,1488-1542,1581-1582,1604-1605,2103-2117,2255-2256
+  e2b47707ed98a2ef 104,107,127-134,151-156
+  1d74c39746a359ca 52,568-575
+src/env.d.ts
+  e2b47707ed98a2ef 17-18,164,174-182
+  550ff65787a8438b 168-170
+src/daemon/protocol.ts
+  e2b47707ed98a2ef 152-161,170-180
+src/main/ProjectStore.ts
+  c19c0d42978304aa 207,209
+src/main.ts
+  e2b47707ed98a2ef 27-29,31,47-48,1125-1171,1173-1177,1180-1182,1185-1191,1193-1204,1211-1234,1236-1253,1259,1265-1266,1268-1272,1279-1281,1531
+  550ff65787a8438b 30,1035-1037,1069-1080,1172,1178-1179,1183-1184,1192,1205-1210,1260-1264,1273-1278,1695-1699
+  1d74c39746a359ca 32,1235,1254-1258,1267
+src/mcpBridge.ts
+  e2b47707ed98a2ef 1,50,53
+src/components/Board.tsx
+  369ce045a1d70911 39-40,61-62,189-190
+src/main/agentSpawn.ts
+  c19c0d42978304aa 111
+src/types.ts
+  e2b47707ed98a2ef 150-174,178-190,244-245
+  550ff65787a8438b 177
+src/main/TaskStore.ts
+  e2b47707ed98a2ef 5,207,217,244-250,266-272
+src/main/githubTaskPr.ts
+  550ff65787a8438b 5,17-19,203-360,396,398,400-407,421-424,428,431-433,437-448,474-475,493-497
+  e2b47707ed98a2ef 1-4,6-16,20-202,361-395,397,399,408-420,425-427,429-430,434-436,449-473,476-492,498
+src/renderer/tasks/FirestoreTaskProvider.ts
+  e2b47707ed98a2ef 15-16,244-250,266-272,324,327,331-348
+  550ff65787a8438b 182
+src/preload.ts
+  550ff65787a8438b 201-203
+  e2b47707ed98a2ef 17-18,197,214-217
+src/renderer/tasks/TaskProvider.ts
+  e2b47707ed98a2ef 1,21
+src/githubPrMetadata.test.ts
+  1d74c39746a359ca 3,104-166
+  e2b47707ed98a2ef 1-2,4-103,167-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "090e951c2cb6cd74798c9917512f6b253c4dafd6",
+  "prompts": {
+    "1d74c39746a359ca": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cee998ef-187b-4bf7-af99-1faf227f9d40",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 206,
+      "overriden_lines": 0
+    },
+    "369ce045a1d70911": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d62a74e3-6f09-4e8f-aa58-a3f578a90725",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 167,
+      "overriden_lines": 0
+    },
+    "550ff65787a8438b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3c25b5f9-1415-4ecb-8e87-ca8a8fe0838c",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 349,
+      "overriden_lines": 0
+    },
+    "c19c0d42978304aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9bb126ce-00fe-40d7-b009-85824d100f96",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 22,
+      "overriden_lines": 0
+    },
+    "e2b47707ed98a2ef": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "277e2b44-1b10-4ca5-8342-b8948c523009",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 726,
+      "overriden_lines": 0
+    }
+  }
+}
