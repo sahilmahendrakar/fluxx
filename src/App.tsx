@@ -66,6 +66,7 @@ import {
   hydrateCloudProject,
 } from './cloudBindingPrefs';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
+import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAutomation';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
   leaveSettingsIfActive,
@@ -1739,7 +1740,22 @@ export default function App() {
         }
         if (!result.persisted) {
           try {
-            const updated = await provider.update(taskId, { githubPr: result.githubPr });
+            let autoReview = false;
+            try {
+              autoReview = await window.electronAPI.project.getAutoMoveToReviewWhenPrOpen();
+            } catch {
+              autoReview = false;
+            }
+            const moveReview = shouldAutoMoveTaskToReviewForOpenPr({
+              enabled: autoReview,
+              taskStatus: task.status,
+              githubPr: result.githubPr,
+              taskId,
+            });
+            const updated = await provider.update(taskId, {
+              githubPr: result.githubPr,
+              ...(moveReview ? { status: 'review' } : {}),
+            });
             setTasks((prev) =>
               prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
             );

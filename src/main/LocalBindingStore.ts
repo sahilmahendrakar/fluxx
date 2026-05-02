@@ -68,6 +68,9 @@ function parseBindingEntry(_id: string, value: unknown): LocalBinding | null {
   if (typeof v.autoCleanupWorkspaceWhenDone === 'boolean') {
     binding.autoCleanupWorkspaceWhenDone = v.autoCleanupWorkspaceWhenDone;
   }
+  if (typeof v.autoMoveToReviewWhenPrOpen === 'boolean') {
+    binding.autoMoveToReviewWhenPrOpen = v.autoMoveToReviewWhenPrOpen;
+  }
   if (typeof v.autoDeleteTaskWhenDone === 'boolean') {
     binding.autoDeleteTaskWhenDone = v.autoDeleteTaskWhenDone;
   }
@@ -134,6 +137,7 @@ export class LocalBindingStore {
       autoStartSessionOnInProgress: boolean;
       autoStartWhenUnblocked: boolean;
       autoCleanupWorkspaceWhenDone: boolean;
+      autoMoveToReviewWhenPrOpen: boolean;
     }>,
   ): Promise<void> {
     const existing = this.bindings[projectId];
@@ -177,6 +181,9 @@ export class LocalBindingStore {
       existing.autoCleanupWorkspaceWhenDone = prefs.autoCleanupWorkspaceWhenDone;
       delete existing.autoDeleteTaskWhenDone;
     }
+    if (prefs.autoMoveToReviewWhenPrOpen !== undefined) {
+      existing.autoMoveToReviewWhenPrOpen = prefs.autoMoveToReviewWhenPrOpen;
+    }
     await this.save();
   }
 
@@ -205,6 +212,9 @@ export class LocalBindingStore {
         binding.autoCleanupWorkspaceWhenDone = prev.autoCleanupWorkspaceWhenDone;
       } else if (prev.autoDeleteTaskWhenDone !== undefined) {
         binding.autoDeleteTaskWhenDone = prev.autoDeleteTaskWhenDone;
+      }
+      if (prev.autoMoveToReviewWhenPrOpen !== undefined) {
+        binding.autoMoveToReviewWhenPrOpen = prev.autoMoveToReviewWhenPrOpen;
       }
     }
     this.bindings[projectId] = binding;

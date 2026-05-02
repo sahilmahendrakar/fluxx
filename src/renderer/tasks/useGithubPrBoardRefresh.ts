@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '../../types';
 import { githubPrRefreshViewEqual } from '../../githubPrMetadata';
+import { shouldAutoMoveTaskToReviewForOpenPr } from '../../githubPrReviewWhenOpenAutomation';
 import type { TaskProvider } from './TaskProvider';
 
 const DEBOUNCE_MS = 1800;
@@ -64,6 +65,12 @@ export function useGithubPrBoardRefresh(input: {
     const list = tasksRef.current.filter((t) => t.githubPr?.url?.trim() || !t.workspaceCleanedAt);
     if (list.length === 0) return;
     const gen = generationRef.current;
+    let autoReview = false;
+    try {
+      autoReview = await window.electronAPI.project.getAutoMoveToReviewWhenPrOpen();
+    } catch {
+      autoReview = false;
+    }
     await runPool(list, CONCURRENCY, async (task) => {
       if (generationRef.current !== gen) return;
       const pr = task.githubPr;
@@ -82,7 +89,16 @@ export function useGithubPrBoardRefresh(input: {
         }
         if (githubPrRefreshViewEqual(task.githubPr, result.githubPr)) return;
         if (kind === 'cloud') {
-          await prov.update(task.id, { githubPr: result.githubPr });
+          const moveReview = shouldAutoMoveTaskToReviewForOpenPr({
+            enabled: autoReview,
+            taskStatus: task.status,
+            githubPr: result.githubPr,
+            taskId: task.id,
+          });
+          await prov.update(task.id, {
+            githubPr: result.githubPr,
+            ...(moveReview ? { status: 'review' } : {}),
+          });
         }
       } catch (err) {
         console.warn('[githubPrRefresh] error', task.id, err);

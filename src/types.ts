@@ -95,6 +95,11 @@ export interface LocalProject {
    * the Done card): worktrees removed and agent sessions stopped; the task stays in Done.
    */
   autoCleanupWorkspaceWhenDone: boolean;
+  /**
+   * When on, refreshing PR metadata (or creating a PR) that shows an open GitHub PR for this
+   * task’s Flux branch may move the task from Backlog or In progress into Review.
+   */
+  autoMoveToReviewWhenPrOpen: boolean;
   repos: RepoConfig[];
 }
 
@@ -120,6 +125,7 @@ export interface CloudProjectLocalBinding {
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
+  autoMoveToReviewWhenPrOpen?: boolean;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
 }
@@ -141,6 +147,7 @@ export interface CloudProject {
   autoStartSessionOnInProgress?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
+  autoMoveToReviewWhenPrOpen?: boolean;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
 }

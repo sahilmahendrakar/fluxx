@@ -20,6 +20,7 @@ export interface ResolvedCloudBindingPrefs {
   autoStartSessionOnInProgress: boolean;
   autoStartWhenUnblocked: boolean;
   autoCleanupWorkspaceWhenDone: boolean;
+  autoMoveToReviewWhenPrOpen: boolean;
 }
 
 function isAgent(value: unknown): value is Agent {
@@ -52,6 +53,7 @@ export function resolvedPrefsFromBinding(
     autoCleanupWorkspaceWhenDone:
       binding?.autoCleanupWorkspaceWhenDone === true ||
       binding?.autoDeleteTaskWhenDone === true,
+    autoMoveToReviewWhenPrOpen: binding?.autoMoveToReviewWhenPrOpen === true,
   };
 }
 
