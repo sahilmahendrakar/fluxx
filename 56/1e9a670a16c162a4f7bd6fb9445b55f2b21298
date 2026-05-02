@@ -1,0 +1,37 @@
+src/components/TaskDetailPanel.tsx
+  88dd0334e43ff0c0 46,214-215,235-257,755
+src/env.d.ts
+  88dd0334e43ff0c0 7,54-60
+src/preload.ts
+  88dd0334e43ff0c0 7,48-55
+src/components/OpenInWorkspaceButton.tsx
+  88dd0334e43ff0c0 1-151
+src/types.ts
+  88dd0334e43ff0c0 177-179
+src/components/SessionTerminalView.tsx
+  88dd0334e43ff0c0 15,342-359
+src/main.ts
+  88dd0334e43ff0c0 26,774-785
+src/main/openWorkspacePath.ts
+  88dd0334e43ff0c0 1-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "561e9a670a16c162a4f7bd6fb9445b55f2b21298",
+  "prompts": {
+    "88dd0334e43ff0c0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0fddced2-7012-449d-b06e-5d3b972fd657",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 446,
+      "total_deletions": 21,
+      "accepted_lines": 440,
+      "overriden_lines": 0
+    }
+  }
+}
