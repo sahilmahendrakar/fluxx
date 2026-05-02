@@ -2484,6 +2484,9 @@ export default function App() {
                           setPlanPanelOpen((v) => !v);
                         }}
                         projectMembers={projectMembers}
+                        onTaskAssigneeChange={(id, assigneeId) =>
+                          void handleUpdateTask(id, { assigneeId })
+                        }
                         repoDefaultBranchShort={repoDefaultBranchShort}
                         cloudUnblockAutostartClientUid={
                           project.kind === 'cloud' && uid ? uid : undefined

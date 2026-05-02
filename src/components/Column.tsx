@@ -19,6 +19,9 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   emptyState?: ReactNode;
   membersMap?: Map<string, ProjectMember>;
+  /** Cloud: full member list for card footer assignee menu (same source as `membersMap`). */
+  projectMembers?: ProjectMember[];
+  onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
   repoDefaultBranchShort: string;
@@ -42,6 +45,8 @@ export default function Column({
   onToggleTaskAutoStartOnUnblock,
   emptyState,
   membersMap,
+  projectMembers,
+  onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
   repoDefaultBranchShort,
@@ -123,6 +128,8 @@ export default function Column({
                   autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                   onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
                   assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
+                  cloudProjectMembers={projectMembers}
+                  onTaskAssigneeChange={onTaskAssigneeChange}
                   onTaskPrClick={onTaskPrClick}
                   prLoading={prLoadingTaskId === task.id}
                   repoDefaultBranchShort={repoDefaultBranchShort}
