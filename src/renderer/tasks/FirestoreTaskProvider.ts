@@ -12,7 +12,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import type { Agent, Task, TaskGithubPr, TaskStatus } from '../../types';
+import { COLUMNS, type Agent, type Task, type TaskGithubPr, type TaskStatus } from '../../types';
 import { parseGithubPrField } from '../../githubPrMetadata';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { normalizeTaskLabels } from '../../taskLabels';
@@ -27,7 +27,7 @@ import type {
   TaskProvider,
 } from './TaskProvider';
 
-const COLUMNS: TaskStatus[] = ['backlog', 'in-progress', 'needs-input', 'done'];
+const KNOWN_STATUSES: TaskStatus[] = COLUMNS.map((c) => c.id);
 const AGENTS: Agent[] = ['claude-code', 'codex', 'cursor'];
 
 /**
@@ -291,7 +291,7 @@ function toTask(
   const data = d.data() ?? {};
   const status =
     typeof data.status === 'string' &&
-    (COLUMNS as string[]).includes(data.status)
+    (KNOWN_STATUSES as string[]).includes(data.status)
       ? (data.status as TaskStatus)
       : 'backlog';
   const agent =

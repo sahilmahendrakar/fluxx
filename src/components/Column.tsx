@@ -50,19 +50,24 @@ export default function Column({
   taskHasWorktreeById,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
+  const isReview = id === 'review';
   const isDone = id === 'done';
 
   const headerTint = isNeedsInput
     ? 'text-amber-400/90'
-    : isDone
-      ? 'text-zinc-500'
-      : 'text-zinc-400';
+    : isReview
+      ? 'text-sky-400/90'
+      : isDone
+        ? 'text-zinc-500'
+        : 'text-zinc-400';
 
   const countClass = isNeedsInput
     ? 'bg-amber-500/10 text-amber-400/90 ring-1 ring-amber-500/15'
-    : isDone
-      ? 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]'
-      : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
+    : isReview
+      ? 'bg-sky-500/10 text-sky-300/95 ring-1 ring-sky-500/18'
+      : isDone
+        ? 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]'
+        : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
 
   return (
     <div className="flex min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">

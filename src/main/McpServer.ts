@@ -374,7 +374,7 @@ export class McpServer {
         title: z.string().optional(),
         description: z.string().optional(),
         status: z
-          .enum(['backlog', 'in-progress', 'needs-input', 'done'])
+          .enum(['backlog', 'in-progress', 'needs-input', 'review', 'done'])
           .optional(),
         agent: z.enum(['claude-code', 'codex', 'cursor']).optional(),
         blockedByTaskIds: z
@@ -683,6 +683,7 @@ export class McpServer {
               backlog: 0,
               'in-progress': 0,
               'needs-input': 0,
+              review: 0,
               done: 0,
               total: tasks.length,
             };
@@ -690,6 +691,7 @@ export class McpServer {
               if (t.status === 'backlog') taskCounts.backlog++;
               else if (t.status === 'in-progress') taskCounts['in-progress']++;
               else if (t.status === 'needs-input') taskCounts['needs-input']++;
+              else if (t.status === 'review') taskCounts.review++;
               else if (t.status === 'done') taskCounts.done++;
             }
             const repos = await this.projectStore.getReposAt(active.projectDir);

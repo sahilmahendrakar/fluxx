@@ -1,5 +1,8 @@
-import type { Agent, Task } from './types';
+import type { Agent, Task, TaskStatus } from './types';
 import { normalizeTaskLabels } from './taskLabels';
+
+/** `'all'` shows every column; otherwise only tasks in that status. */
+export type BoardStatusFilter = 'all' | TaskStatus;
 
 export const UNLABELED_VALUE = '__unlabeled__' as const;
 
@@ -9,6 +12,7 @@ export type BoardFilterState = {
   search: string;
   includeDescription: boolean;
   agent: Agent | 'all';
+  status: BoardStatusFilter;
   label: BoardLabelFilter;
   hideDone: boolean;
 };
@@ -17,6 +21,7 @@ export const DEFAULT_BOARD_FILTER: BoardFilterState = {
   search: '',
   includeDescription: true,
   agent: 'all',
+  status: 'all',
   label: null,
   hideDone: false,
 };
@@ -42,6 +47,9 @@ export function applyBoardFilters(
       return false;
     }
     if (filters.agent !== 'all' && t.agent !== filters.agent) {
+      return false;
+    }
+    if (filters.status !== 'all' && t.status !== filters.status) {
       return false;
     }
     if (filters.label != null) {
@@ -75,6 +83,7 @@ export function boardFiltersAreActive(
     f.search.trim() !== defaults.search.trim() ||
     f.includeDescription !== defaults.includeDescription ||
     f.agent !== defaults.agent ||
+    f.status !== defaults.status ||
     f.label !== defaults.label ||
     f.hideDone !== defaults.hideDone
   );

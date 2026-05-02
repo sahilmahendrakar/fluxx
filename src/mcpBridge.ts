@@ -100,6 +100,7 @@ export interface McpBridgeProjectInfoResult {
     backlog: number;
     'in-progress': number;
     'needs-input': number;
+    review: number;
     done: number;
     total: number;
   };

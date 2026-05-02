@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ListFilter, Search, X } from 'lucide-react';
-import type { Agent } from '../types';
-import { AGENTS } from '../types';
+import type { Agent, TaskStatus } from '../types';
+import { AGENTS, COLUMNS } from '../types';
 import {
   type BoardFilterState,
   boardFiltersAreActive,
@@ -10,6 +10,8 @@ import {
 } from '../boardFilter';
 
 const agentLabel = (id: Agent) => AGENTS.find((a) => a.id === id)?.label ?? id;
+
+const statusLabel = (id: TaskStatus) => COLUMNS.find((c) => c.id === id)?.label ?? id;
 
 function FilterToken({
   onRemove,
@@ -44,7 +46,7 @@ function FilterToken({
   );
 }
 
-type AddPanel = 'main' | 'agent' | 'label';
+type AddPanel = 'main' | 'agent' | 'label' | 'status';
 
 type Props = {
   filter: BoardFilterState;
@@ -117,6 +119,13 @@ export function BoardFilterBar({
             k="agent"
             v={agentLabel(filter.agent)}
             onRemove={() => set({ agent: 'all' })}
+          />
+        ) : null}
+        {filter.status !== 'all' ? (
+          <FilterToken
+            k="status"
+            v={statusLabel(filter.status)}
+            onRemove={() => set({ status: 'all' })}
           />
         ) : null}
         {filter.label != null ? (
@@ -195,6 +204,14 @@ export function BoardFilterBar({
                       Label
                       <span className="text-zinc-500">›</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setPanel('status')}
+                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                    >
+                      Status
+                      <span className="text-zinc-500">›</span>
+                    </button>
                     {filter.includeDescription ? (
                       <button
                         type="button"
@@ -241,6 +258,30 @@ export function BoardFilterBar({
                         className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                       >
                         {a.label}
+                      </button>
+                    ))}
+                  </>
+                ) : null}
+                {panel === 'status' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPanel('main')}
+                      className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
+                    >
+                      ‹ Back
+                    </button>
+                    {COLUMNS.map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => {
+                          set({ status: col.id });
+                          setMenuOpen(false);
+                        }}
+                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      >
+                        {col.label}
                       </button>
                     ))}
                   </>
