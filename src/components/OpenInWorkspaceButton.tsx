@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { OpenWorkspaceTarget } from '../types';
+import { OpenWorkspaceTargetIcon } from './openWorkspaceTargetIcons';
 
 const DEFAULT_DISABLED_TITLE = "Start a session to create this task's worktree first.";
 
@@ -122,17 +123,18 @@ export function OpenInWorkspaceButton({
         <div
           role="menu"
           aria-label="Open workspace in"
-          className="absolute right-0 top-full z-40 mt-1 min-w-[10.5rem] rounded-lg border border-white/[0.08] bg-[#121214] py-1 shadow-lg ring-1 ring-black/40"
+          className="absolute right-0 top-full z-40 mt-1 min-w-[12.5rem] rounded-lg border border-white/[0.08] bg-[#121214] py-1 shadow-lg ring-1 ring-black/40"
         >
           {menuItems().map(({ target, label }) => (
             <button
               key={target}
               type="button"
               role="menuitem"
-              className="flex w-full px-3 py-2 text-left text-[12px] text-zinc-200 transition hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] text-zinc-200 transition hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
               onClick={() => void handlePick(target)}
             >
-              {label}
+              <OpenWorkspaceTargetIcon target={target} />
+              <span className="min-w-0 flex-1">{label}</span>
             </button>
           ))}
         </div>
