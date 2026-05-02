@@ -73,7 +73,7 @@ export function AppShell({
   onDeleteWorkspace,
 }: AppShellProps) {
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-flux-canvas text-flux-fg">
       {collapsed ? null : (
         <Sidebar
           project={project}
@@ -105,7 +105,7 @@ export function AppShell({
             onClick={onExpand}
             aria-label="Expand sidebar"
             title="Expand sidebar"
-            className="absolute left-2 top-2 z-30 rounded-md border border-white/[0.06] bg-[#0c0c0e]/80 p-1 text-zinc-500 shadow-sm backdrop-blur transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="absolute left-2 top-2 z-30 rounded-md border border-flux-border/10 bg-flux-sidebar/80 p-1 text-flux-fg-subtle shadow-sm backdrop-blur transition hover:bg-flux-hover/8 hover:text-flux-fg"
           >
             <SidebarExpandIcon />
           </button>

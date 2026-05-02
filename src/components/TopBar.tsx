@@ -12,7 +12,7 @@ interface TopBarProps {
 export function TopBar({ project, statusLine, leadingInset, children }: TopBarProps) {
   return (
     <header
-      className="flex shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#09090b]/80 px-3 py-1.5 backdrop-blur-md"
+      className="flex shrink-0 items-center gap-3 border-b border-flux-border/10 bg-flux-canvas/80 px-3 py-1.5 backdrop-blur-md"
       aria-label={`Project: ${project.name}`}
     >
       <div
@@ -23,7 +23,7 @@ export function TopBar({ project, statusLine, leadingInset, children }: TopBarPr
       >
         {children}
       </div>
-      <p className="shrink-0 pl-4 text-[11px] tabular-nums text-zinc-600">{statusLine}</p>
+      <p className="shrink-0 pl-4 text-[11px] tabular-nums text-flux-fg-subtle">{statusLine}</p>
     </header>
   );
 }

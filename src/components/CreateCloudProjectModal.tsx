@@ -33,7 +33,7 @@ export function CreateCloudProjectModal({ onClose, onCreate }: Props) {
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => void handleSubmit(e)}
-        className="w-[min(420px,92vw)] rounded-xl border border-white/[0.08] bg-[#0c0c0e] p-5 shadow-2xl"
+        className="w-[min(420px,92vw)] rounded-xl border border-flux-border/12 bg-flux-elevated p-5 shadow-2xl"
       >
         <h2 className="text-[15px] font-semibold text-zinc-100">
           Create team project
@@ -50,7 +50,7 @@ export function CreateCloudProjectModal({ onClose, onCreate }: Props) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Platform team"
-          className="mt-1 w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+          className="mt-1 w-full rounded-md border border-flux-border/12 bg-flux-surface px-3 py-2 text-[13px] text-flux-fg outline-none focus-visible:border-flux-border/20 focus-visible:ring-1 focus-visible:ring-flux-ring/15"
         />
         {error ? (
           <p className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] text-red-300/95">

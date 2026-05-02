@@ -13,6 +13,7 @@ import AgentModelPicker from './AgentModelPicker';
 import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
+import { ThemeAppearanceControl } from './ThemeAppearanceControl';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -174,8 +175,8 @@ function CategoryButton({
       className={[
         'w-full rounded-md px-2 py-1.5 text-left text-[13.5px] transition-colors',
         active
-          ? 'bg-white/[0.04] text-zinc-300'
-          : 'text-zinc-600 hover:bg-white/[0.02] hover:text-zinc-400',
+          ? 'bg-flux-hover/8 text-flux-fg-muted'
+          : 'text-flux-fg-subtle hover:bg-flux-hover/4 hover:text-flux-fg-muted',
       ].join(' ')}
     >
       {label}
@@ -595,30 +596,46 @@ function ProjectConfigPane({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
-        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">
-          Project Config
-        </h1>
-        <p className="mt-1 text-[13px] text-zinc-500">
+        <h1 className="text-[18px] font-semibold tracking-tight text-flux-fg">Project Config</h1>
+        <p className="mt-1 text-[13px] text-flux-fg-muted">
           Configure how new task workspaces are created for {project.name}.
         </p>
 
         <section
-          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          className="mt-6 rounded-xl border border-flux-border/10 bg-flux-hover/4 px-4 py-4"
+          aria-labelledby="project-settings-appearance-heading"
+        >
+          <h2
+            id="project-settings-appearance-heading"
+            className="text-[14px] font-semibold tracking-tight text-flux-fg"
+          >
+            Appearance
+          </h2>
+          <p className="mt-1 text-[12px] leading-snug text-flux-fg-muted">
+            Applies to Flux on this machine for all projects.
+          </p>
+          <div className="mt-3">
+            <ThemeAppearanceControl labelledBy="project-settings-appearance-heading" />
+          </div>
+        </section>
+
+        <section
+          className="mt-6 rounded-xl border border-flux-border/10 bg-flux-hover/4 px-4"
           aria-labelledby="project-settings-automations-heading"
         >
-          <div className="border-b border-white/[0.06] py-4">
+          <div className="border-b border-flux-border/10 py-4">
             <h2
               id="project-settings-automations-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+              className="text-[14px] font-semibold tracking-tight text-flux-fg"
             >
               Automations
             </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+            <p className="mt-1 text-[12px] leading-snug text-flux-fg-muted">
               Choose when sessions start automatically, when merged or open pull requests update the
               board, and when finished workspaces are cleaned up.
             </p>
           </div>
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-flux-border/10">
             <AutomationSettingRow
               key={`${project.id}-auto-start-in-progress`}
               title="Auto-start sessions when tasks move from Backlog to In progress"
@@ -720,7 +737,7 @@ function ProjectConfigPane({
           </div>
         </section>
 
-        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+        <section className="mt-4 rounded-xl border border-flux-border/10 bg-flux-hover/4 px-4 py-3">
           <h2 className="text-[13px] font-medium text-zinc-200">Default agents</h2>
           <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
             These apply to this project on this machine. Each row sets the default agent, the same
@@ -771,7 +788,7 @@ function ProjectConfigPane({
                   </span>
                   {planningAgentValue === 'codex' ? (
                     <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
+                      className="flex min-h-[2rem] items-center rounded-md border border-flux-border/10 bg-flux-surface/60 px-2 text-[12px] text-zinc-500"
                       title="Model selection is not wired for Codex in this version."
                     >
                       Default model
@@ -838,7 +855,7 @@ function ProjectConfigPane({
               </div>
             </div>
 
-            <div className="border-t border-white/[0.06] pt-4">
+            <div className="border-t border-flux-border/10 pt-4">
               <label
                 htmlFor="project-settings-default-task-agent"
                 className="text-[12px] font-medium text-zinc-300"
@@ -879,7 +896,7 @@ function ProjectConfigPane({
                   </span>
                   {defaultTaskAgentValue === 'codex' ? (
                     <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
+                      className="flex min-h-[2rem] items-center rounded-md border border-flux-border/10 bg-flux-surface/60 px-2 text-[12px] text-zinc-500"
                       title="Model selection is not wired for Codex in this version."
                     >
                       Default model
@@ -999,7 +1016,7 @@ interface RepoCardProps {
 
 function RepoCard({ repo, expanded, onToggle, onSaved }: RepoCardProps) {
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
+    <div className="rounded-xl border border-flux-border/10 bg-flux-hover/4">
       <button
         type="button"
         onClick={onToggle}
@@ -1026,7 +1043,7 @@ function RepoCard({ repo, expanded, onToggle, onSaved }: RepoCardProps) {
         </div>
       </button>
       {expanded ? (
-        <div className="border-t border-white/[0.06] px-4 py-4">
+        <div className="border-t border-flux-border/10 px-4 py-4">
           <RepoFields repo={repo} onSaved={onSaved} />
         </div>
       ) : null}
@@ -1160,7 +1177,7 @@ function FieldEditor({
             placeholder={placeholder}
             disabled={showMasked}
             rows={Math.min(10, Math.max(4, value.split('\n').length + 1))}
-            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12] disabled:opacity-60"
+            className="block w-full rounded-md border border-flux-border/12 bg-flux-surface px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100 outline-none focus-visible:border-flux-border/20 focus-visible:ring-1 focus-visible:ring-flux-ring/15 disabled:opacity-60"
           />
         ) : (
           <input
@@ -1168,7 +1185,7 @@ function FieldEditor({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
-            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+            className="block w-full rounded-md border border-flux-border/12 bg-flux-surface px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-flux-border/20 focus-visible:ring-1 focus-visible:ring-flux-ring/15"
           />
         )}
       </div>

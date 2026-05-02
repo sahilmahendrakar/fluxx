@@ -2568,10 +2568,10 @@ export default function App() {
 
   if (activationLoading || auth.status === 'loading') {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-flux-canvas text-flux-fg">
         {isMac ? (
           <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
+            className="app-window-drag h-10 w-full shrink-0 bg-flux-canvas"
             aria-hidden
           />
         ) : null}
@@ -2584,10 +2584,10 @@ export default function App() {
 
   if (!project) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-flux-canvas text-flux-fg">
         {isMac ? (
           <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
+            className="app-window-drag h-10 w-full shrink-0 bg-flux-canvas"
             aria-hidden
           />
         ) : null}
@@ -2605,10 +2605,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-flux-canvas text-flux-fg">
       {isMac ? (
         <div
-          className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
+          className="app-window-drag h-10 w-full shrink-0 bg-flux-canvas"
           aria-hidden
         />
       ) : null}
@@ -2702,7 +2702,7 @@ export default function App() {
                 <div
                   key={item.session.id}
                   aria-hidden={!isActive || settingsRouteActive}
-                  className="absolute inset-0 flex min-h-0 flex-col bg-[#09090b]"
+                  className="absolute inset-0 flex min-h-0 flex-col bg-flux-canvas"
                   style={{
                     visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
                     pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',
@@ -2984,7 +2984,7 @@ export default function App() {
               </div>
             </div>
             {settingsRouteActive ? (
-              <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-[#09090b]">
+              <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-flux-canvas">
                 <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2">
                   <button
                     type="button"
