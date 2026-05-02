@@ -159,6 +159,17 @@ async function handleRequest(
             patch = { ...patch, assigneeId: uid };
           }
         }
+        if (
+          project.kind === 'cloud' &&
+          uid &&
+          previous &&
+          patch.autoStartOnUnblock === true &&
+          !previous.assigneeId?.trim()
+        ) {
+          if (patch.assigneeId === undefined) {
+            patch = { ...patch, assigneeId: uid };
+          }
+        }
         const lockDone =
           project.kind === 'cloud' &&
           previous &&

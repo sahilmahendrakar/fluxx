@@ -29,6 +29,8 @@ interface Props {
   onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
   assigneeMember?: ProjectMember;
   repoDefaultBranchShort: string;
+  /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function TaskCard({
@@ -44,6 +46,7 @@ export default function TaskCard({
   onToggleTaskAutoStartOnUnblock,
   assigneeMember,
   repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isDone = task.status === 'done';
@@ -59,6 +62,11 @@ export default function TaskCard({
     task.createSourceBranchIfMissing === true
       ? `${branchChipLabel} — Flux will create this branch when the task starts`
       : `Source branch: ${branchChipLabel}`;
+  const unblockToggleLockedByOtherAssignee = Boolean(
+    cloudUnblockAutostartClientUid &&
+      task.assigneeId?.trim() &&
+      task.assigneeId !== cloudUnblockAutostartClientUid,
+  );
 
   return (
     <Draggable draggableId={task.id} index={index}>
@@ -158,24 +166,30 @@ export default function TaskCard({
                   {blocked && !isDone ? (
                     <button
                       type="button"
+                      disabled={unblockToggleLockedByOtherAssignee}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (unblockToggleLockedByOtherAssignee) return;
                         onToggleTaskAutoStartOnUnblock(task.id, !perTaskUnblockAuto);
                       }}
                       title={
-                        perTaskUnblockAuto
-                          ? 'Per-task auto-start when unblocked is on — click to turn off'
-                          : projectUnblockAuto
-                            ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
-                            : 'Click to auto-start a session when the last dependency completes (this task)'
+                        unblockToggleLockedByOtherAssignee
+                          ? 'Only the assignee can change per-task auto-start when unblocked for this task'
+                          : perTaskUnblockAuto
+                            ? 'Per-task auto-start when unblocked is on — click to turn off'
+                            : projectUnblockAuto
+                              ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
+                              : 'Click to auto-start a session when the last dependency completes (this task)'
                       }
                       className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide transition ${
-                        perTaskUnblockAuto
-                          ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
-                          : projectUnblockAuto
-                            ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
-                            : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
+                        unblockToggleLockedByOtherAssignee
+                          ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
+                          : perTaskUnblockAuto
+                            ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
+                            : projectUnblockAuto
+                              ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
+                              : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
                       }`}
                     >
                       {perTaskUnblockAuto

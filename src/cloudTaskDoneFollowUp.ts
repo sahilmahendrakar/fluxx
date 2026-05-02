@@ -84,7 +84,9 @@ export async function runCloudDoneTransitionFollowUp(args: {
     source: 'cloud:doneFollowUp',
     logError: (msg, data) => console.error(msg, data),
     getCurrentList: getTasks,
-    startSession: (task, all) => window.electronAPI.sessions.start(task, all),
+    cloudUnblockAutostartClientUid: actorUid ?? null,
+    startSession: (task, all) =>
+      window.electronAPI.sessions.start(task, all, actorUid ?? undefined),
     moveBacklogToInProgress: async (id) => {
       const row = getTasks().find((x) => x.id === id);
       const patch: TaskPatch = { status: 'in-progress' };
@@ -94,7 +96,7 @@ export async function runCloudDoneTransitionFollowUp(args: {
       const moved = await provider.update(id, patch);
       if (inProg) {
         const all = getTasks().map((x) => (x.id === id ? moved : x));
-        const r = await window.electronAPI.sessions.start(moved, all);
+        const r = await window.electronAPI.sessions.start(moved, all, actorUid ?? undefined);
         if (r && typeof r === 'object' && 'error' in r) {
           console.error('[task:unblock-autostart] session start failed', {
             taskId: id,
@@ -111,7 +113,7 @@ export async function runCloudDoneTransitionFollowUp(args: {
       }
       const moved = await provider.update(id, patch);
       const all = getTasks().map((x) => (x.id === id ? moved : x));
-      const r = await window.electronAPI.sessions.start(moved, all);
+      const r = await window.electronAPI.sessions.start(moved, all, actorUid ?? undefined);
       if (r && typeof r === 'object' && 'error' in r) {
         console.error('[task:unblock-autostart] session start failed', {
           taskId: id,

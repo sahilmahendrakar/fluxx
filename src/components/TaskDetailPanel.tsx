@@ -644,7 +644,11 @@ export default function TaskDetailPanel({
     setSessionLoading(true);
     setSessionError(null);
     try {
-      const result = await window.electronAPI.sessions.start(task, projectTasks);
+      const result = await window.electronAPI.sessions.start(
+        task,
+        projectTasks,
+        implicitSessionAssigneeUid ?? undefined,
+      );
       if ('error' in result) {
         if (result.error === 'TASK_BLOCKED') {
           setSessionError(result.message ?? 'This task is blocked by incomplete work.');
@@ -724,6 +728,11 @@ export default function TaskDetailPanel({
   const blockingTasks = getBlockingTasks(task, projectTasks);
   const taskById = new Map(projectTasks.map((t) => [t.id, t]));
   const staleMissingIds = (task.blockedByTaskIds ?? []).filter((id) => !taskById.has(id));
+  const unblockAutoStartCheckboxLocked = Boolean(
+    implicitSessionAssigneeUid &&
+      task.assigneeId?.trim() &&
+      task.assigneeId !== implicitSessionAssigneeUid,
+  );
   const depQueryLower = depSearch.trim().toLowerCase();
   const pickCandidates = projectTasks.filter(
     (t) =>
@@ -1248,14 +1257,27 @@ export default function TaskDetailPanel({
                   for blocking logic.
                 </p>
                 {task.status !== 'done' && (task.blockedByTaskIds ?? []).length > 0 ? (
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                  <label
+                    title={
+                      unblockAutoStartCheckboxLocked
+                        ? 'Only the assignee can change this setting for this task'
+                        : undefined
+                    }
+                    className={`flex items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 ${
+                      unblockAutoStartCheckboxLocked
+                        ? 'cursor-not-allowed opacity-70'
+                        : 'cursor-pointer'
+                    }`}
+                  >
                     <input
                       type="checkbox"
+                      disabled={unblockAutoStartCheckboxLocked}
                       checked={task.autoStartOnUnblock === true}
-                      onChange={(e) =>
-                        onUpdate(task.id, { autoStartOnUnblock: e.target.checked })
-                      }
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                      onChange={(e) => {
+                        if (unblockAutoStartCheckboxLocked) return;
+                        onUpdate(task.id, { autoStartOnUnblock: e.target.checked });
+                      }}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/[0.2] bg-[#09090b] disabled:cursor-not-allowed"
                     />
                     <span className="min-w-0">
                       <span className="text-[13px] font-medium text-zinc-200">
@@ -1266,6 +1288,12 @@ export default function TaskDetailPanel({
                         {autoStartWhenUnblockedProject
                           ? ' (this project can also auto-start from settings).'
                           : ' (or enable the project default in settings).'}
+                        {unblockAutoStartCheckboxLocked ? (
+                          <span className="mt-1 block text-zinc-500">
+                            Only the assignee can edit this while the task is assigned to someone
+                            else.
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                   </label>

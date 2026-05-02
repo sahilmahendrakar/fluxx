@@ -209,8 +209,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   sessions: {
-    start: (task: Task, projectTasks?: Task[]) =>
-      ipcRenderer.invoke('session:start', task, projectTasks) as Promise<SessionStartResult>,
+    start: (task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
+      ipcRenderer.invoke('session:start', task, projectTasks, requesterUid) as Promise<SessionStartResult>,
     archive: (sessionId: string) =>
       ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
     deleteWorkspace: (sessionId: string) =>

@@ -38,6 +38,8 @@ interface Props {
   projectMembers?: ProjectMember[];
   /** Configured / detected default short branch name for branch chips on cards. */
   repoDefaultBranchShort: string;
+  /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
+  cloudUnblockAutostartClientUid?: string;
 }
 
 export default function Board({
@@ -55,6 +57,7 @@ export default function Board({
   onTogglePlanPanel,
   projectMembers,
   repoDefaultBranchShort,
+  cloudUnblockAutostartClientUid,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -180,6 +183,7 @@ export default function Board({
               onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
               membersMap={membersMap}
               repoDefaultBranchShort={repoDefaultBranchShort}
+              cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'

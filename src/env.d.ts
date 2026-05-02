@@ -165,7 +165,11 @@ declare global {
         onChanged: (cb: () => void) => () => void;
       };
       sessions: {
-        start: (task: Task, projectTasks?: Task[]) => Promise<SessionStartResult>;
+        start: (
+          task: Task,
+          projectTasks?: Task[],
+          requesterUid?: string | null,
+        ) => Promise<SessionStartResult>;
         archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;
