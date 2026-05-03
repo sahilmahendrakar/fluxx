@@ -9,6 +9,7 @@ import type {
   RepoBranchDiscoveryResponse,
   RepoConfig,
   Session,
+  SessionStartOptions,
   SessionStartResult,
   Shell,
   PlanningSession,
@@ -206,6 +207,7 @@ declare global {
           task: Task,
           projectTasks?: Task[],
           requesterUid?: string | null,
+          options?: SessionStartOptions,
         ) => Promise<SessionStartResult>;
         archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;

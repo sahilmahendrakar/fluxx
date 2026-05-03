@@ -17,6 +17,7 @@ import {
 } from './main/taskEphemeralTeardown';
 import {
   agentNotFoundMessage,
+  agentSpawnResumeSpec,
   agentSpawnSpec,
   ensurePlanningDirCursorMcp,
   planningSpawnSpec,
@@ -51,6 +52,7 @@ import type {
   Project,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  SessionStartOptions,
   SessionStartResult,
   Task,
   TaskGithubPr,
@@ -1692,10 +1694,24 @@ app.whenReady().then(async () => {
     };
   }
 
+  /** Remove stopped/error daemon rows for this task so `session:get` and tabs stay unambiguous. */
+  async function archiveNonRunningSessionsForTask(taskId: string): Promise<void> {
+    const sessions = await daemonClient.listSessions();
+    const stale = sessions.filter(
+      (s) => s.taskId === taskId && s.status !== 'running',
+    );
+    for (const s of stale) {
+      sessionTaskMap.delete(s.id);
+      await daemonClient.closeShellsForSession(s.id);
+      await daemonClient.stopSession(s.id);
+    }
+  }
+
   async function startSessionForTask(
     task: Task,
     projectTasks?: Task[],
     requesterUid?: string | null,
+    options?: SessionStartOptions,
   ): Promise<SessionStartResult> {
     const project = await resolveProjectForStart();
 
@@ -1821,9 +1837,17 @@ app.whenReady().then(async () => {
         return finish({ error: 'WORKTREE_FAILED', message });
       }
 
-      const initialPrompt = taskInitialPrompt(merged);
-      const { command, args } = agentSpawnSpec(merged, initialPrompt);
-      console.log('[session:start] spawn', { taskId: task.id, command, args });
+      await archiveNonRunningSessionsForTask(task.id);
+
+      const { command, args } = options?.resume
+        ? agentSpawnResumeSpec(merged)
+        : agentSpawnSpec(merged, taskInitialPrompt(merged));
+      console.log('[session:start] spawn', {
+        taskId: task.id,
+        command,
+        args,
+        resume: Boolean(options?.resume),
+      });
       const result = await daemonClient.createSession({
         worktreePath,
         branch,
@@ -2160,8 +2184,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'session:start',
-    async (_e, task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
-      startSessionForTask(task, projectTasks, requesterUid),
+    async (
+      _e,
+      task: Task,
+      projectTasks?: Task[],
+      requesterUid?: string | null,
+      options?: SessionStartOptions,
+    ) => startSessionForTask(task, projectTasks, requesterUid, options),
   );
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
@@ -2177,7 +2206,17 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
     const sessions = await daemonClient.listSessions();
-    return sessions.find((s) => s.taskId === taskId) ?? null;
+    const forTask = sessions.filter((s) => s.taskId === taskId);
+    const running = forTask.find((s) => s.status === 'running');
+    if (running) return running;
+    const terminal = forTask.filter((s) => s.status === 'stopped' || s.status === 'error');
+    if (terminal.length === 0) return null;
+    terminal.sort((a, b) => {
+      const ta = a.stoppedAt ?? a.startedAt ?? '';
+      const tb = b.stoppedAt ?? b.startedAt ?? '';
+      return ta.localeCompare(tb);
+    });
+    return terminal[terminal.length - 1] ?? null;
   });
 
   ipcMain.handle('session:getAll', async () => daemonClient.listSessions());

@@ -288,6 +288,16 @@ export type SessionStartErrorCode =
   | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';
 
+/** Optional flags for `session:start` / `sessions.start`. */
+export type SessionStartOptions = {
+  /**
+   * When true, Flux spawns the task agent with CLI `--resume` only (no full
+   * initial task prompt). Requires a stable worktree cwd matching the CLI’s
+   * on-disk session key.
+   */
+  resume?: boolean;
+};
+
 export type SessionStartResult =
   | Session
   | {

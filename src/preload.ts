@@ -11,6 +11,7 @@ import type {
   RepoBranchDiscoveryResponse,
   RepoConfig,
   Session,
+  SessionStartOptions,
   SessionStartResult,
   Shell,
   Task,
@@ -258,8 +259,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   sessions: {
-    start: (task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
-      ipcRenderer.invoke('session:start', task, projectTasks, requesterUid) as Promise<SessionStartResult>,
+    start: (
+      task: Task,
+      projectTasks?: Task[],
+      requesterUid?: string | null,
+      options?: SessionStartOptions,
+    ) =>
+      ipcRenderer.invoke(
+        'session:start',
+        task,
+        projectTasks,
+        requesterUid,
+        options,
+      ) as Promise<SessionStartResult>,
     archive: (sessionId: string) =>
       ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
     deleteWorkspace: (sessionId: string) =>

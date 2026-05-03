@@ -275,6 +275,8 @@ export default function App() {
   const boardRowRef = useRef<HTMLDivElement>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+  const openTabIdsRef = useRef(openTabIds);
+  openTabIdsRef.current = openTabIds;
   const tasksRef = useRef<Task[]>([]);
   tasksRef.current = tasks;
   const uidRef = useRef<string | null>(null);
@@ -988,15 +990,40 @@ export default function App() {
       if ('error' in p.outcome) return;
       const s = p.outcome;
       if (s.projectId !== project.id) return;
+
+      // Replacing a session for the same task (e.g. Resume / New session) creates a new
+      // daemon id. Drop prior rows for this taskId and migrate tab strip + focus so we
+      // do not open a duplicate workspace tab or leave the active tab pointing at a dead id.
+      const replacedIds = sessionsRef.current
+        .filter((x) => x.taskId === s.taskId)
+        .map((x) => x.id);
+      for (const id of replacedIds) {
+        if (id !== s.id) invalidateSessionAttachCache(id);
+      }
+
       setSessions((prev) => {
-        const i = prev.findIndex((x) => x.id === s.id);
+        const withoutTask = prev.filter((x) => x.taskId !== s.taskId);
+        const i = withoutTask.findIndex((x) => x.id === s.id);
         if (i >= 0) {
-          const next = prev.slice();
+          const next = withoutTask.slice();
           next[i] = s;
           return next;
         }
-        return [...prev, s];
+        return [...withoutTask, s];
       });
+
+      const hadOpenReplaced = replacedIds.some((id) => openTabIdsRef.current.has(id));
+      if (hadOpenReplaced) {
+        setOpenTabIds((prev) => {
+          const next = new Set(prev);
+          for (const id of replacedIds) {
+            next.delete(id);
+          }
+          next.add(s.id);
+          return next;
+        });
+        setActiveTabId((prev) => (replacedIds.includes(prev) ? s.id : prev));
+      }
     });
   }, [project?.id]);
 
@@ -2687,6 +2714,27 @@ export default function App() {
                     session={item.session}
                     visible={isActive && !settingsRouteActive}
                     task={tabTask}
+                    agentSessionLifecycle={
+                      tabTask
+                        ? {
+                            projectTasks: tasks,
+                            requesterUid: project.kind === 'cloud' ? uid : undefined,
+                          }
+                        : undefined
+                    }
+                    onAgentSessionStartSuccess={
+                      tabTask
+                        ? (taskId: string) => {
+                            const t = tasks.find((x) => x.id === taskId);
+                            if (!t) return;
+                            const patch: TaskPatch = { status: 'in-progress' };
+                            if (project.kind === 'cloud' && uid && !t.assigneeId) {
+                              patch.assigneeId = uid;
+                            }
+                            void handleUpdateTask(taskId, patch);
+                          }
+                        : undefined
+                    }
                     markAsDoneBlocked={tabTaskBlocked}
                     onMarkAsDone={
                       tabTask && tabTask.status !== 'done' && !tabTaskBlocked

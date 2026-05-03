@@ -63,6 +63,10 @@ import {
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
 
+function taskAgentSupportsCliResume(agent: Agent): boolean {
+  return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
+}
+
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
 const MD_READ_CLASS = [
   'min-w-0 text-[13px] leading-relaxed text-zinc-300',
@@ -612,7 +616,12 @@ export default function TaskDetailPanel({
     let cancelled = false;
     void window.electronAPI.sessions.get(task.id).then((existingSession) => {
       if (cancelled) return;
-      if (existingSession && existingSession.status === 'running') {
+      if (
+        existingSession &&
+        (existingSession.status === 'running' ||
+          existingSession.status === 'stopped' ||
+          existingSession.status === 'error')
+      ) {
         setSession(existingSession);
       } else {
         setSession(null);
@@ -637,7 +646,11 @@ export default function TaskDetailPanel({
 
   const sessionId = session?.id;
   const sessionReadyForPty = Boolean(
-    sessionId && session?.status === 'running' && !sessionWorkspace,
+    sessionId &&
+      (session?.status === 'running' ||
+        session?.status === 'stopped' ||
+        session?.status === 'error') &&
+      !sessionWorkspace,
   );
   useTerminalPtyStream({
     terminalRef,
@@ -713,7 +726,7 @@ export default function TaskDetailPanel({
     setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
   }, [task?.id, maxDetailWidthForParent, sessionWorkspace]);
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (opts?: { resume?: boolean }) => {
     if (!task) return;
     if (isTaskBlocked(task, projectTasks)) {
       setSessionError('Finish blocking tasks before starting a session.');
@@ -726,6 +739,7 @@ export default function TaskDetailPanel({
         task,
         projectTasks,
         implicitSessionAssigneeUid ?? undefined,
+        opts?.resume ? { resume: true } : undefined,
       );
       if ('error' in result) {
         if (result.error === 'TASK_BLOCKED') {
@@ -866,6 +880,8 @@ export default function TaskDetailPanel({
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
   const sessionIdleAfterRun = hasLocalSession && !sessionRunning;
+  const showResumeNewPair =
+    sessionIdleAfterRun && taskAgentSupportsCliResume(task.agent);
 
   const showMarkAsDone = task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
@@ -923,23 +939,68 @@ export default function TaskDetailPanel({
                 prAgentAwaiting={prAgentAwaiting}
               />
               {!sessionRunning ? (
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  disabled={startInFlight || blocked}
-                  title={blocked ? 'Blocked by incomplete dependencies' : undefined}
-                  className={
-                    startInFlight
-                      ? startBtnLoading
-                      : sessionError
-                        ? startBtnError
-                        : blocked
-                          ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
-                          : startBtnIdle
-                  }
-                >
-                  {blocked ? 'Blocked' : startButtonLabel}
-                </button>
+                showResumeNewPair ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartSession({ resume: true })}
+                      disabled={startInFlight || blocked}
+                      title={
+                        blocked
+                          ? 'Blocked by incomplete dependencies'
+                          : 'Continue the CLI session from disk (--resume)'
+                      }
+                      className={
+                        startInFlight
+                          ? startBtnLoading
+                          : sessionError
+                            ? startBtnError
+                            : blocked
+                              ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                              : startBtnIdle
+                      }
+                    >
+                      {blocked ? 'Blocked' : sessionError ? 'Retry' : 'Resume'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartSession()}
+                      disabled={startInFlight || blocked}
+                      title={
+                        blocked
+                          ? 'Blocked by incomplete dependencies'
+                          : 'Start a new agent session with the full task prompt'
+                      }
+                      className={
+                        startInFlight
+                          ? startBtnLoading
+                          : blocked
+                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            : markDoneBtn
+                      }
+                    >
+                      {blocked ? 'Blocked' : 'New session'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleStartSession()}
+                    disabled={startInFlight || blocked}
+                    title={blocked ? 'Blocked by incomplete dependencies' : undefined}
+                    className={
+                      startInFlight
+                        ? startBtnLoading
+                        : sessionError
+                          ? startBtnError
+                          : blocked
+                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            : startBtnIdle
+                    }
+                  >
+                    {blocked ? 'Blocked' : startButtonLabel}
+                  </button>
+                )
               ) : null}
               {sessionError && !sessionRunning ? (
                 <p className="min-w-0 text-xs leading-snug text-red-300/90">{sessionError}</p>
@@ -1625,6 +1686,7 @@ export default function TaskDetailPanel({
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
                     onData={
+                      sessionRunning &&
                       terminalShouldForwardInput(MIRROR_TERMINAL_VIEW_POLICY)
                         ? handleTerminalData
                         : undefined
