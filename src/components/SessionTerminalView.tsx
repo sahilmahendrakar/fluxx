@@ -53,6 +53,7 @@ interface SessionTerminalViewProps {
   onTaskPrClick?: (taskId: string) => void;
   /** True while create PR is in flight for this session’s task. */
   prLoading?: boolean;
+  prAgentAwaiting?: boolean;
   /**
    * Same callbacks/data as board `TaskDetailPanel` (except `task` and `layout`, which are set here).
    * When omitted or `task` is null, the Details pane tab is hidden.
@@ -270,6 +271,7 @@ export function SessionTerminalView({
   markAsDoneBlocked = false,
   onTaskPrClick,
   prLoading = false,
+  prAgentAwaiting = false,
   taskDetailPanel,
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
@@ -386,6 +388,7 @@ export function SessionTerminalView({
               hasWorktree={Boolean(session.worktreePath?.trim())}
               onTaskPrClick={onTaskPrClick}
               prLoading={prLoading}
+              prAgentAwaiting={prAgentAwaiting}
             />
           ) : null}
           {showMarkAsDone ? (

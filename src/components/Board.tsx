@@ -41,6 +41,8 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
+  /** Task ids waiting for agent-created PR discovery (clock icon on cards). */
+  prAgentAwaitingByTaskId?: Record<string, boolean>;
   /** Configured / detected default short branch name for branch chips on cards. */
   repoDefaultBranchShort: string;
   /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
@@ -69,6 +71,7 @@ export default function Board({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
+  prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   sessions,
@@ -203,6 +206,7 @@ export default function Board({
               onTaskAssigneeChange={onTaskAssigneeChange}
               onTaskPrClick={onTaskPrClick}
               prLoadingTaskId={prLoadingTaskId}
+              prAgentAwaitingByTaskId={prAgentAwaitingByTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               sessions={sessions}
