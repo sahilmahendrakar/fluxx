@@ -33,6 +33,22 @@ import {
   type McpBridgeRequest,
   type McpBridgeResponse,
 } from './mcpBridge';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsPersistConflictResult,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+  PlanningDocsResolveConflictIpcResult,
+  PlanningDocsResolveConflictPayload,
+  PlanningDocsRevealSyncFolderResult,
+} from './planningDocs/syncTypes';
+import type {
+  PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsListResult,
+} from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
@@ -404,18 +420,85 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   planningDocs: {
     list: () =>
-      ipcRenderer.invoke('planningDocs:list') as Promise<
-        | { files: { relativePath: string }[] }
-        | { error: 'NO_PROJECT' | 'IO_ERROR' }
-      >,
+      ipcRenderer.invoke('planningDocs:list') as Promise<PlanningDocsListResult>,
     read: (relativePath: string) =>
       ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
         { content: string } | { error: string }
       >,
+    applyFirestoreSnapshot: (payload: {
+      projectId: string;
+      docs: Array<{
+        docId: string;
+        relativePath: string;
+        markdown: string;
+        remoteRevision: string;
+      }>;
+      removedDocIds: string[];
+    }) =>
+      ipcRenderer.invoke(
+        'planningDocs:applyFirestoreSnapshot',
+        payload,
+      ) as Promise<PlanningDocsApplyFirestoreSnapshotResult>,
+    listPushCandidates: (projectId: string) =>
+      ipcRenderer.invoke(
+        'planningDocs:listPushCandidates',
+        projectId,
+      ) as Promise<PlanningDocsListPushCandidatesResult>,
+    recordPushSuccess: (payload: PlanningDocsRecordPushSuccessPayload) =>
+      ipcRenderer.invoke(
+        'planningDocs:recordPushSuccess',
+        payload,
+      ) as Promise<PlanningDocsRecordPushSuccessResult>,
+    persistConflict: (payload: PlanningDocsPersistConflictPayload) =>
+      ipcRenderer.invoke(
+        'planningDocs:persistConflict',
+        payload,
+      ) as Promise<PlanningDocsPersistConflictResult>,
+    resolveConflict: (payload: PlanningDocsResolveConflictPayload) =>
+      ipcRenderer.invoke('planningDocs:resolveConflict', payload) as Promise<
+        PlanningDocsResolveConflictIpcResult
+      >,
+    revealSyncFolder: () =>
+      ipcRenderer.invoke('planningDocs:revealSyncFolder') as Promise<PlanningDocsRevealSyncFolderResult>,
     onChanged: (cb: () => void) => {
       const handler = () => cb();
       ipcRenderer.on('planningDocs:changed', handler);
       return () => ipcRenderer.removeListener('planningDocs:changed', handler);
+    },
+    cloudMigration: {
+      getState: (cloudProjectId: string) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:getState',
+          cloudProjectId,
+        ) as Promise<
+          | { state: PlanningDocsCloudMigrationPersistedV1 | null }
+          | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+        >,
+      patchState: (
+        cloudProjectId: string,
+        patch: Partial<
+          Pick<
+            PlanningDocsCloudMigrationPersistedV1,
+            'didInitialHydrateFromCloud' | 'seedOfferResolved'
+          >
+        >,
+      ) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:patchState',
+          cloudProjectId,
+          patch,
+        ) as Promise<
+          | { ok: true; state: PlanningDocsCloudMigrationPersistedV1 }
+          | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+        >,
+      applyHydration: (payload: {
+        cloudProjectId: string;
+        plan: FirestoreHydrationWritePlan;
+      }) =>
+        ipcRenderer.invoke(
+          'planningDocs:cloudMigration:applyHydration',
+          payload,
+        ) as Promise<{ ok: true } | { error: string }>,
     },
   },
   mcpBridge: {

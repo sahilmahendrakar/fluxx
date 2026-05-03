@@ -43,7 +43,47 @@ import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAut
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
-import { createPlanningDocsWatcher } from './main/PlanningDocsWatcher';
+import {
+  createPlanningDocsWatcher,
+  notifyPlanningDocsChanged,
+} from './main/PlanningDocsWatcher';
+import {
+  applyFirestorePlanningDocsSnapshot,
+  persistPlanningDocsConflictLocal,
+  recordPlanningDocsPushSuccess,
+} from './main/planningDocsFirestoreHydrate';
+import { listPlanningDocsPushCandidates } from './main/planningDocsFirestorePush';
+import {
+  planningDocsSyncFolderAbs,
+  resolvePlanningDocConflictMarkMerged,
+  resolvePlanningDocConflictResumePush,
+  resolvePlanningDocConflictTakeRemote,
+} from './main/planningDocsConflictResolve';
+import { enrichPlanningDocsListForCloudWorkspace } from './main/planningDocsListEnrichment';
+import {
+  applyPlanningDocsFirestoreHydrationPlan,
+  patchPlanningDocsCloudMigrationState,
+  readPlanningDocsCloudMigrationState,
+} from './main/planningDocsMigrationDisk';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsConflictRecordV1,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+  PlanningDocsResolveConflictIpcResult,
+  PlanningDocsResolveConflictPayload,
+  PlanningDocsRevealSyncFolderResult,
+} from './planningDocs/syncTypes';
+import type { PlanningDocsCloudMigrationPersistedV1 } from './planningDocs/types';
+import {
+  createPlanningDocsProviderBundle,
+  planningDocsProviderForActiveProject,
+} from './planningDocs/selectPlanningDocsProvider';
+import { normalizePlanningDocRelativePath } from './planningDocs/path';
+import type { PlanningDocsProvider } from './planningDocs/FilesystemPlanningDocsProvider';
 import type {
   ActiveProjectKey,
   Agent,
@@ -2502,51 +2542,22 @@ app.whenReady().then(async () => {
     return path.join(projectDir, 'planning');
   }
 
-  async function collectMarkdownRelPaths(dir: string, base: string): Promise<string[]> {
-    let dirents;
-    try {
-      dirents = await fs.readdir(dir, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-    const out: string[] = [];
-    const sorted = [...dirents].sort((a, b) => a.name.localeCompare(b.name));
-    for (const ent of sorted) {
-      const rel = base ? `${base}/${ent.name}` : ent.name;
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) {
-        out.push(...(await collectMarkdownRelPaths(full, rel)));
-      } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) {
-        out.push(rel.split(path.sep).join('/'));
-      }
-    }
-    return out;
-  }
+  const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 
-  function safePlanningMarkdownPath(planningDir: string, relativePath: string): string | null {
-    if (typeof relativePath !== 'string' || relativePath.includes('\0')) return null;
-    const rel = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
-    const candidate = path.resolve(planningDir, rel);
-    const resolvedRoot = path.resolve(planningDir);
-    if (candidate === resolvedRoot) return null;
-    const relCheck = path.relative(resolvedRoot, candidate);
-    if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) return null;
-    return candidate;
+  function activePlanningDocsProvider(): PlanningDocsProvider {
+    return planningDocsProviderForActiveProject(appStateStore.get().activeProjectKey, planningDocsBundle);
   }
 
   ipcMain.handle('planningDocs:list', async () => {
+    const result = await activePlanningDocsProvider().list();
+    const key = appStateStore.get().activeProjectKey;
     const planningDir = resolvePlanningDocsDir();
-    if (!planningDir) {
-      return { error: 'NO_PROJECT' as const };
-    }
-    try {
-      await fs.mkdir(planningDir, { recursive: true });
-    } catch {
-      return { error: 'IO_ERROR' as const };
-    }
+    const enriched =
+      planningDir && key?.kind === 'cloud' && 'files' in result
+        ? await enrichPlanningDocsListForCloudWorkspace(planningDir, key.id, result)
+        : result;
     planningDocsWatcher?.sync();
-    const relativePaths = await collectMarkdownRelPaths(planningDir, '');
-    return { files: relativePaths.map((p) => ({ relativePath: p })) };
+    return enriched;
   });
 
   ipcMain.handle(
@@ -2555,21 +2566,219 @@ app.whenReady().then(async () => {
       _e,
       relativePath: string,
     ): Promise<{ content: string } | { error: string }> => {
+      return activePlanningDocsProvider().read(relativePath);
+    },
+  );
+
+  ipcMain.handle('planningDocs:cloudMigration:getState', async (_e, cloudProjectId: string) => {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key || key.kind !== 'cloud' || key.id !== cloudProjectId) {
+      return { error: 'NOT_ACTIVE_CLOUD' as const };
+    }
+    const dir = resolvePlanningDocsDir();
+    if (!dir) return { error: 'NO_PLANNING_DIR' as const };
+    const state = await readPlanningDocsCloudMigrationState(dir, cloudProjectId);
+    return { state };
+  });
+
+  ipcMain.handle(
+    'planningDocs:cloudMigration:patchState',
+    async (
+      _e,
+      cloudProjectId: string,
+      patch: Partial<
+        Pick<
+          PlanningDocsCloudMigrationPersistedV1,
+          'didInitialHydrateFromCloud' | 'seedOfferResolved'
+        >
+      >,
+    ) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== cloudProjectId) {
+        return { error: 'NOT_ACTIVE_CLOUD' as const };
+      }
+      const dir = resolvePlanningDocsDir();
+      if (!dir) return { error: 'NO_PLANNING_DIR' as const };
+      const state = await patchPlanningDocsCloudMigrationState(dir, cloudProjectId, patch);
+      return { ok: true as const, state };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:cloudMigration:applyHydration',
+    async (_e, payload: { cloudProjectId: string; plan: FirestoreHydrationWritePlan }) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.cloudProjectId) {
+        return { error: 'Active cloud project mismatch.' };
+      }
+      const dir = resolvePlanningDocsDir();
+      if (!dir) return { error: 'No planning directory.' };
+      planningDocsWatcher?.suppressFsNotifications(600);
+      const result = await applyPlanningDocsFirestoreHydrationPlan(dir, payload.plan);
+      if ('error' in result) return result;
+      notifyPlanningDocsChanged();
+      planningDocsWatcher?.sync();
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:applyFirestoreSnapshot',
+    async (_e, payload: unknown): Promise<PlanningDocsApplyFirestoreSnapshotResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!payload || typeof payload !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD' };
+      }
+      const projectId = (payload as { projectId?: unknown }).projectId;
+      if (typeof projectId !== 'string') {
+        return { ok: false, code: 'INVALID_PAYLOAD' };
+      }
+      if (key?.kind !== 'cloud' || key.id !== projectId) {
+        return { ok: false, code: 'PROJECT_MISMATCH' };
+      }
       const planningDir = resolvePlanningDocsDir();
       if (!planningDir) {
-        return { error: 'NO_PROJECT' };
+        return { ok: false, code: 'NO_PROJECT' };
       }
-      const filePath = safePlanningMarkdownPath(planningDir, relativePath);
-      if (!filePath) {
-        return { error: 'INVALID_PATH' };
+      planningDocsWatcher?.suppressFsNotifications(600);
+      const applied = await applyFirestorePlanningDocsSnapshot(planningDir, payload);
+      if (!applied.ok) {
+        return { ok: false, code: 'INVALID_PAYLOAD' };
       }
+      if (applied.changed) {
+        notifyPlanningDocsChanged();
+      }
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:listPushCandidates',
+    async (_e, projectId: string): Promise<PlanningDocsListPushCandidatesResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      const candidates = await listPlanningDocsPushCandidates(planningDir, projectId);
+      return { ok: true, candidates };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:recordPushSuccess',
+    async (_e, payload: PlanningDocsRecordPushSuccessPayload): Promise<PlanningDocsRecordPushSuccessResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const norm = normalizePlanningDocRelativePath(payload.relativePath);
+      if (!norm) return { ok: false, code: 'INVALID_PATH' };
+      if (typeof payload.contentSha256 !== 'string' || typeof payload.newRemoteRevision !== 'string') {
+        return { ok: false, code: 'INVALID_PATH' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      await recordPlanningDocsPushSuccess(planningDir, norm, payload.contentSha256, payload.newRemoteRevision);
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:persistConflict',
+    async (_e, payload: PlanningDocsPersistConflictPayload) => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.projectId) {
+        return { ok: false as const, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const rec = payload.record as PlanningDocsConflictRecordV1;
+      if (
+        !rec ||
+        rec.schemaVersion !== 1 ||
+        typeof rec.relativePath !== 'string' ||
+        typeof rec.createdAt !== 'string' ||
+        !(rec.baseRemoteRevision === null || typeof rec.baseRemoteRevision === 'string') ||
+        typeof rec.localMarkdown !== 'string' ||
+        typeof rec.remoteMarkdown !== 'string' ||
+        typeof rec.remoteRevision !== 'string' ||
+        typeof rec.remoteUpdatedBy !== 'string' ||
+        typeof rec.localUpdatedBy !== 'string'
+      ) {
+        return { ok: false as const, code: 'INVALID_RECORD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false as const, code: 'NO_PLANNING_DIR' };
+      const conflictFileBasename = await persistPlanningDocsConflictLocal(planningDir, rec);
+      return { ok: true as const, conflictFileBasename };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:resolveConflict',
+    async (_e, payload: unknown): Promise<PlanningDocsResolveConflictIpcResult> => {
+      if (!payload || typeof payload !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD' };
+      }
+      const p = payload as Partial<PlanningDocsResolveConflictPayload>;
+      if (
+        typeof p.projectId !== 'string' ||
+        typeof p.relativePath !== 'string' ||
+        (p.action !== 'take_remote' && p.action !== 'resume_push' && p.action !== 'mark_merged')
+      ) {
+        return { ok: false, code: 'INVALID_PAYLOAD' };
+      }
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== p.projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      planningDocsWatcher?.suppressFsNotifications(600);
+      let inner: { ok: true } | { ok: false; code: 'INVALID_PATH' | 'NO_RECORD' | 'WRITE_FAILED' };
+      if (p.action === 'take_remote') {
+        inner = await resolvePlanningDocConflictTakeRemote(
+          planningDir,
+          p.relativePath,
+          typeof p.conflictArtifactBasename === 'string' ? p.conflictArtifactBasename : undefined,
+        );
+      } else if (p.action === 'resume_push') {
+        inner = await resolvePlanningDocConflictResumePush(planningDir, p.relativePath);
+      } else {
+        inner = await resolvePlanningDocConflictMarkMerged(
+          planningDir,
+          p.relativePath,
+          typeof p.conflictArtifactBasename === 'string' ? p.conflictArtifactBasename : undefined,
+        );
+      }
+      if (inner.ok) {
+        notifyPlanningDocsChanged();
+        planningDocsWatcher?.sync();
+      }
+      return inner.ok ? { ok: true } : { ok: false, code: inner.code };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:revealSyncFolder',
+    async (): Promise<PlanningDocsRevealSyncFolderResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud') {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      const folder = planningDocsSyncFolderAbs(planningDir);
       try {
-        const content = await fs.readFile(filePath, 'utf8');
-        return { content };
-      } catch (err: unknown) {
-        if (errnoCode(err) === 'ENOENT') return { error: 'NOT_FOUND' };
-        return { error: 'READ_FAILED' };
+        await fs.mkdir(folder, { recursive: true });
+      } catch {
+        return { ok: false, code: 'OPEN_FAILED', message: 'Could not create sync folder.' };
       }
+      const err = await shell.openPath(folder);
+      if (err) {
+        return { ok: false, code: 'OPEN_FAILED', message: err };
+      }
+      return { ok: true };
     },
   );
 

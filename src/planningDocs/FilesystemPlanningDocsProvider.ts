@@ -1,0 +1,84 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import type {
+  PlanningDocFileEntry,
+  PlanningDocsBackendKind,
+  PlanningDocsListResult,
+  PlanningDocsReadResult,
+} from './types';
+import { safeResolvePlanningMarkdownAbsPath } from './path';
+
+function errnoCode(err: unknown): string | undefined {
+  return err && typeof err === 'object' && 'code' in err
+    ? (err as NodeJS.ErrnoException).code
+    : undefined;
+}
+
+async function collectMarkdownRelPaths(dir: string, base: string): Promise<string[]> {
+  let dirents;
+  try {
+    dirents = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const sorted = [...dirents].sort((a, b) => a.name.localeCompare(b.name));
+  for (const ent of sorted) {
+    const rel = base ? `${base}/${ent.name}` : ent.name;
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      out.push(...(await collectMarkdownRelPaths(full, rel)));
+    } else if (ent.isFile() && ent.name.toLowerCase().endsWith('.md')) {
+      out.push(rel.split(path.sep).join('/'));
+    }
+  }
+  return out;
+}
+
+export interface PlanningDocsProvider {
+  readonly backendKind: PlanningDocsBackendKind;
+  list(): Promise<PlanningDocsListResult>;
+  read(relativePath: string): Promise<PlanningDocsReadResult>;
+}
+
+export class FilesystemPlanningDocsProvider implements PlanningDocsProvider {
+  constructor(
+    private readonly getPlanningDir: () => string | null,
+    readonly backendKind: PlanningDocsBackendKind,
+  ) {}
+
+  async list(): Promise<PlanningDocsListResult> {
+    const planningDir = this.getPlanningDir();
+    if (!planningDir) {
+      return { error: 'NO_PROJECT' };
+    }
+    try {
+      await fs.mkdir(planningDir, { recursive: true });
+    } catch {
+      return { error: 'IO_ERROR' };
+    }
+    const relativePaths = await collectMarkdownRelPaths(planningDir, '');
+    const files: PlanningDocFileEntry[] = relativePaths.map((p) => ({
+      relativePath: p,
+    }));
+    return { files };
+  }
+
+  async read(relativePath: string): Promise<PlanningDocsReadResult> {
+    const planningDir = this.getPlanningDir();
+    if (!planningDir) {
+      return { error: 'NO_PROJECT' };
+    }
+    const filePath = safeResolvePlanningMarkdownAbsPath(planningDir, relativePath);
+    if (!filePath) {
+      return { error: 'INVALID_PATH' };
+    }
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      return { content };
+    } catch (err: unknown) {
+      if (errnoCode(err) === 'ENOENT') return { error: 'NOT_FOUND' };
+      return { error: 'READ_FAILED' };
+    }
+  }
+}

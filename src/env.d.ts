@@ -30,6 +30,22 @@ import type {
   McpBridgeRequest,
   McpBridgeResponse,
 } from './mcpBridge';
+import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
+import type {
+  PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListPushCandidatesResult,
+  PlanningDocsPersistConflictPayload,
+  PlanningDocsPersistConflictResult,
+  PlanningDocsRecordPushSuccessPayload,
+  PlanningDocsRecordPushSuccessResult,
+  PlanningDocsResolveConflictIpcResult,
+  PlanningDocsResolveConflictPayload,
+  PlanningDocsRevealSyncFolderResult,
+} from './planningDocs/syncTypes';
+import type {
+  PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsListResult,
+} from './planningDocs/types';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -263,14 +279,58 @@ declare global {
         listModels: () => Promise<ListCursorAgentModelsResult>;
       };
       planningDocs: {
-        list: () => Promise<
-          | { files: { relativePath: string }[] }
-          | { error: 'NO_PROJECT' | 'IO_ERROR' }
-        >;
+        list: () => Promise<PlanningDocsListResult>;
         read: (relativePath: string) => Promise<
           { content: string } | { error: string }
         >;
+        applyFirestoreSnapshot: (payload: {
+          projectId: string;
+          docs: Array<{
+            docId: string;
+            relativePath: string;
+            markdown: string;
+            remoteRevision: string;
+          }>;
+          removedDocIds: string[];
+        }) => Promise<PlanningDocsApplyFirestoreSnapshotResult>;
+        listPushCandidates: (
+          projectId: string,
+        ) => Promise<PlanningDocsListPushCandidatesResult>;
+        recordPushSuccess: (
+          payload: PlanningDocsRecordPushSuccessPayload,
+        ) => Promise<PlanningDocsRecordPushSuccessResult>;
+        persistConflict: (
+          payload: PlanningDocsPersistConflictPayload,
+        ) => Promise<PlanningDocsPersistConflictResult>;
+        resolveConflict: (
+          payload: PlanningDocsResolveConflictPayload,
+        ) => Promise<PlanningDocsResolveConflictIpcResult>;
+        revealSyncFolder: () => Promise<PlanningDocsRevealSyncFolderResult>;
         onChanged: (cb: () => void) => () => void;
+        cloudMigration: {
+          getState: (
+            cloudProjectId: string,
+          ) => Promise<
+            | { state: PlanningDocsCloudMigrationPersistedV1 | null }
+            | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+          >;
+          patchState: (
+            cloudProjectId: string,
+            patch: Partial<
+              Pick<
+                PlanningDocsCloudMigrationPersistedV1,
+                'didInitialHydrateFromCloud' | 'seedOfferResolved'
+              >
+            >,
+          ) => Promise<
+            | { ok: true; state: PlanningDocsCloudMigrationPersistedV1 }
+            | { error: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' }
+          >;
+          applyHydration: (payload: {
+            cloudProjectId: string;
+            plan: FirestoreHydrationWritePlan;
+          }) => Promise<{ ok: true } | { error: string }>;
+        };
       };
       mcpBridge: {
         signalReady: () => void;
