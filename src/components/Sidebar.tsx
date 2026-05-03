@@ -21,61 +21,16 @@ function formatPlanningDocShortTime(iso: string | undefined): string {
 
 function PlanningCloudDocsSyncHint({
   meta,
-  stream,
-  firebaseConfigured,
 }: {
   meta: PlanningDocsCloudListMeta | null;
-  stream: PlanningDocsFirestoreStreamState;
-  firebaseConfigured: boolean;
 }) {
-  const lines: string[] = [];
-  if (!firebaseConfigured) {
-    lines.push('Cloud sync is unavailable (Firebase is not configured).');
-  } else if (stream.kind === 'error') {
-    lines.push(`Could not load live updates: ${stream.message}`);
-  } else if (stream.kind === 'connecting') {
-    lines.push('Connecting to shared planning docs…');
-  } else if (stream.kind === 'live') {
-    lines.push(
-      stream.fromCache
-        ? 'Working from a cached copy — you may be offline; changes can be stale.'
-        : 'Shared planning docs are connected.',
-    );
-  } else if (stream.kind === 'disabled') {
-    lines.push('Sign in to sync shared planning docs with the team.');
-  }
-
-  if (meta) {
-    const bits: string[] = [];
-    if (meta.totalSynced > 0) bits.push(`${meta.totalSynced} up to date`);
-    if (meta.totalPendingPush > 0) bits.push(`${meta.totalPendingPush} pending upload`);
-    if (meta.totalConflictPaths > 0) {
-      bits.push(`${meta.totalConflictPaths} conflict${meta.totalConflictPaths === 1 ? '' : 's'}`);
-    }
-    if (bits.length > 0) {
-      lines.push(bits.join(' · '));
-    }
-    const t = formatPlanningDocShortTime(meta.syncStateUpdatedAt);
-    if (t) {
-      lines.push(`Sync index updated ${t}`);
-    }
-  }
-
-  if (lines.length === 0) {
-    return null;
-  }
+  const t = formatPlanningDocShortTime(meta?.syncStateUpdatedAt);
+  if (!t) return null;
 
   return (
-    <div className="mb-1.5 rounded border border-white/[0.06] bg-black/25 px-2 py-1.5 text-[10px] leading-snug text-zinc-500">
-      {lines.map((line, idx) => (
-        <p
-          key={`${idx}-${line.slice(0, 24)}`}
-          className="[&:not(:first-child)]:mt-0.5 [&:not(:first-child)]:text-zinc-600"
-        >
-          {line}
-        </p>
-      ))}
-    </div>
+    <p className="mb-1 px-2 py-0.5 text-[10px] leading-snug text-zinc-600">
+      Last sync {t}
+    </p>
   );
 }
 
@@ -212,28 +167,6 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-function ChevronIcon({ expanded, className }: { expanded: boolean; className?: string }) {
-  return (
-    <svg
-      className={[className, expanded ? 'rotate-180' : ''].filter(Boolean).join(' ')}
-      width={14}
-      height={14}
-      viewBox="0 0 14 14"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M3.5 5.25 7 8.75l3.5-3.5"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -308,8 +241,6 @@ export function Sidebar({
   onDocsSidebarExpandToggle,
   planningDocFiles,
   planningDocsCloudListMeta,
-  planningDocsFirestoreStream,
-  planningDocsFirebaseConfigured,
   planningDocsListLoading,
   planningDocsListError,
   selectedPlanningDocPath,
@@ -326,14 +257,6 @@ export function Sidebar({
   const navItemClass = (active: boolean) =>
     [
       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
-      active
-        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-    ].join(' ');
-
-  const docsMainNavClass = (active: boolean) =>
-    [
-      'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
       active
         ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
@@ -409,23 +332,20 @@ export function Sidebar({
               <span>Plan</span>
             </button>
             <div className="flex flex-col gap-0.5">
-              <div className="flex w-full min-w-0 items-stretch gap-0.5">
+              <div
+                className={navItemClass(activeTabId === 'docs' && !settingsRouteActive)}
+              >
                 <button
                   type="button"
-                  className={docsMainNavClass(activeTabId === 'docs' && !settingsRouteActive)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   onClick={onDocsNavClick}
                 >
                   <DocsIcon className="shrink-0 opacity-80" />
-                  <span className="min-w-0 truncate">Docs</span>
+                  <span className="min-w-0 flex-1 truncate">Docs</span>
                 </button>
                 <button
                   type="button"
-                  className={[
-                    'flex w-7 shrink-0 items-center justify-center rounded-md transition-colors',
-                    docsSidebarExpanded
-                      ? 'bg-white/[0.06] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                      : 'text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300',
-                  ].join(' ')}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
                   aria-expanded={docsSidebarExpanded}
                   aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
                   title={docsSidebarExpanded ? 'Hide file list' : 'Show file list'}
@@ -434,16 +354,19 @@ export function Sidebar({
                     onDocsSidebarExpandToggle();
                   }}
                 >
-                  <ChevronIcon expanded={docsSidebarExpanded} className="opacity-90 transition-transform" />
+                  <ChevronWorkspacesIcon expanded={docsSidebarExpanded} />
                 </button>
               </div>
-              {docsSidebarExpanded ? (
-                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+              <div
+                className={[
+                  'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
+                  docsSidebarExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+                ].join(' ')}
+              >
+                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
                   {project.kind === 'cloud' ? (
                     <PlanningCloudDocsSyncHint
                       meta={planningDocsCloudListMeta}
-                      stream={planningDocsFirestoreStream}
-                      firebaseConfigured={planningDocsFirebaseConfigured}
                     />
                   ) : null}
                   {planningDocsListError ? (
@@ -490,7 +413,7 @@ export function Sidebar({
                     </ul>
                   )}
                 </div>
-              ) : null}
+              </div>
             </div>
           </div>
 

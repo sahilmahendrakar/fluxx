@@ -5,6 +5,7 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import {
   applyFirestorePlanningDocsSnapshot,
+  persistPlanningDocsConflictLocal,
   readPlanningDocsSyncState,
 } from './planningDocsFirestoreHydrate';
 import { planningRelativePathToFirestoreDocId } from '../planningDocs/path';
@@ -144,5 +145,112 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     expect(body).toBe('edited');
     const state = await readPlanningDocsSyncState(planningDir);
     expect(state.files[rel]?.lastSyncedContentHash).toBe(sha('synced'));
+  });
+
+  it('skips rows when docId does not match encoded relativePath', async () => {
+    const wrongId = planningRelativePathToFirestoreDocId('other.md');
+    if (!wrongId) throw new Error('id');
+    const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId: wrongId,
+          relativePath: rel,
+          markdown: 'nope',
+          remoteRevision: '1_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    expect(r).toEqual({ ok: true, changed: false });
+    await expect(fs.access(path.join(planningDir, rel))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('is a no-op when markdown and remote revision already match sync state', async () => {
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: '# stable',
+          remoteRevision: '5_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+
+    const r2 = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: '# stable',
+          remoteRevision: '5_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    expect(r2).toEqual({ ok: true, changed: false });
+  });
+
+  it('returns INVALID_PAYLOAD for malformed snapshot', async () => {
+    const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: '',
+      docs: [],
+      removedDocIds: [],
+    });
+    expect(r).toEqual({ ok: false, code: 'INVALID_PAYLOAD' });
+  });
+
+  it('clears pausedPushPaths when a snapshot successfully applies after prior conflict pause', async () => {
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'base',
+          remoteRevision: '1_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+
+    await persistPlanningDocsConflictLocal(planningDir, {
+      schemaVersion: 1,
+      relativePath: rel,
+      createdAt: new Date().toISOString(),
+      baseRemoteRevision: '1_0',
+      localMarkdown: 'x',
+      remoteMarkdown: 'y',
+      remoteRevision: '2_0',
+      remoteUpdatedBy: 'b',
+      localUpdatedBy: 'a',
+    });
+
+    let st = await readPlanningDocsSyncState(planningDir);
+    expect(st.pausedPushPaths?.[rel]).toBeDefined();
+
+    await fs.writeFile(path.join(planningDir, rel), 'base', 'utf8');
+
+    const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'from-cloud',
+          remoteRevision: '3_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    expect(r).toEqual({ ok: true, changed: true });
+
+    st = await readPlanningDocsSyncState(planningDir);
+    expect(st.pausedPushPaths?.[rel]).toBeUndefined();
+    expect(st.files[rel]?.remoteRevision).toBe('3_0');
   });
 });

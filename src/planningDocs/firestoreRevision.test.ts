@@ -9,4 +9,11 @@ describe('revisionFromFirestoreUpdatedAt', () => {
   it('uses toMillis when present', () => {
     expect(revisionFromFirestoreUpdatedAt({ toMillis: () => 999 })).toBe('ms_999');
   });
+
+  it('returns unknown for primitives and unrecognized shapes', () => {
+    expect(revisionFromFirestoreUpdatedAt(undefined)).toBe('unknown');
+    expect(revisionFromFirestoreUpdatedAt(null)).toBe('unknown');
+    expect(revisionFromFirestoreUpdatedAt('ts')).toBe('unknown');
+    expect(revisionFromFirestoreUpdatedAt({ seconds: 'bad' as unknown as number })).toBe('unknown');
+  });
 });

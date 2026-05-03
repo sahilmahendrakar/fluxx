@@ -31,25 +31,12 @@ function formatDocSyncTime(iso: string | undefined): string | null {
   }
 }
 
-function cloudStreamSummary(stream: PlanningDocsFirestoreStreamState, firebaseConfigured: boolean): string | null {
-  if (!firebaseConfigured) return 'Firebase is not configured — cloud sync is off.';
-  if (stream.kind === 'error') return `Firestore: ${stream.message}`;
-  if (stream.kind === 'connecting') return 'Connecting to shared docs…';
-  if (stream.kind === 'live') {
-    return stream.fromCache ? 'Live updates unavailable — showing cached data (may be offline).' : null;
-  }
-  if (stream.kind === 'disabled') return 'Sign in to receive live shared updates.';
-  return null;
-}
-
 export function PlanningDocsView({
   selectedPath,
   fileRevision = 0,
   projectKind,
   cloudProjectId,
   planningDocFiles,
-  planningDocsCloudListMeta,
-  planningDocsFirestoreStream,
   firebaseConfigured,
   onPlanningDocsMutated,
 }: PlanningDocsViewProps) {
@@ -128,33 +115,10 @@ export function PlanningDocsView({
     }
   }, []);
 
-  const streamHint = cloudStreamSummary(planningDocsFirestoreStream, firebaseConfigured);
   const showCloudChrome = projectKind === 'cloud';
-
-  const listMetaLine = (meta: PlanningDocsCloudListMeta | null): string | null => {
-    if (!meta) return null;
-    const bits: string[] = [];
-    if (meta.totalSynced > 0) bits.push(`${meta.totalSynced} synced`);
-    if (meta.totalPendingPush > 0) bits.push(`${meta.totalPendingPush} pending upload`);
-    if (meta.totalConflictPaths > 0) bits.push(`${meta.totalConflictPaths} conflict${meta.totalConflictPaths === 1 ? '' : 's'}`);
-    if (bits.length === 0) return null;
-    return bits.join(' · ');
-  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#09090b]">
-      {showCloudChrome && (streamHint || planningDocsCloudListMeta) ? (
-        <div className="shrink-0 space-y-0.5 border-b border-white/[0.06] bg-black/30 px-5 py-2 text-[11px] leading-snug text-zinc-500">
-          {streamHint ? (
-            <p className={planningDocsFirestoreStream.kind === 'error' ? 'text-amber-200/95' : ''}>
-              {streamHint}
-            </p>
-          ) : null}
-          {listMetaLine(planningDocsCloudListMeta) ? (
-            <p className="text-zinc-600">{listMetaLine(planningDocsCloudListMeta)}</p>
-          ) : null}
-        </div>
-      ) : null}
       {!selectedPath ? (
         <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-zinc-600">
           <p>

@@ -97,6 +97,28 @@ service cloud.firestore {
           && request.resource.data.updatedAt is timestamp;
 
         allow delete: if isMember(pid);
+
+        match /conflicts/{conflictId} {
+          allow read: if isMember(pid);
+
+          allow create: if isMember(pid)
+            && request.resource.data.schemaVersion == 1
+            && request.resource.data.relativePath is string
+            && request.resource.data.relativePath.size() > 0
+            && request.resource.data.relativePath.size() < 2048
+            && request.resource.data.localMarkdown is string
+            && request.resource.data.localMarkdown.size() < 950000
+            && request.resource.data.remoteMarkdown is string
+            && request.resource.data.remoteMarkdown.size() < 950000
+            && request.resource.data.remoteRevision is string
+            && request.resource.data.remoteUpdatedBy is string
+            && request.resource.data.localUpdatedBy == request.auth.uid
+            && request.resource.data.createdAt is timestamp
+            && (
+              request.resource.data.baseRemoteRevision == null
+              || request.resource.data.baseRemoteRevision is string
+            );
+        }
       }
 
       match /invites/{email} {

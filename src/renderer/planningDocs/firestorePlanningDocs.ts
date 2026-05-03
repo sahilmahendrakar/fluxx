@@ -10,6 +10,10 @@ import {
 } from 'firebase/firestore';
 import type { FirestorePlanningDocDocumentV1 } from '../../planningDocs/types';
 import type { PlanningDocsConflictRecordV1 } from '../../planningDocs/syncTypes';
+import {
+  parseFirestorePlanningDocListRow,
+  parsePlanningDocSnapshotForPush,
+} from '../../planningDocs/firestorePlanningDocParse';
 import { revisionFromFirestoreUpdatedAt } from '../../planningDocs/firestoreRevision';
 import { planningRelativePathToFirestoreDocId } from '../../planningDocs/path';
 import { getFirebaseFirestore } from '../firebase';
@@ -25,10 +29,9 @@ export async function fetchFirestorePlanningDocsMarkdown(
   const snap = await getDocs(collection(db, 'projects', projectId, 'planningDocs'));
   const out = new Map<string, string>();
   for (const d of snap.docs) {
-    const data = d.data();
-    if (data?.schemaVersion !== 1) continue;
-    if (typeof data.relativePath !== 'string' || typeof data.markdown !== 'string') continue;
-    out.set(data.relativePath, data.markdown);
+    const row = parseFirestorePlanningDocListRow(d.data());
+    if (!row) continue;
+    out.set(row.relativePath, row.markdown);
   }
   return out;
 }
@@ -78,23 +81,6 @@ export type PlanningDocPushToFirestoreResult =
     }
   | { ok: false; reason: 'remote_missing' };
 
-function readPlanningDocSnapshotFields(data: Partial<FirestorePlanningDocDocumentV1> | undefined): {
-  revision: string;
-  markdown: string;
-  updatedBy: string;
-} {
-  if (!data || data.schemaVersion !== 1) {
-    return { revision: 'unknown', markdown: '', updatedBy: '' };
-  }
-  const markdown = typeof data.markdown === 'string' ? data.markdown : '';
-  const updatedBy = typeof data.updatedBy === 'string' ? data.updatedBy : '';
-  return {
-    revision: revisionFromFirestoreUpdatedAt(data.updatedAt),
-    markdown,
-    updatedBy,
-  };
-}
-
 /**
  * Atomically writes planning markdown when the remote revision matches the local base,
  * or when creating a doc that does not yet exist remotely (`kind: 'absent'`).
@@ -118,7 +104,7 @@ export async function pushPlanningDocToFirestore(
       const snap = await transaction.get(ref);
       if (expectation.kind === 'absent') {
         if (snap.exists()) {
-          const cur = readPlanningDocSnapshotFields(snap.data() as Partial<FirestorePlanningDocDocumentV1>);
+          const cur = parsePlanningDocSnapshotForPush(snap.data() as Partial<FirestorePlanningDocDocumentV1>);
           throw Object.assign(new Error('planning_doc_push_conflict'), {
             code: 'planning_doc_push_conflict' as const,
             payload: cur,
@@ -140,7 +126,7 @@ export async function pushPlanningDocToFirestore(
         });
       }
 
-      const cur = readPlanningDocSnapshotFields(snap.data() as Partial<FirestorePlanningDocDocumentV1>);
+      const cur = parsePlanningDocSnapshotForPush(snap.data() as Partial<FirestorePlanningDocDocumentV1>);
       if (cur.revision !== expectation.remoteRevision) {
         throw Object.assign(new Error('planning_doc_push_conflict'), {
           code: 'planning_doc_push_conflict' as const,
