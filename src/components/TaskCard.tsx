@@ -386,16 +386,15 @@ export default function TaskCard({
                   />
                   {showBranchChip ? (
                     <span
+                      role="img"
                       title={branchChipTitle}
+                      aria-label={branchChipTitle}
                       className="inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90"
                     >
                       <GitBranch className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
-                      <span className="truncate font-mono">{branchChipLabel}</span>
-                      {task.createSourceBranchIfMissing === true ? (
-                        <span className="shrink-0 text-[9px] font-sans uppercase tracking-wide text-sky-300/80">
-                          new
-                        </span>
-                      ) : null}
+                      <span className="truncate font-mono" aria-hidden>
+                        {branchChipLabel}
+                      </span>
                     </span>
                   ) : null}
                 </div>
