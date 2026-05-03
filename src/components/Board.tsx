@@ -14,6 +14,7 @@ import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 
 interface Props {
   allTasks: Task[];
@@ -78,6 +79,7 @@ export default function Board({
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
 }: Props) {
+  const { theme } = useFluxTheme();
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
     () => ({ ...DEFAULT_BOARD_FILTER }),
@@ -140,7 +142,11 @@ export default function Board({
   return (
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="flex shrink-0 flex-col gap-2 border-b border-gray-800 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
+        <div
+          className={`flex shrink-0 flex-col gap-2 border-b px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 ${
+            theme === 'light' ? 'border-flux-border/10' : 'border-gray-800'
+          }`}
+        >
           <BoardFilterBar
             filter={boardFilter}
             onFilterChange={setBoardFilter}
@@ -151,18 +157,30 @@ export default function Board({
             <button
               type="button"
               onClick={onTogglePlanPanel}
-              className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
-                planPanelOpen
-                  ? 'border-gray-700 bg-gray-800 text-gray-200'
-                  : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
-              }`}
+              className={
+                theme === 'light'
+                  ? `rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                      planPanelOpen
+                        ? 'border-flux-border/15 bg-flux-hover/10 text-flux-fg-muted'
+                        : 'border-flux-border/12 text-flux-fg-subtle hover:border-flux-border/20 hover:text-flux-fg-muted'
+                    }`
+                  : `rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                      planPanelOpen
+                        ? 'border-gray-700 bg-gray-800 text-gray-200'
+                        : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
+                    }`
+              }
             >
               Plan
             </button>
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
+              className={
+                theme === 'light'
+                  ? 'rounded-md border border-flux-border/12 px-3 py-1.5 text-xs text-flux-fg-subtle transition-colors hover:border-flux-border/20 hover:text-flux-fg-muted'
+                  : 'rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300'
+              }
             >
               + New task
             </button>
@@ -170,14 +188,14 @@ export default function Board({
         </div>
         {noMatches ? (
           <div
-            className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"
+            className="shrink-0 border-b border-flux-warning/20 bg-flux-warning/10 px-4 py-2 text-center text-[12px] text-flux-warning"
             role="status"
           >
             No tasks match these filters.{' '}
             <button
               type="button"
               onClick={() => setBoardFilter({ ...DEFAULT_BOARD_FILTER })}
-              className="font-medium text-amber-100/95 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-200/60"
+              className="font-medium text-flux-warning underline decoration-flux-warning/40 underline-offset-2 hover:decoration-flux-warning/70"
             >
               Clear filters
             </button>

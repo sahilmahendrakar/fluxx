@@ -1,4 +1,5 @@
 import type { Session, Task } from '../types';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 
 export interface SessionTabMeta {
   session: Session;
@@ -46,12 +47,19 @@ export function TabBar({
   onClosePlanningTab,
   onCloseSettingsTab,
 }: TabBarProps) {
+  const { theme } = useFluxTheme();
+  const isLight = theme === 'light';
+
   const tabClass = (active: boolean) =>
     [
       'group flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[13px] transition-colors',
       active
-        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-        : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200',
+        ? isLight
+          ? 'bg-flux-selected/10 text-flux-fg shadow-[inset_0_0_0_1px_rgb(var(--flux-border)/0.1)]'
+          : 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : isLight
+          ? 'text-flux-fg-subtle hover:bg-flux-hover/4 hover:text-flux-fg-muted'
+          : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200',
     ].join(' ');
 
   return (
@@ -79,7 +87,11 @@ export function TabBar({
               e.stopPropagation();
               onCloseSettingsTab();
             }}
-            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+            className={`ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-60 transition hover:opacity-100 ${
+              isLight
+                ? 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg'
+                : 'text-zinc-600 hover:bg-white/[0.08] hover:text-zinc-200'
+            }`}
           >
             <span className="text-[13px] leading-none" aria-hidden>
               ×
@@ -88,7 +100,10 @@ export function TabBar({
         </div>
       ) : null}
       {openSessions.length > 0 ? (
-        <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
+        <div
+          className={`mx-1 h-4 w-px shrink-0 self-center ${isLight ? 'bg-flux-border/12' : 'bg-white/[0.06]'}`}
+          aria-hidden
+        />
       ) : null}
       {openSessions.map(({ session, title }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
@@ -103,7 +118,7 @@ export function TabBar({
               <span
                 className={[
                   'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  running ? 'bg-emerald-400' : 'bg-zinc-600',
+                  running ? 'bg-emerald-400' : isLight ? 'bg-flux-fg-subtle' : 'bg-zinc-600',
                 ].join(' ')}
                 aria-hidden
               />
@@ -116,7 +131,11 @@ export function TabBar({
                 e.stopPropagation();
                 onCloseSessionTab(session.id);
               }}
-              className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+              className={`ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-60 transition hover:opacity-100 ${
+                isLight
+                  ? 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg'
+                  : 'text-zinc-600 hover:bg-white/[0.08] hover:text-zinc-200'
+              }`}
             >
               <span className="text-[13px] leading-none" aria-hidden>
                 ×
@@ -126,7 +145,10 @@ export function TabBar({
         );
       })}
       {openPlanningTabs.length > 0 ? (
-        <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
+        <div
+          className={`mx-1 h-4 w-px shrink-0 self-center ${isLight ? 'bg-flux-border/12' : 'bg-white/[0.06]'}`}
+          aria-hidden
+        />
       ) : null}
       {openPlanningTabs.map(({ sessionId, title, running }) => {
         const tabId = `${PLAN_TAB_PREFIX}${sessionId}`;
@@ -141,7 +163,7 @@ export function TabBar({
               <span
                 className={[
                   'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  running ? 'bg-sky-400' : 'bg-zinc-600',
+                  running ? 'bg-sky-400' : isLight ? 'bg-flux-fg-subtle' : 'bg-zinc-600',
                 ].join(' ')}
                 aria-hidden
               />
@@ -154,7 +176,11 @@ export function TabBar({
                 e.stopPropagation();
                 onClosePlanningTab(sessionId);
               }}
-              className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+              className={`ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-60 transition hover:opacity-100 ${
+                isLight
+                  ? 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg'
+                  : 'text-zinc-600 hover:bg-white/[0.08] hover:text-zinc-200'
+              }`}
             >
               <span className="text-[13px] leading-none" aria-hidden>
                 ×

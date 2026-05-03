@@ -12,16 +12,16 @@ import { normalizeTaskLabels } from '../taskLabels';
 
 /** Match AgentModelPicker trigger + shadcn-style combobox. */
 const comboboxSurfaceClass =
-  'flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md border border-white/[0.1] bg-[#09090b] px-2 py-1 text-[12px] outline-none ring-0 transition hover:border-white/[0.14] focus-within:border-white/[0.18] focus-within:ring-1 focus-within:ring-white/[0.12]';
+  'flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md border border-flux-border/12 bg-flux-surface px-2 py-1 text-[12px] outline-none ring-0 transition hover:border-flux-border/20 focus-within:border-flux-border/25 focus-within:ring-1 focus-within:ring-flux-ring/20';
 
 const comboboxSurfaceClassCompact =
   'min-h-8 gap-0.5 px-1.5 py-0.5 text-[11px]';
 
 const listboxPanelClass =
-  'absolute left-0 right-0 z-[200] mt-1 max-h-[min(14rem,40vh)] overflow-y-auto overflow-x-hidden rounded-md border border-white/[0.1] bg-[#121214] py-1 shadow-xl shadow-black/50';
+  'absolute left-0 right-0 z-[200] mt-1 max-h-[min(14rem,40vh)] overflow-y-auto overflow-x-hidden rounded-md border border-flux-border/12 bg-flux-elevated py-1 shadow-xl shadow-black/25';
 
 const listRowClass =
-  'flex w-full items-center rounded-sm px-2.5 py-1.5 text-left text-[12px] text-zinc-200 outline-none transition hover:bg-white/[0.06]';
+  'flex w-full items-center rounded-sm px-2.5 py-1.5 text-left text-[12px] text-flux-fg-muted outline-none transition hover:bg-flux-hover/8';
 
 const MAX_SUGGESTIONS = 14;
 
@@ -207,8 +207,8 @@ export function TaskLabelsField({
   const chipText = compact ? 'text-[10px]' : 'text-xs';
   const inputText = compact ? 'text-[11px]' : 'text-[12px]';
   const chipClass = compact
-    ? `group/chip inline-flex max-w-full items-center gap-0.5 rounded-md border border-white/[0.08] bg-white/[0.04] py-0.5 pl-1.5 pr-0.5 ${chipText} font-medium text-zinc-200/95 transition hover:bg-white/[0.07]`
-    : `group/chip inline-flex max-w-full items-center gap-0.5 rounded-md border border-white/[0.08] bg-white/[0.04] pl-1.5 pr-0.5 ${chipText} font-medium text-zinc-200 transition hover:bg-white/[0.06]`;
+    ? `group/chip inline-flex max-w-full items-center gap-0.5 rounded-md border border-flux-border/12 bg-flux-hover/6 py-0.5 pl-1.5 pr-0.5 ${chipText} font-medium text-flux-fg-muted transition hover:bg-flux-hover/10`
+    : `group/chip inline-flex max-w-full items-center gap-0.5 rounded-md border border-flux-border/12 bg-flux-hover/6 pl-1.5 pr-0.5 ${chipText} font-medium text-flux-fg-muted transition hover:bg-flux-hover/8`;
   const chevronClass = compact
     ? 'h-3 w-3'
     : 'h-3.5 w-3.5';
@@ -225,10 +225,10 @@ export function TaskLabelsField({
         htmlFor={`${idPrefix}-combo`}
         className={
           compact
-            ? 'mb-1.5 block text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500'
+            ? 'mb-1.5 block text-[10px] font-medium uppercase tracking-[0.1em] text-flux-fg-subtle'
             : isPanel
-              ? 'mb-1.5 block text-xs font-normal text-zinc-500'
-              : 'mb-2 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500'
+              ? 'mb-1.5 block text-xs font-normal text-flux-fg-subtle'
+              : 'mb-2 block text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle'
         }
       >
         Labels
@@ -242,7 +242,7 @@ export function TaskLabelsField({
             </span>
             <button
               type="button"
-              className={`flex ${removeBtnClass} shrink-0 items-center justify-center rounded-sm text-zinc-500/90 transition hover:bg-white/[0.08] hover:text-zinc-200`}
+              className={`flex ${removeBtnClass} shrink-0 items-center justify-center rounded-sm text-flux-fg-subtle transition hover:bg-flux-hover/10 hover:text-flux-fg`}
               aria-label={`Remove ${lb}`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => removeLabel(lb)}
@@ -277,12 +277,12 @@ export function TaskLabelsField({
             onKeyDown={onKeyDown}
             onFocus={() => setOpen(true)}
             placeholder={labels.length ? 'Add…' : 'Add labels…'}
-            className={`min-w-0 flex-1 border-none bg-transparent ${inputText} leading-normal text-zinc-100 outline-none placeholder:text-zinc-500`}
+            className={`min-w-0 flex-1 border-none bg-transparent ${inputText} leading-normal text-flux-fg outline-none placeholder:text-flux-fg-subtle`}
           />
           <button
             type="button"
             tabIndex={-1}
-            className="flex shrink-0 items-center justify-center rounded-sm p-0.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-300"
+            className="flex shrink-0 items-center justify-center rounded-sm p-0.5 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg-muted"
             aria-label="Toggle label suggestions"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
@@ -291,7 +291,7 @@ export function TaskLabelsField({
             }}
           >
             <ChevronDown
-              className={`shrink-0 text-zinc-500 ${chevronClass} ${open ? 'rotate-180' : ''} transition-transform`}
+              className={`shrink-0 text-flux-fg-subtle ${chevronClass} ${open ? 'rotate-180' : ''} transition-transform`}
               strokeWidth={1.75}
             />
           </button>
@@ -317,16 +317,16 @@ export function TaskLabelsField({
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => applyRow(row)}
                   className={`${listRowClass} ${
-                    active ? 'bg-white/[0.06]' : ''
+                    active ? 'bg-flux-hover/8' : ''
                   } `}
                 >
-                  <span className="shrink-0 pr-1.5 text-zinc-500" aria-hidden>
+                  <span className="shrink-0 pr-1.5 text-flux-fg-subtle" aria-hidden>
                     +
                   </span>
                   <span className="min-w-0 text-left">
-                    <span className="text-zinc-500">Create &ldquo;</span>
-                    <span className="text-zinc-200">{row.value}</span>
-                    <span className="text-zinc-500">&rdquo;</span>
+                    <span className="text-flux-fg-subtle">Create &ldquo;</span>
+                    <span className="text-flux-fg-muted">{row.value}</span>
+                    <span className="text-flux-fg-subtle">&rdquo;</span>
                   </span>
                 </button>
               );
@@ -341,10 +341,10 @@ export function TaskLabelsField({
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => applyRow(row)}
                 className={`${listRowClass} ${
-                  active ? 'bg-white/[0.06]' : ''
+                  active ? 'bg-flux-hover/8' : ''
                 } `}
               >
-                <span className="min-w-0 flex-1 truncate font-medium text-zinc-200">
+                <span className="min-w-0 flex-1 truncate font-medium text-flux-fg-muted">
                   {row.label}
                 </span>
               </button>
@@ -354,7 +354,7 @@ export function TaskLabelsField({
       ) : null}
 
       {!compact && variant !== 'panel' ? (
-        <p className="mt-1.5 text-[11px] text-zinc-600">
+        <p className="mt-1.5 text-[11px] text-flux-fg-subtle">
           Pick from the list or type a new name.
         </p>
       ) : null}

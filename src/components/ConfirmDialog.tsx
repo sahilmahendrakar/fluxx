@@ -32,7 +32,7 @@ export default function ConfirmDialog({
 
   const confirmClass = destructive
     ? 'rounded-md border border-red-500/30 bg-red-500/[0.12] px-3 py-1.5 text-[13px] font-medium text-red-100 shadow-sm transition hover:bg-red-500/[0.18]'
-    : 'rounded-md border border-white/[0.12] bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-950 shadow-sm transition hover:bg-zinc-100';
+    : 'rounded-md border border-flux-border/15 bg-flux-fg px-3 py-1.5 text-[13px] font-medium text-flux-canvas shadow-sm transition hover:bg-flux-fg/90';
 
   return (
     <div
@@ -40,28 +40,28 @@ export default function ConfirmDialog({
       onMouseDown={onCancel}
     >
       <div
-        className="w-full max-w-[420px] rounded-lg border border-white/[0.08] bg-[#101012] p-5 shadow-2xl shadow-black/40"
+        className="w-full max-w-[420px] rounded-lg border border-flux-border/12 bg-flux-elevated p-5 shadow-2xl shadow-black/25"
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <h2 className="text-[15px] font-medium tracking-tight text-zinc-100">{title}</h2>
-        <p className="mt-2 text-[13px] leading-relaxed text-zinc-400">{description}</p>
+        <h2 className="text-[15px] font-medium tracking-tight text-flux-fg">{title}</h2>
+        <p className="mt-2 text-[13px] leading-relaxed text-flux-fg-muted">{description}</p>
         {bullets && bullets.length > 0 ? (
-          <ul className="mt-3 space-y-1 text-[13px] text-zinc-300">
+          <ul className="mt-3 space-y-1 text-[13px] text-flux-fg-muted">
             {bullets.map((b) => (
               <li key={b} className="flex items-start gap-2">
-                <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-zinc-500" aria-hidden />
+                <span className="mt-[7px] inline-block h-1 w-1 shrink-0 rounded-full bg-flux-fg-subtle" aria-hidden />
                 <span>{b}</span>
               </li>
             ))}
           </ul>
         ) : null}
-        <div className="mt-6 flex justify-end gap-2 border-t border-white/[0.06] pt-4">
+        <div className="mt-6 flex justify-end gap-2 border-t border-flux-border/10 pt-4">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md px-3 py-1.5 text-[13px] text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
+            className="rounded-md px-3 py-1.5 text-[13px] text-flux-fg-subtle transition hover:bg-flux-hover/6 hover:text-flux-fg"
           >
             {cancelLabel}
           </button>

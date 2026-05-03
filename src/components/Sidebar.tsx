@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 import { ThemeModeCompactToggle } from './ThemeModeCompactToggle';
 
 export type PlanningDocFile = { relativePath: string };
@@ -165,10 +166,7 @@ function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
       viewBox="0 0 10 10"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={[
-        'shrink-0 text-flux-fg-subtle transition-transform',
-        expanded ? 'rotate-90' : '',
-      ].join(' ')}
+      className={['shrink-0 transition-transform', expanded ? 'rotate-90' : ''].join(' ')}
       aria-hidden
     >
       <path
@@ -242,49 +240,85 @@ export function Sidebar({
   onCollapse,
 }: SidebarProps) {
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
+  const { theme } = useFluxTheme();
+  const isLight = theme === 'light';
 
   const navItemClass = (active: boolean) =>
     [
       'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
       active
-        ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
-        : 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg',
+        ? isLight
+          ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
+          : 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : isLight
+          ? 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg'
+          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
 
   const docsMainNavClass = (active: boolean) =>
     [
       'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
       active
-        ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
-        : 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg',
+        ? isLight
+          ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
+          : 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : isLight
+          ? 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg'
+          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
 
   const fileRowClass = (active: boolean) =>
     [
       'w-full truncate rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
       active
-        ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
-        : 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg',
+        ? isLight
+          ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
+          : 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+        : isLight
+          ? 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg'
+          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
     ].join(' ');
 
   const planNavActive =
     !settingsRouteActive && (activeTabId === 'plan' || activeTabId.startsWith('plan:'));
 
   return (
-    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-flux-border/10 bg-flux-sidebar text-flux-fg">
+    <aside
+      className={
+        isLight
+          ? 'flex h-full w-[220px] shrink-0 flex-col border-r border-flux-border/10 bg-flux-sidebar text-flux-fg'
+          : 'flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100'
+      }
+    >
       <div className="px-3 pb-3 pt-3.5">
         <div className="flex items-center justify-between gap-1">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle">
+          <div
+            className={
+              isLight
+                ? 'text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle'
+                : 'text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600'
+            }
+          >
             Flux
           </div>
           <div className="-mr-1 flex shrink-0 items-center gap-0.5">
-            <ThemeModeCompactToggle className="rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg" />
+            <ThemeModeCompactToggle
+              className={
+                isLight
+                  ? 'rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg'
+                  : 'rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200'
+              }
+            />
             <button
               type="button"
               onClick={onCollapse}
               aria-label="Collapse sidebar"
               title="Collapse sidebar"
-              className="rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg"
+              className={
+                isLight
+                  ? 'rounded p-1 text-flux-fg-subtle transition hover:bg-flux-hover/8 hover:text-flux-fg'
+                  : '-mr-1 shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200'
+              }
             >
               <SidebarCollapseIcon />
             </button>
@@ -292,7 +326,11 @@ export function Sidebar({
         </div>
         <div className="mt-1 flex items-center gap-1.5">
           <span
-            className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-flux-fg"
+            className={
+              isLight
+                ? 'min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-flux-fg'
+                : 'min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-zinc-100'
+            }
             title={project.rootPath}
           >
             {project.name}
@@ -306,17 +344,27 @@ export function Sidebar({
             className={[
               '-mr-2 shrink-0 rounded p-1 transition',
               settingsRouteActive
-                ? 'bg-flux-selected/10 text-flux-fg-muted'
-                : 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg',
+                ? isLight
+                  ? 'bg-flux-selected/10 text-flux-fg-muted'
+                  : 'bg-white/[0.06] text-zinc-200'
+                : isLight
+                  ? 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg'
+                  : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200',
             ].join(' ')}
           >
             <SettingsIcon className="opacity-80" />
           </button>
         </div>
       </div>
-      <div className="mx-3 border-t border-flux-border/10" />
+      <div className={isLight ? 'mx-3 border-t border-flux-border/10' : 'mx-3 border-t border-white/[0.06]'} />
       <div className="flex min-h-0 flex-1 flex-col px-2 py-3">
-        <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle">
+        <div
+          className={
+            isLight
+              ? 'px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle'
+              : 'px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600'
+          }
+        >
           Workspace
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
@@ -348,8 +396,12 @@ export function Sidebar({
                   className={[
                     'flex w-7 shrink-0 items-center justify-center rounded-md transition-colors',
                     docsSidebarExpanded
-                      ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
-                      : 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg-muted',
+                      ? isLight
+                        ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
+                        : 'bg-white/[0.06] text-zinc-200 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                      : isLight
+                        ? 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg-muted'
+                        : 'text-zinc-600 hover:bg-white/[0.04] hover:text-zinc-300',
                   ].join(' ')}
                   aria-expanded={docsSidebarExpanded}
                   aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
@@ -363,13 +415,41 @@ export function Sidebar({
                 </button>
               </div>
               {docsSidebarExpanded ? (
-                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-flux-border/10 pl-2 pt-0.5">
+                <div
+                  className={
+                    isLight
+                      ? 'ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-flux-border/10 pl-2 pt-0.5'
+                      : 'ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5'
+                  }
+                >
                   {planningDocsListError ? (
-                    <p className="py-1 text-[10px] leading-snug text-flux-danger">{planningDocsListError}</p>
+                    <p
+                      className={
+                        isLight
+                          ? 'py-1 text-[10px] leading-snug text-flux-danger'
+                          : 'py-1 text-[10px] leading-snug text-red-400/90'
+                      }
+                    >
+                      {planningDocsListError}
+                    </p>
                   ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] text-flux-fg-subtle">Loading…</p>
+                    <p
+                      className={
+                        isLight ? 'py-1 text-[10px] text-flux-fg-subtle' : 'py-1 text-[10px] text-zinc-600'
+                      }
+                    >
+                      Loading…
+                    </p>
                   ) : planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] leading-snug text-flux-fg-subtle">No .md files yet.</p>
+                    <p
+                      className={
+                        isLight
+                          ? 'py-1 text-[10px] leading-snug text-flux-fg-subtle'
+                          : 'py-1 text-[10px] leading-snug text-zinc-600'
+                      }
+                    >
+                      No .md files yet.
+                    </p>
                   ) : (
                     <ul className="flex flex-col gap-0.5 pb-1">
                       {planningDocFiles.map((f) => (
@@ -399,7 +479,11 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => setWorkspacesExpanded((v) => !v)}
-              className="flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle transition hover:text-flux-fg-muted"
+              className={
+                isLight
+                  ? 'flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle transition hover:text-flux-fg-muted'
+                  : 'flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600 transition hover:text-zinc-400'
+              }
               aria-expanded={workspacesExpanded}
             >
               <ChevronWorkspacesIcon expanded={workspacesExpanded} />
@@ -408,7 +492,15 @@ export function Sidebar({
             {workspacesExpanded ? (
               <div className="flex flex-col gap-0.5 overflow-y-auto">
                 {sessions.length === 0 ? (
-                  <p className="px-2 py-1 text-[11px] italic text-flux-fg-subtle">No open sessions</p>
+                  <p
+                    className={
+                      isLight
+                        ? 'px-2 py-1 text-[11px] italic text-flux-fg-subtle'
+                        : 'px-2 py-1 text-[11px] italic text-zinc-600'
+                    }
+                  >
+                    No open sessions
+                  </p>
                 ) : (
                   sessions.map(({ session, title }) => {
                     const active = activeTabId === session.id && !settingsRouteActive;
@@ -419,8 +511,12 @@ export function Sidebar({
                         className={[
                           'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
                           active
-                            ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
-                            : 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg',
+                            ? isLight
+                              ? 'bg-flux-selected/10 text-flux-fg ring-1 ring-inset ring-flux-border/12'
+                              : 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                            : isLight
+                              ? 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg'
+                              : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
                         ].join(' ')}
                       >
                         <button
@@ -432,7 +528,13 @@ export function Sidebar({
                           <span
                             className={[
                               'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                              running ? 'bg-flux-success' : 'bg-flux-fg-subtle',
+                              running
+                                ? isLight
+                                  ? 'bg-flux-success'
+                                  : 'bg-emerald-400'
+                                : isLight
+                                  ? 'bg-flux-fg-subtle'
+                                  : 'bg-zinc-600',
                             ].join(' ')}
                             aria-hidden
                           />
@@ -447,7 +549,11 @@ export function Sidebar({
                             }}
                             aria-label={`Archive ${title}`}
                             title="Archive — kill agent and terminals (keep worktree)"
-                            className="flex h-5 w-5 items-center justify-center rounded text-flux-fg-subtle transition hover:bg-flux-hover/10 hover:text-flux-fg"
+                            className={
+                              isLight
+                                ? 'flex h-5 w-5 items-center justify-center rounded text-flux-fg-subtle transition hover:bg-flux-hover/10 hover:text-flux-fg'
+                                : 'flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200'
+                            }
                           >
                             <ArchiveIcon />
                           </button>
@@ -459,7 +565,11 @@ export function Sidebar({
                             }}
                             aria-label={`Delete workspace ${title}`}
                             title="Delete workspace — kill agent, terminals, and remove worktree"
-                            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
+                            className={
+                              isLight
+                                ? 'flex h-5 w-5 items-center justify-center rounded text-flux-fg-subtle transition hover:bg-red-500/[0.18] hover:text-red-300'
+                                : 'flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300'
+                            }
                           >
                             <TrashIcon />
                           </button>
@@ -474,11 +584,15 @@ export function Sidebar({
 
           <div className="min-h-0 flex-1" aria-hidden />
         </div>
-        <div className="border-t border-flux-border/10 pt-2">
+        <div className={isLight ? 'border-t border-flux-border/10 pt-2' : 'border-t border-white/[0.06] pt-2'}>
           <button
             type="button"
             onClick={onClearProject}
-            className="w-full rounded-md px-2 py-1.5 text-left text-[12px] text-flux-fg-subtle transition-colors hover:bg-flux-hover/4 hover:text-flux-fg-muted"
+            className={
+              isLight
+                ? 'w-full rounded-md px-2 py-1.5 text-left text-[12px] text-flux-fg-subtle transition-colors hover:bg-flux-hover/4 hover:text-flux-fg-muted'
+                : 'w-full rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-600 transition-colors hover:bg-white/[0.03] hover:text-zinc-400'
+            }
           >
             Close project
           </button>

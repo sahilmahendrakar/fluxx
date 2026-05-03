@@ -102,25 +102,23 @@ export default function TaskSourceBranchPicker({
     normalizedInput.length > 0 && !gitBranchShortNameLooksValid(branchInput);
 
   const inputClass =
-    'w-full rounded-md border bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:ring-1';
+    'w-full rounded-md border bg-flux-surface px-3 py-2 text-[13px] text-flux-fg placeholder:text-flux-fg-subtle outline-none transition focus:ring-1';
 
   const borderTone = invalidName
     ? 'border-red-500/35 focus:border-red-400/45 focus:ring-red-400/25'
-    : 'border-white/[0.08] focus:border-white/[0.14] focus:ring-white/[0.12]';
-
-  const muted = variant === 'panel';
+    : 'border-flux-border/12 focus:border-flux-border/20 focus:ring-flux-ring/20';
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" data-task-source-branch-picker={variant}>
       <label
         htmlFor={`${idPrefix}-branch-input`}
-        className={`block text-[11px] font-medium uppercase tracking-[0.12em] ${muted ? 'text-zinc-500' : 'text-zinc-600'}`}
+        className="block text-[11px] font-medium uppercase tracking-[0.12em] text-flux-fg-subtle"
       >
         Source branch
       </label>
 
       {discoveryLoading ? (
-        <p className="text-[12px] text-zinc-500" role="status">
+        <p className="text-[12px] text-flux-fg-subtle" role="status">
           Loading branches…
         </p>
       ) : null}
@@ -133,8 +131,8 @@ export default function TaskSourceBranchPicker({
       ) : null}
 
       {discovery && emptyRepo && !discoveryLoading ? (
-        <p className="text-[12px] text-zinc-500" role="status">
-          No local or <code className="text-zinc-400">origin/*</code> branches were found. You can
+        <p className="text-[12px] text-flux-fg-subtle" role="status">
+          No local or <code className="text-flux-fg-muted">origin/*</code> branches were found. You can
           still type a branch name; Flux can create it from {discovery.defaultBranchShort} when the
           task starts.
         </p>
@@ -168,7 +166,7 @@ export default function TaskSourceBranchPicker({
               e.preventDefault();
               setListOpen((o) => !o);
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-40"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg-muted disabled:opacity-40"
             aria-label="Show branch suggestions"
           >
             <ChevronDown className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -179,14 +177,14 @@ export default function TaskSourceBranchPicker({
           <ul
             id={listboxId}
             role="listbox"
-            className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-white/[0.08] bg-[#101012] py-1 shadow-xl shadow-black/40"
+            className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-flux-border/12 bg-flux-elevated py-1 shadow-xl shadow-black/25"
           >
             {suggestions.map((name) => (
               <li key={name} role="presentation">
                 <button
                   type="button"
                   role="option"
-                  className="flex w-full px-3 py-2 text-left text-[13px] text-zinc-200 hover:bg-white/[0.05]"
+                  className="flex w-full px-3 py-2 text-left text-[13px] text-flux-fg-muted hover:bg-flux-hover/8"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     onBranchInputChange(name);
@@ -195,7 +193,7 @@ export default function TaskSourceBranchPicker({
                 >
                   {name}
                   {discovery && name === discovery.defaultBranchShort ? (
-                    <span className="ml-auto pl-2 text-[11px] text-zinc-500">default</span>
+                    <span className="ml-auto pl-2 text-[11px] text-flux-fg-subtle">default</span>
                   ) : null}
                 </button>
               </li>
@@ -217,12 +215,12 @@ export default function TaskSourceBranchPicker({
                 {describePendingBranchCreation(normalizedInput, discovery.defaultBranchShort)}
               </p>
             ) : presence ? (
-              <p className="text-[11px] text-zinc-500">{presenceLabel(presence)}</p>
+              <p className="text-[11px] text-flux-fg-subtle">{presenceLabel(presence)}</p>
             ) : null}
           </>
         ) : null}
         {!invalidName && discovery && !normalizedInput ? (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-flux-fg-subtle">
             Uses project default ({discovery.defaultBranchShort}) when left blank.
           </p>
         ) : null}

@@ -37,7 +37,8 @@ import {
 } from '../taskDependencies';
 import { projectLabelCatalog } from '../taskLabels';
 import AgentModelPicker from './AgentModelPicker';
-import { AGENT_CHIP_STYLES } from './AgentBadge';
+import { agentChipStyles } from './AgentBadge';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 import {
   getSessionAttachShared,
   invalidateSessionAttachCache,
@@ -231,6 +232,8 @@ export default function TaskDetailPanel({
   layout = 'board',
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
+  const { theme } = useFluxTheme();
+  const nativeFormColorScheme: CSSProperties['colorScheme'] = theme;
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
@@ -1062,8 +1065,8 @@ export default function TaskDetailPanel({
                         }
                         onUpdate(task.id, patch);
                       }}
-                      className={`max-w-full shrink-0 ${propertySelectClass} ${AGENT_CHIP_STYLES[task.agent]}`}
-                      style={{ colorScheme: 'dark' } as CSSProperties}
+                      className={`max-w-full shrink-0 ${propertySelectClass} ${agentChipStyles(task.agent, theme)}`}
+                      style={{ colorScheme: nativeFormColorScheme }}
                       aria-label="Agent provider"
                     >
                       {AGENTS.map((a) => (
@@ -1175,7 +1178,7 @@ export default function TaskDetailPanel({
                     value={task.status}
                     onChange={(e) => onUpdate(task.id, { status: e.target.value as TaskStatus })}
                     className={propertySelectClass}
-                    style={{ colorScheme: 'dark' } as CSSProperties}
+                    style={{ colorScheme: nativeFormColorScheme }}
                     aria-label="Change status"
                   >
                     {COLUMNS.map((c) => (

@@ -2616,13 +2616,13 @@ export default function App() {
         {cleanupError ? (
           <div
             role="alert"
-            className="flex shrink-0 items-start gap-2 border-b border-amber-500/20 bg-amber-500/[0.08] px-4 py-2 text-[13px] text-amber-100/95"
+            className="flex shrink-0 items-start gap-2 border-b border-flux-warning/25 bg-flux-warning/10 px-4 py-2 text-[13px] text-flux-warning"
           >
             <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{cleanupError}</p>
             <button
               type="button"
               onClick={() => setCleanupError(null)}
-              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-amber-200/90 hover:bg-amber-500/15"
+              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-flux-warning hover:bg-flux-warning/15"
             >
               Dismiss
             </button>
@@ -2631,13 +2631,13 @@ export default function App() {
         {taskPrError ? (
           <div
             role="alert"
-            className="flex shrink-0 items-start gap-2 border-b border-rose-500/20 bg-rose-500/[0.08] px-4 py-2 text-[13px] text-rose-100/95"
+            className="flex shrink-0 items-start gap-2 border-b border-flux-danger/25 bg-flux-danger/10 px-4 py-2 text-[13px] text-flux-danger"
           >
             <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{taskPrError}</p>
             <button
               type="button"
               onClick={() => setTaskPrError(null)}
-              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-rose-200/90 hover:bg-rose-500/15"
+              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-flux-danger hover:bg-flux-danger/15"
             >
               Dismiss
             </button>
@@ -2940,7 +2940,7 @@ export default function App() {
                           aria-orientation="vertical"
                           aria-label="Resize planning panel"
                           title="Drag to resize. Double-click to reset."
-                          className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.1] before:content-[''] hover:before:bg-white/[0.22] focus-visible:ring-1 focus-visible:ring-white/25"
+                          className="absolute bottom-0 left-0 top-0 z-10 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-flux-border/15 before:content-[''] hover:before:bg-flux-border/30 focus-visible:ring-1 focus-visible:ring-flux-ring/30"
                           onPointerDown={handlePlanningResizePointerDown}
                           onDoubleClick={handlePlanningResizeDoubleClick}
                         />
@@ -2985,11 +2985,11 @@ export default function App() {
             </div>
             {settingsRouteActive ? (
               <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-flux-canvas">
-                <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2">
+                <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-flux-border/10 px-3 py-2">
                   <button
                     type="button"
                     onClick={() => replaceProjectWorkspaceRoute()}
-                    className="rounded-md px-2 py-1 text-[12px] font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-100"
+                    className="rounded-md px-2 py-1 text-[12px] font-medium text-flux-fg-muted transition hover:bg-flux-hover/8 hover:text-flux-fg"
                   >
                     ← Workspace
                   </button>

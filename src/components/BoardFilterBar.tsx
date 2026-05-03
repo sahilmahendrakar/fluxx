@@ -8,6 +8,7 @@ import {
   DEFAULT_BOARD_FILTER,
   UNLABELED_VALUE,
 } from '../boardFilter';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 
 const agentLabel = (id: Agent) => AGENTS.find((a) => a.id === id)?.label ?? id;
 
@@ -31,13 +32,13 @@ function FilterToken({
     >
       <span className="min-w-0 truncate">
         <span className="text-sky-400/80">{k}</span>
-        <span className="text-zinc-500"> = </span>
-        <span className="text-zinc-200">{v}</span>
+        <span className="text-flux-fg-subtle"> = </span>
+        <span className="text-flux-fg">{v}</span>
       </span>
       <button
         type="button"
         onClick={onRemove}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200"
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-flux-fg-subtle transition hover:bg-flux-hover/10 hover:text-flux-fg"
         aria-label={`Remove ${k} filter`}
       >
         <X className="h-3 w-3" strokeWidth={2.5} />
@@ -61,6 +62,8 @@ export function BoardFilterBar({
   labelOptions,
   doneHiddenCount,
 }: Props) {
+  const { theme } = useFluxTheme();
+  const isLight = theme === 'light';
   const inputId = useId();
   const [menuOpen, setMenuOpen] = useState(false);
   const [panel, setPanel] = useState<AddPanel>('main');
@@ -70,6 +73,16 @@ export function BoardFilterBar({
   const set = (patch: Partial<BoardFilterState>) => {
     onFilterChange({ ...filter, ...patch });
   };
+
+  const menuRow = isLight
+    ? 'text-[12px] text-flux-fg-muted hover:bg-flux-hover/10'
+    : 'text-[12px] text-zinc-200 hover:bg-zinc-800/70';
+  const menuBack = isLight
+    ? 'border-b border-flux-border/10 text-[11px] text-flux-fg-subtle hover:bg-flux-hover/6'
+    : 'border-b border-zinc-800/80 text-[11px] text-zinc-500 hover:bg-zinc-800/50';
+  const menuHeader = isLight
+    ? 'text-[10px] font-medium uppercase tracking-wide text-flux-fg-subtle'
+    : 'text-[10px] font-medium uppercase tracking-wide text-zinc-500';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -91,12 +104,16 @@ export function BoardFilterBar({
   return (
     <div ref={wrapRef} className="relative min-w-0 flex-1">
       <div
-        className="flex min-h-[2.25rem] w-full min-w-0 items-center gap-1.5 rounded-md border border-zinc-800/90 bg-zinc-950/60 py-1 pl-2 pr-1 shadow-sm shadow-black/20"
+        className={
+          isLight
+            ? 'flex min-h-[2.25rem] w-full min-w-0 items-center gap-1.5 rounded-md border border-flux-border/12 bg-flux-surface/80 py-1 pl-2 pr-1 shadow-sm shadow-black/10'
+            : 'flex min-h-[2.25rem] w-full min-w-0 items-center gap-1.5 rounded-md border border-zinc-800/90 bg-zinc-950/60 py-1 pl-2 pr-1 shadow-sm shadow-black/20'
+        }
         role="search"
       >
         <div className="flex min-h-[1.5rem] min-w-0 flex-1 items-center gap-1.5">
           <Search
-            className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+            className={`h-3.5 w-3.5 shrink-0 ${isLight ? 'text-flux-fg-subtle' : 'text-zinc-500'}`}
             strokeWidth={2}
             aria-hidden
           />
@@ -108,7 +125,11 @@ export function BoardFilterBar({
             placeholder="Filter by keyword…"
             autoComplete="off"
             spellCheck={false}
-            className="min-w-0 flex-1 border-0 bg-transparent py-0.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0"
+            className={`min-w-0 flex-1 border-0 bg-transparent py-0.5 text-[13px] focus:outline-none focus:ring-0 ${
+              isLight
+                ? 'text-flux-fg placeholder:text-flux-fg-subtle'
+                : 'text-zinc-200 placeholder:text-zinc-500'
+            }`}
           />
         </div>
         <div
@@ -162,7 +183,11 @@ export function BoardFilterBar({
             <button
               type="button"
               onClick={() => onFilterChange({ ...DEFAULT_BOARD_FILTER })}
-              className="rounded px-1.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:text-zinc-300"
+              className={`rounded px-1.5 py-1 text-[11px] font-medium transition ${
+                isLight
+                  ? 'text-flux-fg-subtle hover:text-flux-fg-muted'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               Clear
             </button>
@@ -171,7 +196,11 @@ export function BoardFilterBar({
             <button
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
-              className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition hover:bg-zinc-800/80 hover:text-zinc-300"
+              className={`flex h-7 w-7 items-center justify-center rounded transition ${
+                isLight
+                  ? 'text-flux-fg-subtle hover:bg-flux-hover/10 hover:text-flux-fg-muted'
+                  : 'text-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-300'
+              }`}
               title="Add filter"
               aria-expanded={menuOpen}
               aria-haspopup="listbox"
@@ -180,37 +209,41 @@ export function BoardFilterBar({
             </button>
             {menuOpen ? (
               <div
-                className="absolute right-0 top-full z-50 mt-1 w-56 max-h-72 origin-top-right overflow-hidden rounded-md border border-zinc-800 bg-[#0e0e11] py-1 shadow-lg shadow-black/50"
+                className={
+                  isLight
+                    ? 'absolute right-0 top-full z-50 mt-1 w-56 max-h-72 origin-top-right overflow-hidden rounded-md border border-flux-border/12 bg-flux-elevated py-1 shadow-lg shadow-black/20'
+                    : 'absolute right-0 top-full z-50 mt-1 w-56 max-h-72 origin-top-right overflow-hidden rounded-md border border-zinc-800 bg-[#0e0e11] py-1 shadow-lg shadow-black/50'
+                }
                 role="listbox"
               >
                 {panel === 'main' ? (
                   <>
-                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    <p className={`px-2.5 pb-1 pt-1.5 ${menuHeader}`}>
                       Add filter
                     </p>
                     <button
                       type="button"
                       onClick={() => setPanel('agent')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left ${menuRow}`}
                     >
                       Agent
-                      <span className="text-zinc-500">›</span>
+                      <span className={isLight ? 'text-flux-fg-subtle' : 'text-zinc-500'}>›</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setPanel('label')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left ${menuRow}`}
                     >
                       Label
-                      <span className="text-zinc-500">›</span>
+                      <span className={isLight ? 'text-flux-fg-subtle' : 'text-zinc-500'}>›</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setPanel('status')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left ${menuRow}`}
                     >
                       Status
-                      <span className="text-zinc-500">›</span>
+                      <span className={isLight ? 'text-flux-fg-subtle' : 'text-zinc-500'}>›</span>
                     </button>
                     {filter.includeDescription ? (
                       <button
@@ -219,7 +252,7 @@ export function BoardFilterBar({
                           set({ includeDescription: false });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                       >
                         Title only (search)
                       </button>
@@ -231,7 +264,7 @@ export function BoardFilterBar({
                           set({ hideDone: true });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                       >
                         Hide done
                       </button>
@@ -243,7 +276,7 @@ export function BoardFilterBar({
                     <button
                       type="button"
                       onClick={() => setPanel('main')}
-                      className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
+                      className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left ${menuBack}`}
                     >
                       ‹ Back
                     </button>
@@ -255,7 +288,7 @@ export function BoardFilterBar({
                           set({ agent: a.id });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                       >
                         {a.label}
                       </button>
@@ -267,7 +300,7 @@ export function BoardFilterBar({
                     <button
                       type="button"
                       onClick={() => setPanel('main')}
-                      className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
+                      className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left ${menuBack}`}
                     >
                       ‹ Back
                     </button>
@@ -279,7 +312,7 @@ export function BoardFilterBar({
                           set({ status: col.id });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                       >
                         {col.label}
                       </button>
@@ -291,7 +324,7 @@ export function BoardFilterBar({
                     <button
                       type="button"
                       onClick={() => setPanel('main')}
-                      className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
+                      className={`flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left ${menuBack}`}
                     >
                       ‹ Back
                     </button>
@@ -302,7 +335,7 @@ export function BoardFilterBar({
                           set({ label: UNLABELED_VALUE });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                       >
                         Unlabeled
                       </button>
@@ -314,7 +347,7 @@ export function BoardFilterBar({
                             set({ label: lab });
                             setMenuOpen(false);
                           }}
-                          className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                          className={`w-full px-2.5 py-1.5 text-left ${menuRow}`}
                         >
                           {lab}
                         </button>

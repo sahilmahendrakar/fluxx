@@ -15,6 +15,8 @@ import {
   UserCircle2,
 } from 'lucide-react';
 import { Task } from '../types';
+import type { ThemeMode } from '../renderer/theme';
+import { useFluxTheme } from '../renderer/FluxThemeProvider';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
@@ -22,6 +24,98 @@ import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/proje
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
+
+const LABEL_CHIP_CLASS: Record<ThemeMode, { interactive: string; static: string }> = {
+  dark: {
+    interactive:
+      'max-w-full cursor-pointer truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-left text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10 transition hover:border-violet-400/35 hover:from-violet-500/18 hover:to-violet-600/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50',
+    static:
+      'max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10',
+  },
+  light: {
+    interactive:
+      'max-w-full cursor-pointer truncate rounded-full border border-violet-300/80 bg-violet-50 px-2 py-0.5 text-left text-[10px] font-medium text-violet-900 ring-1 ring-inset ring-violet-200/70 transition hover:border-violet-400 hover:bg-violet-100 hover:ring-violet-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/35',
+    static:
+      'max-w-full truncate rounded-full border border-violet-300/80 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-900 ring-1 ring-inset ring-violet-200/70',
+  },
+};
+
+const BRANCH_CHIP_CLASS: Record<ThemeMode, string> = {
+  dark: 'inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90',
+  light:
+    'inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-300/80 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-900',
+};
+
+const BRANCH_NEW_CLASS: Record<ThemeMode, string> = {
+  dark: 'shrink-0 text-[9px] font-sans uppercase tracking-wide text-sky-300/80',
+  light: 'shrink-0 text-[9px] font-sans uppercase tracking-wide text-sky-800/90',
+};
+
+const STATUS_DOT: Record<ThemeMode, Record<Task['status'], string>> = {
+  dark: {
+    'in-progress': 'bg-emerald-400/80',
+    'needs-input': 'bg-amber-400/80',
+    review: 'bg-sky-400/85',
+    backlog: 'bg-flux-fg-subtle',
+    done: 'bg-flux-fg-subtle',
+  },
+  light: {
+    'in-progress': 'bg-emerald-600',
+    'needs-input': 'bg-amber-600',
+    review: 'bg-sky-600',
+    backlog: 'bg-flux-fg-subtle',
+    done: 'bg-flux-fg-subtle',
+  },
+};
+
+function unblockToggleClass(
+  theme: ThemeMode,
+  locked: boolean,
+  perTask: boolean,
+  project: boolean,
+): string {
+  const base =
+    '-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border transition ';
+  if (locked) {
+    return `${base}cursor-not-allowed border-flux-border/10 bg-flux-hover/4 text-flux-fg-subtle opacity-80`;
+  }
+  if (theme === 'light') {
+    if (perTask) {
+      return `${base}border-emerald-300/90 bg-emerald-50 text-emerald-800 hover:border-emerald-400`;
+    }
+    if (project) {
+      return `${base}border-sky-300/90 bg-sky-50 text-sky-900 hover:border-sky-400`;
+    }
+    return `${base}border-amber-300/90 bg-amber-50 text-amber-900 hover:border-amber-400`;
+  }
+  if (perTask) {
+    return `${base}border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45`;
+  }
+  if (project) {
+    return `${base}border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40`;
+  }
+  return `${base}border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35`;
+}
+
+const PR_ICON_BTN: Record<
+  ThemeMode,
+  { merged: string; open: string; linked: string; awaiting: string; idle: string }
+> = {
+  dark: {
+    merged: 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90',
+    open: 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85',
+    linked: 'text-flux-fg-muted hover:bg-flux-hover/6 hover:text-flux-fg',
+    awaiting: 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85',
+    idle: 'text-flux-fg-subtle hover:bg-flux-hover/6 hover:text-flux-fg-muted',
+  },
+  light: {
+    merged: 'text-purple-700 hover:bg-purple-100/90 hover:text-purple-900',
+    open: 'text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900',
+    linked: 'text-flux-fg-muted hover:bg-flux-hover/8 hover:text-flux-fg',
+    awaiting: 'text-amber-700 hover:bg-amber-50 hover:text-amber-900',
+    idle: 'text-flux-fg-subtle hover:bg-flux-hover/8 hover:text-flux-fg-muted',
+  },
+};
 
 function TaskCardAssigneeFooter({
   taskId,
@@ -108,7 +202,7 @@ function TaskCardAssigneeFooter({
   if (hasAssigneeUid) {
     return (
       <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-500/[0.15] text-[10px] font-medium text-zinc-400 ring-1 ring-white/10"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-flux-fg-muted/15 text-[10px] font-medium text-flux-fg-muted ring-1 ring-flux-border/12"
         title="Unknown member"
         aria-label="Assignee is an unknown member"
       >
@@ -125,7 +219,7 @@ function TaskCardAssigneeFooter({
           id={listboxId}
           role="listbox"
           aria-labelledby={triggerId}
-          className="fixed z-[300] max-h-56 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111113] py-1 shadow-xl shadow-black/50"
+          className="fixed z-[300] max-h-56 overflow-y-auto rounded-xl border border-flux-border/12 bg-flux-elevated py-1 shadow-xl shadow-black/25"
           style={{
             top: menuPos.top,
             left: menuPos.left,
@@ -134,7 +228,7 @@ function TaskCardAssigneeFooter({
           }}
         >
           {cloudProjectMembers.length === 0 ? (
-            <p className="px-2.5 py-2 text-left text-[12px] text-zinc-500">No team members yet.</p>
+            <p className="px-2.5 py-2 text-left text-[12px] text-flux-fg-subtle">No team members yet.</p>
           ) : (
             cloudProjectMembers.map((m) => {
               const selected = assigneeId === m.uid;
@@ -144,8 +238,8 @@ function TaskCardAssigneeFooter({
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
-                    selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
+                  className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-flux-hover/8 focus-visible:bg-flux-hover/8 focus-visible:outline-none ${
+                    selected ? 'bg-flux-selected/10 text-flux-fg' : 'text-flux-fg-muted'
                   }`}
                   onClick={() => {
                     assignMember(taskId, m.uid);
@@ -184,7 +278,7 @@ function TaskCardAssigneeFooter({
               : 'Task unassigned — open menu to assign a project member'
           }
           title="Assign to a project member"
-          className="-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-800/90 text-zinc-500 ring-1 ring-white/10 transition hover:bg-zinc-700/90 hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45"
+          className="-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-flux-hover/12 text-flux-fg-subtle ring-1 ring-flux-border/12 transition hover:bg-flux-hover/18 hover:text-flux-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45"
         >
           <UserCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
         </button>
@@ -193,14 +287,6 @@ function TaskCardAssigneeFooter({
     </>
   );
 }
-
-const STATUS_DOT: Record<Task['status'], string> = {
-  'in-progress': 'bg-emerald-400/80',
-  'needs-input': 'bg-amber-400/80',
-  review: 'bg-sky-400/85',
-  backlog: 'bg-zinc-600',
-  done: 'bg-zinc-600',
-};
 
 interface Props {
   task: Task;
@@ -251,6 +337,7 @@ export default function TaskCard({
   hasWorktree = false,
   onTaskAgentSpawnPrefsChange,
 }: Props) {
+  const { theme } = useFluxTheme();
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
   const isDone = task.status === 'done';
@@ -305,12 +392,12 @@ export default function TaskCard({
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group rounded-md border border-white/[0.06] bg-[#141416] shadow-sm transition-colors ${
+          className={`group rounded-md border border-flux-border/10 bg-flux-surface shadow-sm transition-colors ${
             isNeedsInput ? 'border-l-[3px] border-l-amber-400/65' : ''
           } ${isReview ? 'border-l-[3px] border-l-sky-400/60' : ''} ${isDone ? 'opacity-55' : ''} ${
             snapshot.isDragging
-              ? 'border-white/[0.12] bg-[#18181b] shadow-lg ring-1 ring-white/[0.08]'
-              : 'hover:border-white/[0.1] hover:bg-[#161618]'
+              ? 'border-flux-border/20 bg-flux-elevated shadow-lg ring-1 ring-flux-border/12'
+              : 'hover:border-flux-border/15 hover:bg-flux-hover/6'
           }`}
         >
           <div
@@ -322,7 +409,9 @@ export default function TaskCard({
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={tryOpenTaskDetail}>
                   <p
                     className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
-                      isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
+                      isDone
+                        ? 'text-flux-fg-subtle line-through decoration-flux-border/40'
+                        : 'text-flux-fg'
                     }`}
                   >
                     {task.title}
@@ -341,14 +430,14 @@ export default function TaskCard({
                               e.stopPropagation();
                               onLabelClick(lb);
                             }}
-                            className="max-w-full cursor-pointer truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-left text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10 transition hover:border-violet-400/35 hover:from-violet-500/18 hover:to-violet-600/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                            className={LABEL_CHIP_CLASS[theme].interactive}
                           >
                             {lb}
                           </button>
                         ) : (
                           <span
                             key={lb}
-                            className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
+                            className={LABEL_CHIP_CLASS[theme].static}
                             title={lb}
                           >
                             {lb}
@@ -365,7 +454,7 @@ export default function TaskCard({
                     e.stopPropagation();
                     onDelete(task.id);
                   }}
-                  className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[13px] leading-none text-zinc-600 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-300 group-hover:opacity-100"
+                  className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[13px] leading-none text-flux-fg-subtle opacity-0 transition hover:bg-flux-hover/8 hover:text-flux-fg-muted group-hover:opacity-100"
                   aria-label="Delete task"
                 >
                   ×
@@ -389,12 +478,15 @@ export default function TaskCard({
                       role="img"
                       title={branchChipTitle}
                       aria-label={branchChipTitle}
-                      className="inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90"
+                      className={BRANCH_CHIP_CLASS[theme]}
                     >
                       <GitBranch className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
                       <span className="truncate font-mono" aria-hidden>
                         {branchChipLabel}
                       </span>
+                      {task.createSourceBranchIfMissing === true ? (
+                        <span className={BRANCH_NEW_CLASS[theme]}>new</span>
+                      ) : null}
                     </span>
                   ) : null}
                 </div>
@@ -411,15 +503,12 @@ export default function TaskCard({
                       }}
                       title={unblockChipTitle}
                       aria-label={unblockChipAriaLabel}
-                      className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border transition ${
-                        unblockToggleLockedByOtherAssignee
-                          ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
-                          : perTaskUnblockAuto
-                            ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
-                            : projectUnblockAuto
-                              ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
-                              : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
-                      }`}
+                      className={unblockToggleClass(
+                        theme,
+                        unblockToggleLockedByOtherAssignee,
+                        perTaskUnblockAuto,
+                        projectUnblockAuto,
+                      )}
                     >
                       {perTaskUnblockAuto ? (
                         <CirclePlay className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
@@ -432,7 +521,7 @@ export default function TaskCard({
                   ) : null}
                   {blocksCount > 0 ? (
                     <span
-                      className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
+                      className="rounded border border-flux-border/12 bg-flux-hover/6 px-1.5 py-0.5 text-[10px] font-medium text-flux-fg-muted"
                       title={`${blocksCount} task(s) depend on this one`}
                     >
                       Blocks {blocksCount}
@@ -449,14 +538,14 @@ export default function TaskCard({
                       }}
                       className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
                         prMerged
-                          ? 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90'
+                          ? PR_ICON_BTN[theme].merged
                           : prIsOpen
-                            ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
+                            ? PR_ICON_BTN[theme].open
                             : prLinked
-                              ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
+                              ? PR_ICON_BTN[theme].linked
                               : prAwaitingAgent
-                                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
-                                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                                ? PR_ICON_BTN[theme].awaiting
+                                : PR_ICON_BTN[theme].idle
                       }`}
                       aria-label={
                         prLoading
@@ -491,7 +580,7 @@ export default function TaskCard({
                     >
                       {prLoading ? (
                         <Loader2
-                          className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                          className="h-3.5 w-3.5 shrink-0 animate-spin text-flux-fg-muted"
                           aria-hidden
                         />
                       ) : prMerged ? (
@@ -506,7 +595,7 @@ export default function TaskCard({
                   {isDone && onRequestCleanupTask ? (
                     workspaceCleaned ? (
                       <span
-                        className="-m-0.5 flex h-6 w-6 cursor-default items-center justify-center rounded text-zinc-600/45 opacity-50"
+                        className="-m-0.5 flex h-6 w-6 cursor-default items-center justify-center rounded text-flux-fg-subtle/50 opacity-50"
                         title="task cleaned"
                         aria-label="Task workspace already cleaned"
                       >
@@ -514,7 +603,7 @@ export default function TaskCard({
                           iconNode={broom}
                           size={14}
                           strokeWidth={1.75}
-                          className="text-zinc-600/70"
+                          className="text-flux-fg-subtle/70"
                           aria-hidden
                         />
                       </span>
@@ -527,7 +616,7 @@ export default function TaskCard({
                           e.stopPropagation();
                           onRequestCleanupTask(task.id);
                         }}
-                        className="-m-0.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-100"
+                        className="-m-0.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-flux-fg-subtle transition hover:bg-flux-hover/6 hover:text-flux-fg-muted disabled:cursor-not-allowed disabled:opacity-100"
                         aria-label={
                           cleanupLoading
                             ? 'Cleaning up workspace…'
@@ -537,7 +626,7 @@ export default function TaskCard({
                       >
                         {cleanupLoading ? (
                           <Loader2
-                            className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                            className="h-3.5 w-3.5 shrink-0 animate-spin text-flux-fg-muted"
                             aria-hidden
                           />
                         ) : (
@@ -559,7 +648,7 @@ export default function TaskCard({
                     onAssigneeChange={onTaskAssigneeChange}
                   />
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`}
+                    className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[theme][task.status]}`}
                     aria-hidden
                   />
                 </div>
