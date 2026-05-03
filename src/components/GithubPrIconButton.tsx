@@ -1,4 +1,4 @@
-import { GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
+import { Clock, GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
 import type { TaskGithubPr } from '../types';
 
 export interface GithubPrIconButtonProps {
@@ -8,6 +8,8 @@ export interface GithubPrIconButtonProps {
   hasWorktree: boolean;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
+  /** After delegating PR creation to the agent; click again to discover the PR on GitHub. */
+  prAgentAwaiting?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export function GithubPrIconButton({
   hasWorktree,
   onTaskPrClick,
   prLoading = false,
+  prAgentAwaiting = false,
 }: GithubPrIconButtonProps) {
   if (!hasWorktree || typeof onTaskPrClick !== 'function') return null;
 
@@ -30,6 +33,7 @@ export function GithubPrIconButton({
   const prIsOpen = prState === 'open';
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
+  const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
 
   return (
     <button
@@ -43,7 +47,9 @@ export function GithubPrIconButton({
             ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
             : prLinked
               ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
-              : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+              : prAwaitingAgent
+                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
+                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
       }`}
       aria-label={
         prLoading
@@ -56,7 +62,9 @@ export function GithubPrIconButton({
                 ? 'Open closed pull request'
                 : prLinked
                   ? 'Open pull request'
-                  : 'Create GitHub pull request'
+                  : prAwaitingAgent
+                    ? 'Pull request requested from agent; click to check GitHub'
+                    : 'Create GitHub pull request'
       }
       title={
         prLoading
@@ -69,7 +77,9 @@ export function GithubPrIconButton({
                 ? 'Open closed pull request'
                 : prLinked
                   ? 'Open pull request'
-                  : 'Create GitHub pull request'
+                  : prAwaitingAgent
+                    ? 'PR creation was sent to the agent — click to refresh, or wait for automatic checks'
+                    : 'Create GitHub pull request'
       }
     >
       {prLoading ? (
@@ -78,6 +88,8 @@ export function GithubPrIconButton({
         <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
       ) : prLinked ? (
         <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+      ) : prAwaitingAgent ? (
+        <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
       ) : (
         <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
       )}

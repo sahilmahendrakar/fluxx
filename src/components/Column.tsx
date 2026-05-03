@@ -25,6 +25,7 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
+  prAgentAwaitingByTaskId?: Record<string, boolean>;
   repoDefaultBranchShort: string;
   cloudUnblockAutostartClientUid?: string;
   sessions: Session[];
@@ -51,6 +52,7 @@ export default function Column({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
+  prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   sessions,
@@ -138,6 +140,7 @@ export default function Column({
                     onTaskAssigneeChange={onTaskAssigneeChange}
                     onTaskPrClick={onTaskPrClick}
                     prLoading={prLoadingTaskId === task.id}
+                    prAgentAwaiting={Boolean(prAgentAwaitingByTaskId?.[task.id])}
                     repoDefaultBranchShort={repoDefaultBranchShort}
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}

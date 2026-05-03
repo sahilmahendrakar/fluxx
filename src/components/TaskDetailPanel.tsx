@@ -120,6 +120,8 @@ export interface TaskDetailPanelProps {
   onTaskPrClick?: (taskId: string) => void;
   /** True while create PR is in flight for this task. */
   prLoading?: boolean;
+  /** PR creation delegated to agent; click again to discover the PR. */
+  prAgentAwaiting?: boolean;
   /**
    * `board` (default): right-rail overlay with resize, embedded session mirror, backdrop.
    * `sessionWorkspace`: full-area inline body for the task session workspace Details tab
@@ -221,6 +223,7 @@ export default function TaskDetailPanel({
   implicitSessionAssigneeUid,
   onTaskPrClick,
   prLoading = false,
+  prAgentAwaiting = false,
   layout = 'board',
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
@@ -917,6 +920,7 @@ export default function TaskDetailPanel({
                 hasWorktree={Boolean(resolvedWorktreePath?.trim())}
                 onTaskPrClick={onTaskPrClick}
                 prLoading={prLoading}
+                prAgentAwaiting={prAgentAwaiting}
               />
               {!sessionRunning ? (
                 <button

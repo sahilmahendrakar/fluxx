@@ -5,6 +5,7 @@ import { broom } from '@lucide/lab';
 import {
   Ban,
   CirclePlay,
+  Clock,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -219,6 +220,7 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
+  prAgentAwaiting?: boolean;
   repoDefaultBranchShort: string;
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
@@ -244,6 +246,7 @@ export default function TaskCard({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoading = false,
+  prAgentAwaiting = false,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
@@ -264,6 +267,7 @@ export default function TaskCard({
   const prIsOpen = prState === 'open';
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
+  const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
   const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
   const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
   const branchChipTitle =
@@ -452,7 +456,9 @@ export default function TaskCard({
                             ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
                             : prLinked
                               ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
-                              : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                              : prAwaitingAgent
+                                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
+                                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
                       }`}
                       aria-label={
                         prLoading
@@ -465,7 +471,9 @@ export default function TaskCard({
                                 ? 'Open closed pull request'
                                 : prLinked
                                   ? 'Open pull request'
-                                  : 'Create GitHub pull request'
+                                  : prAwaitingAgent
+                                    ? 'Pull request requested from agent; click to check GitHub'
+                                    : 'Create GitHub pull request'
                       }
                       title={
                         prLoading
@@ -478,7 +486,9 @@ export default function TaskCard({
                                 ? 'Open closed pull request'
                                 : prLinked
                                   ? 'Open pull request'
-                                  : 'Create GitHub pull request'
+                                  : prAwaitingAgent
+                                    ? 'PR creation was sent to the agent — click to refresh, or wait for automatic checks'
+                                    : 'Create GitHub pull request'
                       }
                     >
                       {prLoading ? (
@@ -490,6 +500,8 @@ export default function TaskCard({
                         <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       ) : prLinked ? (
                         <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      ) : prAwaitingAgent ? (
+                        <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       ) : (
                         <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       )}
