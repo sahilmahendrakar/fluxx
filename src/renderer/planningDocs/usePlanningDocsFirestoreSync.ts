@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { collection, onSnapshot, type QueryDocumentSnapshot } from 'firebase/firestore';
 import type { FirestorePlanningDocDocumentV1 } from '../../planningDocs/types';
 import type { PlanningDocsFirestoreDocPayload } from '../../planningDocs/syncTypes';
@@ -25,6 +25,12 @@ function parsePlanningDocSnapshot(snapshot: QueryDocumentSnapshot): PlanningDocs
   };
 }
 
+export type PlanningDocsFirestoreStreamState =
+  | { kind: 'disabled' }
+  | { kind: 'connecting' }
+  | { kind: 'live'; fromCache: boolean }
+  | { kind: 'error'; message: string };
+
 export type PlanningDocsFirestoreSyncArgs = {
   enabled: boolean;
   projectId: string | null;
@@ -35,16 +41,24 @@ export type PlanningDocsFirestoreSyncArgs = {
  * into the local `planning/` folder via main-process IPC (canonical when remote
  * has documents; empty remote does not delete local-only files).
  */
-export function usePlanningDocsFirestoreSync(args: PlanningDocsFirestoreSyncArgs): void {
+export function usePlanningDocsFirestoreSync(
+  args: PlanningDocsFirestoreSyncArgs,
+): PlanningDocsFirestoreStreamState {
   const { enabled, projectId } = args;
   const prevIdsRef = useRef<Set<string>>(new Set());
+  const [stream, setStream] = useState<PlanningDocsFirestoreStreamState>({ kind: 'disabled' });
 
   useEffect(() => {
     prevIdsRef.current = new Set();
   }, [projectId]);
 
   useEffect(() => {
-    if (!enabled || !projectId || !isFirebaseConfigured()) return;
+    if (!enabled || !projectId || !isFirebaseConfigured()) {
+      setStream({ kind: 'disabled' });
+      return;
+    }
+
+    setStream({ kind: 'connecting' });
 
     const db = getFirebaseFirestore();
     const col = collection(db, 'projects', projectId, 'planningDocs');
@@ -52,6 +66,7 @@ export function usePlanningDocsFirestoreSync(args: PlanningDocsFirestoreSyncArgs
     const unsub = onSnapshot(
       col,
       (snap) => {
+        setStream({ kind: 'live', fromCache: snap.metadata.fromCache });
         const docs: Array<{
           docId: string;
           relativePath: string;
@@ -78,9 +93,15 @@ export function usePlanningDocsFirestoreSync(args: PlanningDocsFirestoreSyncArgs
       },
       (err) => {
         console.error('[usePlanningDocsFirestoreSync] snapshot error', err);
+        setStream({
+          kind: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        });
       },
     );
 
     return () => unsub();
   }, [enabled, projectId]);
+
+  return stream;
 }

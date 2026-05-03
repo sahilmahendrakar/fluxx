@@ -68,3 +68,29 @@ export type PlanningDocsPersistConflictPayload = {
   projectId: string;
   record: PlanningDocsConflictRecordV1;
 };
+
+export type PlanningDocsResolveConflictAction = 'take_remote' | 'resume_push' | 'mark_merged';
+
+export type PlanningDocsResolveConflictPayload = {
+  projectId: string;
+  relativePath: string;
+  action: PlanningDocsResolveConflictAction;
+  conflictArtifactBasename?: string;
+};
+
+export type PlanningDocsResolveConflictIpcResult =
+  | { ok: true }
+  | {
+      ok: false;
+      code:
+        | 'NOT_ACTIVE_CLOUD'
+        | 'NO_PLANNING_DIR'
+        | 'INVALID_PATH'
+        | 'NO_RECORD'
+        | 'WRITE_FAILED'
+        | 'INVALID_PAYLOAD';
+    };
+
+export type PlanningDocsRevealSyncFolderResult =
+  | { ok: true }
+  | { ok: false; code: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' | 'OPEN_FAILED'; message?: string };

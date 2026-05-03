@@ -19,16 +19,17 @@ const SYNC_DIR = PLANNING_DOCS_DISK_SYNC_DIR;
 const STATE_FILENAME = 'state.json';
 const CONFLICTS_SUBDIR = 'conflicts';
 
+export interface PlanningDocsDiskSyncFileEntryV1 {
+  remoteRevision: string;
+  lastSyncedContentHash: string;
+  /** ISO 8601 when this path was last aligned with cloud (snapshot apply or push success). */
+  lastSyncedAt?: string;
+}
+
 export interface PlanningDocsDiskSyncStateV1 {
   schemaVersion: 1;
   /** Keyed by normalized relativePath */
-  files: Record<
-    string,
-    {
-      remoteRevision: string;
-      lastSyncedContentHash: string;
-    }
-  >;
+  files: Record<string, PlanningDocsDiskSyncFileEntryV1>;
   /**
    * Paths where upload hit a revision conflict — excluded from push retries until a
    * successful remote hydrate updates the file or this entry is cleared manually.
@@ -40,7 +41,7 @@ function sha256Utf8(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
-function syncStatePath(planningDir: string): string {
+export function syncStatePath(planningDir: string): string {
   return path.join(planningDir, SYNC_DIR, STATE_FILENAME);
 }
 
@@ -73,7 +74,7 @@ export async function readPlanningDocsSyncState(
   return { schemaVersion: 1, files: {} };
 }
 
-async function writePlanningDocsSyncState(
+export async function writePlanningDocsSyncState(
   planningDir: string,
   state: PlanningDocsDiskSyncStateV1,
 ): Promise<void> {
@@ -160,6 +161,7 @@ export async function applyFirestorePlanningDocsSnapshot(
       delete nextPaused[normPath];
     }
 
+    const touchedAt = new Date().toISOString();
     state = {
       ...state,
       files: {
@@ -167,6 +169,7 @@ export async function applyFirestorePlanningDocsSnapshot(
         [normPath]: {
           remoteRevision: doc.remoteRevision,
           lastSyncedContentHash: incomingHash,
+          lastSyncedAt: touchedAt,
         },
       },
       pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,
@@ -233,6 +236,7 @@ export async function recordPlanningDocsPushSuccess(
   if (nextPaused && normPath in nextPaused) {
     delete nextPaused[normPath];
   }
+  const touchedAt = new Date().toISOString();
   state = {
     ...state,
     files: {
@@ -240,6 +244,7 @@ export async function recordPlanningDocsPushSuccess(
       [normPath]: {
         remoteRevision: newRemoteRevision,
         lastSyncedContentHash: contentHash,
+        lastSyncedAt: touchedAt,
       },
     },
     pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,

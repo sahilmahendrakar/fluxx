@@ -1,6 +1,8 @@
 import { ReactNode } from 'react';
 import type { Project } from '../types';
-import { Sidebar, type PlanningDocFile } from './Sidebar';
+import { Sidebar } from './Sidebar';
+import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
+import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 import type { SessionTabMeta } from './TabBar';
 
 interface AppShellProps {
@@ -18,7 +20,10 @@ interface AppShellProps {
   onDocsNavClick: () => void;
   docsSidebarExpanded: boolean;
   onDocsSidebarExpandToggle: () => void;
-  planningDocFiles: PlanningDocFile[];
+  planningDocFiles: PlanningDocFileEntry[];
+  planningDocsCloudListMeta: PlanningDocsCloudListMeta | null;
+  planningDocsFirestoreStream: PlanningDocsFirestoreStreamState;
+  planningDocsFirebaseConfigured: boolean;
   planningDocsListLoading: boolean;
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
@@ -63,6 +68,9 @@ export function AppShell({
   docsSidebarExpanded,
   onDocsSidebarExpandToggle,
   planningDocFiles,
+  planningDocsCloudListMeta,
+  planningDocsFirestoreStream,
+  planningDocsFirebaseConfigured,
   planningDocsListLoading,
   planningDocsListError,
   selectedPlanningDocPath,
@@ -86,6 +94,9 @@ export function AppShell({
           docsSidebarExpanded={docsSidebarExpanded}
           onDocsSidebarExpandToggle={onDocsSidebarExpandToggle}
           planningDocFiles={planningDocFiles}
+          planningDocsCloudListMeta={planningDocsCloudListMeta}
+          planningDocsFirestoreStream={planningDocsFirestoreStream}
+          planningDocsFirebaseConfigured={planningDocsFirebaseConfigured}
           planningDocsListLoading={planningDocsListLoading}
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}

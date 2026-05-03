@@ -36,10 +36,13 @@ import type {
   PlanningDocsPersistConflictResult,
   PlanningDocsRecordPushSuccessPayload,
   PlanningDocsRecordPushSuccessResult,
+  PlanningDocsResolveConflictIpcResult,
+  PlanningDocsResolveConflictPayload,
+  PlanningDocsRevealSyncFolderResult,
 } from './planningDocs/syncTypes';
 import type {
-  PlanningDocFileEntry,
   PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsListResult,
 } from './planningDocs/types';
 
 interface ImportMetaEnv {
@@ -273,10 +276,7 @@ declare global {
         listModels: () => Promise<ListCursorAgentModelsResult>;
       };
       planningDocs: {
-        list: () => Promise<
-          | { files: PlanningDocFileEntry[] }
-          | { error: 'NO_PROJECT' | 'IO_ERROR' }
-        >;
+        list: () => Promise<PlanningDocsListResult>;
         read: (relativePath: string) => Promise<
           { content: string } | { error: string }
         >;
@@ -299,6 +299,10 @@ declare global {
         persistConflict: (
           payload: PlanningDocsPersistConflictPayload,
         ) => Promise<PlanningDocsPersistConflictResult>;
+        resolveConflict: (
+          payload: PlanningDocsResolveConflictPayload,
+        ) => Promise<PlanningDocsResolveConflictIpcResult>;
+        revealSyncFolder: () => Promise<PlanningDocsRevealSyncFolderResult>;
         onChanged: (cb: () => void) => () => void;
         cloudMigration: {
           getState: (

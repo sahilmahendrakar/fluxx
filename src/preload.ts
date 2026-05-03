@@ -39,6 +39,9 @@ import type {
   PlanningDocsPersistConflictResult,
   PlanningDocsRecordPushSuccessPayload,
   PlanningDocsRecordPushSuccessResult,
+  PlanningDocsResolveConflictIpcResult,
+  PlanningDocsResolveConflictPayload,
+  PlanningDocsRevealSyncFolderResult,
 } from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
@@ -432,6 +435,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'planningDocs:persistConflict',
         payload,
       ) as Promise<PlanningDocsPersistConflictResult>,
+    resolveConflict: (payload: PlanningDocsResolveConflictPayload) =>
+      ipcRenderer.invoke('planningDocs:resolveConflict', payload) as Promise<
+        PlanningDocsResolveConflictIpcResult
+      >,
+    revealSyncFolder: () =>
+      ipcRenderer.invoke('planningDocs:revealSyncFolder') as Promise<PlanningDocsRevealSyncFolderResult>,
     onChanged: (cb: () => void) => {
       const handler = () => cb();
       ipcRenderer.on('planningDocs:changed', handler);

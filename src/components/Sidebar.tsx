@@ -1,8 +1,83 @@
 import { useState } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
+import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 
-export type PlanningDocFile = { relativePath: string };
+function formatPlanningDocShortTime(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function PlanningCloudDocsSyncHint({
+  meta,
+  stream,
+  firebaseConfigured,
+}: {
+  meta: PlanningDocsCloudListMeta | null;
+  stream: PlanningDocsFirestoreStreamState;
+  firebaseConfigured: boolean;
+}) {
+  const lines: string[] = [];
+  if (!firebaseConfigured) {
+    lines.push('Cloud sync is unavailable (Firebase is not configured).');
+  } else if (stream.kind === 'error') {
+    lines.push(`Could not load live updates: ${stream.message}`);
+  } else if (stream.kind === 'connecting') {
+    lines.push('Connecting to shared planning docs…');
+  } else if (stream.kind === 'live') {
+    lines.push(
+      stream.fromCache
+        ? 'Working from a cached copy — you may be offline; changes can be stale.'
+        : 'Shared planning docs are connected.',
+    );
+  } else if (stream.kind === 'disabled') {
+    lines.push('Sign in to sync shared planning docs with the team.');
+  }
+
+  if (meta) {
+    const bits: string[] = [];
+    if (meta.totalSynced > 0) bits.push(`${meta.totalSynced} up to date`);
+    if (meta.totalPendingPush > 0) bits.push(`${meta.totalPendingPush} pending upload`);
+    if (meta.totalConflictPaths > 0) {
+      bits.push(`${meta.totalConflictPaths} conflict${meta.totalConflictPaths === 1 ? '' : 's'}`);
+    }
+    if (bits.length > 0) {
+      lines.push(bits.join(' · '));
+    }
+    const t = formatPlanningDocShortTime(meta.syncStateUpdatedAt);
+    if (t) {
+      lines.push(`Sync index updated ${t}`);
+    }
+  }
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mb-1.5 rounded border border-white/[0.06] bg-black/25 px-2 py-1.5 text-[10px] leading-snug text-zinc-500">
+      {lines.map((line, idx) => (
+        <p
+          key={`${idx}-${line.slice(0, 24)}`}
+          className="[&:not(:first-child)]:mt-0.5 [&:not(:first-child)]:text-zinc-600"
+        >
+          {line}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 interface SidebarProps {
   project: Project;
@@ -14,7 +89,10 @@ interface SidebarProps {
   onDocsNavClick: () => void;
   docsSidebarExpanded: boolean;
   onDocsSidebarExpandToggle: () => void;
-  planningDocFiles: PlanningDocFile[];
+  planningDocFiles: PlanningDocFileEntry[];
+  planningDocsCloudListMeta: PlanningDocsCloudListMeta | null;
+  planningDocsFirestoreStream: PlanningDocsFirestoreStreamState;
+  planningDocsFirebaseConfigured: boolean;
   planningDocsListLoading: boolean;
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
@@ -229,6 +307,9 @@ export function Sidebar({
   docsSidebarExpanded,
   onDocsSidebarExpandToggle,
   planningDocFiles,
+  planningDocsCloudListMeta,
+  planningDocsFirestoreStream,
+  planningDocsFirebaseConfigured,
   planningDocsListLoading,
   planningDocsListError,
   selectedPlanningDocPath,
@@ -260,7 +341,7 @@ export function Sidebar({
 
   const fileRowClass = (active: boolean) =>
     [
-      'w-full truncate rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
+      'flex w-full min-w-0 items-center gap-1 rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
       active
         ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
         : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
@@ -358,6 +439,13 @@ export function Sidebar({
               </div>
               {docsSidebarExpanded ? (
                 <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+                  {project.kind === 'cloud' ? (
+                    <PlanningCloudDocsSyncHint
+                      meta={planningDocsCloudListMeta}
+                      stream={planningDocsFirestoreStream}
+                      firebaseConfigured={planningDocsFirebaseConfigured}
+                    />
+                  ) : null}
                   {planningDocsListError ? (
                     <p className="py-1 text-[10px] leading-snug text-red-400/90">{planningDocsListError}</p>
                   ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
@@ -378,7 +466,24 @@ export function Sidebar({
                                 f.relativePath === selectedPlanningDocPath,
                             )}
                           >
-                            {f.relativePath}
+                            <span className="min-w-0 flex-1 truncate">{f.relativePath}</span>
+                            {f.syncStatus === 'conflict' ? (
+                              <span
+                                className="shrink-0 text-[10px] font-sans font-semibold text-amber-400/95"
+                                title="Sync conflict"
+                                aria-hidden
+                              >
+                                !
+                              </span>
+                            ) : f.syncStatus === 'pending_push' ? (
+                              <span
+                                className="shrink-0 text-[10px] font-sans text-sky-400/90"
+                                title="Pending upload"
+                                aria-hidden
+                              >
+                                ↑
+                              </span>
+                            ) : null}
                           </button>
                         </li>
                       ))}

@@ -22,7 +22,19 @@ export type PlanningDocSyncStatus =
   | 'idle'
   | 'pending_pull'
   | 'pending_push'
-  | 'conflict';
+  | 'conflict'
+  /** Local disk matches last recorded cloud revision for this path. */
+  | 'synced';
+
+/** Extra cloud-sync fields for Docs UI (omitted for local-only projects). */
+export interface PlanningDocSyncInfo {
+  /** ISO time when this path was last aligned with cloud on disk. */
+  lastSyncedAt?: string;
+  /** When a push conflict pause is active for this path. */
+  conflictPausedAt?: string;
+  /** Newest local conflict artifact under `.flux-docs-sync/conflicts/`. */
+  conflictArtifactBasename?: string;
+}
 
 export interface PlanningDocFileEntry {
   /** Project-relative path using forward slashes (e.g. `notes/architecture.md`). */
@@ -30,6 +42,18 @@ export interface PlanningDocFileEntry {
   metadata?: PlanningDocMetadata;
   /** When omitted, treat as `idle` / local-only. */
   syncStatus?: PlanningDocSyncStatus;
+  /** Cloud mirror only — disk / conflict diagnostics. */
+  syncInfo?: PlanningDocSyncInfo;
+}
+
+/** Aggregate planning-docs sync info for cloud workspaces (list IPC). */
+export interface PlanningDocsCloudListMeta {
+  source: 'cloud-firestore-mirror';
+  /** When `state.json` was last modified, if present. */
+  syncStateUpdatedAt?: string;
+  totalConflictPaths: number;
+  totalPendingPush: number;
+  totalSynced: number;
 }
 
 export type PlanningDocsListErrorCode = 'NO_PROJECT' | 'IO_ERROR';
@@ -42,7 +66,7 @@ export type PlanningDocsReadErrorCode =
 
 /** Narrow IPC/list results — extend cautiously for backward compatibility. */
 export type PlanningDocsListResult =
-  | { files: PlanningDocFileEntry[] }
+  | { files: PlanningDocFileEntry[]; cloudListMeta?: PlanningDocsCloudListMeta }
   | { error: PlanningDocsListErrorCode };
 
 export type PlanningDocsReadResult =
