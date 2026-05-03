@@ -5,6 +5,7 @@ import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 const FALLBACK_CURSOR_MODELS = [
   DEFAULT_CURSOR_AGENT_MODEL,
   'gpt-5',
+  'gpt-5.5-high',
   'sonnet-4',
   'sonnet-4-thinking',
 ];
