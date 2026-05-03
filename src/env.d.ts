@@ -16,6 +16,7 @@ import type {
   ProjectTabState,
   TaskGithubPr,
   TaskPullRequestIpcResult,
+  TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
 } from './types';
 import type {
@@ -184,11 +185,11 @@ declare global {
           patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
-        createPullRequest: (payload: {
+        requestPullRequestFromAgent: (payload: {
           taskId: string;
           title?: string;
           description?: string;
-        }) => Promise<TaskPullRequestIpcResult>;
+        }) => Promise<TaskRequestPullRequestFromAgentResult>;
         refreshPullRequest: (payload: {
           taskId: string;
           githubPr?: TaskGithubPr;

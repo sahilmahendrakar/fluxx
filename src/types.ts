@@ -175,10 +175,12 @@ export interface TaskGithubPr {
   updatedAt?: string;
 }
 
-/** Structured errors from `tasks:createPullRequest` / `tasks:refreshPullRequest`. */
+/** Structured errors from task PR IPC (`tasks:requestPullRequestFromAgent`, `tasks:refreshPullRequest`). */
 export type TaskPrErrorCode =
   | 'NO_PROJECT'
   | 'NO_WORKTREE'
+  | 'NO_AGENT_SESSION'
+  | 'AGENT_SESSION_NOT_RUNNING'
   | 'NO_PR_URL'
   | 'NO_OPEN_PR'
   | 'TASK_METADATA_REQUIRED'
@@ -201,6 +203,11 @@ export type TaskPullRequestIpcResult =
       /** Human-readable note when GitHub ref names differ from stored PR metadata (refresh only). */
       metadataMismatchWarning?: string;
     }
+  | { ok: false; code: TaskPrErrorCode; message: string };
+
+/** Result of `tasks:requestPullRequestFromAgent` (prompt injected; no `gh pr create` in main). */
+export type TaskRequestPullRequestFromAgentResult =
+  | { ok: true; sessionId: string }
   | { ok: false; code: TaskPrErrorCode; message: string };
 
 export interface Task {

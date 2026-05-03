@@ -23,6 +23,7 @@ import {
   type ProjectTabState,
   type TaskPrErrorCode,
   type TaskPullRequestIpcResult,
+  type TaskRequestPullRequestFromAgentResult,
 } from './types';
 import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
@@ -70,7 +71,6 @@ import {
   hydrateCloudProject,
 } from './cloudBindingPrefs';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
-import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAutomation';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
   leaveSettingsIfActive,
@@ -173,7 +173,11 @@ function mergeServerTaskWithPendingPatchOntoLocal(
 const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
   NO_PROJECT: 'Open a project workspace in Flux, then try again.',
   NO_WORKTREE:
-    'Start a session for this task (or ensure a git worktree exists) so Flux has a branch to open a PR from.',
+    "Start this task's agent session so Flux has a live worktree, then try opening the PR again.",
+  NO_AGENT_SESSION:
+    'Open the task and start its agent session from the board or task panel, then click the PR icon again.',
+  AGENT_SESSION_NOT_RUNNING:
+    "Return to the task's session tab and start or resume the agent, then try opening the PR again.",
   GH_NOT_INSTALLED: 'Install the GitHub CLI (`gh`) and ensure it is on your PATH.',
   GH_AUTH_FAILED: 'Run `gh auth login` in a terminal, then try again.',
   NO_GITHUB_REMOTE: 'Point `origin` at GitHub or add a `github.com` remote, then try again.',
@@ -182,7 +186,12 @@ const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
   TASK_METADATA_REQUIRED: 'Ensure this task has a title (edit the task if needed), then try again.',
 };
 
-function formatTaskPullRequestError(result: Extract<TaskPullRequestIpcResult, { ok: false }>): string {
+type TaskPrIpcFailure = Extract<
+  TaskPullRequestIpcResult | TaskRequestPullRequestFromAgentResult,
+  { ok: false }
+>;
+
+function formatTaskPullRequestError(result: TaskPrIpcFailure): string {
   const hint = TASK_PR_ERROR_HINTS[result.code];
   return hint ? `${result.message}\n${hint}` : result.message;
 }
@@ -1828,7 +1837,7 @@ export default function App() {
       setTaskPrError(null);
       try {
         const title = task.title.trim();
-        const result = await window.electronAPI.tasks.createPullRequest({
+        const result = await window.electronAPI.tasks.requestPullRequestFromAgent({
           taskId,
           ...(title ? { title } : {}),
           ...(task.description !== undefined ? { description: task.description } : {}),
@@ -1837,38 +1846,8 @@ export default function App() {
           setTaskPrError(formatTaskPullRequestError(result));
           return;
         }
-        if (!result.persisted) {
-          try {
-            let autoReview = false;
-            try {
-              autoReview = await window.electronAPI.project.getAutoMoveToReviewWhenPrOpen();
-            } catch {
-              autoReview = false;
-            }
-            const moveReview = shouldAutoMoveTaskToReviewForOpenPr({
-              enabled: autoReview,
-              taskStatus: task.status,
-              githubPr: result.githubPr,
-              taskId,
-            });
-            const updated = await provider.update(taskId, {
-              githubPr: result.githubPr,
-              ...(moveReview ? { status: 'review' } : {}),
-            });
-            setTasks((prev) =>
-              prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
-            );
-          } catch (err) {
-            console.error('[tasks.update] githubPr after createPullRequest failed', err);
-            setTaskPrError(
-              'The pull request was created, but saving its link on this task failed. Open the repo on GitHub to find the PR.',
-            );
-            return;
-          }
-        }
-        void window.electronAPI.openExternalUrl(result.githubPr.url);
       } catch (err) {
-        console.error('[tasks.createPullRequest] failed', err);
+        console.error('[tasks.requestPullRequestFromAgent] failed', err);
         setTaskPrError(
           err instanceof Error ? err.message : 'Could not create the pull request.',
         );

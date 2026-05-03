@@ -45,6 +45,21 @@ const STREAM_RECONNECT_BACKOFF_START_MS = 250;
 const STREAM_RECONNECT_BACKOFF_MAX_MS = 30_000;
 const SILENCE_POLL_MS = 30_000;
 
+/** Verbose stream reconnect / attach logs (`scheduling`, `closed`, `recovered`, …). */
+function isDaemonStreamChurnLogEnabled(): boolean {
+  const v = (process.env.FLUX_DEBUG_DAEMON_STREAM ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function logDaemonStreamChurn(message: string, detail?: unknown): void {
+  if (!isDaemonStreamChurnLogEnabled()) return;
+  if (detail !== undefined) {
+    console.warn(`[DaemonClient] ${message}`, detail);
+  } else {
+    console.warn(`[DaemonClient] ${message}`);
+  }
+}
+
 export type SilenceSnapshotReason = 'poll' | 'stream-reconnect';
 
 function broadcast(channel: string, payload?: unknown): void {
@@ -56,6 +71,12 @@ function broadcast(channel: string, payload?: unknown): void {
       win.webContents.send(channel, payload);
     }
   }
+}
+
+function stripTerminalControlSequences(data: string): string {
+  return data
+    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -134,6 +155,10 @@ export class DaemonClient {
   private lastStreamFrameAt: number | null = null;
   private lastAgentStateAt: number | null = null;
   private readonly lastDataSeqByKey = new Map<string, number>();
+  private readonly sessionOutputTextWaiters = new Map<
+    string,
+    Array<{ needle: string; data: string; seen: string }>
+  >();
 
   private readonly userData: string;
   private readonly rpcPath: string;
@@ -217,7 +242,7 @@ export class DaemonClient {
       void this.runStreamReconnectAttempt();
     }, delay);
     this.streamReconnectTimer.unref?.();
-    console.warn('[DaemonClient] scheduling stream reconnect', {
+    logDaemonStreamChurn('scheduling stream reconnect', {
       delayMs: delay,
       nextBackoffMs: this.streamBackoffMs,
       rpcUp: Boolean(this.rpc && !this.rpc.destroyed),
@@ -231,7 +256,7 @@ export class DaemonClient {
       this.resetStreamBackoff();
       return;
     }
-    console.warn('[DaemonClient] attempting daemon stream reconnect', this.streamDiagnosticsSummary());
+    logDaemonStreamChurn('attempting daemon stream reconnect', this.streamDiagnosticsSummary());
     try {
       if (this.rpc && !this.rpc.destroyed) {
         const ok = await this.connectStreamOnly();
@@ -273,7 +298,7 @@ export class DaemonClient {
       lastDataSeq[k] = v;
     }
 
-    console.log('[DaemonClient] stream recovered', {
+    logDaemonStreamChurn('stream recovered', {
       mode,
       disconnectedMs,
       runningSessions: states.length,
@@ -345,7 +370,7 @@ export class DaemonClient {
       this.stream = stream;
       this.lastStreamOpenAt = Date.now();
       this.ensureSilencePollRunning();
-      console.log('[DaemonClient] stream socket reattached (RPC unchanged)');
+      logDaemonStreamChurn('stream socket reattached (RPC unchanged)');
       return true;
     } catch (err) {
       console.warn('[DaemonClient] stream-only connect failed', err);
@@ -692,7 +717,7 @@ export class DaemonClient {
       }
     });
     socket.on('close', () => {
-      console.warn('[DaemonClient] stream socket closed', this.streamDiagnosticsSummary());
+      logDaemonStreamChurn('stream socket closed', this.streamDiagnosticsSummary());
       if (this.stream === socket) {
         this.stream = null;
       }
@@ -716,6 +741,7 @@ export class DaemonClient {
     if (frame.kind === 'data') {
       const payload = { data: frame.data, seq: frame.seq };
       if (frame.target === 'session') {
+        this.resolveSessionOutputTextWaiters(frame.id, frame.data);
         broadcast(`session:data:${frame.id}`, payload);
       } else if (frame.target === 'shell') {
         broadcast(`shell:data:${frame.id}`, payload);
@@ -844,6 +870,43 @@ export class DaemonClient {
         // ignore — transient disconnects
       }),
     );
+  }
+
+  /**
+   * Awaits daemon handling so a follow-up {@link writeSession} / PTY write runs after
+   * this chunk (Cursor: bracketed paste must be ACK'd before a lone `\r` submits).
+   */
+  async writeSessionAwait(id: string, data: string): Promise<void> {
+    await this.ensureRunning();
+    await this.request<null>('writeSession', { id, data });
+  }
+
+  writeSessionAfterOutputText(id: string, needle: string, data: string): void {
+    const normalizedNeedle = needle.trim();
+    if (!normalizedNeedle) {
+      this.writeSession(id, data);
+      return;
+    }
+    const waiters = this.sessionOutputTextWaiters.get(id) ?? [];
+    waiters.push({ needle: normalizedNeedle, data, seen: '' });
+    this.sessionOutputTextWaiters.set(id, waiters);
+  }
+
+  private resolveSessionOutputTextWaiters(id: string, chunk: string): void {
+    const waiters = this.sessionOutputTextWaiters.get(id);
+    if (!waiters || waiters.length === 0) return;
+    const text = stripTerminalControlSequences(chunk);
+    const pending: Array<{ needle: string; data: string; seen: string }> = [];
+    for (const waiter of waiters) {
+      const seen = `${waiter.seen}${text}`.slice(-8000);
+      if (seen.includes(waiter.needle)) {
+        this.writeSession(id, waiter.data);
+      } else {
+        pending.push({ ...waiter, seen });
+      }
+    }
+    if (pending.length > 0) this.sessionOutputTextWaiters.set(id, pending);
+    else this.sessionOutputTextWaiters.delete(id);
   }
 
   resizeSession(id: string, cols: number, rows: number): void {
