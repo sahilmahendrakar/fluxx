@@ -18,6 +18,7 @@ export const CURSOR_MODEL_PRESETS: AgentModelPreset[] = [
   { id: 'claude-opus-4-7-low', label: 'Opus 4.7' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
   { id: 'gpt-5.4-high', label: 'GPT 5.4' },
+  { id: 'gpt-5.5-high', label: 'GPT 5.5' },
   { id: 'composer-2', label: 'Composer 2' },
 ];
 
