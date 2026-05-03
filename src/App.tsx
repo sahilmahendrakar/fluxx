@@ -67,7 +67,11 @@ import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
+import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
+import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlanningDocsFirestorePush';
+import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlanningDocsFirestoreSync';
+import { isFirebaseConfigured } from './renderer/firebase';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
 import { assigneePatchForCloudAutoStartOnUnblock } from './cloudAutoStartUnblockAssignee';
@@ -77,6 +81,7 @@ import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
 } from './cloudBindingPrefs';
+import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from './planningDocs/types';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
@@ -264,9 +269,9 @@ export default function App() {
     () => new Set(),
   );
   const [docsSidebarExpanded, setDocsSidebarExpanded] = useState(false);
-  const [planningDocFiles, setPlanningDocFiles] = useState<{ relativePath: string }[]>(
-    [],
-  );
+  const [planningDocFiles, setPlanningDocFiles] = useState<PlanningDocFileEntry[]>([]);
+  const [planningDocsCloudListMeta, setPlanningDocsCloudListMeta] =
+    useState<PlanningDocsCloudListMeta | null>(null);
   const [planningDocsListLoading, setPlanningDocsListLoading] = useState(false);
   const [planningDocsListError, setPlanningDocsListError] = useState<string | null>(
     null,
@@ -360,6 +365,10 @@ export default function App() {
     };
   }, [project?.id, project?.rootPath, project?.kind]);
   const membersState = useMembers(cloudProjectId);
+  const { cloudPlanningDocsSeedModal } = useCloudPlanningDocsMigration(
+    project?.kind === 'cloud' ? project : null,
+    uid,
+  );
   useAgentHeartbeat({
     projectId: cloudProjectId,
     uid,
@@ -417,21 +426,26 @@ export default function App() {
       const result = await api.list();
       if ('error' in result) {
         setPlanningDocFiles([]);
+        setPlanningDocsCloudListMeta(null);
         setPlanningDocsListError(
           result.error === 'NO_PROJECT'
-            ? 'No workspace open.'
+            ? project?.kind === 'cloud'
+              ? 'No planning folder for this workspace. Ensure the linked repository is available on disk.'
+              : 'No workspace open.'
             : 'Could not read the planning folder.',
         );
         return;
       }
       setPlanningDocFiles(result.files);
+      setPlanningDocsCloudListMeta(result.cloudListMeta ?? null);
     } catch {
       setPlanningDocFiles([]);
+      setPlanningDocsCloudListMeta(null);
       setPlanningDocsListError('Failed to load documents.');
     } finally {
       setPlanningDocsListLoading(false);
     }
-  }, []);
+  }, [project?.kind]);
 
   const shouldLoadPlanningDocs = docsSidebarExpanded || activeTabId === 'docs';
 
@@ -493,6 +507,17 @@ export default function App() {
     const unsub = provider.subscribe((all) => setTasks(all));
     return () => unsub();
   }, [provider]);
+
+  const planningDocsFirestoreStream = usePlanningDocsFirestoreSync({
+    enabled: project?.kind === 'cloud' && !!uid && isFirebaseConfigured(),
+    projectId: project?.kind === 'cloud' ? project.id : null,
+  });
+
+  usePlanningDocsFirestorePush({
+    enabled: project?.kind === 'cloud' && !!uid && isFirebaseConfigured(),
+    projectId: project?.kind === 'cloud' ? project.id : null,
+    uid,
+  });
 
   useEffect(() => {
     if (!project) {
@@ -2658,6 +2683,9 @@ export default function App() {
           docsSidebarExpanded={docsSidebarExpanded}
           onDocsSidebarExpandToggle={handleDocsSidebarExpandToggle}
           planningDocFiles={planningDocFiles}
+          planningDocsCloudListMeta={planningDocsCloudListMeta}
+          planningDocsFirestoreStream={planningDocsFirestoreStream}
+          planningDocsFirebaseConfigured={isFirebaseConfigured()}
           planningDocsListLoading={planningDocsListLoading}
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
@@ -2967,6 +2995,7 @@ export default function App() {
                   </div>
                 </div>
                 <div
+                  key={project.id}
                   className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
                   aria-hidden={activeTabId !== 'docs'}
                   style={{
@@ -2976,9 +3005,15 @@ export default function App() {
                   }}
                 >
                   <PlanningDocsView
-                    key={project.id}
                     selectedPath={selectedPlanningDocPath}
                     fileRevision={planningDocFileRevision}
+                    projectKind={project.kind}
+                    cloudProjectId={project.kind === 'cloud' ? project.id : null}
+                    planningDocFiles={planningDocFiles}
+                    planningDocsCloudListMeta={planningDocsCloudListMeta}
+                    planningDocsFirestoreStream={planningDocsFirestoreStream}
+                    firebaseConfigured={isFirebaseConfigured()}
+                    onPlanningDocsMutated={() => void refreshPlanningDocList()}
                   />
                 </div>
               </div>
@@ -3037,6 +3072,7 @@ export default function App() {
           onCancel={cancelCleanupTask}
         />
       ) : null}
+      {cloudPlanningDocsSeedModal}
     </div>
   );
 }
