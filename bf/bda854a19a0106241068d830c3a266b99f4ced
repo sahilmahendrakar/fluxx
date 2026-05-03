@@ -1,0 +1,78 @@
+src/components/LoadingScreen.tsx
+  f62b924ebbc8c946 3,9,12
+tailwind.config.js
+  b68fb4de3e601a27 5-6,12,27-29
+  f62b924ebbc8c946 7-11,13-26
+src/components/AppShell.tsx
+  f62b924ebbc8c946 76
+index.html
+  f62b924ebbc8c946 2,9-11,13
+  b68fb4de3e601a27 6-8,12,14-16
+src/components/ThemeAppearanceControl.tsx
+  f62b924ebbc8c946 1-56
+src/components/ProjectSettingsView.tsx
+  f62b924ebbc8c946 16,178-179,599-600,605-623,626,629,633,638,740,791,858,899,1019,1046,1180,1188
+src/components/CreateCloudProjectModal.tsx
+  f62b924ebbc8c946 36,53
+src/components/TopBar.tsx
+  f62b924ebbc8c946 15,26
+src/renderer/FluxThemeProvider.tsx
+  f62b924ebbc8c946 1-45
+src/components/SessionTerminalView.tsx
+  f62b924ebbc8c946 468
+src/components/PlanningDocsView.tsx
+  f62b924ebbc8c946 47
+src/renderer/theme.test.ts
+  f62b924ebbc8c946 1-67
+src/renderer/theme.ts
+  f62b924ebbc8c946 1-42
+src/index.css
+  b68fb4de3e601a27 5,8,30-31,50-51
+  f62b924ebbc8c946 6-7,9-29,32-49,52,58-59,64,75-95
+src/components/InviteTeammateModal.tsx
+  f62b924ebbc8c946 54,71
+src/components/Sidebar.tsx
+  f62b924ebbc8c946 168,249-250,257-258,265-266,273,276-278,291,305-306,313,315,347-348,362,364,366,368,398,407,418-419,431,446,473,477
+src/components/Terminal.tsx
+  f62b924ebbc8c946 332
+src/renderer.tsx
+  f62b924ebbc8c946 5-6,12-14,16,18
+  b68fb4de3e601a27 15,17,19
+src/components/ProjectsListView.tsx
+  f62b924ebbc8c946 15-16,46,197,199-213,216,225-233,235
+src/App.tsx
+  f62b924ebbc8c946 2571,2574,2587,2590,2608,2611,2705,2987
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "bfbda854a19a0106241068d830c3a266b99f4ced",
+  "prompts": {
+    "b68fb4de3e601a27": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "72e7aa38-e9bb-4dcb-a128-85e5a81a2f10",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 364,
+      "total_deletions": 47,
+      "accepted_lines": 22,
+      "overriden_lines": 0
+    },
+    "f62b924ebbc8c946": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "101c0ae0-9569-4053-b3b4-23c994012c8d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 494,
+      "total_deletions": 287,
+      "accepted_lines": 424,
+      "overriden_lines": 0
+    }
+  }
+}
