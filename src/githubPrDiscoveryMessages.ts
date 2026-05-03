@@ -33,3 +33,29 @@ export function formatGithubPrDiscoveryFailure(
 export function isBenignPrDiscoveryWhileAgentWorking(code: TaskPrErrorCode): boolean {
   return code === 'NO_OPEN_PR' || code === 'NO_WORKTREE';
 }
+
+/**
+ * Stop timed post-agent PR discovery after errors that are unlikely to resolve with retries
+ * (auth, tooling, `gh` view failures, or GitHub rate-limit shaped responses).
+ */
+export function shouldStopPrAgentFollowupDiscovery(
+  code: TaskPrErrorCode,
+  message: string,
+): boolean {
+  if (
+    code === 'PR_VIEW_FAILED' ||
+    code === 'GH_AUTH_FAILED' ||
+    code === 'GH_NOT_INSTALLED' ||
+    code === 'NO_GITHUB_REMOTE'
+  ) {
+    return true;
+  }
+  const m = message.toLowerCase();
+  return (
+    m.includes('rate limit') ||
+    m.includes('api rate limit') ||
+    m.includes('secondary rate limit') ||
+    m.includes('http 429') ||
+    /\b429\b/.test(m)
+  );
+}

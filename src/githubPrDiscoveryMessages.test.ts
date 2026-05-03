@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatGithubPrDiscoveryFailure,
   isBenignPrDiscoveryWhileAgentWorking,
+  shouldStopPrAgentFollowupDiscovery,
 } from './githubPrDiscoveryMessages';
 
 describe('formatGithubPrDiscoveryFailure', () => {
@@ -36,5 +37,23 @@ describe('isBenignPrDiscoveryWhileAgentWorking', () => {
     expect(isBenignPrDiscoveryWhileAgentWorking('NO_OPEN_PR')).toBe(true);
     expect(isBenignPrDiscoveryWhileAgentWorking('NO_WORKTREE')).toBe(true);
     expect(isBenignPrDiscoveryWhileAgentWorking('GH_AUTH_FAILED')).toBe(false);
+  });
+});
+
+describe('shouldStopPrAgentFollowupDiscovery', () => {
+  it('stops after PR_VIEW_FAILED and auth/tooling errors', () => {
+    expect(shouldStopPrAgentFollowupDiscovery('PR_VIEW_FAILED', 'gh failed')).toBe(true);
+    expect(shouldStopPrAgentFollowupDiscovery('GH_AUTH_FAILED', 'nope')).toBe(true);
+    expect(shouldStopPrAgentFollowupDiscovery('GH_NOT_INSTALLED', '')).toBe(true);
+    expect(shouldStopPrAgentFollowupDiscovery('NO_OPEN_PR', '')).toBe(false);
+  });
+
+  it('detects rate-limit shaped messages', () => {
+    expect(
+      shouldStopPrAgentFollowupDiscovery('NO_OPEN_PR', 'GitHub API rate limit exceeded'),
+    ).toBe(true);
+    expect(shouldStopPrAgentFollowupDiscovery('PR_CREATE_FAILED', 'HTTP 429: too many')).toBe(
+      true,
+    );
   });
 });

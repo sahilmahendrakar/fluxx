@@ -56,6 +56,7 @@ import { applyGithubPrRefreshFromRenderer } from './renderer/tasks/applyGithubPr
 import {
   formatGithubPrDiscoveryFailure,
   isBenignPrDiscoveryWhileAgentWorking,
+  shouldStopPrAgentFollowupDiscovery,
   type GithubPrDiscoveryMessageContext,
 } from './githubPrDiscoveryMessages';
 import {
@@ -89,6 +90,8 @@ import {
 type ActiveProject = LocalProject | CloudProject;
 
 const UPDATE_DEBOUNCE_MS = 300;
+/** Minimum spacing between suppressed `pending-agent` PR discoveries (silence + timed retries). */
+const PENDING_AGENT_PR_DISCOVERY_MIN_GAP_MS = 4500;
 const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs']);
 const PLAN_TAB_PREFIX = 'plan:';
 
@@ -285,9 +288,7 @@ export default function App() {
   const createPrInflightTaskIdRef = useRef<string | null>(null);
   /** Task ids that already received `tasks:requestPullRequestFromAgent` without a linked PR yet. */
   const prAgentPromptSentTaskIdsRef = useRef<Set<string>>(new Set());
-  const prAgentFollowupTimersByTaskIdRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(
-    new Map(),
-  );
+  const prAgentFollowupTimersByTaskIdRef = useRef<Map<string, number[]>>(new Map());
   /** Cancels in-flight bounded discovery when bumped per task id. */
   const taskPrDiscoveryGenRef = useRef<Map<string, number>>(new Map());
   const [prAgentAwaitingByTaskId, setPrAgentAwaitingByTaskId] = useState<Record<string, boolean>>({});
@@ -299,6 +300,7 @@ export default function App() {
       ) => Promise<boolean>)
     | null
   >(null);
+  const pendingAgentPrDiscoveryLastAtRef = useRef<Map<string, number>>(new Map());
   const worktreeResolveGenRef = useRef(0);
   const memberPhotoRefreshKeyRef = useRef('');
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
@@ -1269,6 +1271,15 @@ export default function App() {
       const proj = projectRef.current;
       if (!prov || !proj) return false;
 
+      if (messageContext === 'pending-agent' && opts?.suppressBenignErrors) {
+        const last = pendingAgentPrDiscoveryLastAtRef.current.get(taskId) ?? 0;
+        const now = Date.now();
+        if (now - last < PENDING_AGENT_PR_DISCOVERY_MIN_GAP_MS) {
+          return false;
+        }
+        pendingAgentPrDiscoveryLastAtRef.current.set(taskId, now);
+      }
+
       const result = await window.electronAPI.tasks.refreshPullRequest({
         taskId,
         githubPr: task.githubPr,
@@ -1276,6 +1287,14 @@ export default function App() {
 
       if (!result.ok) {
         if (opts?.suppressBenignErrors && isBenignPrDiscoveryWhileAgentWorking(result.code)) {
+          return false;
+        }
+        if (
+          opts?.suppressBenignErrors &&
+          shouldStopPrAgentFollowupDiscovery(result.code, result.message)
+        ) {
+          cancelPrAgentFollowupTimersForTask(taskId);
+          console.warn('[github-pr] discovery paused after error', taskId, result.code, result.message);
           return false;
         }
         setTaskPrError(formatGithubPrDiscoveryFailure(result, messageContext));
@@ -1297,6 +1316,7 @@ export default function App() {
       const linked = Boolean(result.githubPr.url?.trim());
       if (linked) {
         cancelPrAgentFollowupTimersForTask(taskId);
+        pendingAgentPrDiscoveryLastAtRef.current.delete(taskId);
         taskPrDiscoveryGenRef.current.set(
           taskId,
           (taskPrDiscoveryGenRef.current.get(taskId) ?? 0) + 1,
@@ -1321,8 +1341,8 @@ export default function App() {
       cancelPrAgentFollowupTimersForTask(taskId);
       const nextGen = (taskPrDiscoveryGenRef.current.get(taskId) ?? 0) + 1;
       taskPrDiscoveryGenRef.current.set(taskId, nextGen);
-      const delays = [1600, 3400, 7000, 14_000];
-      const timers: ReturnType<typeof setTimeout>[] = [];
+      const delays = [3200, 10_000, 26_000];
+      const timers: number[] = [];
       for (const delay of delays) {
         timers.push(
           window.setTimeout(() => {
@@ -1360,6 +1380,15 @@ export default function App() {
     });
   }, [tasks, cancelPrAgentFollowupTimersForTask]);
 
+  const isFullscreenPlanTab = useMemo(
+    () => activeTabId === 'plan' || parsePlanTabId(activeTabId) !== null,
+    [activeTabId],
+  );
+  const isBoardOrPlanTab = useMemo(
+    () => activeTabId === 'board' || isFullscreenPlanTab,
+    [activeTabId, isFullscreenPlanTab],
+  );
+
   useGithubPrBoardRefresh({
     projectId: project?.id,
     projectKind: project?.kind,
@@ -1368,6 +1397,7 @@ export default function App() {
     enabled: Boolean(project && !activationLoading && provider),
     autoMarkDoneWhenPrMerged: project?.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: project?.autoMoveToReviewWhenPrOpen === true,
+    surfaceActive: isBoardOrPlanTab,
     onCloudPrMergedAutoDone: handleCloudPrRefreshMergedAutoDone,
   });
 
@@ -2014,11 +2044,6 @@ export default function App() {
         prAgentPromptSentTaskIdsRef.current.add(taskId);
         setPrAgentAwaitingByTaskId((prev) => ({ ...prev, [taskId]: true }));
         schedulePrAgentFollowupDiscovery(taskId);
-        void runDiscoverGithubPrForTask(taskId, 'pending-agent', { suppressBenignErrors: true }).catch(
-          (err) => {
-            console.warn('[github-pr] immediate post-inject discovery failed', taskId, err);
-          },
-        );
       } catch (err) {
         console.error('[tasks.requestPullRequestFromAgent] failed', err);
         setTaskPrError(
@@ -2500,12 +2525,6 @@ export default function App() {
       };
     });
   }, [openPlanningMainTabIds, planningSessions]);
-
-  const isFullscreenPlanTab =
-    activeTabId === 'plan' || parsePlanTabId(activeTabId) !== null;
-
-  const isBoardOrPlanTab =
-    activeTabId === 'board' || isFullscreenPlanTab;
 
   const planningPanelActiveSessionId = useMemo(() => {
     const sid = parsePlanTabId(activeTabId);
