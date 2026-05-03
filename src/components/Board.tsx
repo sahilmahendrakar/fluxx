@@ -13,6 +13,7 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
+import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 
 interface Props {
   allTasks: Task[];
@@ -40,6 +41,8 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
+  /** Task ids waiting for agent-created PR discovery (clock icon on cards). */
+  prAgentAwaitingByTaskId?: Record<string, boolean>;
   /** Configured / detected default short branch name for branch chips on cards. */
   repoDefaultBranchShort: string;
   /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
@@ -48,6 +51,7 @@ interface Props {
   sessions: Session[];
   /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
   taskHasWorktreeById: Record<string, boolean>;
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function Board({
@@ -67,10 +71,12 @@ export default function Board({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
+  prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -200,10 +206,12 @@ export default function Board({
               onTaskAssigneeChange={onTaskAssigneeChange}
               onTaskPrClick={onTaskPrClick}
               prLoadingTaskId={prLoadingTaskId}
+              prAgentAwaitingByTaskId={prAgentAwaitingByTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               sessions={sessions}
               taskHasWorktreeById={taskHasWorktreeById}
+              onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'

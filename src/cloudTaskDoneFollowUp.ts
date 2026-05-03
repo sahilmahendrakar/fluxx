@@ -4,10 +4,10 @@ import type { UnblockAutostartPolicy } from './unblockAutostart';
 import type { TaskPatch, TaskProvider } from './renderer/tasks/TaskProvider';
 
 /**
- * Auto workspace teardown on Done (cloud, pref on) runs only when the user
- * who performed this transition is the task’s current assignee. Unassigned
- * tasks never auto-clean (assignee must use the broom). Remote snapshot
- * updates do not call this path — only local writes (board, detail, flush, MCP).
+ * Auto workspace teardown on Done (cloud, pref on) runs only when the signed-in
+ * client user is the task’s current assignee. Unassigned tasks never auto-clean
+ * (assignee must use the broom). Callers must pass that user as `actorUid` (e.g.
+ * merged-PR auto-Done in App passes `uidRef.current`); a null actor skips cleanup.
  */
 export function shouldAutoTeardownWorkspaceForCloudDoneTransition(
   task: Task,
@@ -29,7 +29,7 @@ export type CloudDoneFollowUpResult = {
  * After a cloud task is persisted as `done`, run dependency auto-start, then
  * optionally run workspace cleanup (broom) when the project pref is enabled
  * and {@link shouldAutoTeardownWorkspaceForCloudDoneTransition} passes (assignee
- * on this client moved the task to Done).
+ * matches `actorUid`: explicit Done transitions, MCP, or merged-PR refresh when wired).
  */
 export async function runCloudDoneTransitionFollowUp(args: {
   previous: Task;

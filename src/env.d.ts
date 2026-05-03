@@ -9,6 +9,7 @@ import type {
   RepoBranchDiscoveryResponse,
   RepoConfig,
   Session,
+  SessionStartOptions,
   SessionStartResult,
   Shell,
   PlanningSession,
@@ -16,6 +17,7 @@ import type {
   ProjectTabState,
   TaskGithubPr,
   TaskPullRequestIpcResult,
+  TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
 } from './types';
 import type {
@@ -200,11 +202,11 @@ declare global {
           patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
-        createPullRequest: (payload: {
+        requestPullRequestFromAgent: (payload: {
           taskId: string;
           title?: string;
           description?: string;
-        }) => Promise<TaskPullRequestIpcResult>;
+        }) => Promise<TaskRequestPullRequestFromAgentResult>;
         refreshPullRequest: (payload: {
           taskId: string;
           githubPr?: TaskGithubPr;
@@ -221,6 +223,7 @@ declare global {
           task: Task,
           projectTasks?: Task[],
           requesterUid?: string | null,
+          options?: SessionStartOptions,
         ) => Promise<SessionStartResult>;
         archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;

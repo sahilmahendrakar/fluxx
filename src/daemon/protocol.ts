@@ -27,8 +27,11 @@ import type { Agent, PlanningSession, Session, Shell } from '../types';
  *   increasing per-PTY `seq` (see `StreamFrame`); `AttachResult.streamSeq` is
  *   the last seq reflected in a warm snapshot so the renderer can drop
  *   buffered live chunks already represented by `snapshot` / replay.
+ * - **v4** — Requires `getSessionSilenceStates` RPC and `agent-state` stream
+ *   frames. Adds `capabilities` RPC for introspection. Stale v3 daemons that
+ *   lack these methods are now correctly rejected on handshake.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** Unix socket / named pipe names inside Electron userData. */
 export const DAEMON_PID_FILE = 'flux-daemon.pid';
@@ -90,6 +93,20 @@ export interface PingResult {
   protocolVersion: number;
   pid: number;
 }
+
+export interface CapabilitiesResult {
+  methods: string[];
+  buildId: string;
+}
+
+/**
+ * RPC methods the main process requires from the daemon. Used by
+ * `DaemonClient.tryConnectExisting()` to verify a running daemon is not
+ * stale — if any method is missing the daemon is killed and respawned.
+ */
+export const REQUIRED_DAEMON_CAPABILITIES = [
+  'getSessionSilenceStates',
+] as const;
 
 export interface CreateSessionParams {
   /** Caller (main) is responsible for worktree creation. */

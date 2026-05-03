@@ -17,6 +17,7 @@ import {
 } from './main/taskEphemeralTeardown';
 import {
   agentNotFoundMessage,
+  agentSpawnResumeSpec,
   agentSpawnSpec,
   ensurePlanningDirCursorMcp,
   planningSpawnSpec,
@@ -25,11 +26,16 @@ import {
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
-  createPullRequestForTaskWorktree,
   ghPrViewCurrentBranchOpen,
   ghPrViewJson,
   prMetadataRefMismatchWarning,
 } from './main/githubTaskPr';
+import { resolveProjectRepoDefaultBranchShort } from './main/resolveProjectRepoDefaultBranch';
+import {
+  describeSessionInputForLog,
+  isSessionInputDebugEnabled,
+  wrapAsXtermBracketedPaste,
+} from './main/sessionInputDebug';
 import { githubPrRefreshViewEqual } from './githubPrMetadata';
 import { shouldAutoMarkDoneAfterPrMergeRefresh } from './autoMarkDoneWhenPrMerged';
 import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAutomation';
@@ -86,10 +92,12 @@ import type {
   Project,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  SessionStartOptions,
   SessionStartResult,
   Task,
   TaskGithubPr,
   TaskPullRequestIpcResult,
+  TaskRequestPullRequestFromAgentResult,
 } from './types';
 import {
   classifyGitBranchPresence,
@@ -106,6 +114,11 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { fluxTaskWorkBranchName } from './main/fluxTaskBranch';
+import {
+  buildCreatePrInstructionsMarkdown,
+  buildTaskAgentPullRequestPrompt,
+  resolveAgentPullRequestBranchContext,
+} from './taskAgentPullRequestPrompt';
 import {
   mergedTaskCreateAgentFields,
   resolvedPlanningModelForSpawn,
@@ -455,6 +468,33 @@ app.whenReady().then(async () => {
   daemonClient.onSilenceStatesSnapshot = reconcileSilenceStatesFromDaemon;
   daemonClient.startSilencePolling();
 
+  // Session-exit → needs-input transition for local projects.
+  // When an agent exits cleanly (code 0 → status 'stopped'), move the task
+  // to needs-input so the user knows it finished or is waiting for review.
+  daemonClient.onSessionExit = (session) => {
+    const taskId = sessionTaskMap.get(session.id);
+    if (!taskId) return;
+
+    const project = projectStore.get();
+    // Cloud projects handled in renderer.
+    if (!project) return;
+
+    if (session.status === 'stopped') {
+      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+      if (task && task.status === 'in-progress') {
+        console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', { taskId });
+        void taskStore.update(taskId, { status: 'needs-input' }).then(() => {
+          broadcastLocalTasksChanged();
+        });
+      }
+    } else if (session.status === 'error') {
+      console.warn('[task:status] agent exited with error, not transitioning task', {
+        taskId,
+        sessionId: session.id,
+      });
+    }
+  };
+
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
     userData,
@@ -548,23 +588,31 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Catchup: for sessions already silent when this process connects to the daemon,
-  // no stream event will fire. Run after project/taskStore are initialized so that
-  // applyAgentState can look up and update the correct task.
-  //
-  // getSessionSilenceStates() includes taskId so we can re-seed sessionTaskMap
-  // here even if the earlier listSessions() call failed.
-  try {
-    const silenceStates = await daemonClient.getSessionSilenceStates();
-    for (const { id, taskId, state } of silenceStates) {
-      // Re-seed the map in case listSessions() failed earlier.
-      if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
-      await applyAgentState(id, state);
+  // Catchup: for sessions already silent (or already exited) when this process
+  // connects to the daemon, no stream event will fire. Also re-run after
+  // stream reconnect so a brief disconnect doesn't permanently miss events.
+  async function runSilenceCatchup(): Promise<void> {
+    try {
+      const silenceStates = await daemonClient.getSessionSilenceStates();
+      for (const { id, taskId, state } of silenceStates) {
+        // Re-seed the map in case listSessions() failed earlier.
+        if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
+        await applyAgentState(id, state);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('UNKNOWN_METHOD')) {
+        console.warn(
+          '[main] daemon does not support getSessionSilenceStates — running sessions may not ' +
+          'auto-transition to needs-input; restart Flux to upgrade the daemon',
+        );
+      } else {
+        console.warn('[main] catchup getSessionSilenceStates failed', err);
+      }
     }
-  } catch (err) {
-    // Daemon may not be ready; new sessions will still be tracked via stream events.
-    console.warn('[main] catchup getSessionSilenceStates failed', err);
   }
+
+  await runSilenceCatchup();
 
   const authServer = new AuthServer();
   const emailService = new EmailService();
@@ -1296,9 +1344,52 @@ app.whenReady().then(async () => {
     return out;
   });
 
+  /**
+   * Writes PTY input and mirrors `session:write` side effects (task status / cloud notify).
+   * Submission detection matches the renderer: only CR/LF breaks silence / needs-input.
+   */
+  function sendTaskSessionTerminalInput(sessionId: string, data: string): void {
+    if (isSessionInputDebugEnabled()) {
+      const taskId = sessionTaskMap.get(sessionId) ?? null;
+      console.log('[session:input]', {
+        sessionId,
+        taskId,
+        codeUnits: data.length,
+        repr: describeSessionInputForLog(data),
+      });
+    }
+
+    daemonClient.writeSession(sessionId, data);
+
+    const taskId = sessionTaskMap.get(sessionId);
+    if (!taskId) return;
+
+    const submitted = data.includes('\r') || data.includes('\n');
+    if (!submitted) return;
+
+    const project = projectStore.get();
+    if (project) {
+      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+      if (task?.status === 'needs-input' || task?.status === 'review') {
+        console.log('[task:status] needs-input/review → in-progress (user submitted query, local)', {
+          taskId,
+          from: task.status,
+        });
+        void taskStore.update(taskId, { status: 'in-progress' }).then(() => {
+          broadcastLocalTasksChanged();
+        });
+      }
+      return;
+    }
+
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('task:userInput', { sessionId, taskId });
+    }
+  }
+
   ipcMain.handle(
-    'tasks:createPullRequest',
-    async (_e, raw: unknown): Promise<TaskPullRequestIpcResult> => {
+    'tasks:requestPullRequestFromAgent',
+    async (_e, raw: unknown): Promise<TaskRequestPullRequestFromAgentResult> => {
       if (!raw || typeof raw !== 'object') {
         return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
       }
@@ -1308,21 +1399,8 @@ app.whenReady().then(async () => {
         return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
       }
       const rootPath = worktreeService.getRootPath();
-      const projectDir = worktreeService.getProjectDir();
-      if (!rootPath || !projectDir) {
+      if (!rootPath) {
         return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
-      }
-      const worktreePath = await resolveTaskWorktreePath(
-        taskId,
-        () => daemonClient.listSessions(),
-        projectDir,
-      );
-      if (!worktreePath) {
-        return {
-          ok: false,
-          code: 'NO_WORKTREE',
-          message: 'No task worktree found (start a session or create a worktree first)',
-        };
       }
       const project = projectStore.get();
       let title = typeof o.title === 'string' ? o.title.trim() : '';
@@ -1343,65 +1421,122 @@ app.whenReady().then(async () => {
           message: 'Task title is required (open a local task or pass title in the payload)',
         };
       }
-      let repoDefaultBranch = 'main';
-      try {
-        const repos = await projectStore.getReposAt(activeProjectDir());
-        const norm = (p: string) => path.normalize(p);
-        const match =
-          repos.find((r) => norm(r.rootPath) === norm(rootPath)) ?? repos[0];
-        const b = (match?.baseBranch ?? 'main').trim();
-        if (b) repoDefaultBranch = b;
-      } catch {
-        /* keep default */
-      }
-      const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
-      const prBaseBranch = effectiveTaskSourceBranchShort(taskRow ?? {}, repoDefaultBranch);
-      const body = description.trim() || `_Task_: ${title}`;
-      const result = await createPullRequestForTaskWorktree({
-        worktreePath,
-        gitRootPath: rootPath,
-        taskId,
-        title,
-        body,
-        baseBranch: prBaseBranch,
-      });
-      if (!result.ok) return result;
 
-      let persisted = false;
-      if (project) {
-        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
-        if (row) {
-          await taskStore.update(taskId, { githubPr: result.githubPr });
-          persisted = true;
-          broadcastLocalTasksChanged();
-          const autoReview = await readAutoMoveToReviewWhenPrOpen();
-          if (
-            shouldAutoMoveTaskToReviewForOpenPr({
-              enabled: autoReview,
-              taskStatus: row.status,
-              githubPr: result.githubPr,
-              taskId,
-            })
-          ) {
-            try {
-              await updateTaskWithTransitionHandling(
-                taskId,
-                { status: 'review' },
-                'github-pr:create-open',
-              );
-              broadcastLocalTasksChanged();
-            } catch (err: unknown) {
-              console.warn('[github-pr:auto-review] move after create failed', taskId, err);
-            }
-          }
-        }
+      const sessions = await daemonClient.listSessions();
+      const session = sessions.find((s) => s.taskId === taskId);
+      if (!session) {
+        return {
+          ok: false,
+          code: 'NO_AGENT_SESSION',
+          message:
+            "Start this task's agent session first so it can commit and open the PR.",
+        };
       }
-      return {
-        ok: true,
-        githubPr: result.githubPr,
-        persisted,
-        pushedBaseBranch: result.pushedBaseBranch,
-      };
+      if (session.status !== 'running') {
+        return {
+          ok: false,
+          code: 'AGENT_SESSION_NOT_RUNNING',
+          message:
+            "This task's agent session is not running. Start or resume the session, then try opening the PR again.",
+        };
+      }
+
+      const wt = session.worktreePath?.trim() ?? '';
+      if (!wt) {
+        return {
+          ok: false,
+          code: 'NO_WORKTREE',
+          message:
+            "Start this task's agent session first so it can commit and open the PR.",
+        };
+      }
+      try {
+        const st = await fs.stat(wt);
+        if (!st.isDirectory()) {
+          return {
+            ok: false,
+            code: 'NO_WORKTREE',
+            message:
+              "The task worktree folder is missing. Start this task's agent session again.",
+          };
+        }
+      } catch {
+        return {
+          ok: false,
+          code: 'NO_WORKTREE',
+          message:
+            "The task worktree folder is missing. Start this task's agent session again.",
+        };
+      }
+
+      const headBranchRaw = session.branch?.trim() ?? '';
+      if (!headBranchRaw) {
+        return {
+          ok: false,
+          code: 'PR_CREATE_FAILED',
+          message: 'Could not determine the task work branch for this session.',
+        };
+      }
+
+      const repoDefaultBranch = await resolveProjectRepoDefaultBranchShort({
+        projectStore,
+        activeProjectDir,
+        rootPath,
+      });
+      const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
+      const { baseBranch, headBranch } = resolveAgentPullRequestBranchContext({
+        task: taskRow ?? {},
+        projectDefaultBranchShort: repoDefaultBranch,
+        sessionBranch: headBranchRaw,
+      });
+      if (!baseBranch.trim()) {
+        return {
+          ok: false,
+          code: 'PR_CREATE_FAILED',
+          message: 'Pull request base branch resolved to an empty name.',
+        };
+      }
+
+      const prBody = description.trim() || `_Task_: ${title}`;
+      let instructionsPath: string;
+      try {
+        const instructionsDir = path.join(activeProjectDir(), 'agent-instructions');
+        instructionsPath = path.join(instructionsDir, 'create-pr.md');
+        await fs.mkdir(instructionsDir, { recursive: true });
+        await fs.writeFile(instructionsPath, buildCreatePrInstructionsMarkdown(), 'utf8');
+      } catch (err) {
+        console.warn('[tasks:requestPullRequestFromAgent] failed to write PR instructions file', err);
+        return {
+          ok: false,
+          code: 'PR_CREATE_FAILED',
+          message:
+            'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
+        };
+      }
+      const payload = buildTaskAgentPullRequestPrompt({
+        taskId,
+        taskTitle: title,
+        headBranch,
+        baseBranch,
+        prTitle: title,
+        prBody,
+        instructionsAbsolutePath: instructionsPath,
+      });
+      const pasteInput = wrapAsXtermBracketedPaste(payload);
+      const submitInput = '\r';
+      const combinedInput = `${pasteInput}${submitInput}`;
+      const useCursorSplitPasteSubmit = taskRow?.agent === 'cursor';
+      // Multiline paste uses bracketed paste markers; `\n` inside the body must not hit
+      // `sendTaskSessionTerminalInput` alone (it treats `\n` as submit). Cursor: one
+      // chunk `\x1b[201~\r` left the prompt in the input without submitting — paste then
+      // await RPC, then `\r` only (Claude: single combined write still works).
+      if (useCursorSplitPasteSubmit) {
+        await daemonClient.writeSessionAwait(session.id, pasteInput);
+        sendTaskSessionTerminalInput(session.id, submitInput);
+      } else {
+        sendTaskSessionTerminalInput(session.id, combinedInput);
+      }
+      return { ok: true, sessionId: session.id };
     },
   );
 
@@ -1460,68 +1595,71 @@ app.whenReady().then(async () => {
         : undefined;
 
       let persisted = false;
-      if (project) {
-        if (row && !githubPrRefreshViewEqual(row.githubPr, viewed.githubPr)) {
+      if (project && row) {
+        const prChanged = !githubPrRefreshViewEqual(row.githubPr, viewed.githubPr);
+        if (prChanged) {
           await taskStore.update(taskId, { githubPr: viewed.githubPr });
           persisted = true;
           broadcastLocalTasksChanged();
+        }
 
-          let autoMarkPref = false;
+        let autoMarkPref = false;
+        try {
+          autoMarkPref = await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir());
+        } catch (err) {
+          console.warn('[tasks:refreshPullRequest] failed to read autoMarkDoneWhenPrMerged', err);
+        }
+        const allTasks = taskStore.getAll(project.id);
+        const rowForAuto = allTasks.find((t) => t.id === taskId) ?? row;
+
+        if (
+          shouldAutoMarkDoneAfterPrMergeRefresh({
+            task: rowForAuto,
+            refreshedGithubPr: viewed.githubPr,
+            prefEnabled: autoMarkPref,
+            allTasks,
+          })
+        ) {
+          const destCol = sortColumn(
+            allTasks.filter((t) => t.id !== taskId),
+            'done',
+          );
+          let nextOrderKey: string;
           try {
-            autoMarkPref = await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir());
+            nextOrderKey = keyForInsert(destCol, destCol.length);
           } catch (err) {
-            console.warn('[tasks:refreshPullRequest] failed to read autoMarkDoneWhenPrMerged', err);
+            console.error('[tasks:refreshPullRequest] keyForInsert failed; using fallback', err);
+            nextOrderKey = String(Date.now());
           }
-          const allTasks = taskStore.getAll(project.id);
+          try {
+            await updateTaskWithTransitionHandling(
+              taskId,
+              { status: 'done', orderKey: nextOrderKey },
+              'pr:mergedRefresh',
+            );
+            broadcastLocalTasksChanged();
+          } catch (err) {
+            console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
+          }
+        } else {
+          const autoReview = await readAutoMoveToReviewWhenPrOpen();
           if (
-            shouldAutoMarkDoneAfterPrMergeRefresh({
-              task: row,
-              refreshedGithubPr: viewed.githubPr,
-              prefEnabled: autoMarkPref,
-              allTasks,
+            shouldAutoMoveTaskToReviewForOpenPr({
+              enabled: autoReview,
+              taskStatus: rowForAuto.status,
+              githubPr: viewed.githubPr,
+              taskId,
             })
           ) {
-            const destCol = sortColumn(
-              allTasks.filter((t) => t.id !== taskId),
-              'done',
-            );
-            let nextOrderKey: string;
-            try {
-              nextOrderKey = keyForInsert(destCol, destCol.length);
-            } catch (err) {
-              console.error('[tasks:refreshPullRequest] keyForInsert failed; using fallback', err);
-              nextOrderKey = String(Date.now());
-            }
             try {
               await updateTaskWithTransitionHandling(
                 taskId,
-                { status: 'done', orderKey: nextOrderKey },
-                'pr:mergedRefresh',
+                { status: 'review' },
+                'github-pr:refresh-open',
               );
               broadcastLocalTasksChanged();
-            } catch (err) {
-              console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
-            }
-          } else {
-            const autoReview = await readAutoMoveToReviewWhenPrOpen();
-            if (
-              shouldAutoMoveTaskToReviewForOpenPr({
-                enabled: autoReview,
-                taskStatus: row.status,
-                githubPr: viewed.githubPr,
-                taskId,
-              })
-            ) {
-              try {
-                await updateTaskWithTransitionHandling(
-                  taskId,
-                  { status: 'review' },
-                  'github-pr:refresh-open',
-                );
-                broadcastLocalTasksChanged();
-              } catch (err: unknown) {
-                console.warn('[github-pr:auto-review] move after refresh failed', taskId, err);
-              }
+            } catch (err: unknown) {
+              console.warn('[github-pr:auto-review] move after refresh failed', taskId, err);
             }
           }
         }
@@ -1596,10 +1734,24 @@ app.whenReady().then(async () => {
     };
   }
 
+  /** Remove stopped/error daemon rows for this task so `session:get` and tabs stay unambiguous. */
+  async function archiveNonRunningSessionsForTask(taskId: string): Promise<void> {
+    const sessions = await daemonClient.listSessions();
+    const stale = sessions.filter(
+      (s) => s.taskId === taskId && s.status !== 'running',
+    );
+    for (const s of stale) {
+      sessionTaskMap.delete(s.id);
+      await daemonClient.closeShellsForSession(s.id);
+      await daemonClient.stopSession(s.id);
+    }
+  }
+
   async function startSessionForTask(
     task: Task,
     projectTasks?: Task[],
     requesterUid?: string | null,
+    options?: SessionStartOptions,
   ): Promise<SessionStartResult> {
     const project = await resolveProjectForStart();
 
@@ -1725,9 +1877,17 @@ app.whenReady().then(async () => {
         return finish({ error: 'WORKTREE_FAILED', message });
       }
 
-      const initialPrompt = taskInitialPrompt(merged);
-      const { command, args } = agentSpawnSpec(merged, initialPrompt);
-      console.log('[session:start] spawn', { taskId: task.id, command, args });
+      await archiveNonRunningSessionsForTask(task.id);
+
+      const { command, args } = options?.resume
+        ? agentSpawnResumeSpec(merged)
+        : agentSpawnSpec(merged, taskInitialPrompt(merged));
+      console.log('[session:start] spawn', {
+        taskId: task.id,
+        command,
+        args,
+        resume: Boolean(options?.resume),
+      });
       const result = await daemonClient.createSession({
         worktreePath,
         branch,
@@ -2064,8 +2224,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'session:start',
-    async (_e, task: Task, projectTasks?: Task[], requesterUid?: string | null) =>
-      startSessionForTask(task, projectTasks, requesterUid),
+    async (
+      _e,
+      task: Task,
+      projectTasks?: Task[],
+      requesterUid?: string | null,
+      options?: SessionStartOptions,
+    ) => startSessionForTask(task, projectTasks, requesterUid, options),
   );
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
@@ -2081,7 +2246,17 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
     const sessions = await daemonClient.listSessions();
-    return sessions.find((s) => s.taskId === taskId) ?? null;
+    const forTask = sessions.filter((s) => s.taskId === taskId);
+    const running = forTask.find((s) => s.status === 'running');
+    if (running) return running;
+    const terminal = forTask.filter((s) => s.status === 'stopped' || s.status === 'error');
+    if (terminal.length === 0) return null;
+    terminal.sort((a, b) => {
+      const ta = a.stoppedAt ?? a.startedAt ?? '';
+      const tb = b.stoppedAt ?? b.startedAt ?? '';
+      return ta.localeCompare(tb);
+    });
+    return terminal[terminal.length - 1] ?? null;
   });
 
   ipcMain.handle('session:getAll', async () => daemonClient.listSessions());
@@ -2093,38 +2268,7 @@ app.whenReady().then(async () => {
   );
 
   ipcMain.on('session:write', (_e, sessionId: string, data: string) => {
-    daemonClient.writeSession(sessionId, data);
-
-    const taskId = sessionTaskMap.get(sessionId);
-    if (!taskId) return;
-
-    // SENDING A QUERY IS THE ONLY WAY TO BREAK SILENCE.
-    // Treat the input as a "submission" only when it contains Enter (CR/LF).
-    // This filters out individual keystrokes mid-typing, focus-tracking
-    // escape sequences (\x1b[I / \x1b[O), arrow keys, etc.
-    const submitted = data.includes('\r') || data.includes('\n');
-    if (!submitted) return;
-
-    const project = projectStore.get();
-    if (project) {
-      // Local mode is out of scope for the current cloud-only requirement.
-      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-      if (task?.status === 'needs-input' || task?.status === 'review') {
-        console.log('[task:status] needs-input/review → in-progress (user submitted query, local)', {
-          taskId,
-          from: task.status,
-        });
-        void taskStore.update(taskId, { status: 'in-progress' }).then(() => {
-          broadcastLocalTasksChanged();
-        });
-      }
-      return;
-    }
-
-    // Cloud project: notify all renderer windows so they can update Firestore.
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('task:userInput', { sessionId, taskId });
-    }
+    sendTaskSessionTerminalInput(sessionId, data);
   });
 
   ipcMain.on('session:resize', (_e, sessionId: string, cols: number, rows: number) => {

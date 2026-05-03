@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '../../types';
-import { githubPrRefreshViewEqual } from '../../githubPrMetadata';
-import { shouldAutoMarkDoneAfterPrMergeRefresh } from '../../autoMarkDoneWhenPrMerged';
-import { shouldAutoMoveTaskToReviewForOpenPr } from '../../githubPrReviewWhenOpenAutomation';
-import { keyForInsert, sortColumn } from './orderKey';
-import type { TaskPatch, TaskProvider } from './TaskProvider';
+import { buildCloudGithubPrRefreshPatch } from './cloudGithubPrRefreshReconcile';
+import type { TaskProvider } from './TaskProvider';
 
-const DEBOUNCE_MS = 1800;
-const POLL_MS = 7 * 60 * 1000;
-const CONCURRENCY = 2;
+/** Debounce after task PR metadata changes / focus / visibility before batching `refreshPullRequest`. */
+const DEBOUNCE_MS = 3200;
+/** Background poll when the workspace is open; paired with `surfaceActive` / linked-PR guards. */
+const POLL_MS = 15 * 60 * 1000;
+/** Serialize `gh` calls from the board refresh sweep to reduce bursts against rate limits. */
+const CONCURRENCY = 1;
 
 async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
   let i = 0;
@@ -26,10 +26,10 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
 }
 
 /**
- * Refreshes linked GitHub PR metadata for board tasks (debounced). Local tasks
- * are persisted in the main process when the IPC row exists; cloud tasks are
- * updated here only when `githubPr` meaningfully changes, to limit Firestore
- * writes across teammates.
+ * Refreshes linked GitHub PR metadata for tasks that already have a PR URL (debounced).
+ * Local rows persist in the main process when the IPC row exists; cloud tasks get
+ * `githubPr` updates when metadata changes, and may get status-only writes when
+ * metadata already matches GitHub but merge/review prefs still require a move.
  */
 export function useGithubPrBoardRefresh(input: {
   projectId: string | undefined;
@@ -41,6 +41,11 @@ export function useGithubPrBoardRefresh(input: {
   autoMarkDoneWhenPrMerged: boolean;
   /** When true, open PR metadata may move cloud tasks from backlog/in-progress to Review. */
   autoMoveToReviewWhenPrOpen: boolean;
+  /**
+   * When false and no task has a linked PR URL, periodic and debounced refresh is skipped
+   * (e.g. user is on a session terminal tab). Linked PRs still refresh in the background.
+   */
+  surfaceActive: boolean;
   /**
    * After a cloud task is written as Done from merged PR metadata, run the same
    * follow-up as an explicit Done transition (unblock autostart, optional cleanup).
@@ -55,6 +60,7 @@ export function useGithubPrBoardRefresh(input: {
     enabled,
     autoMarkDoneWhenPrMerged,
     autoMoveToReviewWhenPrOpen,
+    surfaceActive,
     onCloudPrMergedAutoDone,
   } = input;
   const generationRef = useRef(0);
@@ -70,9 +76,12 @@ export function useGithubPrBoardRefresh(input: {
   autoMoveReviewRef.current = autoMoveToReviewWhenPrOpen;
   const onCloudPrMergedAutoDoneRef = useRef(onCloudPrMergedAutoDone);
   onCloudPrMergedAutoDoneRef.current = onCloudPrMergedAutoDone;
+  const surfaceActiveRef = useRef(surfaceActive);
+  surfaceActiveRef.current = surfaceActive;
 
   const tasksGithubPrKey = useMemo(() => {
     return tasks
+      .filter((t) => Boolean(t.githubPr?.url?.trim()))
       .map((t) => {
         const g = t.githubPr;
         const url = g?.url?.trim();
@@ -88,7 +97,11 @@ export function useGithubPrBoardRefresh(input: {
     const prov = providerRef.current;
     const kind = kindRef.current;
     if (!enabled || !projectId || !kind || !prov) return;
-    const list = tasksRef.current.filter((t) => t.githubPr?.url?.trim() || !t.workspaceCleanedAt);
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    const snapshot = tasksRef.current;
+    const hasLinkedPr = snapshot.some((t) => Boolean(t.githubPr?.url?.trim()));
+    if (!surfaceActiveRef.current && !hasLinkedPr) return;
+    const list = snapshot.filter((t) => Boolean(t.githubPr?.url?.trim()));
     if (list.length === 0) return;
     const gen = generationRef.current;
     await runPool(list, CONCURRENCY, async (task) => {
@@ -107,44 +120,25 @@ export function useGithubPrBoardRefresh(input: {
           console.warn('[githubPrRefresh]', task.id, result.code, result.message);
           return;
         }
-        if (githubPrRefreshViewEqual(task.githubPr, result.githubPr)) return;
-        if (kind === 'cloud') {
-          const snapshot = tasksRef.current;
-          const patch: TaskPatch = { githubPr: result.githubPr };
-          if (
-            shouldAutoMarkDoneAfterPrMergeRefresh({
-              task,
-              refreshedGithubPr: result.githubPr,
-              prefEnabled: autoMarkDoneRef.current,
-              allTasks: snapshot,
-            })
-          ) {
-            const destCol = sortColumn(
-              snapshot.filter((t) => t.id !== task.id),
-              'done',
-            );
-            let nextOrderKey: string;
-            try {
-              nextOrderKey = keyForInsert(destCol, destCol.length);
-            } catch (err) {
-              console.error('[githubPrRefresh] keyForInsert failed', task.id, err);
-              nextOrderKey = String(Date.now());
-            }
-            patch.status = 'done';
-            patch.orderKey = nextOrderKey;
-          } else if (
-            shouldAutoMoveTaskToReviewForOpenPr({
-              enabled: autoMoveReviewRef.current,
-              taskStatus: task.status,
-              githubPr: result.githubPr,
-              taskId: task.id,
-            })
-          ) {
-            patch.status = 'review';
-          }
+        const snapshot = tasksRef.current;
+        const live = snapshot.find((t) => t.id === task.id) ?? task;
+        const refreshed = result.githubPr;
+
+        if (kind !== 'cloud') {
+          return;
+        }
+
+        const patch = buildCloudGithubPrRefreshPatch({
+          live,
+          refreshed,
+          snapshot,
+          autoMarkDoneWhenPrMerged: autoMarkDoneRef.current,
+          autoMoveToReviewWhenPrOpen: autoMoveReviewRef.current,
+        });
+        if (patch) {
           const updated = await prov.update(task.id, patch);
           if (patch.status === 'done' && onCloudPrMergedAutoDoneRef.current) {
-            await onCloudPrMergedAutoDoneRef.current({ previous: task, updated });
+            await onCloudPrMergedAutoDoneRef.current({ previous: live, updated });
           }
         }
       } catch (err) {
@@ -155,6 +149,10 @@ export function useGithubPrBoardRefresh(input: {
 
   const schedule = useCallback(() => {
     if (!enabled || !projectId || !projectKind || !provider) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    const snap = tasksRef.current;
+    const hasLinkedPr = snap.some((t) => Boolean(t.githubPr?.url?.trim()));
+    if (!surfaceActiveRef.current && !hasLinkedPr) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       debounceRef.current = null;
@@ -162,6 +160,8 @@ export function useGithubPrBoardRefresh(input: {
     }, DEBOUNCE_MS);
   }, [enabled, projectId, projectKind, provider, execute]);
 
+  // Invalidate in-flight refresh only when project/provider identity changes — not when
+  // `tasksGithubPrKey` changes mid-sweep (that would abort other tasks in the same run).
   useEffect(() => {
     if (!enabled || !projectId || !projectKind || !provider) return;
     schedule();
@@ -172,18 +172,53 @@ export function useGithubPrBoardRefresh(input: {
         debounceRef.current = null;
       }
     };
-  }, [enabled, projectId, projectKind, provider, tasksGithubPrKey, schedule]);
+  }, [enabled, projectId, projectKind, provider, schedule]);
+
+  useEffect(() => {
+    if (!enabled || !projectId || !projectKind || !provider) return;
+    schedule();
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, [tasksGithubPrKey, enabled, projectId, projectKind, provider, schedule]);
+
+  useEffect(() => {
+    if (!enabled || !projectId || !projectKind || !provider) return;
+    if (!surfaceActive) return;
+    schedule();
+  }, [surfaceActive, enabled, projectId, projectKind, provider, schedule]);
 
   useEffect(() => {
     if (!enabled || !projectId) return;
-    const onFocus = () => schedule();
+    const onFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      schedule();
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [enabled, projectId, schedule]);
 
   useEffect(() => {
     if (!enabled || !projectId) return;
-    const id = window.setInterval(() => schedule(), POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') schedule();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [enabled, projectId, schedule]);
+
+  useEffect(() => {
+    if (!enabled || !projectId) return;
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const snap = tasksRef.current;
+      const hasLinkedPr = snap.some((t) => Boolean(t.githubPr?.url?.trim()));
+      if (!surfaceActiveRef.current && !hasLinkedPr) return;
+      schedule();
+    }, POLL_MS);
     return () => clearInterval(id);
   }, [enabled, projectId, schedule]);
 }

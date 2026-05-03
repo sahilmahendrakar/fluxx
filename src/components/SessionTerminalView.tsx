@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { Session, Shell, Task } from '../types';
+import { LayoutList } from 'lucide-react';
+import type { Agent, Session, Shell, Task } from '../types';
+import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
+import { GithubPrIconButton } from './GithubPrIconButton';
 import {
   getSessionAttachShared,
   getShellAttachShared,
   invalidateSessionAttachCache,
   invalidateShellAttachCache,
 } from '../terminal/warmAttach';
+import { isTaskBlocked } from '../taskDependencies';
 import {
   OWNER_TERMINAL_VIEW_POLICY,
   terminalShouldAutoFit,
@@ -15,6 +19,10 @@ import Terminal, { type TerminalHandle } from './Terminal';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
+
+function taskAgentSupportsCliResume(agent: Agent): boolean {
+  return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
+}
 
 function BotIcon({ className }: { className?: string }) {
   return (
@@ -38,17 +46,39 @@ function BotIcon({ className }: { className?: string }) {
   );
 }
 
+export type AgentSessionLifecycleProps = {
+  projectTasks: Task[];
+  requesterUid?: string | null;
+};
+
 interface SessionTerminalViewProps {
   session: Session;
   visible?: boolean;
   /** Board task for this workspace; used for Mark as done. */
   task?: Task | null;
+  /**
+   * When the agent PTY has stopped, enables Resume / New session in the Agent pane
+   * (same IPC as the task detail panel).
+   */
+  agentSessionLifecycle?: AgentSessionLifecycleProps;
+  /** After a successful `sessions.start` from the Agent tab (Resume / New session). */
+  onAgentSessionStartSuccess?: (taskId: string) => void;
   onMarkAsDone?: () => void;
   /** Dependency blockers not finished — Mark as done stays visible but disabled. */
   markAsDoneBlocked?: boolean;
+  /** Open linked PR or start create flow (same IPC as board `TaskCard`). */
+  onTaskPrClick?: (taskId: string) => void;
+  /** True while create PR is in flight for this session’s task. */
+  prLoading?: boolean;
+  prAgentAwaiting?: boolean;
+  /**
+   * Same callbacks/data as board `TaskDetailPanel` (except `task` and `layout`, which are set here).
+   * When omitted or `task` is null, the Details pane tab is hidden.
+   */
+  taskDetailPanel?: Omit<TaskDetailPanelProps, 'task' | 'layout'>;
 }
 
-type PaneId = 'agent' | `shell:${string}`;
+type PaneId = 'details' | 'agent' | `shell:${string}`;
 
 // We stack every pane at inset-0 and flip `visibility` instead of `display`
 // so the xterm container keeps the same size across pane switches. Reflowing
@@ -62,15 +92,36 @@ function paneVisibilityStyle(visible: boolean): React.CSSProperties {
   };
 }
 
-function AgentPane({ session, visible }: { session: Session; visible: boolean }) {
+function AgentPane({
+  session,
+  visible,
+  task,
+  agentSessionLifecycle,
+  onAgentSessionStartSuccess,
+}: {
+  session: Session;
+  visible: boolean;
+  task?: Task | null;
+  agentSessionLifecycle?: AgentSessionLifecycleProps;
+  onAgentSessionStartSuccess?: (taskId: string) => void;
+}) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
   const id = session.id;
   const [attachReady, setAttachReady] = useState(false);
+  const [restartLoading, setRestartLoading] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
 
   useEffect(() => {
     setAttachReady(false);
   }, [session.id]);
+
+  useEffect(() => {
+    if (running) {
+      setRestartError(null);
+      setRestartLoading(false);
+    }
+  }, [running]);
 
   useTerminalPtyStream({
     terminalRef,
@@ -97,6 +148,54 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
   const handleResize = (cols: number, rows: number) => {
     if (running) window.electronAPI.sessions.resize(session.id, cols, rows);
   };
+
+  const blocked = Boolean(
+    task &&
+      agentSessionLifecycle &&
+      isTaskBlocked(task, agentSessionLifecycle.projectTasks),
+  );
+  const showRestartControls =
+    !running &&
+    task &&
+    agentSessionLifecycle &&
+    taskAgentSupportsCliResume(task.agent);
+
+  const handleAgentRestart = async (resume: boolean) => {
+    if (!task || !agentSessionLifecycle) return;
+    if (isTaskBlocked(task, agentSessionLifecycle.projectTasks)) {
+      setRestartError('Finish blocking tasks before starting a session.');
+      return;
+    }
+    setRestartLoading(true);
+    setRestartError(null);
+    try {
+      const result = await window.electronAPI.sessions.start(
+        task,
+        agentSessionLifecycle.projectTasks,
+        agentSessionLifecycle.requesterUid ?? undefined,
+        resume ? { resume: true } : undefined,
+      );
+      if (result && typeof result === 'object' && 'error' in result) {
+        setRestartError(result.message ?? result.error);
+        return;
+      }
+      onAgentSessionStartSuccess?.(task.id);
+    } catch {
+      setRestartError('Failed to start session');
+    } finally {
+      setRestartLoading(false);
+    }
+  };
+
+  const resumeBtnPrimary =
+    'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] disabled:cursor-not-allowed';
+  const resumeBtnIdle = `${resumeBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
+  const resumeBtnError =
+    'rounded-lg border border-red-500/35 bg-red-500/[0.12] px-4 py-2 text-[13px] font-medium text-red-200/90 transition hover:bg-red-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40';
+  const resumeBtnLoading =
+    'cursor-wait rounded-lg bg-zinc-800/90 px-4 py-2 text-[13px] font-medium text-zinc-500';
+  const newSessionBtn =
+    'rounded-lg bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-50';
 
   return (
     <div
@@ -128,6 +227,53 @@ function AgentPane({ session, visible }: { session: Session; visible: boolean })
             autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
             hideCursor
           />
+        </div>
+      ) : showRestartControls ? (
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-6 text-center">
+          <p className="text-[13px] text-zinc-500">This session is no longer running.</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleAgentRestart(true)}
+              disabled={restartLoading || blocked}
+              title={
+                blocked
+                  ? 'Blocked by incomplete dependencies'
+                  : 'Continue the CLI session from disk (--resume)'
+              }
+              className={
+                restartLoading
+                  ? resumeBtnLoading
+                  : restartError
+                    ? resumeBtnError
+                    : blocked
+                      ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                      : resumeBtnIdle
+              }
+            >
+              {blocked ? 'Blocked' : restartError ? 'Retry' : 'Resume'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleAgentRestart(false)}
+              disabled={restartLoading || blocked}
+              title={
+                blocked
+                  ? 'Blocked by incomplete dependencies'
+                  : 'Start a new agent session with the full task prompt'
+              }
+              className={
+                restartLoading || blocked ? `${newSessionBtn} disabled:cursor-not-allowed` : newSessionBtn
+              }
+            >
+              {blocked ? 'Blocked' : 'New session'}
+            </button>
+          </div>
+          {restartError && !blocked ? (
+            <p className="max-w-sm text-xs leading-snug text-red-300/90" role="alert">
+              {restartError}
+            </p>
+          ) : null}
         </div>
       ) : (
         <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
@@ -254,14 +400,27 @@ export function SessionTerminalView({
   session,
   visible = true,
   task = null,
+  agentSessionLifecycle,
+  onAgentSessionStartSuccess,
   onMarkAsDone,
   markAsDoneBlocked = false,
+  onTaskPrClick,
+  prLoading = false,
+  prAgentAwaiting = false,
+  taskDetailPanel,
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
   const running = session.status === 'running';
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
+  const showDetailsTab = Boolean(task && taskDetailPanel);
+
+  useEffect(() => {
+    if (activePane === 'details' && !showDetailsTab) {
+      setActivePane('agent');
+    }
+  }, [activePane, showDetailsTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -309,6 +468,20 @@ export function SessionTerminalView({
     <div className="flex min-h-0 flex-1 flex-col bg-[#09090b]">
       <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0b] pl-1 pr-2.5 py-1">
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 pl-0.5">
+          {showDetailsTab ? (
+            <PaneTab
+              label="Details"
+              active={activePane === 'details'}
+              onClick={() => setActivePane('details')}
+              icon={
+                <LayoutList
+                  className="h-3.5 w-3.5 shrink-0 opacity-80"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              }
+            />
+          ) : null}
           <PaneTab
             label="Agent"
             active={activePane === 'agent'}
@@ -343,6 +516,16 @@ export function SessionTerminalView({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
+          {task ? (
+            <GithubPrIconButton
+              githubPr={task.githubPr}
+              taskId={task.id}
+              hasWorktree={Boolean(session.worktreePath?.trim())}
+              onTaskPrClick={onTaskPrClick}
+              prLoading={prLoading}
+              prAgentAwaiting={prAgentAwaiting}
+            />
+          ) : null}
           {showMarkAsDone ? (
             <button
               type="button"
@@ -361,9 +544,28 @@ export function SessionTerminalView({
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
+        {showDetailsTab && task && taskDetailPanel ? (
+          <div
+            aria-hidden={!visible || activePane !== 'details'}
+            className="absolute inset-0 min-h-0 overflow-hidden"
+            style={paneVisibilityStyle(visible && activePane === 'details')}
+          >
+            <TaskDetailPanel
+              {...taskDetailPanel}
+              task={task}
+              layout="sessionWorkspace"
+              onClose={() => {
+                /* No overlay — Escape and backdrop are disabled in sessionWorkspace layout. */
+              }}
+            />
+          </div>
+        ) : null}
         <AgentPane
           session={session}
           visible={visible && activePane === 'agent'}
+          task={task}
+          agentSessionLifecycle={agentSessionLifecycle}
+          onAgentSessionStartSuccess={onAgentSessionStartSuccess}
         />
         {shells.map((shell) => (
           <ShellPane

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import { Session, Task, TaskStatus } from '../types';
 import TaskCard from './TaskCard';
+import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { ProjectMember } from '../renderer/projects/members';
 
 interface Props {
@@ -24,10 +25,12 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoadingTaskId?: string | null;
+  prAgentAwaitingByTaskId?: Record<string, boolean>;
   repoDefaultBranchShort: string;
   cloudUnblockAutostartClientUid?: string;
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function Column({
@@ -49,10 +52,12 @@ export default function Column({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoadingTaskId,
+  prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isReview = id === 'review';
@@ -135,9 +140,11 @@ export default function Column({
                     onTaskAssigneeChange={onTaskAssigneeChange}
                     onTaskPrClick={onTaskPrClick}
                     prLoading={prLoadingTaskId === task.id}
+                    prAgentAwaiting={Boolean(prAgentAwaitingByTaskId?.[task.id])}
                     repoDefaultBranchShort={repoDefaultBranchShort}
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
+                    onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
                   />
                 );
               })}

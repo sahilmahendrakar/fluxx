@@ -5,6 +5,7 @@ import { broom } from '@lucide/lab';
 import {
   Ban,
   CirclePlay,
+  Clock,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -17,8 +18,7 @@ import {
 import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
-import { modelSummaryForTask } from '../agentModelUi';
-import AgentBadge from './AgentBadge';
+import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 
@@ -220,11 +220,14 @@ interface Props {
   onTaskAssigneeChange?: (taskId: string, assigneeId: string | null) => void;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
+  prAgentAwaiting?: boolean;
   repoDefaultBranchShort: string;
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
   hasWorktree?: boolean;
+  /** Persist agent / model / YOLO for this task (same fields as task detail & MCP `flux__update_task`). */
+  onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
 }
 
 export default function TaskCard({
@@ -243,15 +246,16 @@ export default function TaskCard({
   onTaskAssigneeChange,
   onTaskPrClick,
   prLoading = false,
+  prAgentAwaiting = false,
   repoDefaultBranchShort,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
+  onTaskAgentSpawnPrefsChange,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
-  const agentModelSummary = modelSummaryForTask(task);
   const blocked = isTaskBlocked(task, allTasks);
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const perTaskUnblockAuto = task.autoStartOnUnblock === true;
@@ -263,6 +267,7 @@ export default function TaskCard({
   const prIsOpen = prState === 'open';
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
+  const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
   const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
   const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
   const branchChipTitle =
@@ -291,6 +296,10 @@ export default function TaskCard({
         ? 'Blocked: this project auto-starts when unblocked; click to add a per-task override to turn auto-start on for this task'
         : 'Blocked: click to enable auto-start when unblocked for this task';
 
+  const tryOpenTaskDetail = () => {
+    onCardClick(task.id);
+  };
+
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -309,13 +318,9 @@ export default function TaskCard({
             {...provided.dragHandleProps}
             className="cursor-grab rounded-md p-3 active:cursor-grabbing"
           >
-            <div
-              role="presentation"
-              onClick={() => onCardClick(task.id)}
-              className="cursor-grab"
-            >
+            <div role="presentation" className="cursor-grab">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={tryOpenTaskDetail}>
                   <p
                     className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
                       isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
@@ -367,9 +372,19 @@ export default function TaskCard({
                   ×
                 </button>
               </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
+              <div
+                className="mt-3 flex items-center justify-between gap-2"
+                onClick={(e) => {
+                  const t = e.target as HTMLElement;
+                  if (t.closest('button')) return;
+                  tryOpenTaskDetail();
+                }}
+              >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                  <AgentBadge agent={task.agent} summary={agentModelSummary} variant="icon" />
+                  <TaskCardAgentSpawnMenu
+                    task={task}
+                    onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
+                  />
                   {showBranchChip ? (
                     <span
                       title={branchChipTitle}
@@ -441,7 +456,9 @@ export default function TaskCard({
                             ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
                             : prLinked
                               ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
-                              : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                              : prAwaitingAgent
+                                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
+                                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
                       }`}
                       aria-label={
                         prLoading
@@ -454,7 +471,9 @@ export default function TaskCard({
                                 ? 'Open closed pull request'
                                 : prLinked
                                   ? 'Open pull request'
-                                  : 'Create GitHub pull request'
+                                  : prAwaitingAgent
+                                    ? 'Pull request requested from agent; click to check GitHub'
+                                    : 'Create GitHub pull request'
                       }
                       title={
                         prLoading
@@ -467,7 +486,9 @@ export default function TaskCard({
                                 ? 'Open closed pull request'
                                 : prLinked
                                   ? 'Open pull request'
-                                  : 'Create GitHub pull request'
+                                  : prAwaitingAgent
+                                    ? 'PR creation was sent to the agent — click to refresh, or wait for automatic checks'
+                                    : 'Create GitHub pull request'
                       }
                     >
                       {prLoading ? (
@@ -479,6 +500,8 @@ export default function TaskCard({
                         <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       ) : prLinked ? (
                         <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                      ) : prAwaitingAgent ? (
+                        <Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       ) : (
                         <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                       )}

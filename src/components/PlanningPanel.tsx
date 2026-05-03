@@ -1,18 +1,12 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import type { AgentModelUiKind } from '../agentModelUi';
+import { labelForModelId } from '../agentModelUi';
 import {
-  appendAgentModelExtra,
-  choicesForPicker,
-  labelForModelId,
-} from '../agentModelUi';
+  AgentSessionPrefsMenuContent,
+  AgentSessionPrefsMenuPortal,
+  agentModelUiKindForAgent,
+} from './AgentSessionPrefsMenu';
 import {
   migrateLegacyPlanningModelsIfNeeded,
   readPlanningModelsForProject,
@@ -59,9 +53,6 @@ const OUTPUT_TAIL_MAX = 12_000;
 
 const ESC = String.fromCharCode(27);
 const ANSI_ESCAPE_PATTERN = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'g');
-
-const prefsMenuItemClass =
-  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] text-zinc-200 transition hover:bg-white/[0.06]';
 
 function stripAnsi(s: string): string {
   return s.replace(ANSI_ESCAPE_PATTERN, '');
@@ -204,30 +195,16 @@ export function PlanningPanel({
   const [cursorModelId, setCursorModelId] = useState(DEFAULT_CURSOR_AGENT_MODEL);
   const [planningYolo, setPlanningYolo] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
-  const [extrasGen, setExtrasGen] = useState(0);
-  const [addModelOpen, setAddModelOpen] = useState(false);
-  const [addModelId, setAddModelId] = useState('');
-  const [addModelLabel, setAddModelLabel] = useState('');
-  const [addModelError, setAddModelError] = useState<string | null>(null);
-
   const outputBufferRef = useRef('');
   const activeSessionRef = useRef<PlanningSession | null>(null);
   const splitAnchorRef = useRef<HTMLDivElement>(null);
   const prefsDropdownRef = useRef<HTMLDivElement>(null);
-  const [prefsPos, setPrefsPos] = useState<{ top: number; left: number; width: number }>({
-    top: 0,
-    left: 0,
-    width: 240,
-  });
 
   const activeSession =
     activeSessionId == null
       ? null
       : (sessions.find((s) => s.id === activeSessionId) ?? null);
   activeSessionRef.current = activeSession;
-
-  const modelKindForAgent = (a: Agent): AgentModelUiKind | null =>
-    a === 'cursor' ? 'cursor' : a === 'claude-code' ? 'claude-code' : null;
 
   const activeModelId =
     selectedAgent === 'cursor'
@@ -267,10 +244,6 @@ export function PlanningPanel({
       setNeedsInput(false);
       outputBufferRef.current = '';
       setPrefsOpen(false);
-      setAddModelOpen(false);
-      setAddModelId('');
-      setAddModelLabel('');
-      setAddModelError(null);
     })();
     return () => {
       cancelled = true;
@@ -281,6 +254,10 @@ export function PlanningPanel({
     project.planningAgentYolo,
     onLocalProjectRefresh,
   ]);
+
+  const closePrefsMenu = useCallback(() => {
+    setPrefsOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!planningApi) return;
@@ -293,34 +270,6 @@ export function PlanningPanel({
       }
     });
   }, [planningApi, onSessionsMutated]);
-
-  useLayoutEffect(() => {
-    if (!prefsOpen || !splitAnchorRef.current) return;
-    const rect = splitAnchorRef.current.getBoundingClientRect();
-    setPrefsPos({
-      top: rect.bottom + 4,
-      left: Math.max(8, rect.right - 260),
-      width: 260,
-    });
-  }, [prefsOpen]);
-
-  useEffect(() => {
-    if (!prefsOpen) return;
-    const onPointerDown = (e: globalThis.PointerEvent) => {
-      const anchor = splitAnchorRef.current;
-      const menu = prefsDropdownRef.current;
-      const t = e.target as Node;
-      if (anchor && !anchor.contains(t) && (!menu || !menu.contains(t))) {
-        setPrefsOpen(false);
-        setAddModelOpen(false);
-        setAddModelId('');
-        setAddModelLabel('');
-        setAddModelError(null);
-      }
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [prefsOpen]);
 
   const appendOutputAndDetectNeedsInput = useCallback((chunk: string) => {
     outputBufferRef.current = (
@@ -376,11 +325,7 @@ export function PlanningPanel({
       }
       await onLocalProjectRefresh?.();
     })();
-    setPrefsOpen(false);
-    setAddModelOpen(false);
-    setAddModelId('');
-    setAddModelLabel('');
-    setAddModelError(null);
+    closePrefsMenu();
   };
 
   const persistPlanningYolo = useCallback(
@@ -399,22 +344,6 @@ export function PlanningPanel({
     },
     [onLocalProjectRefresh],
   );
-
-  const handleAddCustomModel = (kind: AgentModelUiKind) => {
-    setAddModelError(null);
-    const id = addModelId.trim();
-    if (!id) {
-      setAddModelError('Enter a model id.');
-      return;
-    }
-    const label = addModelLabel.trim() || id;
-    if (!appendAgentModelExtra(kind, { id, label })) {
-      setAddModelError('That id is already in the list (preset or added earlier).');
-      return;
-    }
-    setExtrasGen((g) => g + 1);
-    handleModelPick(kind, id);
-  };
 
   const buildStartPayload = ():
     | Agent
@@ -482,10 +411,7 @@ export function PlanningPanel({
   };
 
   const sessionRunning = activeSession?.status === 'running';
-  const mk = modelKindForAgent(selectedAgent);
-  // `extrasGen` bumps after "Add model" so lists match `agentModelUi` / task flows.
-  void extrasGen;
-  const modelChoices = mk ? choicesForPicker(mk, activeModelId) : [];
+  const mk = agentModelUiKindForAgent(selectedAgent);
   const modelSummary =
     mk === 'claude-code' && !claudeModelId.trim()
       ? 'Default'
@@ -493,159 +419,25 @@ export function PlanningPanel({
         ? labelForModelId(mk, activeModelId)
         : '—';
 
-  const prefsMenu =
-    prefsOpen && typeof document !== 'undefined'
-      ? createPortal(
-          <div
-            ref={prefsDropdownRef}
-            className="fixed z-[200] max-h-[min(22rem,calc(100vh-5rem))] overflow-y-auto rounded-md border border-white/[0.12] bg-[#121214] py-1 shadow-xl shadow-black/50"
-            style={{
-              top: prefsPos.top,
-              left: prefsPos.left,
-              width: prefsPos.width,
-            }}
-            role="dialog"
-            aria-label="Next planning session"
-          >
-            <div className="border-b border-white/[0.06] px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Agent
-              </p>
-              <div className="mt-1 flex flex-col gap-0.5">
-                {AGENTS.map((a) => {
-                  const sel = selectedAgent === a.id;
-                  return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      className={`${prefsMenuItemClass} rounded ${sel ? 'bg-white/[0.06]' : ''}`}
-                      onClick={() => handleAgentPick(a.id)}
-                    >
-                      <span className="font-medium text-zinc-100">{a.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Model
-              </p>
-              {mk ? (
-                <>
-                  {mk === 'claude-code' ? (
-                    <button
-                      type="button"
-                      className={`${prefsMenuItemClass} mt-1 rounded ${!claudeModelId.trim() ? 'bg-white/[0.06]' : ''}`}
-                      onClick={() => handleModelPick('claude-code', '')}
-                    >
-                      <span className="font-medium text-zinc-100">Default</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-zinc-500">CLI</span>
-                    </button>
-                  ) : null}
-                  {modelChoices.map((p) => {
-                    const selected =
-                      mk === 'claude-code'
-                        ? claudeModelId.trim() === p.id
-                        : (cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL) === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`${prefsMenuItemClass} rounded ${selected ? 'bg-white/[0.06]' : ''}`}
-                        onClick={() => handleModelPick(mk, p.id)}
-                      >
-                        <span className="min-w-0 flex-1 truncate font-medium text-zinc-100">
-                          {p.label}
-                        </span>
-                        <span className="shrink-0 font-mono text-[9px] text-zinc-500">{p.id}</span>
-                      </button>
-                    );
-                  })}
-                  <div className="mx-0.5 my-1 border-t border-white/[0.08] pt-1">
-                    {!addModelOpen ? (
-                      <button
-                        type="button"
-                        className={`${prefsMenuItemClass} text-zinc-300`}
-                        onClick={() => {
-                          setAddModelOpen(true);
-                          setAddModelError(null);
-                        }}
-                      >
-                        Add model…
-                      </button>
-                    ) : (
-                      <div className="space-y-1.5 px-1 py-1">
-                        <p className="text-[10px] leading-snug text-zinc-500">
-                          Model id your CLI accepts (same list as task sessions).
-                        </p>
-                        <input
-                          value={addModelId}
-                          onChange={(e) => setAddModelId(e.target.value)}
-                          placeholder="Model id"
-                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 font-mono text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
-                        />
-                        <input
-                          value={addModelLabel}
-                          onChange={(e) => setAddModelLabel(e.target.value)}
-                          placeholder="Display name (optional)"
-                          className="w-full rounded border border-white/[0.1] bg-[#09090b] px-2 py-1 text-[10px] text-zinc-200 outline-none focus-visible:border-white/[0.2]"
-                        />
-                        {addModelError ? (
-                          <p className="text-[10px] text-red-300/90">{addModelError}</p>
-                        ) : null}
-                        <div className="flex flex-wrap gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleAddCustomModel(mk)}
-                            className="rounded border border-emerald-500/25 bg-emerald-500/[0.1] px-2 py-0.5 text-[10px] font-medium text-emerald-100/90"
-                          >
-                            Add
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAddModelOpen(false);
-                              setAddModelId('');
-                              setAddModelLabel('');
-                              setAddModelError(null);
-                            }}
-                            className="rounded px-2 py-0.5 text-[10px] text-zinc-500 hover:bg-white/[0.06]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
-                  Codex uses its default model for planning in this version.
-                </p>
-              )}
-            </div>
-            <div className="border-t border-white/[0.06] px-2.5 py-1.5">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Skip permission prompts
-              </p>
-              <button
-                type="button"
-                className={`${prefsMenuItemClass} mt-1 w-full justify-between rounded ${planningYolo ? 'bg-white/[0.06]' : ''}`}
-                onClick={() => void persistPlanningYolo(!planningYolo)}
-              >
-                <span className="font-medium text-zinc-100">YOLO</span>
-                <span className="text-[10px] text-zinc-500">{planningYolo ? 'On' : 'Off'}</span>
-              </button>
-              <p className="mt-1 text-[9px] leading-snug text-zinc-600">
-                Cursor adds <span className="font-mono">--yolo</span>; Claude adds{' '}
-                <span className="font-mono">--dangerously-skip-permissions</span>.
-              </p>
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
+  const prefsMenu = (
+    <AgentSessionPrefsMenuPortal
+      open={prefsOpen}
+      anchorRef={splitAnchorRef}
+      dropdownRef={prefsDropdownRef}
+      onClose={closePrefsMenu}
+      ariaLabel="Next planning session"
+    >
+      <AgentSessionPrefsMenuContent
+        selectedAgent={selectedAgent}
+        claudeModelId={claudeModelId}
+        cursorModelId={cursorModelId}
+        agentYolo={planningYolo}
+        onPickAgent={handleAgentPick}
+        onPickModel={handleModelPick}
+        onToggleYolo={(next) => void persistPlanningYolo(next)}
+      />
+    </AgentSessionPrefsMenuPortal>
+  );
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">

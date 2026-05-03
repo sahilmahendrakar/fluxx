@@ -1,4 +1,5 @@
 import {
+  createElement,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -51,6 +52,7 @@ import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
+import { GithubPrIconButton } from './GithubPrIconButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 import ConfirmDialog from './ConfirmDialog';
 import {
@@ -60,6 +62,10 @@ import {
   planTaskSourceBranchFieldsForCreate,
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
+
+function taskAgentSupportsCliResume(agent: Agent): boolean {
+  return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
+}
 
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
 const MD_READ_CLASS = [
@@ -82,7 +88,7 @@ const MD_READ_CLASS = [
   '[&_strong]:font-semibold [&_strong]:text-zinc-100',
 ].join(' ');
 
-interface TaskDetailPanelProps {
+export interface TaskDetailPanelProps {
   task: Task | null;
   /** Full board snapshot for dependencies and session start (same `projectId`). */
   projectTasks: Task[];
@@ -114,6 +120,18 @@ interface TaskDetailPanelProps {
    * has no assignee yet, `assigneeId` is set to this value alongside in-progress.
    */
   implicitSessionAssigneeUid?: string | null;
+  /** Open linked PR or start create flow (same as board / session chrome). */
+  onTaskPrClick?: (taskId: string) => void;
+  /** True while create PR is in flight for this task. */
+  prLoading?: boolean;
+  /** PR creation delegated to agent; click again to discover the PR. */
+  prAgentAwaiting?: boolean;
+  /**
+   * `board` (default): right-rail overlay with resize, embedded session mirror, backdrop.
+   * `sessionWorkspace`: full-area inline body for the task session workspace Details tab
+   * (no overlay, no mirror terminal — use the Agent tab for output).
+   */
+  layout?: 'board' | 'sessionWorkspace';
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -207,7 +225,12 @@ export default function TaskDetailPanel({
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
+  onTaskPrClick,
+  prLoading = false,
+  prAgentAwaiting = false,
+  layout = 'board',
 }: TaskDetailPanelProps) {
+  const sessionWorkspace = layout === 'sessionWorkspace';
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
@@ -219,6 +242,7 @@ export default function TaskDetailPanel({
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [depSearch, setDepSearch] = useState('');
+  const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
   const [descriptionEditing, setDescriptionEditing] = useState(false);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const taskFormSplitRef = useRef<HTMLDivElement>(null);
@@ -257,6 +281,7 @@ export default function TaskDetailPanel({
     setAssigneeChangeConfirm(null);
     setDependencyError(null);
     setDepSearch('');
+    setDependencyAddOpen(false);
     setDescriptionEditing(false);
     setBranchDiscovery(null);
     setBranchDiscoveryError(null);
@@ -389,19 +414,21 @@ export default function TaskDetailPanel({
   }, []);
 
   useEffect(() => {
+    if (sessionWorkspace) return;
     const stored = readStoredDetailWidth();
     if (stored != null) {
       setDetailWidth(clampDetailWidth(stored, maxDetailWidthForParent()));
     }
-  }, [maxDetailWidthForParent]);
+  }, [maxDetailWidthForParent, sessionWorkspace]);
 
   useEffect(() => {
+    if (sessionWorkspace) return;
     const onResize = () => {
       setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [maxDetailWidthForParent]);
+  }, [maxDetailWidthForParent, sessionWorkspace]);
 
   const persistDetailWidth = useCallback((w: number) => {
     try {
@@ -466,6 +493,7 @@ export default function TaskDetailPanel({
   }, []);
 
   useLayoutEffect(() => {
+    if (sessionWorkspace) return;
     const el = taskFormSplitRef.current;
     if (!el) return;
     const sync = () => {
@@ -477,11 +505,12 @@ export default function TaskDetailPanel({
     ro.observe(el);
     sync();
     return () => ro.disconnect();
-  }, [task?.id]);
+  }, [task?.id, sessionWorkspace]);
 
   useLayoutEffect(() => {
+    if (sessionWorkspace) return;
     terminalRef.current?.fit();
-  }, [sessionPaneHeightPx, session?.id, task?.id]);
+  }, [sessionPaneHeightPx, session?.id, task?.id, sessionWorkspace]);
 
   const handleSessionSplitPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -587,7 +616,12 @@ export default function TaskDetailPanel({
     let cancelled = false;
     void window.electronAPI.sessions.get(task.id).then((existingSession) => {
       if (cancelled) return;
-      if (existingSession && existingSession.status === 'running') {
+      if (
+        existingSession &&
+        (existingSession.status === 'running' ||
+          existingSession.status === 'stopped' ||
+          existingSession.status === 'error')
+      ) {
         setSession(existingSession);
       } else {
         setSession(null);
@@ -611,7 +645,13 @@ export default function TaskDetailPanel({
   }, [session?.id]);
 
   const sessionId = session?.id;
-  const sessionReadyForPty = Boolean(sessionId && session?.status === 'running');
+  const sessionReadyForPty = Boolean(
+    sessionId &&
+      (session?.status === 'running' ||
+        session?.status === 'stopped' ||
+        session?.status === 'error') &&
+      !sessionWorkspace,
+  );
   useTerminalPtyStream({
     terminalRef,
     id: sessionId ?? '',
@@ -640,7 +680,7 @@ export default function TaskDetailPanel({
   });
 
   useEffect(() => {
-    if (!task) return;
+    if (!task || sessionWorkspace) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (assigneeChangeConfirm) return;
@@ -649,7 +689,7 @@ export default function TaskDetailPanel({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [task, onClose, assigneeChangeConfirm]);
+  }, [task, onClose, assigneeChangeConfirm, sessionWorkspace]);
 
   const assigneeSessionGuardActive = useMemo(
     () =>
@@ -682,11 +722,11 @@ export default function TaskDetailPanel({
   );
 
   useLayoutEffect(() => {
-    if (task == null) return;
+    if (task == null || sessionWorkspace) return;
     setDetailWidth((prev) => clampDetailWidth(prev, maxDetailWidthForParent()));
-  }, [task?.id, maxDetailWidthForParent]);
+  }, [task?.id, maxDetailWidthForParent, sessionWorkspace]);
 
-  const handleStartSession = async () => {
+  const handleStartSession = async (opts?: { resume?: boolean }) => {
     if (!task) return;
     if (isTaskBlocked(task, projectTasks)) {
       setSessionError('Finish blocking tasks before starting a session.');
@@ -699,6 +739,7 @@ export default function TaskDetailPanel({
         task,
         projectTasks,
         implicitSessionAssigneeUid ?? undefined,
+        opts?.resume ? { resume: true } : undefined,
       );
       if ('error' in result) {
         if (result.error === 'TASK_BLOCKED') {
@@ -788,6 +829,7 @@ export default function TaskDetailPanel({
   const pickCandidates = projectTasks.filter(
     (t) =>
       t.id !== task.id &&
+      t.status !== 'done' &&
       !(task.blockedByTaskIds ?? []).includes(t.id) &&
       (depQueryLower === '' || t.title.toLowerCase().includes(depQueryLower)),
   );
@@ -838,27 +880,15 @@ export default function TaskDetailPanel({
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
   const sessionIdleAfterRun = hasLocalSession && !sessionRunning;
+  const showResumeNewPair =
+    sessionIdleAfterRun && taskAgentSupportsCliResume(task.agent);
 
   const showMarkAsDone = task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
 
-  return (
+  const panelShell = (
     <>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-label="Close task details"
-        className="absolute inset-0 z-10 bg-black/30"
-        onClick={onClose}
-      />
-      <aside
-        ref={asideRef}
-        style={{ width: detailWidth }}
-        className="absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-detail-title"
-      >
+      {!sessionWorkspace ? (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -868,9 +898,10 @@ export default function TaskDetailPanel({
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
+      ) : null}
 
-        {/* Top bar: metadata + primary CTA + close */}
-        <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
+      {/* Top bar: metadata + primary CTA + optional close (board overlay only) */}
+      <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -899,44 +930,99 @@ export default function TaskDetailPanel({
                 </button>
               ) : null}
               <OpenInWorkspaceButton worktreePath={resolvedWorktreePath} size="md" />
+              <GithubPrIconButton
+                githubPr={task.githubPr}
+                taskId={task.id}
+                hasWorktree={Boolean(resolvedWorktreePath?.trim())}
+                onTaskPrClick={onTaskPrClick}
+                prLoading={prLoading}
+                prAgentAwaiting={prAgentAwaiting}
+              />
               {!sessionRunning ? (
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  disabled={startInFlight || blocked}
-                  title={blocked ? 'Blocked by incomplete dependencies' : undefined}
-                  className={
-                    startInFlight
-                      ? startBtnLoading
-                      : sessionError
-                        ? startBtnError
-                        : blocked
-                          ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
-                          : startBtnIdle
-                  }
-                >
-                  {blocked ? 'Blocked' : startButtonLabel}
-                </button>
+                showResumeNewPair ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartSession({ resume: true })}
+                      disabled={startInFlight || blocked}
+                      title={
+                        blocked
+                          ? 'Blocked by incomplete dependencies'
+                          : 'Continue the CLI session from disk (--resume)'
+                      }
+                      className={
+                        startInFlight
+                          ? startBtnLoading
+                          : sessionError
+                            ? startBtnError
+                            : blocked
+                              ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                              : startBtnIdle
+                      }
+                    >
+                      {blocked ? 'Blocked' : sessionError ? 'Retry' : 'Resume'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartSession()}
+                      disabled={startInFlight || blocked}
+                      title={
+                        blocked
+                          ? 'Blocked by incomplete dependencies'
+                          : 'Start a new agent session with the full task prompt'
+                      }
+                      className={
+                        startInFlight
+                          ? startBtnLoading
+                          : blocked
+                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            : markDoneBtn
+                      }
+                    >
+                      {blocked ? 'Blocked' : 'New session'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleStartSession()}
+                    disabled={startInFlight || blocked}
+                    title={blocked ? 'Blocked by incomplete dependencies' : undefined}
+                    className={
+                      startInFlight
+                        ? startBtnLoading
+                        : sessionError
+                          ? startBtnError
+                          : blocked
+                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            : startBtnIdle
+                    }
+                  >
+                    {blocked ? 'Blocked' : startButtonLabel}
+                  </button>
+                )
               ) : null}
               {sessionError && !sessionRunning ? (
                 <p className="min-w-0 text-xs leading-snug text-red-300/90">{sessionError}</p>
               ) : null}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-          </button>
+          {!sessionWorkspace ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+            </button>
+          ) : null}
         </header>
 
         <div ref={taskFormSplitRef} className="flex min-h-0 flex-1 flex-col">
           <div
             className="min-h-0 min-w-0 flex-1 overflow-y-auto"
-            style={{ minHeight: MIN_TASK_FORM_PANE_PX }}
+            style={sessionWorkspace ? undefined : { minHeight: MIN_TASK_FORM_PANE_PX }}
           >
             <div className="space-y-6 px-5 py-5">
               <textarea
@@ -1405,63 +1491,92 @@ export default function TaskDetailPanel({
                 )}
 
                 <div className="pt-1">
-                  <input
-                    type="search"
-                    value={depSearch}
-                    onChange={(e) => setDepSearch(e.target.value)}
-                    placeholder="Add dependency by search…"
-                    className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
-                    aria-label="Search tasks to add as dependencies"
-                  />
+                  {dependencyAddOpen ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-zinc-500">Add a blocker or dependency</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDependencyAddOpen(false);
+                            setDepSearch('');
+                            setDependencyError(null);
+                          }}
+                          className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <input
+                        type="search"
+                        value={depSearch}
+                        onChange={(e) => setDepSearch(e.target.value)}
+                        placeholder="Add dependency by search…"
+                        className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                        aria-label="Search tasks to add as dependencies"
+                      />
+                      {dependencyError ? (
+                        <p className="text-xs text-red-300/90" role="alert">
+                          {dependencyError}
+                        </p>
+                      ) : null}
+                      {pickCandidates.length > 0 ? (
+                        <ul
+                          className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
+                          role="listbox"
+                          aria-label="Tasks matching your search"
+                        >
+                          {pickCandidates.slice(0, 50).map((t) => {
+                            const stLabel =
+                              COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
+                            return (
+                              <li key={t.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => addBlocker(t.id)}
+                                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
+                                >
+                                  <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
+                                  <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : depSearch.trim() ? (
+                        <p className="text-xs text-zinc-600">No matching tasks.</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDependencyAddOpen(true)}
+                      className="w-full rounded-lg border border-dashed border-white/[0.1] bg-transparent px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:border-white/[0.14] hover:bg-white/[0.02] hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      Add dependency
+                    </button>
+                  )}
                 </div>
-                {dependencyError ? (
-                  <p className="text-xs text-red-300/90" role="alert">
-                    {dependencyError}
-                  </p>
-                ) : null}
-                {pickCandidates.length > 0 ? (
-                  <ul
-                    className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
-                    role="listbox"
-                    aria-label="Tasks matching your search"
-                  >
-                    {pickCandidates.slice(0, 50).map((t) => {
-                      const stLabel = COLUMNS.find((c) => c.id === t.status)?.label ?? t.status;
-                      return (
-                        <li key={t.id}>
-                          <button
-                            type="button"
-                            onClick={() => addBlocker(t.id)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
-                          >
-                            <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
-                            <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : depSearch.trim() ? (
-                  <p className="text-xs text-zinc-600">No matching tasks.</p>
-                ) : null}
               </section>
             </div>
           </div>
 
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize between task details and session output"
-            title="Drag to resize session. Double-click to reset."
-            tabIndex={0}
-            className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
-            onPointerDown={handleSessionSplitPointerDown}
-            onDoubleClick={handleSessionSplitDoubleClick}
-            onKeyDown={onSessionSplitKeyDown}
-          />
+          {!sessionWorkspace ? (
+            <>
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize between task details and session output"
+                title="Drag to resize session. Double-click to reset."
+                tabIndex={0}
+                className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
+                onPointerDown={handleSessionSplitPointerDown}
+                onDoubleClick={handleSessionSplitDoubleClick}
+                onKeyDown={onSessionSplitKeyDown}
+              />
 
-          {/* Session: secondary when idle; compact chrome when live */}
-          <div
+              {/* Session: secondary when idle; compact chrome when live */}
+              <div
             className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-[#080809]"
             style={{ height: sessionPaneHeightPx }}
           >
@@ -1571,6 +1686,7 @@ export default function TaskDetailPanel({
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
                     onData={
+                      sessionRunning &&
                       terminalShouldForwardInput(MIRROR_TERMINAL_VIEW_POLICY)
                         ? handleTerminalData
                         : undefined
@@ -1582,6 +1698,8 @@ export default function TaskDetailPanel({
               )}
             </div>
           </div>
+            </>
+          ) : null}
         </div>
 
         <div className="shrink-0 border-t border-white/[0.05] px-5 py-3">
@@ -1593,7 +1711,39 @@ export default function TaskDetailPanel({
             Delete task
           </button>
         </div>
-      </aside>
+    </>
+  );
+
+  return (
+    <>
+      {!sessionWorkspace ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Close task details"
+          className="absolute inset-0 z-10 bg-black/30"
+          onClick={onClose}
+        />
+      ) : null}
+      {createElement(
+        sessionWorkspace ? 'div' : 'aside',
+        sessionWorkspace
+          ? {
+              className: 'flex h-full min-h-0 min-w-0 flex-col bg-[#0a0a0b]',
+              role: 'region' as const,
+              'aria-label': 'Task details',
+            }
+          : {
+              ref: asideRef,
+              style: { width: detailWidth } as CSSProperties,
+              className:
+                'absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]',
+              role: 'dialog' as const,
+              'aria-modal': true as const,
+              'aria-labelledby': 'task-detail-title',
+            },
+        panelShell,
+      )}
       {assigneeChangeConfirm ? (
         <ConfirmDialog
           title="Change assignee with an active session?"

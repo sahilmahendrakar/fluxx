@@ -46,6 +46,40 @@ export function agentSpawnSpec(
   }
 }
 
+/**
+ * Same agents as {@link agentSpawnSpec}, but resume-only argv: model / yolo
+ * flags are preserved, then a single `--resume` (no initial prompt).
+ */
+export function agentSpawnResumeSpec(
+  task: AgentSpawnTaskInput,
+): { command: string; args: string[] } {
+  switch (task.agent) {
+    case 'claude-code': {
+      const args: string[] = [];
+      const model = claudeCodeExplicitModel(task);
+      if (model) {
+        args.push('--model', model);
+      }
+      if (task.agentYolo === true) {
+        args.push('--dangerously-skip-permissions');
+      }
+      args.push('--resume');
+      return { command: 'claude', args };
+    }
+    case 'codex':
+      return { command: 'codex', args: ['--resume'] };
+    case 'cursor': {
+      const model = resolvedCursorAgentModel(task);
+      const args: string[] = ['--model', model];
+      if (task.agentYolo === true) {
+        args.push('--yolo');
+      }
+      args.push('--resume');
+      return { command: 'agent', args };
+    }
+  }
+}
+
 const FLUX_SSE_MCP_ENTRY = {
   type: 'sse' as const,
   url: 'http://localhost:47432/sse',
