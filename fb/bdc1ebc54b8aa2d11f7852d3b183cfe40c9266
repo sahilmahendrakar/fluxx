@@ -1,0 +1,33 @@
+src/mcpBridge.ts
+  4048462c529073d3 119-120
+src/cloudInProgressAutostartApply.ts
+  4048462c529073d3 31,40-42
+src/main.ts
+  4048462c529073d3 1934-1936
+src/components/ProjectSettingsView.tsx
+  4048462c529073d3 624,627-629
+src/types.ts
+  4048462c529073d3 89
+src/cloudInProgressAutostartApply.test.ts
+  4048462c529073d3 1,3-6,69-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fbbdc1ebc54b8aa2d11f7852d3b183cfe40c9266",
+  "prompts": {
+    "4048462c529073d3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "920daabe-8fa7-4782-8ab5-ae82734ce7a0",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 80,
+      "total_deletions": 15,
+      "accepted_lines": 80,
+      "overriden_lines": 0
+    }
+  }
+}
