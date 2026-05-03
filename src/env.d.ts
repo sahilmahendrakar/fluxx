@@ -204,6 +204,7 @@ declare global {
         delete: (id: string) => Promise<void>;
         requestPullRequestFromAgent: (payload: {
           taskId: string;
+          agent?: Agent;
           title?: string;
           description?: string;
         }) => Promise<TaskRequestPullRequestFromAgentResult>;

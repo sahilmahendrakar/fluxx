@@ -2066,6 +2066,7 @@ export default function App() {
         const title = task.title.trim();
         const result = await window.electronAPI.tasks.requestPullRequestFromAgent({
           taskId,
+          agent: task.agent,
           ...(title ? { title } : {}),
           ...(task.description !== undefined ? { description: task.description } : {}),
         });

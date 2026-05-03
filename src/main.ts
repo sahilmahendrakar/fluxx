@@ -118,6 +118,7 @@ import { fluxTaskWorkBranchName } from './main/fluxTaskBranch';
 import {
   buildCreatePrInstructionsMarkdown,
   buildTaskAgentPullRequestPrompt,
+  buildTaskAgentPullRequestPromptCursorCompact,
   resolveAgentPullRequestBranchContext,
 } from './taskAgentPullRequestPrompt';
 import {
@@ -1357,22 +1358,10 @@ app.whenReady().then(async () => {
   });
 
   /**
-   * Writes PTY input and mirrors `session:write` side effects (task status / cloud notify).
-   * Submission detection matches the renderer: only CR/LF breaks silence / needs-input.
+   * After bytes hit the PTY: task status / cloud notify when input looks like a submit (CR/LF).
+   * Matches renderer: only CR/LF breaks silence / needs-input.
    */
-  function sendTaskSessionTerminalInput(sessionId: string, data: string): void {
-    if (isSessionInputDebugEnabled()) {
-      const taskId = sessionTaskMap.get(sessionId) ?? null;
-      console.log('[session:input]', {
-        sessionId,
-        taskId,
-        codeUnits: data.length,
-        repr: describeSessionInputForLog(data),
-      });
-    }
-
-    daemonClient.writeSession(sessionId, data);
-
+  function notifyTaskSessionInputAfterPtyWrite(sessionId: string, data: string): void {
     const taskId = sessionTaskMap.get(sessionId);
     if (!taskId) return;
 
@@ -1399,14 +1388,35 @@ app.whenReady().then(async () => {
     }
   }
 
+  /**
+   * Writes PTY input and mirrors `session:write` side effects (task status / cloud notify).
+   * Submission detection matches the renderer: only CR/LF breaks silence / needs-input.
+   */
+  function sendTaskSessionTerminalInput(sessionId: string, data: string): void {
+    if (isSessionInputDebugEnabled()) {
+      const taskId = sessionTaskMap.get(sessionId) ?? null;
+      console.log('[session:input]', {
+        sessionId,
+        taskId,
+        codeUnits: data.length,
+        repr: describeSessionInputForLog(data),
+      });
+    }
+
+    daemonClient.writeSession(sessionId, data);
+
+    notifyTaskSessionInputAfterPtyWrite(sessionId, data);
+  }
+
   ipcMain.handle(
     'tasks:requestPullRequestFromAgent',
     async (_e, raw: unknown): Promise<TaskRequestPullRequestFromAgentResult> => {
       if (!raw || typeof raw !== 'object') {
         return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
       }
-      const o = raw as { taskId?: unknown; title?: unknown; description?: unknown };
+      const o = raw as { taskId?: unknown; title?: unknown; description?: unknown; agent?: unknown };
       const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
+      const agentFromPayload: Agent | undefined = isPlanningAgent(o.agent) ? o.agent : undefined;
       if (!taskId) {
         return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
       }
@@ -1496,6 +1506,8 @@ app.whenReady().then(async () => {
         rootPath,
       });
       const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
+      /** Main task store is empty for some flows (e.g. cloud); renderer passes `agent` on the IPC payload. */
+      const sessionTaskAgent: Agent | undefined = taskRow?.agent ?? agentFromPayload;
       const { baseBranch, headBranch } = resolveAgentPullRequestBranchContext({
         task: taskRow ?? {},
         projectDefaultBranchShort: repoDefaultBranch,
@@ -1525,23 +1537,35 @@ app.whenReady().then(async () => {
             'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
         };
       }
-      const payload = buildTaskAgentPullRequestPrompt({
-        taskId,
-        taskTitle: title,
-        headBranch,
-        baseBranch,
-        prTitle: title,
-        prBody,
-        instructionsAbsolutePath: instructionsPath,
-      });
+      const payload =
+        sessionTaskAgent === 'cursor'
+          ? buildTaskAgentPullRequestPromptCursorCompact({
+              taskId,
+              taskTitle: title,
+              headBranch,
+              baseBranch,
+              prTitle: title,
+              prBody,
+              instructionsAbsolutePath: instructionsPath,
+            })
+          : buildTaskAgentPullRequestPrompt({
+              taskId,
+              taskTitle: title,
+              headBranch,
+              baseBranch,
+              prTitle: title,
+              prBody,
+              instructionsAbsolutePath: instructionsPath,
+            });
       const pasteInput = wrapAsXtermBracketedPaste(payload);
       const submitInput = '\r';
       const combinedInput = `${pasteInput}${submitInput}`;
-      const useCursorSplitPasteSubmit = taskRow?.agent === 'cursor';
+      const useCursorSplitPasteSubmit = sessionTaskAgent === 'cursor';
       // Multiline paste uses bracketed paste markers; `\n` inside the body must not hit
       // `sendTaskSessionTerminalInput` alone (it treats `\n` as submit). Cursor: one
       // chunk `\x1b[201~\r` left the prompt in the input without submitting — paste then
-      // await RPC, then `\r` only (Claude: single combined write still works).
+      // await RPC, then `\r` via the same `session:write` path as the renderer. Other agents:
+      // single combined write.
       if (useCursorSplitPasteSubmit) {
         await daemonClient.writeSessionAwait(session.id, pasteInput);
         sendTaskSessionTerminalInput(session.id, submitInput);

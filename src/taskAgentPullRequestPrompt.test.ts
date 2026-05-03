@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCreatePrInstructionsMarkdown,
   buildTaskAgentPullRequestPrompt,
+  buildTaskAgentPullRequestPromptCursorCompact,
   resolveAgentPullRequestBranchContext,
 } from './taskAgentPullRequestPrompt';
 import type { Task } from './types';
@@ -65,5 +66,27 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     expect(text).toContain('`' + instructionsPath + '`');
     expect(text).toContain('Do not commit secrets');
     expect(text).not.toContain('git status');
+  });
+});
+
+describe('buildTaskAgentPullRequestPromptCursorCompact', () => {
+  it('is a single line (avoids Cursor [Pasted N lines] collapse) and keeps key fields', () => {
+    const instructionsPath = '/tmp/flux-project/agent-instructions/create-pr.md';
+    const text = buildTaskAgentPullRequestPromptCursorCompact({
+      taskId: 'task-42',
+      taskTitle: 'Fix login bug',
+      headBranch: 'flux/task-42',
+      baseBranch: 'main',
+      prTitle: 'Fix login bug',
+      prBody: 'Long\nbody\nhere',
+      instructionsAbsolutePath: instructionsPath,
+    });
+    expect(text).not.toMatch(/\n/);
+    expect(text).not.toContain('```');
+    expect(text).toContain('`task-42`');
+    expect(text).toContain('Fix login bug');
+    expect(text).toContain('`flux/task-42`');
+    expect(text).toContain('`main`');
+    expect(text).toContain(instructionsPath);
   });
 });

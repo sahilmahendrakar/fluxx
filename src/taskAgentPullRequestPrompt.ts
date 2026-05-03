@@ -90,3 +90,21 @@ export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptPar
     '**Constraints:** Do not commit secrets, API keys, `.env` with real credentials, or large generated artifacts unless clearly intended for the repo.',
   ].join('\n');
 }
+
+/**
+ * Single-line PR ask for **Cursor agent** PTY injection. Cursor often collapses multiline
+ * bracketed pastes to `[Pasted N lines]`, after which Enter may not submit the real buffer;
+ * full details remain in {@link buildCreatePrInstructionsMarkdown} at `instructionsAbsolutePath`.
+ */
+export function buildTaskAgentPullRequestPromptCursorCompact(p: TaskAgentPullRequestPromptParams): string {
+  const title = (p.prTitle ?? p.taskTitle).trim() || p.taskTitle.trim();
+  const titleShort = title.length > 200 ? `${title.slice(0, 200)}…` : title;
+  const titleEscaped = titleShort.replace(/`/g, "'");
+  const path = p.instructionsAbsolutePath.trim();
+  return (
+    `Flux: Open a GitHub PR for task \`${p.taskId}\` — ${titleEscaped}. ` +
+    `Head \`${p.headBranch}\`, base \`${p.baseBranch}\`. ` +
+    `Read \`${path}\` for full steps (commit, push, gh pr create). Reply with the PR URL. ` +
+    `Constraints: do not commit secrets or real .env credentials; no force-push unless the user asked in this session.`
+  );
+}

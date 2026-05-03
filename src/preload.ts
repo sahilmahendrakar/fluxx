@@ -249,6 +249,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
     requestPullRequestFromAgent: (payload: {
       taskId: string;
+      agent?: Agent;
       title?: string;
       description?: string;
     }) =>
