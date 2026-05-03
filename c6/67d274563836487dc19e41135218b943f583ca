@@ -1,0 +1,23 @@
+src/components/TaskCard.tsx
+  ec2f46c1026af728 389,391,395-397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c667d274563836487dc19e41135218b943f583ca",
+  "prompts": {
+    "ec2f46c1026af728": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "79ad3c49-946f-4d1d-b0a8-23f5f7d0b2fb",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 6,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
