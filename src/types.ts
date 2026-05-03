@@ -86,7 +86,7 @@ export interface LocalProject {
   taskDefaultModels?: AgentSessionModelDefaults;
   /** New tasks inherit `agentYolo` when true unless explicitly overridden. */
   defaultTaskAgentYolo?: boolean;
-  /** Auto-start a task session when status transitions into in-progress. */
+  /** Auto-start a task session when status moves from Backlog to in-progress. */
   autoStartSessionOnInProgress: boolean;
   /** When on, a task in backlog (or in progress without a running session) may auto-start once its last blocker is completed. */
   autoStartWhenUnblocked: boolean;

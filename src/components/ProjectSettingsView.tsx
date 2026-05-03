@@ -621,11 +621,12 @@ function ProjectConfigPane({
           <div className="divide-y divide-white/[0.06]">
             <AutomationSettingRow
               key={`${project.id}-auto-start-in-progress`}
-              title="Auto-start sessions when tasks enter In progress"
+              title="Auto-start sessions when tasks move from Backlog to In progress"
               description={
                 <>
-                  Applies to status transitions from board drag, task detail status updates, and MCP{' '}
-                  <code className="text-zinc-400">flux__update_task</code>.{' '}
+                  Applies when a task leaves Backlog for In progress (board drag, task detail, MCP{' '}
+                  <code className="text-zinc-400">flux__update_task</code>). Other columns into In
+                  progress do not auto-start from this setting.{' '}
                   <code className="text-zinc-400">flux__start_task</code> always starts a session
                   regardless of this setting.
                 </>

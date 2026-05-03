@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from './types';
-import { cloudInProgressAutostartAllowedByAssignee } from './cloudInProgressAutostartApply';
+import {
+  cloudInProgressAutostartAllowedByAssignee,
+  maybeCloudAutoStartSessionOnInProgressTransition,
+} from './cloudInProgressAutostartApply';
 
 const base = (t: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task => ({
   agent: 'cursor',
@@ -61,5 +64,66 @@ describe('cloudInProgressAutostartAllowedByAssignee', () => {
         me,
       ),
     ).toBe(false);
+  });
+});
+
+describe('maybeCloudAutoStartSessionOnInProgressTransition', () => {
+  const me = 'user-a';
+  const getAutoStart = vi.fn();
+  const startSession = vi.fn();
+
+  const autostartCtx = () => ({
+    source: 'test',
+    inFlight: new Set<string>(),
+    logError: vi.fn(),
+    actorUid: me,
+  });
+
+  beforeEach(() => {
+    getAutoStart.mockResolvedValue(true);
+    startSession.mockResolvedValue({});
+    vi.stubGlobal('window', {
+      electronAPI: {
+        project: { getAutoStartSessionOnInProgress: getAutoStart },
+        sessions: { start: startSession },
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it('calls sessions.start on backlog → in-progress when project setting is on', async () => {
+    const prev = base({ id: '1', title: '', status: 'backlog', assigneeId: me });
+    const next = base({ id: '1', title: '', status: 'in-progress', assigneeId: me });
+    await maybeCloudAutoStartSessionOnInProgressTransition(prev, next, [next], autostartCtx());
+    expect(getAutoStart).toHaveBeenCalled();
+    expect(startSession).toHaveBeenCalled();
+  });
+
+  it('does not read setting or start session for needs-input → in-progress', async () => {
+    const prev = base({ id: '1', title: '', status: 'needs-input', assigneeId: me });
+    const next = base({ id: '1', title: '', status: 'in-progress', assigneeId: me });
+    await maybeCloudAutoStartSessionOnInProgressTransition(prev, next, [next], autostartCtx());
+    expect(getAutoStart).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it('does not read setting or start session for review → in-progress', async () => {
+    const prev = base({ id: '1', title: '', status: 'review', assigneeId: me });
+    const next = base({ id: '1', title: '', status: 'in-progress', assigneeId: me });
+    await maybeCloudAutoStartSessionOnInProgressTransition(prev, next, [next], autostartCtx());
+    expect(getAutoStart).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  it('does not read setting or start session for done → in-progress', async () => {
+    const prev = base({ id: '1', title: '', status: 'done', assigneeId: me });
+    const next = base({ id: '1', title: '', status: 'in-progress', assigneeId: me });
+    await maybeCloudAutoStartSessionOnInProgressTransition(prev, next, [next], autostartCtx());
+    expect(getAutoStart).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
   });
 });

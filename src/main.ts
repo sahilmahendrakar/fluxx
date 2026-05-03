@@ -1931,9 +1931,9 @@ app.whenReady().then(async () => {
     options?: { skipInProgressAutostart?: boolean },
   ): Promise<void> {
     if (options?.skipInProgressAutostart) return;
-    const becameInProgress =
-      previous.status !== 'in-progress' && updated.status === 'in-progress';
-    if (!becameInProgress) return;
+    const backlogToInProgress =
+      previous.status === 'backlog' && updated.status === 'in-progress';
+    if (!backlogToInProgress) return;
 
     let enabled = false;
     try {

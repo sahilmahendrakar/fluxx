@@ -28,7 +28,7 @@ export function cloudInProgressAutostartAllowedByAssignee(
 }
 
 /**
- * After a successful cloud task write moves a task into `in-progress`, mirror
+ * After a successful cloud task write moves a task from **Backlog** into `in-progress`, mirror
  * `maybeAutoStartSessionOnInProgressTransition` from main (local tasks use main’s path).
  */
 export async function maybeCloudAutoStartSessionOnInProgressTransition(
@@ -37,9 +37,9 @@ export async function maybeCloudAutoStartSessionOnInProgressTransition(
   allTasksForSession: Task[],
   ctx: CloudInProgressAutostartContext,
 ): Promise<void> {
-  const becameInProgress =
-    previous.status !== 'in-progress' && updated.status === 'in-progress';
-  if (!becameInProgress) return;
+  const backlogToInProgress =
+    previous.status === 'backlog' && updated.status === 'in-progress';
+  if (!backlogToInProgress) return;
 
   if (ctx.inFlight.has(updated.id)) return;
   ctx.inFlight.add(updated.id);

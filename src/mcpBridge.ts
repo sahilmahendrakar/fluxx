@@ -116,8 +116,8 @@ export interface McpBridgeRepoBranchDiscoveryPayload {
 
 /**
  * `tasks.update` returns both the pre-write snapshot view and the post-write
- * task so the main process can detect a status transition (e.g. → in-progress)
- * in a single round trip and trigger local-side effects (auto-start session).
+ * task so the main process can detect a status transition (e.g. backlog → in-progress)
+ * in a single round trip and trigger local-side effects (column auto-start session when enabled).
  */
 export interface McpBridgeTasksUpdateResult {
   previous: Task | null;
