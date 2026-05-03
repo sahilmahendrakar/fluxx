@@ -6,11 +6,17 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     asarUnpack: ['**/*.node', '**/node_modules/node-pty/**'],
+    // Base path without extension; electron-packager picks .icns / .ico / .png per OS.
+    icon: path.resolve(__dirname, 'assets', 'app-icon'),
   },
   rebuildConfig: {},
   makers: [

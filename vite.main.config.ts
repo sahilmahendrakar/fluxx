@@ -1,4 +1,21 @@
-import { defineConfig, loadEnv } from 'vite';
+import { copyFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+
+const repoRoot = path.dirname(fileURLToPath(import.meta.url));
+
+function copyAppIconPngToMainOut(): Plugin {
+  return {
+    name: 'copy-app-icon-png',
+    writeBundle(outputOptions) {
+      const outDir = outputOptions.dir ?? path.join(repoRoot, '.vite/build');
+      const src = path.join(repoRoot, 'assets', 'app-icon.png');
+      if (!existsSync(src)) return;
+      copyFileSync(src, path.join(outDir, 'app-icon.png'));
+    },
+  };
+}
 
 // https://vitejs.dev/config
 export default defineConfig(({ mode }) => {
@@ -10,6 +27,7 @@ export default defineConfig(({ mode }) => {
     JSON.stringify(env[name] ?? ''),
   ];
   return {
+    plugins: [copyAppIconPngToMainOut()],
     build: {
       rollupOptions: {
         external: ['electron', 'node-pty'],

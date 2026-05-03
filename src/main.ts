@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import started from 'electron-squirrel-startup';
@@ -297,6 +298,15 @@ async function migrateLegacyProjectsJson(params: {
 // and any pre-paint window surface are not a contrasting light color.
 const WINDOW_BACKGROUND = '#030712';
 
+/** PNG copied next to `main.js` by `vite.main.config.ts` for dev + packaged builds. */
+function resolveWindowIconPath(): string | undefined {
+  const nextToMain = path.join(__dirname, 'app-icon.png');
+  if (existsSync(nextToMain)) return nextToMain;
+  const dev = path.resolve(process.cwd(), '.vite/build/app-icon.png');
+  if (existsSync(dev)) return dev;
+  return undefined;
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 let fluxMcpServer: McpServer | null = null;
@@ -305,11 +315,13 @@ let fluxMcpRendererBridge: McpRendererBridge | null = null;
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
 
 const createWindow = () => {
+  const windowIcon = resolveWindowIconPath();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     title: 'Flux',
     backgroundColor: WINDOW_BACKGROUND,
+    ...(windowIcon ? { icon: windowIcon } : {}),
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset' as const,
