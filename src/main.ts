@@ -6,6 +6,11 @@ import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
+import {
+  findRepoByIdOrPrimary,
+  resolvePrimaryRepoId,
+} from './repoIdentity';
+import { isMultiRepo2Enabled } from './featureFlags';
 import { McpServer } from './main/McpServer';
 import { McpRendererBridge } from './main/McpRendererBridge';
 import { AppStateStore } from './main/AppStateStore';
@@ -245,6 +250,7 @@ async function migrateLegacyProjectsJson(params: {
       const { project, projectDir } = await projectStore.create(p.rootPath);
       await taskStore.reinit(projectDir);
       await taskStore.migrateMissingProjectIds(project.id);
+      await migrateTaskRepoIdsForProject(taskStore, project);
       worktreeService.setRootPath(project.rootPath);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
@@ -327,12 +333,27 @@ async function migrateLegacyProjectsJson(params: {
   const { project, projectDir } = await projectStore.create(chosen.rootPath);
   await taskStore.reinit(projectDir);
   await taskStore.migrateMissingProjectIds(project.id);
+  await migrateTaskRepoIdsForProject(taskStore, project);
   worktreeService.setRootPath(project.rootPath);
   worktreeService.setProjectDir(projectDir);
   await appStateStore.set({
     lastOpenedProjectDir: projectDir,
     activeProjectKey: { kind: 'local', id: project.id },
   });
+}
+
+/**
+ * Multi-repo2 task migration: backfill `Task.repoId` to the project's
+ * primary repo for legacy rows. Lifted out so every taskStore.reinit
+ * site can call it consistently.
+ */
+async function migrateTaskRepoIdsForProject(
+  taskStore: TaskStore,
+  project: LocalProject,
+): Promise<void> {
+  const primary = resolvePrimaryRepoId(project);
+  if (!primary) return;
+  await taskStore.migrateMissingRepoIds(primary);
 }
 
 // Matches renderer `bg-gray-950` (Tailwind default palette) so native chrome
@@ -540,6 +561,7 @@ app.whenReady().then(async () => {
       const project = projectStore.get();
       if (project && project.id === activeProjectKey.id) {
         await taskStore.reinit(lastOpenedProjectDir);
+        await migrateTaskRepoIdsForProject(taskStore, project);
         await projectStore.ensureLayoutForRoot(project.rootPath);
         worktreeService.setRootPath(project.rootPath);
         worktreeService.setProjectDir(lastOpenedProjectDir);
@@ -567,6 +589,7 @@ app.whenReady().then(async () => {
       const project = projectStore.get();
       if (project) {
         await taskStore.reinit(lastOpenedProjectDir);
+        await migrateTaskRepoIdsForProject(taskStore, project);
         await projectStore.ensureLayoutForRoot(project.rootPath);
         worktreeService.setRootPath(project.rootPath);
         worktreeService.setProjectDir(lastOpenedProjectDir);
@@ -665,6 +688,7 @@ app.whenReady().then(async () => {
     const { project, projectDir } = await projectStore.create(rootPath);
     await taskStore.reinit(projectDir);
     await taskStore.migrateMissingProjectIds(project.id);
+    await migrateTaskRepoIdsForProject(taskStore, project);
     worktreeService.setRootPath(rootPath);
     worktreeService.setProjectDir(projectDir);
     await appStateStore.set({
@@ -1057,6 +1081,7 @@ app.whenReady().then(async () => {
       await projectStore.ensureLayoutForRoot(project.rootPath);
       await taskStore.reinit(projectDir);
       await taskStore.migrateMissingProjectIds(project.id);
+      await migrateTaskRepoIdsForProject(taskStore, project);
       worktreeService.setRootPath(project.rootPath);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
@@ -1727,6 +1752,28 @@ app.whenReady().then(async () => {
     };
   }
 
+  /**
+   * Multi-repo2: resolve the {@link RepoConfig.id} a new task session
+   * should be tagged with. With the flag off (or no `task.repoId`), this
+   * is just the project's primary repo id — preserving single-repo UX
+   * while still letting the daemon record stable identity.
+   */
+  async function resolveSessionRepoId(params: {
+    project: Project;
+    taskRepoId?: string;
+  }): Promise<string | undefined> {
+    try {
+      const repos = await projectStore.getReposAt(activeProjectDir());
+      const flagOn = isMultiRepo2Enabled();
+      const taskRepoId = (params.taskRepoId ?? '').trim();
+      const candidate = flagOn && taskRepoId.length > 0 ? taskRepoId : undefined;
+      const match = findRepoByIdOrPrimary(repos, candidate);
+      return match?.id;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function worktreeSourceOptsForTaskSession(
     task: Task,
     project: Project,
@@ -1910,11 +1957,19 @@ app.whenReady().then(async () => {
         args,
         resume: Boolean(options?.resume),
       });
+      // Multi-repo2: tag the daemon session with the repo identity so future
+      // listings and renderer state can disambiguate per-repo. With the flag
+      // off this still resolves to the primary repo (single-repo behavior).
+      const repoId = await resolveSessionRepoId({
+        project,
+        taskRepoId: merged.repoId,
+      });
       const result = await daemonClient.createSession({
         worktreePath,
         branch,
         taskId: task.id,
         projectId: project.id,
+        ...(repoId ? { repoId } : {}),
         agent: merged.agent,
         command,
         args,

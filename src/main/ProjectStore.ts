@@ -8,6 +8,10 @@ import type {
   LocalProject,
   RepoConfig,
 } from '../types';
+import {
+  deriveRepoIdForRootPath,
+  deriveStablePrimaryRepoIdForProject,
+} from '../repoIdentity';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
@@ -95,11 +99,16 @@ function configToLocalProject(c: ConfigFile): LocalProject {
   return lp;
 }
 
-function parseRepoConfig(value: unknown): RepoConfig | null {
+/** Parses a single `repos[]` entry; `id`/`name` may be filled later by `backfillRepoIdentities`. */
+type ParsedRepoConfig = Omit<RepoConfig, 'id'> & { id?: string };
+
+function parseRepoConfig(value: unknown): ParsedRepoConfig | null {
   if (!value || typeof value !== 'object') return null;
   const r = value as Partial<RepoConfig>;
   if (typeof r.rootPath !== 'string') return null;
   return {
+    ...(typeof r.id === 'string' && r.id.length > 0 ? { id: r.id } : {}),
+    ...(typeof r.name === 'string' && r.name.length > 0 ? { name: r.name } : {}),
     rootPath: r.rootPath,
     baseBranch: typeof r.baseBranch === 'string' && r.baseBranch.length > 0
       ? r.baseBranch
@@ -107,6 +116,66 @@ function parseRepoConfig(value: unknown): RepoConfig | null {
     setupScript: typeof r.setupScript === 'string' ? r.setupScript : undefined,
     env: typeof r.env === 'string' ? r.env : undefined,
   };
+}
+
+/**
+ * `multi-repo2` migration: legacy `repos[]` entries persisted before this
+ * model didn’t carry `id`/`name`. We fill them deterministically — the
+ * primary repo (matching the project's own `rootPath`) gets a stable id
+ * from the project id, and any extras get a stable id derived from their
+ * own rootPath. Names default to `basename(rootPath)`.
+ *
+ * Pure / idempotent: feeding an already-migrated config returns
+ * `mutated: false` and the same shape.
+ */
+export function backfillRepoIdentities(params: {
+  projectId: string;
+  primaryRootPath: string;
+  repos: ReadonlyArray<ParsedRepoConfig | RepoConfig>;
+}): { repos: RepoConfig[]; mutated: boolean } {
+  const seenIds = new Set<string>();
+  const seenRoots = new Map<string, number>();
+  let mutated = false;
+  const out = params.repos.map((r) => {
+    const isPrimary = path.resolve(r.rootPath) === path.resolve(params.primaryRootPath);
+    let id = r.id;
+    if (!id || id.length === 0) {
+      mutated = true;
+      const roots = seenRoots.get(path.resolve(r.rootPath)) ?? 0;
+      id = isPrimary
+        ? deriveStablePrimaryRepoIdForProject({
+            projectId: params.projectId,
+            rootPath: r.rootPath,
+          })
+        : deriveRepoIdForRootPath({
+            projectId: params.projectId,
+            rootPath: r.rootPath,
+            salt: roots > 0 ? `dup-${roots}` : '',
+          });
+    }
+    while (seenIds.has(id)) {
+      mutated = true;
+      id = createHash('sha256').update(`${id}:dup`).digest('hex');
+    }
+    seenIds.add(id);
+    seenRoots.set(path.resolve(r.rootPath), (seenRoots.get(path.resolve(r.rootPath)) ?? 0) + 1);
+
+    let name = r.name;
+    if (!name || name.length === 0) {
+      mutated = true;
+      const base = path.basename(path.resolve(r.rootPath));
+      name = base && base !== '.' ? base : `repo:${id.slice(0, 7)}`;
+    }
+    return {
+      id,
+      name,
+      rootPath: r.rootPath,
+      baseBranch: r.baseBranch,
+      ...(r.setupScript !== undefined ? { setupScript: r.setupScript } : {}),
+      ...(r.env !== undefined ? { env: r.env } : {}),
+    } satisfies RepoConfig;
+  });
+  return { repos: out, mutated };
 }
 
 function parseConfig(raw: string): ConfigFile | null {
@@ -134,14 +203,19 @@ function parseConfig(raw: string): ConfigFile | null {
   );
   const py = (p as { planningAgentYolo?: unknown }).planningAgentYolo;
   const ty = (p as { defaultTaskAgentYolo?: unknown }).defaultTaskAgentYolo;
-  const repos: RepoConfig[] = Array.isArray(p.repos)
-    ? p.repos.map(parseRepoConfig).filter((r): r is RepoConfig => r !== null)
+  const parsedRepos: ParsedRepoConfig[] = Array.isArray(p.repos)
+    ? p.repos.map(parseRepoConfig).filter((r): r is ParsedRepoConfig => r !== null)
     : [];
-  if (repos.length === 0) {
-    repos.push({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
-  } else if (!repos.some((r) => r.rootPath === p.rootPath)) {
-    repos.unshift({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+  if (parsedRepos.length === 0) {
+    parsedRepos.push({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+  } else if (!parsedRepos.some((r) => r.rootPath === p.rootPath)) {
+    parsedRepos.unshift({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
   }
+  const { repos } = backfillRepoIdentities({
+    projectId: p.id,
+    primaryRootPath: p.rootPath,
+    repos: parsedRepos,
+  });
   return {
     id: p.id,
     name: p.name,
@@ -280,6 +354,36 @@ export class ProjectStore {
     }
     this.projectDir = projectDir;
     this.project = configToLocalProject(parsed);
+
+    // multi-repo2 migration: persist deterministic repo id/name once when a
+    // legacy config that lacked them has been backfilled by parseConfig.
+    let needsRewrite = false;
+    try {
+      const onDisk = JSON.parse(raw) as { repos?: Array<Partial<RepoConfig>> };
+      const diskRepos = Array.isArray(onDisk.repos) ? onDisk.repos : [];
+      const missing =
+        diskRepos.length !== parsed.repos.length ||
+        diskRepos.some((r, i) => {
+          const target = parsed.repos[i];
+          if (!target) return true;
+          return (
+            typeof r.id !== 'string' ||
+            r.id !== target.id ||
+            typeof r.name !== 'string' ||
+            r.name !== target.name
+          );
+        });
+      needsRewrite = missing;
+    } catch {
+      needsRewrite = false;
+    }
+    if (needsRewrite) {
+      try {
+        await atomicWriteFile(configPath, `${JSON.stringify(parsed, null, 2)}\n`);
+      } catch (err) {
+        console.warn('[ProjectStore] failed to persist multi-repo2 migration', err);
+      }
+    }
   }
 
   get(): LocalProject | null {
@@ -582,8 +686,13 @@ export class ProjectStore {
 
     const now = new Date().toISOString();
     if (!config) {
+      const newProjectId = stableProjectIdForPath(resolvedRoot);
+      const primaryRepoId = deriveStablePrimaryRepoIdForProject({
+        projectId: newProjectId,
+        rootPath: resolvedRoot,
+      });
       config = {
-        id: stableProjectIdForPath(resolvedRoot),
+        id: newProjectId,
         name: projectName,
         rootPath: resolvedRoot,
         addedAt: now,
@@ -594,16 +703,36 @@ export class ProjectStore {
         autoCleanupWorkspaceWhenDone: false,
         autoMarkDoneWhenPrMerged: false,
         autoMoveToReviewWhenPrOpen: false,
-        repos: [{ rootPath: resolvedRoot, baseBranch: DEFAULT_BASE_BRANCH }],
+        repos: [
+          {
+            id: primaryRepoId,
+            name: projectName,
+            rootPath: resolvedRoot,
+            baseBranch: DEFAULT_BASE_BRANCH,
+          },
+        ],
       };
     } else {
       const previousRootPath = config.rootPath;
-      const repos = config.repos.map((r) =>
+      const remapped = config.repos.map((r) =>
         r.rootPath === previousRootPath ? { ...r, rootPath: resolvedRoot } : r,
       );
-      if (!repos.some((r) => r.rootPath === resolvedRoot)) {
-        repos.unshift({ rootPath: resolvedRoot, baseBranch: DEFAULT_BASE_BRANCH });
+      if (!remapped.some((r) => r.rootPath === resolvedRoot)) {
+        remapped.unshift({
+          id: deriveStablePrimaryRepoIdForProject({
+            projectId: config.id,
+            rootPath: resolvedRoot,
+          }),
+          name: projectName,
+          rootPath: resolvedRoot,
+          baseBranch: DEFAULT_BASE_BRANCH,
+        });
       }
+      const { repos } = backfillRepoIdentities({
+        projectId: config.id,
+        primaryRootPath: resolvedRoot,
+        repos: remapped,
+      });
       config = {
         ...config,
         rootPath: resolvedRoot,

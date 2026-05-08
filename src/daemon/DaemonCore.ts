@@ -76,6 +76,9 @@ export class DaemonCore {
       id,
       taskId: params.taskId,
       projectId: params.projectId,
+      ...(params.repoId != null && params.repoId.length > 0
+        ? { repoId: params.repoId }
+        : {}),
       worktreePath: params.worktreePath,
       branch: params.branch,
       status: 'running',
