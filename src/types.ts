@@ -58,9 +58,21 @@ export type RepoBranchDiscoveryResponse = RepoBranchDiscovery & {
 
 /**
  * Per-repo configuration stored locally. The schema supports multiple repos
- * per project; today the list always has length 1 (matching `Project.rootPath`).
+ * per project (see `multi-repo2` feature flag); today the list always has
+ * length 1 (matching `Project.rootPath`).
+ *
+ * `id` is the **stable identity** for a repo within a project — never use
+ * `rootPath` as identity since users move clones around. Legacy single-repo
+ * configs are migrated on load to a deterministic primary id derived from
+ * the project (see `deriveStablePrimaryRepoIdForProject` in
+ * `src/repoIdentity.ts`). `name` is a human-readable display label —
+ * defaults to `path.basename(rootPath)` when missing.
  */
 export interface RepoConfig {
+  /** Stable identity within a project (NOT `rootPath`). Backfilled by `multi-repo2` migrations. */
+  id: string;
+  /** Human-readable label; falls back to `basename(rootPath)`. */
+  name?: string;
   rootPath: string;
   /** Branch fetched + used as base for new task worktrees. Default: 'main'. */
   baseBranch: string;
@@ -263,6 +275,13 @@ export interface Task {
    * was chosen from discovery (already exists), and `true` when the user typed a new name.
    */
   createSourceBranchIfMissing?: boolean;
+  /**
+   * Identity of the {@link RepoConfig} this task belongs to (multi-repo2). Optional on
+   * legacy rows — readers should resolve missing values to the project's primary repo
+   * (see `resolvePrimaryRepoId` in `src/repoIdentity.ts`). Backfilled by
+   * `TaskStore.migrateMissingRepoIds` on first load.
+   */
+  repoId?: string;
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
 }
@@ -316,6 +335,13 @@ export interface Session {
   id: string;
   taskId: string;
   projectId: string;
+  /**
+   * Identity of the {@link RepoConfig} the session's worktree was created from
+   * (multi-repo2). Optional on rows from older daemon responses — renderers must
+   * not crash on absence; treat missing as the active primary repo where needed
+   * (see `resolvePrimaryRepoId` in `src/repoIdentity.ts`).
+   */
+  repoId?: string;
   worktreePath: string;
   branch: string;
   status: SessionStatus;

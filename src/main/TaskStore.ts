@@ -17,6 +17,8 @@ type TaskInput = {
   createSourceBranchIfMissing?: boolean;
   agentModel?: string;
   agentYolo?: boolean;
+  /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
+  repoId?: string;
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -108,6 +110,27 @@ export class TaskStore {
     }
   }
 
+  /**
+   * Multi-repo2 migration: assign a primary `repoId` to tasks that predate
+   * the multi-repo data model, then persist if any rows changed. Idempotent
+   * — running on already-migrated tasks is a no-op.
+   */
+  async migrateMissingRepoIds(primaryRepoId: string): Promise<void> {
+    if (!this.filePath) return;
+    if (!primaryRepoId) return;
+    let changed = false;
+    this.tasks = this.tasks.map((t) => {
+      if (t.repoId == null || t.repoId === '') {
+        changed = true;
+        return { ...t, repoId: primaryRepoId };
+      }
+      return t;
+    });
+    if (changed) {
+      await this.save();
+    }
+  }
+
   async remapProjectId(from: string, to: string): Promise<void> {
     if (!this.filePath || from === to) {
       return;
@@ -180,6 +203,9 @@ export class TaskStore {
     if (input.agentYolo === true) {
       task.agentYolo = true;
     }
+    if (input.repoId != null && input.repoId.length > 0) {
+      task.repoId = input.repoId;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -203,6 +229,7 @@ export class TaskStore {
         | 'autoStartOnUnblock'
         | 'sourceBranch'
         | 'createSourceBranchIfMissing'
+        | 'repoId'
       >
     > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null },
   ): Promise<Task> {
@@ -261,6 +288,14 @@ export class TaskStore {
         updated.createSourceBranchIfMissing = true;
       } else {
         delete updated.createSourceBranchIfMissing;
+      }
+    }
+    if (patch.repoId !== undefined) {
+      const next = (patch.repoId ?? '').trim();
+      if (next.length === 0) {
+        delete updated.repoId;
+      } else {
+        updated.repoId = next;
       }
     }
     if (patchGithubPr !== undefined) {
