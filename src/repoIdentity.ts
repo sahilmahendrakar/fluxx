@@ -97,6 +97,63 @@ export function findRepoByIdOrPrimary(
  * `name`, falls back to `basename(rootPath)`, then to a short id slice
  * so the UI never shows an empty string.
  */
+/**
+ * Persists repo id after a patch, matching {@link TaskStore.update} semantics for `repoId`.
+ */
+export function nextPersistedRepoIdAfterPatch(
+  previousRepoId: string | undefined,
+  patchRepoId: string | undefined,
+): string | undefined {
+  if (patchRepoId === undefined) {
+    return previousRepoId;
+  }
+  const next = (patchRepoId ?? '').trim();
+  return next.length === 0 ? undefined : next;
+}
+
+/** True when two persisted `repoId` slots are the same (unset/blank-normalized). */
+export function persistedRepoIdsEqual(a: string | undefined, b: string | undefined): boolean {
+  const na = (a ?? '').trim();
+  const nb = (b ?? '').trim();
+  return na === nb;
+}
+
+/**
+ * Resolves the repo id for a new local task: explicit id must exist on the project;
+ * otherwise the primary repo id is used.
+ */
+export function resolveLocalTaskRepoIdForCreate(
+  repos: ReadonlyArray<RepoConfig>,
+  requestedRepoId: string | undefined,
+): { ok: true; repoId: string } | { ok: false; message: string } {
+  const primary = resolvePrimaryRepoId(repos);
+  if (!primary) {
+    return { ok: false, message: 'No repository identity configured for this project' };
+  }
+  if (requestedRepoId == null || String(requestedRepoId).trim() === '') {
+    return { ok: true, repoId: primary };
+  }
+  const rid = String(requestedRepoId).trim();
+  if (!repos.some((r) => r.id === rid)) {
+    return { ok: false, message: `Unknown repository id: ${rid}` };
+  }
+  return { ok: true, repoId: rid };
+}
+
+/** Non-empty patch values must match a repo on the project; clearing (`''`) is allowed. */
+export function validateTaskRepoIdPatchValue(
+  repos: ReadonlyArray<RepoConfig>,
+  patchRepoId: string | undefined,
+): { ok: true } | { ok: false; message: string } {
+  if (patchRepoId === undefined) return { ok: true };
+  const next = (patchRepoId ?? '').trim();
+  if (next.length === 0) return { ok: true };
+  if (!repos.some((r) => r.id === next)) {
+    return { ok: false, message: `Unknown repository id: ${next}` };
+  }
+  return { ok: true };
+}
+
 export function repoDisplayLabel(
   repo: Pick<RepoConfig, 'id' | 'name' | 'rootPath'>,
 ): string {

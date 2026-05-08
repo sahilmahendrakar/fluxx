@@ -69,6 +69,26 @@ describe('TaskStore multi-repo2 repoId migration', () => {
     expect(after.mtimeMs).toBe(before.mtimeMs);
   });
 
+  it('update keeps repoId when patching title or status', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-repoid-preserve-'));
+    const store = new TaskStore(dir);
+    await store.init();
+    const created = await store.create({
+      title: 't',
+      agent: 'cursor',
+      projectId: 'p1',
+      repoId: 'repo-a',
+    });
+    const titlePatched = await store.update(created.id, { title: 'new title' });
+    expect(titlePatched.repoId).toBe('repo-a');
+
+    const statusPatched = await store.update(created.id, { status: 'in-progress' });
+    expect(statusPatched.repoId).toBe('repo-a');
+
+    const labelsPatched = await store.update(created.id, { labels: ['x'] });
+    expect(labelsPatched.repoId).toBe('repo-a');
+  });
+
   it('create accepts an explicit repoId and round-trips it', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-repoid-create-'));
     const store = new TaskStore(dir);

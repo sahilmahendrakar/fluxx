@@ -36,6 +36,8 @@ export interface McpBridgeTaskCreateInput {
   createSourceBranchIfMissing?: boolean;
   agentModel?: string;
   agentYolo?: boolean;
+  /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
+  repoId?: string;
 }
 
 export interface McpBridgeTaskPatch {
@@ -50,6 +52,7 @@ export interface McpBridgeTaskPatch {
   githubPr?: TaskGithubPr | null;
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  repoId?: string;
 }
 
 export interface McpBridgeTasksCreatePayload {

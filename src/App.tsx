@@ -125,6 +125,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     githubPr,
     sourceBranch,
     createSourceBranchIfMissing,
+    repoId,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -166,6 +167,14 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     } else {
       next = { ...next };
       delete next.createSourceBranchIfMissing;
+    }
+  }
+  if (repoId !== undefined) {
+    if (typeof repoId === 'string' && repoId.trim() === '') {
+      next = { ...next };
+      delete next.repoId;
+    } else {
+      next = { ...next, repoId };
     }
   }
   return next;

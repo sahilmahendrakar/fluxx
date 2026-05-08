@@ -28,6 +28,7 @@ import type {
   McpBridgeTasksUpdateResult,
 } from '../mcpBridge';
 import { isTaskBlocked } from '../taskDependencies';
+import { resolveLocalTaskRepoIdForCreate } from '../repoIdentity';
 import { filterTasksByExcludeStatuses, FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
 const MCP_PORT = 47432;
@@ -79,6 +80,7 @@ export class McpServer {
             | 'autoStartOnUnblock'
             | 'sourceBranch'
             | 'createSourceBranchIfMissing'
+            | 'repoId'
           >
         > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
@@ -277,6 +279,12 @@ export class McpServer {
           .describe(
             'Fewer permission prompts (Cursor --yolo, Claude --dangerously-skip-permissions); project default when omitted',
           ),
+        repoId: z
+          .string()
+          .optional()
+          .describe(
+            'Multi-repo2: stable repo id within the project; must match a configured repo (omitted = primary)',
+          ),
       },
       async (input) => {
         try {
@@ -306,6 +314,10 @@ export class McpServer {
             if (!repo?.rootPath) {
               return jsonToolPayload({ error: 'No repository root configured for this project' });
             }
+            const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
+            if (!repoResolved.ok) {
+              return jsonToolPayload({ error: repoResolved.message });
+            }
             const discovery = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
             const planned = planTaskSourceBranchFieldsForCreate(discovery, {
               sourceBranch: input.sourceBranch,
@@ -319,6 +331,7 @@ export class McpServer {
               title: input.title,
               agent,
               projectId: active.project.id,
+              repoId: repoResolved.repoId,
               sourceBranch: planned.sourceBranch,
               createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
               ...modelYolo,
@@ -361,6 +374,7 @@ export class McpServer {
               ...(input.createSourceBranchIfMissing !== undefined
                 ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
                 : {}),
+              ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
             },
           };
           const result = await this.bridge.request<Task>(
@@ -426,6 +440,12 @@ export class McpServer {
           .nullable()
           .optional()
           .describe('GitHub PR metadata to set or null to clear'),
+        repoId: z
+          .string()
+          .optional()
+          .describe(
+            'Multi-repo2: change which project repo this task is associated with (local: locked when a workspace or PR exists)',
+          ),
       },
       async (input) => {
         try {
@@ -452,6 +472,7 @@ export class McpServer {
                 | 'autoStartOnUnblock'
                 | 'sourceBranch'
                 | 'createSourceBranchIfMissing'
+                | 'repoId'
               >
             > & { githubPr?: TaskGithubPr | null } = {};
             if (input.title !== undefined) patch.title = input.title;
@@ -472,6 +493,9 @@ export class McpServer {
             }
             if (input.createSourceBranchIfMissing !== undefined) {
               patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
+            }
+            if (input.repoId !== undefined) {
+              patch.repoId = input.repoId;
             }
             if (input.githubPr !== undefined) {
               patch.githubPr = input.githubPr;
@@ -508,6 +532,7 @@ export class McpServer {
               | 'autoStartOnUnblock'
               | 'sourceBranch'
               | 'createSourceBranchIfMissing'
+              | 'repoId'
             >
           > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null } = {};
           if (input.title !== undefined) patch.title = input.title;
@@ -529,6 +554,9 @@ export class McpServer {
           }
           if (input.createSourceBranchIfMissing !== undefined) {
             patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
+          }
+          if (input.repoId !== undefined) {
+            patch.repoId = input.repoId;
           }
           if (input.githubPr !== undefined) {
             patch.githubPr = input.githubPr;

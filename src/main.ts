@@ -8,7 +8,11 @@ import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
 import {
   findRepoByIdOrPrimary,
+  nextPersistedRepoIdAfterPatch,
+  persistedRepoIdsEqual,
+  resolveLocalTaskRepoIdForCreate,
   resolvePrimaryRepoId,
+  validateTaskRepoIdPatchValue,
 } from './repoIdentity';
 import { isMultiRepo2Enabled } from './featureFlags';
 import { McpServer } from './main/McpServer';
@@ -1226,6 +1230,7 @@ app.whenReady().then(async () => {
         createSourceBranchIfMissing?: boolean;
         agentModel?: string;
         agentYolo?: boolean;
+        repoId?: string;
       },
     ) => {
       const project = projectStore.get();
@@ -1234,6 +1239,10 @@ app.whenReady().then(async () => {
       }
       const projectDir = activeProjectDir();
       const repos = await projectStore.getReposAt(projectDir);
+      const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
+      if (!repoResolved.ok) {
+        throw new Error(repoResolved.message);
+      }
       const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
       if (!repo?.rootPath) {
         throw new Error('No repository root configured for this project');
@@ -1257,6 +1266,7 @@ app.whenReady().then(async () => {
         ...input,
         ...extra,
         projectId: project.id,
+        repoId: repoResolved.repoId,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
       });
@@ -2014,6 +2024,7 @@ app.whenReady().then(async () => {
       | 'autoStartOnUnblock'
       | 'sourceBranch'
       | 'createSourceBranchIfMissing'
+      | 'repoId'
     >
   > & { githubPr?: TaskGithubPr | null };
 
@@ -2202,6 +2213,35 @@ app.whenReady().then(async () => {
         const v = validateStoredTaskSourceBranchName(candidate);
         if (!v.ok) {
           throw new Error(v.message);
+        }
+      }
+    }
+
+    if (patchToApply.repoId !== undefined) {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const vr = validateTaskRepoIdPatchValue(repos, patchToApply.repoId);
+      if (!vr.ok) {
+        throw new Error(vr.message);
+      }
+      const nextRepoId = nextPersistedRepoIdAfterPatch(previous.repoId, patchToApply.repoId);
+      if (!persistedRepoIdsEqual(previous.repoId, nextRepoId)) {
+        if (previous.githubPr?.url?.trim()) {
+          throw new Error(
+            'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
+          );
+        }
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: id,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir(),
+          rootPath: worktreeService.getRootPath(),
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(id);
+          throw new Error(
+            `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          );
         }
       }
     }
