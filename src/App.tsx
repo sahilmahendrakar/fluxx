@@ -81,6 +81,7 @@ import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
+  primaryRootPathFromCloudBinding,
 } from './cloudBindingPrefs';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from './planningDocs/types';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
@@ -415,6 +416,7 @@ export default function App() {
               ownerId: cur.ownerId,
               memberIds: cur.memberIds,
               createdAt: cur.createdAt,
+              repos: cur.sharedRepos,
             },
             binding,
           )
@@ -755,9 +757,22 @@ export default function App() {
         }
         return;
       }
+      const primaryPath = primaryRootPathFromCloudBinding(
+        match.id,
+        binding,
+        match.repos,
+      );
+      if (!primaryPath) {
+        await window.electronAPI.projects.clearActive();
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        return;
+      }
       const result = await window.electronAPI.projects.activateCloud({
         id: match.id,
-        rootPath: binding.rootPath,
+        rootPath: primaryPath,
       });
       if (cancelled) return;
       if (!result || 'error' in result) {
@@ -787,13 +802,24 @@ export default function App() {
     if (cloudProjectsState.status !== 'ready') return;
     const fresh = cloudProjectsState.projects.find((p) => p.id === project.id);
     if (!fresh) return;
+    const reposChanged =
+      fresh.repos !== undefined &&
+      JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
-      fresh.createdAt !== project.createdAt;
+      fresh.createdAt !== project.createdAt ||
+      reposChanged;
     if (!changed) return;
-    setProject({ ...project, ...fresh });
+    setProject({
+      ...project,
+      name: fresh.name,
+      ownerId: fresh.ownerId,
+      memberIds: fresh.memberIds,
+      createdAt: fresh.createdAt,
+      ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
+    });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
 
   useEffect(() => {

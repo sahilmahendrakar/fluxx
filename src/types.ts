@@ -140,18 +140,48 @@ export interface LocalProject {
 }
 
 /**
- * Cloud project as returned to the renderer for the **active** project: the
- * Firestore document plus the per-user local rootPath from LocalBindingStore.
- * Cloud projects in the projects list (not yet activated) don't carry rootPath
- * — see `CloudProjectSummary` in renderer code.
+ * Shared team metadata for one logical repository in a cloud project (Firestore).
+ * Does not include machine-local paths or `.env` / setup scripts — those stay in
+ * {@link CloudProjectLocalBinding} / {@link RepoConfig}.
  */
+export interface CloudSharedRepo {
+  /** Stable identity within the cloud project (matches keys in `repoBindings`). */
+  id: string;
+  /** Display label for lists and headers. */
+  name: string;
+  /** Branch used as the integration line for tasks / PRs (informational for cloud). */
+  baseBranch: string;
+  /** Optional origin URL for display / validation. */
+  remoteUrl?: string;
+}
+
+/**
+ * Per-machine clone location for one {@link CloudSharedRepo.id} (localBindings.json only).
+ */
+export interface CloudRepoMachineBinding {
+  rootPath: string;
+  lastOpenedAt: string;
+}
+
 /**
  * Per-machine record in `localBindings.json`. Optional fields are per-user prefs
  * for that cloud project (not synced).
  */
 export interface CloudProjectLocalBinding {
-  rootPath: string;
+  /**
+   * Legacy single-repo clone path. Migrated into `repoBindings` under a stable
+   * primary id (`deriveStablePrimaryRepoIdForProject`) and then omitted on save.
+   */
+  rootPath?: string;
+  /** Updated when the binding row is touched; mirrors the primary repo entry where applicable. */
   lastOpenedAt: string;
+  /**
+   * Which shared repo supplies {@link CloudProject.rootPath} / workspace layout when several
+   * repos are bound. Usually inferred when only one `repoBindings` entry exists.
+   */
+  primaryRepoId?: string;
+  /** Per-repo local clone paths keyed by {@link CloudSharedRepo.id}. */
+  repoBindings?: Record<string, CloudRepoMachineBinding>;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
   planningModels?: AgentSessionModelDefaults;
@@ -167,6 +197,7 @@ export interface CloudProjectLocalBinding {
   autoDeleteTaskWhenDone?: boolean;
 }
 
+/** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
 export interface CloudProject {
   id: string;
   kind: 'cloud';
@@ -174,7 +205,18 @@ export interface CloudProject {
   ownerId: string;
   memberIds: string[];
   createdAt: string;
+  /**
+   * Primary workspace root for layout, tasks, and worktrees — the bound clone for
+   * the primary shared repo (multi-repo2: same as `repoMachineBindings[primary]`).
+   */
   rootPath: string;
+  /** Shared repo list from Firestore; may be synthesized when the doc has none yet. */
+  sharedRepos: CloudSharedRepo[];
+  /**
+   * Local clone per shared repo id on this machine. Keys omitted when that repo
+   * has no binding yet (multi-repo team projects).
+   */
+  repoMachineBindings: Partial<Record<string, CloudRepoMachineBinding>>;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
   planningModels?: AgentSessionModelDefaults;

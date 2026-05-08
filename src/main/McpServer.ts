@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { TaskStore } from './TaskStore';
 import type { ProjectStore } from './ProjectStore';
 import type { AppStateStore } from './AppStateStore';
+import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
 import type { ActiveProjectKey, RepoBranchDiscoveryResponse, Task, TaskGithubPr } from '../types';
@@ -142,7 +143,9 @@ export class McpServer {
     }
     const binding = this.bindingStore.get(activeKey.id);
     if (!binding) return { kind: 'none' };
-    return { kind: 'cloud', activeKey, rootPath: binding.rootPath };
+    const rootPath = primaryRootPathFromCloudBinding(activeKey.id, binding);
+    if (!rootPath) return { kind: 'none' };
+    return { kind: 'cloud', activeKey, rootPath };
   }
 
   /** Translate a bridge error into the MCP tool error envelope. */

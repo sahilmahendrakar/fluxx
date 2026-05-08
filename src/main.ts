@@ -16,6 +16,8 @@ import { isMultiRepo2Enabled } from './featureFlags';
 import { McpServer } from './main/McpServer';
 import { McpRendererBridge } from './main/McpRendererBridge';
 import { AppStateStore } from './main/AppStateStore';
+import { hydrateCloudProject } from './cloudBindingPrefs';
+import { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
 import { DaemonClient } from './main/DaemonClient';
@@ -617,11 +619,14 @@ app.whenReady().then(async () => {
   if (activeProjectKey?.kind === 'cloud') {
     const binding = bindingStore.get(activeProjectKey.id);
     if (binding) {
-      try {
-        await fs.access(path.join(binding.rootPath, '.git'));
-        activeRootPath = binding.rootPath;
-      } catch {
-        activeRootPath = '';
+      const boundRoot = primaryRootPathFromCloudBinding(activeProjectKey.id, binding);
+      if (boundRoot) {
+        try {
+          await fs.access(path.join(boundRoot, '.git'));
+          activeRootPath = boundRoot;
+        } catch {
+          activeRootPath = '';
+        }
       }
     }
   }
@@ -1357,7 +1362,9 @@ app.whenReady().then(async () => {
       const picked = await pickDirectory('Pick the local folder for this project');
       if (!picked || 'error' in picked) return picked;
       const binding = await bindingStore.set(cloudProjectId, picked.rootPath);
-      return { rootPath: binding.rootPath };
+      const primary =
+        primaryRootPathFromCloudBinding(cloudProjectId, binding) ?? picked.rootPath;
+      return { rootPath: primary };
     },
   );
   ipcMain.handle(
@@ -1960,17 +1967,18 @@ app.whenReady().then(async () => {
     }
     const binding = bindingStore.get(activeKey.id);
     if (!binding) throw new Error('Cloud project is not bound to a local folder');
-    const prefs = bindingStore.getPrefs(activeKey.id);
-    return {
-      id: activeKey.id,
-      kind: 'cloud',
-      name: path.basename(binding.rootPath),
-      rootPath: binding.rootPath,
-      ownerId: '',
-      memberIds: [],
-      createdAt: '',
-      ...prefs,
-    };
+    const primaryPath = primaryRootPathFromCloudBinding(activeKey.id, binding);
+    if (!primaryPath) throw new Error('Cloud project is not bound to a local folder');
+    return hydrateCloudProject(
+      {
+        id: activeKey.id,
+        name: path.basename(primaryPath),
+        ownerId: '',
+        memberIds: [],
+        createdAt: '',
+      },
+      binding,
+    );
   }
 
   /**
@@ -2664,7 +2672,7 @@ app.whenReady().then(async () => {
         const updated = projectStore.get();
         project = updated ?? local;
       } else {
-        const binding = bindingStore.get(activeKey.id);
+        let binding = bindingStore.get(activeKey.id);
         projectDir = worktreeService.getProjectDir();
         if (!binding || !projectDir) {
           return { error: 'No project open' };
@@ -2679,17 +2687,24 @@ app.whenReady().then(async () => {
           const message = err instanceof Error ? err.message : String(err);
           return { error: 'CONFIG_WRITE_FAILED', message };
         }
-        project = {
-          id: activeKey.id,
-          kind: 'cloud',
-          name: path.basename(binding.rootPath),
-          rootPath: binding.rootPath,
-          ownerId: '',
-          memberIds: [],
-          createdAt: '',
-          ...prefs,
-          planningAgent,
-        };
+        binding = bindingStore.get(activeKey.id);
+        if (!binding) {
+          return { error: 'No project open' };
+        }
+        const primaryPath = primaryRootPathFromCloudBinding(activeKey.id, binding);
+        if (!primaryPath) {
+          return { error: 'No project open' };
+        }
+        project = hydrateCloudProject(
+          {
+            id: activeKey.id,
+            name: path.basename(primaryPath),
+            ownerId: '',
+            memberIds: [],
+            createdAt: '',
+          },
+          binding,
+        );
       }
 
       const planningDir = path.join(projectDir, 'planning');
