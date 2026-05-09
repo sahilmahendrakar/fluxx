@@ -50,7 +50,7 @@ import type {
   PlanningDocsListResult,
 } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
-import type { MacGithubUpdateCheckResult } from './main/appUpdates';
+import type { AppUpdateState } from './appUpdateState';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -503,13 +503,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   /**
-   * macOS packaged builds only — uses `electron-updater` against GitHub Releases with downloads disabled.
+   * macOS packaged builds — GitHub Releases via `electron-updater`; downloads only after `startDownload`.
    */
   updates: {
-    macGithubSupported: (): Promise<boolean> =>
-      ipcRenderer.invoke('app:updates:macGithubSupported'),
-    checkGithubMac: (): Promise<MacGithubUpdateCheckResult> =>
-      ipcRenderer.invoke('app:updates:checkGithubMac'),
+    getState: (): Promise<AppUpdateState> =>
+      ipcRenderer.invoke('app:updates:getState'),
+    check: (): Promise<void> => ipcRenderer.invoke('app:updates:check'),
+    startDownload: (): Promise<{ ok: true } | { ok: false; reason: string }> =>
+      ipcRenderer.invoke('app:updates:startDownload'),
+    quitAndInstall: (): Promise<void> =>
+      ipcRenderer.invoke('app:updates:quitAndInstall'),
+    onStateChanged: (cb: (state: AppUpdateState) => void) => {
+      const ch = 'app:updates:stateChanged' as const;
+      const handler = (_e: IpcRendererEvent, s: AppUpdateState) => cb(s);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
+    },
   },
   mcpBridge: {
     signalReady: () => ipcRenderer.send(MCP_BRIDGE_READY_CHANNEL),

@@ -46,7 +46,7 @@ import type {
   PlanningDocsCloudMigrationPersistedV1,
   PlanningDocsListResult,
 } from './planningDocs/types';
-import type { MacGithubUpdateCheckResult } from './main/appUpdates';
+import type { AppUpdateState } from './appUpdateState';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -334,11 +334,14 @@ declare global {
         };
       };
       /**
-       * macOS packaged builds only — GitHub Releases metadata via `electron-updater` (no background downloads).
+       * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.
        */
       updates: {
-        macGithubSupported: () => Promise<boolean>;
-        checkGithubMac: () => Promise<MacGithubUpdateCheckResult>;
+        getState: () => Promise<AppUpdateState>;
+        check: () => Promise<void>;
+        startDownload: () => Promise<{ ok: true } | { ok: false; reason: string }>;
+        quitAndInstall: () => Promise<void>;
+        onStateChanged: (cb: (state: AppUpdateState) => void) => () => void;
       };
       mcpBridge: {
         signalReady: () => void;
