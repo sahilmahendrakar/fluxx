@@ -101,6 +101,23 @@ function repoMachineBindingsForHydration(
   return out;
 }
 
+/**
+ * Stable id of the shared repo whose local clone is {@link CloudProject.rootPath}
+ * (primary workspace). Falls back to the first {@link CloudProject.sharedRepos} entry.
+ */
+export function resolveCloudPrimaryRepoId(
+  project: Pick<CloudProject, 'rootPath' | 'sharedRepos' | 'repoMachineBindings'>,
+): string | undefined {
+  const primaryPath = path.resolve(project.rootPath);
+  for (const sr of project.sharedRepos) {
+    const machine = project.repoMachineBindings[sr.id];
+    if (machine && path.resolve(machine.rootPath) === primaryPath) {
+      return sr.id;
+    }
+  }
+  return project.sharedRepos[0]?.id;
+}
+
 /** Active cloud project for the renderer (Firestore row + local binding + prefs). */
 export function hydrateCloudProject(
   summary: {

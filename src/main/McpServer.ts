@@ -3,6 +3,8 @@ import { McpServer as BaseMcpServer } from '@modelcontextprotocol/sdk/server/mcp
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 /* eslint-enable import/no-unresolved */
 import http from 'node:http';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { URL } from 'node:url';
 import type { BrowserWindow } from 'electron';
 import { z } from 'zod';
@@ -12,16 +14,18 @@ import type { AppStateStore } from './AppStateStore';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
-import type { ActiveProjectKey, RepoBranchDiscoveryResponse, Task, TaskGithubPr } from '../types';
+import type { ActiveProjectKey, RepoBranchDiscoveryResponse, RepoConfig, RepoPathStatus, Task, TaskGithubPr } from '../types';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
   validateStoredTaskSourceBranchName,
 } from '../taskBranches';
+import { isMultiRepo2Enabled } from '../featureFlags';
 import { collectRepoBranchDiscovery } from './repoGit';
 import { mergedTaskCreateAgentFields } from '../projectAgentDefaults';
 import type {
   McpBridgeMember,
+  McpBridgeProjectInfoRepoSummary,
   McpBridgeProjectInfoResult,
   McpBridgeTasksCreatePayload,
   McpBridgeTasksDeletePayload,
@@ -29,7 +33,12 @@ import type {
   McpBridgeTasksUpdateResult,
 } from '../mcpBridge';
 import { isTaskBlocked } from '../taskDependencies';
-import { resolveLocalTaskRepoIdForCreate, resolveRepoForBranchDiscovery } from '../repoIdentity';
+import {
+  repoDisplayLabel,
+  resolvePrimaryRepoIdFromList,
+  resolveLocalTaskRepoIdForCreate,
+  resolveRepoForBranchDiscovery,
+} from '../repoIdentity';
 import { filterTasksByExcludeStatuses, FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
 const MCP_PORT = 47432;
@@ -197,6 +206,50 @@ export class McpServer {
     return match.uid;
   }
 
+  private async probeRepoPathStatus(resolvedRoot: string): Promise<RepoPathStatus> {
+    try {
+      await fs.access(resolvedRoot);
+    } catch {
+      return 'missing';
+    }
+    try {
+      await fs.access(path.join(resolvedRoot, '.git'));
+      return 'valid';
+    } catch {
+      return 'not_git';
+    }
+  }
+
+  private async buildLocalProjectInfoRepoSummaries(
+    repos: RepoConfig[],
+  ): Promise<McpBridgeProjectInfoRepoSummary[]> {
+    const primaryId = resolvePrimaryRepoIdFromList(repos);
+    const out: McpBridgeProjectInfoRepoSummary[] = [];
+    for (const r of repos) {
+      const resolvedRoot = path.resolve(r.rootPath);
+      const pathStatus = await this.probeRepoPathStatus(resolvedRoot);
+      let defaultBranchShort: string | undefined;
+      if (pathStatus === 'valid') {
+        try {
+          const disc = await collectRepoBranchDiscovery(resolvedRoot, r.baseBranch);
+          defaultBranchShort = disc.defaultBranchShort;
+        } catch {
+          // omit defaultBranchShort when discovery fails for this clone
+        }
+      }
+      out.push({
+        id: r.id,
+        label: repoDisplayLabel(r),
+        isPrimary: primaryId !== undefined && r.id === primaryId,
+        configuredDefaultBranch: r.baseBranch,
+        ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
+        rootPath: resolvedRoot,
+        pathStatus,
+      });
+    }
+    return out;
+  }
+
   private registerTools(server: BaseMcpServer): void {
     server.tool(
       'flux__list_tasks',
@@ -235,7 +288,7 @@ export class McpServer {
 
     server.tool(
       'flux__create_task',
-      'Create a new task on the Flux board for the current project',
+      'Create a new task on the Flux board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in flux__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository.',
       {
         title: z.string().describe('Task title'),
         description: z.string().optional().describe('Task description'),
@@ -286,7 +339,7 @@ export class McpServer {
           .string()
           .optional()
           .describe(
-            'Multi-repo2: stable repo id within the project; must match a configured repo (omitted = primary)',
+            'Only when multi-repo2 is enabled: stable repo id from flux__get_project_info.repos[].id. Must match a configured repository; omit to use primaryRepoId.',
           ),
       },
       async (input) => {
@@ -312,7 +365,8 @@ export class McpServer {
           );
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
-            const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
+            const requestedRepoId = isMultiRepo2Enabled() ? input.repoId : undefined;
+            const repoResolved = resolveLocalTaskRepoIdForCreate(repos, requestedRepoId);
             if (!repoResolved.ok) {
               return jsonToolPayload({ error: repoResolved.message });
             }
@@ -376,7 +430,9 @@ export class McpServer {
               ...(input.createSourceBranchIfMissing !== undefined
                 ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
                 : {}),
-              ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
+              ...(isMultiRepo2Enabled() && input.repoId !== undefined
+                ? { repoId: input.repoId }
+                : {}),
             },
           };
           const result = await this.bridge.request<Task>(
@@ -394,7 +450,7 @@ export class McpServer {
 
     server.tool(
       'flux__update_task',
-      'Update an existing task on the Flux board',
+      'Update an existing task on the Flux board. When multi-repo2 is enabled, repoId may be changed only while the task has no linked PR and no active Flux workspace/session (same rules as the app UI); otherwise the update fails with an error.',
       {
         id: z.string().describe('Task id'),
         title: z.string().optional(),
@@ -446,7 +502,7 @@ export class McpServer {
           .string()
           .optional()
           .describe(
-            'Multi-repo2: change which project repo this task is associated with (local: locked when a workspace or PR exists)',
+            'Only when multi-repo2 is enabled: change task.repoId using an id from flux__get_project_info.repos[]. Rejected when a session, worktree, or PR blocks repo moves (same as the UI).',
           ),
       },
       async (input) => {
@@ -496,11 +552,8 @@ export class McpServer {
             if (input.createSourceBranchIfMissing !== undefined) {
               patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
             }
-            if (input.repoId !== undefined) {
+            if (input.repoId !== undefined && isMultiRepo2Enabled()) {
               patch.repoId = input.repoId;
-            }
-            if (input.githubPr !== undefined) {
-              patch.githubPr = input.githubPr;
             }
             const updated = await this.taskActions.updateTask(input.id, patch);
             this.notifyTasksChanged();
@@ -557,11 +610,8 @@ export class McpServer {
           if (input.createSourceBranchIfMissing !== undefined) {
             patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
           }
-          if (input.repoId !== undefined) {
+          if (input.repoId !== undefined && isMultiRepo2Enabled()) {
             patch.repoId = input.repoId;
-          }
-          if (input.githubPr !== undefined) {
-            patch.githubPr = input.githubPr;
           }
           if (assigneeId !== undefined) patch.assigneeId = assigneeId;
           const payload: McpBridgeTasksUpdatePayload = { taskId: input.id, patch };
@@ -709,7 +759,7 @@ export class McpServer {
 
     server.tool(
       'flux__get_project_info',
-      'Get the current Flux project name, canonical rootPath (git repo / application code location), task status counts, and default git branch when discovery succeeds',
+      'Returns the Flux project name, task counts per column, and git default branch for the primary repository when discovery succeeds. When the multi-repo2 feature is enabled, also returns repos (each with id, label, isPrimary, configuredDefaultBranch, optional defaultBranchShort, rootPath, pathStatus or binding) and primaryRepoId; top-level rootPath is always the primary clone path for backwards compatibility.',
       {},
       async () => {
         try {
@@ -735,24 +785,36 @@ export class McpServer {
               else if (t.status === 'done') taskCounts.done++;
             }
             const repos = await this.projectStore.getReposAt(active.projectDir);
-            const repo =
-              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
+            const primaryRepoId = resolvePrimaryRepoIdFromList(repos);
+            const primaryRepo =
+              (primaryRepoId !== undefined ? repos.find((r) => r.id === primaryRepoId) : undefined) ??
+              repos[0];
+            const primaryRootPath = primaryRepo
+              ? path.resolve(primaryRepo.rootPath)
+              : path.resolve(active.project.rootPath);
             let defaultBranchShort: string | undefined;
             let branchDiscoveryError: string | undefined;
-            if (repo?.rootPath) {
+            if (primaryRepo?.rootPath) {
               try {
-                const disc = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+                const disc = await collectRepoBranchDiscovery(
+                  path.resolve(primaryRepo.rootPath),
+                  primaryRepo.baseBranch,
+                );
                 defaultBranchShort = disc.defaultBranchShort;
               } catch (err) {
                 branchDiscoveryError = err instanceof Error ? err.message : String(err);
               }
             }
+            const multi = isMultiRepo2Enabled();
+            const repoSummaries = multi ? await this.buildLocalProjectInfoRepoSummaries(repos) : undefined;
             return jsonToolPayload({
               name: active.project.name,
-              rootPath: active.project.rootPath,
+              rootPath: primaryRootPath,
               taskCounts,
               ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
               ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
+              ...(multi && primaryRepoId !== undefined ? { primaryRepoId } : {}),
+              ...(multi && repoSummaries !== undefined ? { repos: repoSummaries } : {}),
             });
           }
           const result = await this.bridge.request<McpBridgeProjectInfoResult>(
@@ -760,16 +822,20 @@ export class McpServer {
             active.activeKey,
           );
           if (!result.ok) return this.bridgeError(result);
+          const data = result.data;
+          const multi = isMultiRepo2Enabled();
           return jsonToolPayload({
-            name: result.data.name,
+            name: data.name,
             rootPath: active.rootPath,
-            taskCounts: result.data.taskCounts,
-            ...(result.data.defaultBranchShort !== undefined
-              ? { defaultBranchShort: result.data.defaultBranchShort }
+            taskCounts: data.taskCounts,
+            ...(data.defaultBranchShort !== undefined
+              ? { defaultBranchShort: data.defaultBranchShort }
               : {}),
-            ...(result.data.branchDiscoveryError !== undefined
-              ? { branchDiscoveryError: result.data.branchDiscoveryError }
+            ...(data.branchDiscoveryError !== undefined
+              ? { branchDiscoveryError: data.branchDiscoveryError }
               : {}),
+            ...(multi && data.primaryRepoId !== undefined ? { primaryRepoId: data.primaryRepoId } : {}),
+            ...(multi && data.repos !== undefined ? { repos: data.repos } : {}),
           });
         } catch (err) {
           return toolError(err);
@@ -779,13 +845,13 @@ export class McpServer {
 
     server.tool(
       'flux__list_repo_branches',
-      'List local and origin remote branch short names for the active repo, the configured default branch, and optionally classify one branch name (exists locally / on origin / missing). Prefer flux__get_project_info for defaultBranchShort alone; use this before batch-creating tasks on specific branches.',
+      'List local and origin remote branch short names, the configured default branch, and optionally classify one branch name. When multi-repo2 is enabled, pass repoId (from flux__get_project_info.repos[].id) to inspect a non-primary repository; omit repoId for the primary repo.',
       {
         repoId: z
           .string()
           .optional()
           .describe(
-            'Multi-repo2: stable repo id within the project (omitted = primary repository)',
+            'Only when multi-repo2 is enabled: which project repository to read (id from flux__get_project_info.repos). Omit for the primary repository.',
           ),
         classifyBranch: z
           .string()
@@ -802,11 +868,14 @@ export class McpServer {
           }
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
-            const repo = resolveRepoForBranchDiscovery(repos, input.repoId?.trim() || undefined);
+            const repoIdArg = isMultiRepo2Enabled() ? input.repoId?.trim() || undefined : undefined;
+            const repo = resolveRepoForBranchDiscovery(repos, repoIdArg);
             if (!repo?.rootPath) {
               return jsonToolPayload({
                 error:
-                  input.repoId != null && input.repoId.trim() !== ''
+                  isMultiRepo2Enabled() &&
+                  input.repoId != null &&
+                  input.repoId.trim() !== ''
                     ? 'Unknown repository id for this project'
                     : 'No repository root configured for this project',
               });
@@ -834,7 +903,9 @@ export class McpServer {
             'repo.branchDiscovery',
             active.activeKey,
             {
-              ...(input.repoId != null && input.repoId.trim() !== ''
+              ...(isMultiRepo2Enabled() &&
+              input.repoId != null &&
+              input.repoId.trim() !== ''
                 ? { repoId: input.repoId.trim() }
                 : {}),
               classifyBranch: input.classifyBranch,

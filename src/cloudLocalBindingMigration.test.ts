@@ -7,7 +7,7 @@ import {
   primaryRootPathFromCloudBinding,
   stripLegacyRootPathForPersistence,
 } from './cloudLocalBindingMigration';
-import { hydrateCloudProject } from './cloudBindingPrefs';
+import { hydrateCloudProject, resolveCloudPrimaryRepoId } from './cloudBindingPrefs';
 import { deriveStablePrimaryRepoIdForProject } from './repoIdentity';
 
 describe('cloudLocalBindingMigration', () => {
@@ -128,5 +128,30 @@ describe('cloudLocalBindingMigration', () => {
     expect(hydrated.sharedRepos).toEqual(summary.repos);
     expect(hydrated.repoMachineBindings['r-main']?.rootPath).toBe('/w/main');
     expect(hydrated.repoMachineBindings['r-lib']).toBeUndefined();
+  });
+
+  it('resolveCloudPrimaryRepoId matches the shared repo bound at project.rootPath', () => {
+    const summary = {
+      id: projectId,
+      name: 'Team',
+      ownerId: 'o',
+      memberIds: ['o'],
+      createdAt: 'c',
+      repos: [
+        { id: 'r-a', name: 'A', baseBranch: 'main' },
+        { id: 'r-b', name: 'B', baseBranch: 'develop' },
+      ],
+    };
+    const binding: CloudProjectLocalBinding = {
+      lastOpenedAt: 't',
+      primaryRepoId: 'r-b',
+      repoBindings: {
+        'r-a': { rootPath: '/clone/a', lastOpenedAt: 't' },
+        'r-b': { rootPath: '/clone/b', lastOpenedAt: 't' },
+      },
+    };
+    const hydrated = hydrateCloudProject(summary, binding);
+    expect(hydrated.rootPath).toBe('/clone/b');
+    expect(resolveCloudPrimaryRepoId(hydrated)).toBe('r-b');
   });
 });
