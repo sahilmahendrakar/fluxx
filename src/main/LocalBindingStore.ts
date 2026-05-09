@@ -229,14 +229,93 @@ export class LocalBindingStore {
     await this.save();
   }
 
+  /**
+   * Set or update the on-disk clone for one shared repo id. Other repo
+   * bindings and preferences are preserved (multi-repo2 cloud).
+   */
+  async setRepoMachineBinding(
+    projectId: string,
+    repoId: string,
+    rootPath: string,
+  ): Promise<LocalBinding> {
+    const rid = repoId.trim();
+    if (!rid) throw new Error('repoId is required');
+    const resolvedRoot = path.resolve(rootPath);
+    const now = new Date().toISOString();
+    const prev = this.bindings[projectId];
+    const prevM = prev ? migrateLegacyCloudBinding(projectId, { ...prev }) : null;
+    const repoBindings = { ...(prevM?.repoBindings ?? {}) };
+    repoBindings[rid] = { rootPath: resolvedRoot, lastOpenedAt: now };
+    let primaryRepoId = prevM?.primaryRepoId;
+    if (!primaryRepoId && Object.keys(repoBindings).length === 1) {
+      primaryRepoId = rid;
+    }
+    const binding: LocalBinding = {
+      lastOpenedAt: now,
+      repoBindings,
+      ...(primaryRepoId ? { primaryRepoId } : {}),
+    };
+    if (prevM) {
+      if (prevM.planningAgent !== undefined) binding.planningAgent = prevM.planningAgent;
+      if (prevM.defaultTaskAgent !== undefined) binding.defaultTaskAgent = prevM.defaultTaskAgent;
+      if (prevM.planningModels !== undefined) binding.planningModels = { ...prevM.planningModels };
+      if (prevM.planningAgentYolo === true) binding.planningAgentYolo = true;
+      if (prevM.taskDefaultModels !== undefined) {
+        binding.taskDefaultModels = { ...prevM.taskDefaultModels };
+      }
+      if (prevM.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
+      if (prevM.autoStartSessionOnInProgress !== undefined) {
+        binding.autoStartSessionOnInProgress = prevM.autoStartSessionOnInProgress;
+      }
+      if (prevM.autoStartWhenUnblocked !== undefined) {
+        binding.autoStartWhenUnblocked = prevM.autoStartWhenUnblocked;
+      }
+      if (prevM.autoCleanupWorkspaceWhenDone !== undefined) {
+        binding.autoCleanupWorkspaceWhenDone = prevM.autoCleanupWorkspaceWhenDone;
+      } else if (prevM.autoDeleteTaskWhenDone !== undefined) {
+        binding.autoDeleteTaskWhenDone = prevM.autoDeleteTaskWhenDone;
+      }
+      if (prevM.autoMarkDoneWhenPrMerged !== undefined) {
+        binding.autoMarkDoneWhenPrMerged = prevM.autoMarkDoneWhenPrMerged;
+      }
+      if (prevM.autoMoveToReviewWhenPrOpen !== undefined) {
+        binding.autoMoveToReviewWhenPrOpen = prevM.autoMoveToReviewWhenPrOpen;
+      }
+    }
+    const normalized = stripLegacyRootPathForPersistence(binding);
+    this.bindings[projectId] = normalized;
+    await this.save();
+    return normalized;
+  }
+
   async set(projectId: string, rootPath: string): Promise<LocalBinding> {
     const prev = this.bindings[projectId];
+    const resolvedIncoming = path.resolve(rootPath);
+    if (prev) {
+      const migrated = migrateLegacyCloudBinding(projectId, { ...prev });
+      const rb = migrated.repoBindings;
+      if (rb && Object.keys(rb).length > 0) {
+        let pid = migrated.primaryRepoId;
+        const keys = Object.keys(rb).sort();
+        if (!pid && keys.length === 1) pid = keys[0];
+        if (!pid) {
+          pid =
+            keys.find((k) => path.resolve(rb[k].rootPath) === resolvedIncoming) ?? keys[0];
+        }
+        if (pid && rb[pid]) {
+          return this.setRepoMachineBinding(projectId, pid, rootPath);
+        }
+      }
+    }
     const now = new Date().toISOString();
-    const primaryId = deriveStablePrimaryRepoIdForProject({ projectId, rootPath });
+    const primaryId = deriveStablePrimaryRepoIdForProject({
+      projectId,
+      rootPath: resolvedIncoming,
+    });
     const binding: LocalBinding = {
       lastOpenedAt: now,
       repoBindings: {
-        [primaryId]: { rootPath, lastOpenedAt: now },
+        [primaryId]: { rootPath: resolvedIncoming, lastOpenedAt: now },
       },
       primaryRepoId: primaryId,
     };

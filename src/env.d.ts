@@ -4,6 +4,8 @@ import type {
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
   RepoBranchDiscoveryRequest,
@@ -148,6 +150,22 @@ declare global {
         getPrimaryRepoId: () => Promise<
           { ok: true; repoId: string | null } | { error: string }
         >;
+        getCloudRepoBindingOverview: (
+          sharedRepos: CloudSharedRepo[],
+        ) => Promise<
+          CloudRepoBindingOverview | { error: string; code?: string }
+        >;
+        bindCloudSharedRepo: (payload: {
+          repoId: string;
+          rootPath: string;
+          sharedRepos: CloudSharedRepo[];
+        }) => Promise<
+          | { ok: true; binding: CloudProjectLocalBinding }
+          | { error: string; code?: 'MULTI_REPO2_DISABLED' | 'NOT_GIT_REPO' }
+        >;
+        syncCloudSharedRepos: (
+          sharedRepos: CloudSharedRepo[],
+        ) => Promise<{ ok: true } | { error: string }>;
         getAutoStartSessionOnInProgress: () => Promise<boolean>;
         setAutoStartSessionOnInProgress: (
           enabled: boolean,
@@ -185,6 +203,7 @@ declare global {
         activateCloud: (payload: {
           id: string;
           rootPath: string;
+          sharedRepos?: CloudSharedRepo[];
         }) => Promise<ActivateCloudResult>;
         clearLocalBinding: (cloudProjectId: string) => Promise<void>;
       };

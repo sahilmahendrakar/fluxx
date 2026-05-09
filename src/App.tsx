@@ -791,6 +791,9 @@ export default function App() {
       const result = await window.electronAPI.projects.activateCloud({
         id: match.id,
         rootPath: primaryPath,
+        ...(window.electronAPI.featureFlags.multiRepo2 && match.repos?.length
+          ? { sharedRepos: match.repos }
+          : {}),
       });
       if (cancelled) return;
       if (!result || 'error' in result) {
@@ -813,6 +816,16 @@ export default function App() {
     cloudProjectsState.status,
     cloudProjectsState.projects,
   ]);
+
+  // Multi-repo2 cloud: keep ~/.flux workspace `repos[]` aligned with shared repo ids + bindings.
+  useEffect(() => {
+    if (!project || project.kind !== 'cloud') return;
+    if (!window.electronAPI.featureFlags.multiRepo2) return;
+    if (project.sharedRepos.length === 0) return;
+    void window.electronAPI.project.syncCloudSharedRepos(project.sharedRepos).catch((err) => {
+      console.warn('[App] syncCloudSharedRepos', err);
+    });
+  }, [project?.id, project?.kind, project?.sharedRepos]);
 
   // Keep cloud project's Firestore-side fields fresh when the snapshot updates.
   useEffect(() => {

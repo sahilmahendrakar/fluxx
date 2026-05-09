@@ -20,8 +20,12 @@ import { isMultiRepo2Enabled } from './featureFlags';
 import { McpServer } from './main/McpServer';
 import { McpRendererBridge } from './main/McpRendererBridge';
 import { AppStateStore } from './main/AppStateStore';
+import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
 import { hydrateCloudProject } from './cloudBindingPrefs';
-import { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
+import {
+  migrateLegacyCloudBinding,
+  primaryRootPathFromCloudBinding,
+} from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
 import { DaemonClient } from './main/DaemonClient';
@@ -102,6 +106,9 @@ import type {
   ActiveProjectKey,
   Agent,
   AgentSpawnDefaultsPatch,
+  CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   ProjectTabState,
   LocalProject,
   Project,
@@ -871,6 +878,56 @@ app.whenReady().then(async () => {
     }
   }
 
+  const UNBOUND_REPO_BRANCH_DISCOVERY =
+    'No local clone is bound for this repository. Open Project settings → Project Config and use “Bind local folder” for that repository.';
+
+  function parseCloudSharedReposArg(raw: unknown): CloudSharedRepo[] {
+    if (!Array.isArray(raw)) return [];
+    const out: CloudSharedRepo[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Record<string, unknown>;
+      if (
+        typeof o.id !== 'string' ||
+        typeof o.name !== 'string' ||
+        typeof o.baseBranch !== 'string'
+      ) {
+        continue;
+      }
+      const repo: CloudSharedRepo = {
+        id: o.id.trim(),
+        name: o.name,
+        baseBranch: o.baseBranch,
+      };
+      if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
+        repo.remoteUrl = o.remoteUrl.trim();
+      }
+      out.push(repo);
+    }
+    return out;
+  }
+
+  async function syncCloudReposDiskFromBinding(params: {
+    cloudProjectId: string;
+    projectDir: string;
+    sharedRepos: CloudSharedRepo[];
+  }): Promise<void> {
+    if (!isMultiRepo2Enabled()) return;
+    const binding = bindingStore.get(params.cloudProjectId);
+    if (!binding) return;
+    const built = repoConfigsFromCloudSharedAndBinding(
+      params.cloudProjectId,
+      params.sharedRepos,
+      binding,
+    );
+    if (!built || built.repos.length === 0) return;
+    await projectStore.applyCloudRepoBindings(
+      params.projectDir,
+      built.primaryRootPath,
+      built.repos,
+    );
+  }
+
   async function activeConfigProjectId(projectDir: string): Promise<string> {
     const loaded = projectStore.get()?.id ?? '';
     if (loaded) return loaded;
@@ -1022,6 +1079,102 @@ app.whenReady().then(async () => {
   );
 
   ipcMain.handle(
+    'project:getCloudRepoBindingOverview',
+    async (_e, rawSharedRepos: unknown): Promise<
+      CloudRepoBindingOverview | { error: string; code?: string }
+    > => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') {
+        return { error: 'No cloud project is open.', code: 'NOT_CLOUD' };
+      }
+      if (!isMultiRepo2Enabled()) {
+        return multiRepo2DisabledError();
+      }
+      const sharedRepos = parseCloudSharedReposArg(rawSharedRepos);
+      const binding = bindingStore.get(key.id);
+      const migrated = binding ? migrateLegacyCloudBinding(key.id, binding) : null;
+      const rb = migrated?.repoBindings ?? {};
+      const out: CloudRepoBindingOverview = {};
+      for (const sr of sharedRepos) {
+        const machine = rb[sr.id];
+        if (!machine?.rootPath) {
+          out[sr.id] = { kind: 'missing_binding' };
+          continue;
+        }
+        const pathStatus = await repoPathStatus(machine.rootPath);
+        out[sr.id] = {
+          kind: 'bound',
+          rootPath: machine.rootPath,
+          pathStatus,
+        };
+      }
+      return out;
+    },
+  );
+
+  ipcMain.handle(
+    'project:bindCloudSharedRepo',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; binding: CloudProjectLocalBinding }
+      | { error: string; code?: 'MULTI_REPO2_DISABLED' | 'NOT_GIT_REPO' }
+    > => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') {
+        return { error: 'No cloud project is open.' };
+      }
+      if (!isMultiRepo2Enabled()) {
+        return multiRepo2DisabledError();
+      }
+      if (!payload || typeof payload !== 'object') {
+        return { error: 'Invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const rootPath = typeof p.rootPath === 'string' ? p.rootPath.trim() : '';
+      const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+      if (!repoId) return { error: 'repoId is required' };
+      if (!rootPath) return { error: 'rootPath is required' };
+      try {
+        await fs.access(path.join(rootPath, '.git'));
+      } catch {
+        return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
+      }
+      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, rootPath);
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'No active workspace directory.' };
+      }
+      await syncCloudReposDiskFromBinding({
+        cloudProjectId: key.id,
+        projectDir,
+        sharedRepos,
+      });
+      return { ok: true, binding };
+    },
+  );
+
+  ipcMain.handle(
+    'project:syncCloudSharedRepos',
+    async (_e, rawSharedRepos: unknown): Promise<{ ok: true } | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') return { error: 'No cloud project is open.' };
+      if (!isMultiRepo2Enabled()) return { ok: true };
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No workspace' };
+      const sharedRepos = parseCloudSharedReposArg(rawSharedRepos);
+      await syncCloudReposDiskFromBinding({
+        cloudProjectId: key.id,
+        projectDir,
+        sharedRepos,
+      });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
     'repo:getBranchDiscovery',
     async (
       _e,
@@ -1033,11 +1186,13 @@ app.whenReady().then(async () => {
         const { repoId, classifyBranch } = normalizeBranchDiscoveryArg(arg);
         const repo = resolveRepoForBranchDiscovery(repos, repoId);
         if (!repo?.rootPath) {
+          const explicit = repoId != null && repoId.trim().length > 0;
           return {
-            error:
-              repoId != null && repoId.trim().length > 0
-                ? 'Unknown repository id for this project'
-                : 'No repository root configured for this project',
+            error: explicit
+              ? isMultiRepo2Enabled()
+                ? UNBOUND_REPO_BRANCH_DISCOVERY
+                : 'Unknown repository id for this project'
+              : 'No repository root configured for this project',
           };
         }
         let base: RepoBranchDiscovery;
@@ -1462,7 +1617,10 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     'projects:activateCloud',
-    async (_e, payload: { id: string; rootPath: string }) => {
+    async (
+      _e,
+      payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
+    ) => {
       try {
         await fs.access(path.join(payload.rootPath, '.git'));
       } catch {
@@ -1477,6 +1635,13 @@ app.whenReady().then(async () => {
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
       });
+      if (isMultiRepo2Enabled() && payload.sharedRepos && payload.sharedRepos.length > 0) {
+        await syncCloudReposDiskFromBinding({
+          cloudProjectId: payload.id,
+          projectDir,
+          sharedRepos: payload.sharedRepos,
+        });
+      }
       return { ok: true as const };
     },
   );

@@ -4,6 +4,9 @@ import {
   DEFAULT_CURSOR_AGENT_MODEL,
   type Agent,
   type AgentSpawnDefaultsPatch,
+  type CloudRepoBindingOverview,
+  type CloudRepoLocalBindingStatus,
+  type CloudSharedRepo,
   type CloudProject,
   type LocalProject,
   type RepoConfig,
@@ -203,8 +206,9 @@ function ProjectConfigPane({
   onAutoStartWhenUnblockedChange,
   onProjectAgentPrefsRefresh,
 }: ProjectConfigPaneProps) {
-  const multiRepoManagementEnabled =
-    project.kind === 'local' && window.electronAPI.featureFlags.multiRepo2;
+  const multiRepo2 = window.electronAPI.featureFlags.multiRepo2;
+  const multiRepoLocalManagementEnabled = project.kind === 'local' && multiRepo2;
+  const multiRepoCloudBindingsEnabled = project.kind === 'cloud' && multiRepo2;
   const [repos, setRepos] = useState<RepoConfig[] | null>(null);
   const [repoStates, setRepoStates] = useState<Record<string, RepoManagementState>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -254,7 +258,7 @@ function ProjectConfigPane({
 
   const refreshRepoStates = useCallback(
     async (nextRepos: RepoConfig[]) => {
-      if (!multiRepoManagementEnabled) {
+      if (!multiRepoLocalManagementEnabled) {
         setRepoStates({});
         return;
       }
@@ -269,10 +273,16 @@ function ProjectConfigPane({
         ),
       );
     },
-    [multiRepoManagementEnabled],
+    [multiRepoLocalManagementEnabled],
   );
 
   const refresh = useCallback(async () => {
+    if (multiRepoCloudBindingsEnabled) {
+      setRepos([]);
+      setRepoStates({});
+      setLoadError(null);
+      return;
+    }
     try {
       const next = await window.electronAPI.project.getRepos();
       setRepos(next);
@@ -281,7 +291,7 @@ function ProjectConfigPane({
       setExpanded((prev) => {
         if (Object.keys(prev).length > 0) return prev;
         if (next.length === 1) {
-          const key = multiRepoManagementEnabled ? next[0].id : next[0].rootPath;
+          const key = multiRepoLocalManagementEnabled ? next[0].id : next[0].rootPath;
           return { [key]: true };
         }
         return prev;
@@ -289,7 +299,11 @@ function ProjectConfigPane({
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : String(err));
     }
-  }, [multiRepoManagementEnabled, refreshRepoStates]);
+  }, [
+    multiRepoCloudBindingsEnabled,
+    multiRepoLocalManagementEnabled,
+    refreshRepoStates,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -633,7 +647,7 @@ function ProjectConfigPane({
   }, []);
 
   const handleAddRepo = useCallback(async () => {
-    if (!multiRepoManagementEnabled) return;
+    if (!multiRepoLocalManagementEnabled) return;
     setAddRepoState('saving');
     setAddRepoError(null);
     try {
@@ -675,7 +689,7 @@ function ProjectConfigPane({
       setAddRepoState('error');
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
-  }, [multiRepoManagementEnabled, refreshRepoStates]);
+  }, [multiRepoLocalManagementEnabled, refreshRepoStates]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -1037,9 +1051,15 @@ function ProjectConfigPane({
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-[13px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-                Repositories
+                {multiRepoCloudBindingsEnabled ? 'Team repositories' : 'Repositories'}
               </h2>
-              {multiRepoManagementEnabled ? (
+              {multiRepoCloudBindingsEnabled ? (
+                <p className="mt-1 text-[12px] leading-snug text-zinc-600">
+                  Shared metadata comes from the cloud project. Bind each repo to a local clone on
+                  this machine so agents and git operations can run. Paths are stored only in your
+                  local Flux data, not synced to teammates.
+                </p>
+              ) : multiRepoLocalManagementEnabled ? (
                 <p className="mt-1 text-[12px] leading-snug text-zinc-600">
                   Manage the local git repositories attached to this project.
                 </p>
@@ -1047,9 +1067,11 @@ function ProjectConfigPane({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="text-[11px] text-zinc-600">
-                {repos?.length ?? 0} {repos?.length === 1 ? 'repo' : 'repos'}
+                {multiRepoCloudBindingsEnabled
+                  ? `${project.kind === 'cloud' ? project.sharedRepos.length : 0} shared`
+                  : `${repos?.length ?? 0} ${repos?.length === 1 ? 'repo' : 'repos'}`}
               </span>
-              {multiRepoManagementEnabled ? (
+              {multiRepoLocalManagementEnabled ? (
                 <button
                   type="button"
                   onClick={() => void handleAddRepo()}
@@ -1062,56 +1084,262 @@ function ProjectConfigPane({
             </div>
           </div>
 
-          {loadError ? (
-            <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
-              {loadError}
-            </p>
-          ) : null}
-          {multiRepoManagementEnabled && (addRepoError || addRepoState === 'saved') ? (
-            <p
-              className={`mt-3 rounded-md border px-3 py-2 text-[12px] ${
-                addRepoError
-                  ? 'border-red-500/30 bg-red-500/[0.06] text-red-300'
-                  : 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
-              }`}
-            >
-              {addRepoError ?? 'Repository added.'}
-            </p>
-          ) : null}
+          {multiRepoCloudBindingsEnabled && project.kind === 'cloud' ? (
+            <CloudTeamReposBindingsSection
+              project={project}
+              onBindingsChanged={onProjectAgentPrefsRefresh}
+            />
+          ) : (
+            <>
+              {loadError ? (
+                <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+                  {loadError}
+                </p>
+              ) : null}
+              {multiRepoLocalManagementEnabled && (addRepoError || addRepoState === 'saved') ? (
+                <p
+                  className={`mt-3 rounded-md border px-3 py-2 text-[12px] ${
+                    addRepoError
+                      ? 'border-red-500/30 bg-red-500/[0.06] text-red-300'
+                      : 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+                  }`}
+                >
+                  {addRepoError ?? 'Repository added.'}
+                </p>
+              ) : null}
 
-          <div className="mt-3 flex flex-col gap-2">
-            {repos === null && !loadError ? (
-              <p className="px-3 py-4 text-[12px] text-zinc-600">Loading…</p>
-            ) : (
-              repos?.map((repo, index) => {
-                const key = multiRepoManagementEnabled ? repo.id : repo.rootPath;
-                return (
-                  <RepoCard
-                    key={key}
-                    repo={repo}
-                    repoCount={repos.length}
-                    repoState={repoStates[repo.id]}
-                    primary={index === 0}
-                    multiRepoManagementEnabled={multiRepoManagementEnabled}
-                    expanded={expanded[key] ?? false}
-                    onToggle={() =>
-                      setExpanded((prev) => ({
-                        ...prev,
-                        [key]: !(prev[key] ?? false),
-                      }))
-                    }
-                    onSaved={(repos) => setRepos(repos)}
-                    onReposChanged={async (repos) => {
-                      setRepos(repos);
-                      await refreshRepoStates(repos);
-                    }}
-                  />
-                );
-              })
-            )}
-          </div>
+              <div className="mt-3 flex flex-col gap-2">
+                {repos === null && !loadError ? (
+                  <p className="px-3 py-4 text-[12px] text-zinc-600">Loading…</p>
+                ) : (
+                  repos?.map((repo, index) => {
+                    const key = multiRepoLocalManagementEnabled ? repo.id : repo.rootPath;
+                    return (
+                      <RepoCard
+                        key={key}
+                        repo={repo}
+                        repoCount={repos?.length ?? 0}
+                        repoState={repoStates[repo.id]}
+                        primary={index === 0}
+                        multiRepoManagementEnabled={multiRepoLocalManagementEnabled}
+                        expanded={expanded[key] ?? false}
+                        onToggle={() =>
+                          setExpanded((prev) => ({
+                            ...prev,
+                            [key]: !(prev[key] ?? false),
+                          }))
+                        }
+                        onSaved={(repos) => setRepos(repos)}
+                        onReposChanged={async (repos) => {
+                          setRepos(repos);
+                          await refreshRepoStates(repos);
+                        }}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBindingStatus }) {
+  if (status.kind === 'missing_binding') {
+    return (
+      <span className="rounded-full border border-zinc-500/25 bg-zinc-500/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400">
+        Not bound
+      </span>
+    );
+  }
+  if (status.pathStatus === 'valid') {
+    return (
+      <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-1.5 py-0.5 text-[10px] text-emerald-300">
+        Ready
+      </span>
+    );
+  }
+  if (status.pathStatus === 'missing') {
+    return (
+      <span className="rounded-full border border-red-500/25 bg-red-500/[0.06] px-1.5 py-0.5 text-[10px] text-red-300">
+        Path missing
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-amber-300">
+      Not a git repo
+    </span>
+  );
+}
+
+function CloudTeamReposBindingsSection({
+  project,
+  onBindingsChanged,
+}: {
+  project: CloudProject;
+  onBindingsChanged?: () => void | Promise<void>;
+}) {
+  const [overview, setOverview] = useState<CloudRepoBindingOverview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionRepoId, setActionRepoId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const sharedReposKey = project.sharedRepos.map((s) => s.id).join(',');
+
+  const refreshOverview = useCallback(async () => {
+    try {
+      const r = await window.electronAPI.project.getCloudRepoBindingOverview(project.sharedRepos);
+      if (r && typeof r === 'object' && 'error' in r && typeof (r as { error: string }).error === 'string') {
+        setLoadError((r as { error: string }).error);
+        setOverview(null);
+        return;
+      }
+      setOverview(r as CloudRepoBindingOverview);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+      setOverview(null);
+    }
+  }, [project.sharedRepos, sharedReposKey]);
+
+  useEffect(() => {
+    void refreshOverview();
+  }, [refreshOverview, project.id, sharedReposKey]);
+
+  const handleBind = async (repoId: string) => {
+    setActionRepoId(repoId);
+    setActionError(null);
+    try {
+      const picked = await window.electronAPI.project.pickRepoDirectory();
+      if (!picked) {
+        setActionRepoId(null);
+        return;
+      }
+      if ('error' in picked) {
+        setActionError(
+          picked.error === 'NOT_GIT_REPO'
+            ? 'Choose a folder that contains a .git directory.'
+            : picked.error,
+        );
+        setActionRepoId(null);
+        return;
+      }
+      const result = await window.electronAPI.project.bindCloudSharedRepo({
+        repoId,
+        rootPath: picked.rootPath,
+        sharedRepos: project.sharedRepos,
+      });
+      if ('error' in result) {
+        setActionError(result.error);
+        setActionRepoId(null);
+        return;
+      }
+      await refreshOverview();
+      await onBindingsChanged?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionRepoId(null);
+    }
+  };
+
+  if (project.sharedRepos.length === 0) {
+    return (
+      <p className="mt-4 text-[12px] text-zinc-500">
+        No shared repositories are listed for this cloud project yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {loadError ? (
+        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+          {loadError}
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+          {actionError}
+        </p>
+      ) : null}
+      {project.sharedRepos.map((sr, index) => {
+        const st = overview?.[sr.id];
+        return (
+          <div
+            key={sr.id}
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[13px] font-medium text-zinc-200">{sr.name}</span>
+                  {index === 0 ? (
+                    <span className="rounded-full border border-sky-500/20 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200">
+                      Primary
+                    </span>
+                  ) : null}
+                  {st ? (
+                    <CloudRepoBindingStatusBadge status={st} />
+                  ) : (
+                    <span className="text-[10px] text-zinc-600">…</span>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Base branch:{' '}
+                  <span className="font-mono text-zinc-400">{sr.baseBranch}</span>
+                  {sr.remoteUrl ? (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <span
+                        className="font-mono text-zinc-500"
+                        title={sr.remoteUrl}
+                      >
+                        {sr.remoteUrl.length > 56 ? `${sr.remoteUrl.slice(0, 54)}…` : sr.remoteUrl}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                {st?.kind === 'bound' ? (
+                  <p
+                    className="mt-1 truncate font-mono text-[11px] text-zinc-600"
+                    title={st.rootPath}
+                  >
+                    {st.rootPath}
+                  </p>
+                ) : null}
+                {st?.kind === 'bound' && st.pathStatus === 'missing' ? (
+                  <p className="mt-2 text-[11px] text-red-300">
+                    This path no longer exists on disk. Bind a different folder.
+                  </p>
+                ) : null}
+                {st?.kind === 'bound' && st.pathStatus === 'not_git' ? (
+                  <p className="mt-2 text-[11px] text-amber-300">
+                    This folder is not a git repository root. Choose another folder.
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleBind(sr.id)}
+                disabled={actionRepoId === sr.id}
+                className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
+              >
+                {actionRepoId === sr.id
+                  ? 'Working…'
+                  : st?.kind === 'bound'
+                    ? 'Change folder'
+                    : 'Bind local folder'}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

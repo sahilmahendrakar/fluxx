@@ -110,6 +110,13 @@ export interface RepoManagementState {
   blockingWorkspaceCount: number;
 }
 
+/** Local clone + path check for one shared cloud repo (multi-repo2 settings / IPC). */
+export type CloudRepoLocalBindingStatus =
+  | { kind: 'missing_binding' }
+  | { kind: 'bound'; rootPath: string; pathStatus: RepoPathStatus };
+
+export type CloudRepoBindingOverview = Record<string, CloudRepoLocalBindingStatus>;
+
 export interface LocalProject {
   id: string;
   kind: 'local';

@@ -4,6 +4,8 @@ import type {
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
   PlanningSession,
@@ -150,6 +152,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:getPrimaryRepoId') as Promise<
         { ok: true; repoId: string | null } | { error: string }
       >,
+    getCloudRepoBindingOverview: (sharedRepos: CloudSharedRepo[]) =>
+      ipcRenderer.invoke('project:getCloudRepoBindingOverview', sharedRepos) as Promise<
+        | CloudRepoBindingOverview
+        | { error: string; code?: string }
+      >,
+    bindCloudSharedRepo: (payload: {
+      repoId: string;
+      rootPath: string;
+      sharedRepos: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('project:bindCloudSharedRepo', payload) as Promise<
+        | { ok: true; binding: CloudProjectLocalBinding }
+        | { error: string; code?: 'MULTI_REPO2_DISABLED' | 'NOT_GIT_REPO' }
+      >,
+    syncCloudSharedRepos: (sharedRepos: CloudSharedRepo[]) =>
+      ipcRenderer.invoke('project:syncCloudSharedRepos', sharedRepos) as Promise<
+        { ok: true } | { error: string }
+      >,
     getAutoStartSessionOnInProgress: () =>
       ipcRenderer.invoke('project:getAutoStartSessionOnInProgress') as Promise<boolean>,
     setAutoStartSessionOnInProgress: (enabled: boolean) =>
@@ -209,7 +229,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'projects:pickDirectoryForCloud',
         cloudProjectId,
       ) as Promise<DirPickResult>,
-    activateCloud: (payload: { id: string; rootPath: string }) =>
+    activateCloud: (payload: {
+      id: string;
+      rootPath: string;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
     clearLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void      >,

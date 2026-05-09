@@ -466,6 +466,41 @@ export class ProjectStore {
   }
 
   /**
+   * Cloud multi-repo2: overwrite `repos[]` and the layout `rootPath` from shared
+   * repo metadata + `localBindings.json` machine paths. Other config keys persist.
+   */
+  async applyCloudRepoBindings(
+    projectDir: string,
+    primaryRootPath: string,
+    nextRepos: RepoConfig[],
+  ): Promise<void> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const resolvedPrimary = path.resolve(primaryRootPath);
+    const prevById = new Map(parsed.repos.map((r) => [r.id, r]));
+    const mergedRepos = nextRepos.map((nr) => {
+      const old = prevById.get(nr.id);
+      if (!old) return nr;
+      return {
+        ...nr,
+        ...(old.setupScript !== undefined ? { setupScript: old.setupScript } : {}),
+        ...(old.env !== undefined ? { env: old.env } : {}),
+      };
+    });
+    const next: ConfigFile = {
+      ...parsed,
+      rootPath: resolvedPrimary,
+      repos: mergedRepos,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+  }
+
+  /**
    * Persist a patch to the repo identified by `rootPath` inside `projectDir`.
    * Updates the in-memory active project only when `projectDir` matches.
    */
