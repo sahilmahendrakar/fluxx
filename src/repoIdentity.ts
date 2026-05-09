@@ -50,6 +50,14 @@ export function getPrimaryRepo(repos: ReadonlyArray<RepoConfig>): RepoConfig | u
   return repos[0];
 }
 
+/** First repo id in a list (shared cloud repos or local {@link RepoConfig} rows). */
+export function resolvePrimaryRepoIdFromList(
+  repos: ReadonlyArray<{ id: string }>,
+): string | undefined {
+  const id = repos[0]?.id;
+  return typeof id === 'string' && id.trim() !== '' ? id.trim() : undefined;
+}
+
 /** Convenience for places holding a `LocalProject`. */
 export function getPrimaryRepoForProject(
   project: Pick<LocalProject, 'repos'>,
@@ -147,10 +155,10 @@ export function persistedRepoIdsEqual(a: string | undefined, b: string | undefin
  * otherwise the primary repo id is used.
  */
 export function resolveLocalTaskRepoIdForCreate(
-  repos: ReadonlyArray<RepoConfig>,
+  repos: ReadonlyArray<{ id: string }>,
   requestedRepoId: string | undefined,
 ): { ok: true; repoId: string } | { ok: false; message: string } {
-  const primary = resolvePrimaryRepoId(repos);
+  const primary = resolvePrimaryRepoIdFromList(repos);
   if (!primary) {
     return { ok: false, message: 'No repository identity configured for this project' };
   }
@@ -166,7 +174,7 @@ export function resolveLocalTaskRepoIdForCreate(
 
 /** Non-empty patch values must match a repo on the project; clearing (`''`) is allowed. */
 export function validateTaskRepoIdPatchValue(
-  repos: ReadonlyArray<RepoConfig>,
+  repos: ReadonlyArray<{ id: string }>,
   patchRepoId: string | undefined,
 ): { ok: true } | { ok: false; message: string } {
   if (patchRepoId === undefined) return { ok: true };

@@ -247,6 +247,11 @@ declare global {
           },
           patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
+        assertRepoIdEditable: (
+          taskId: string,
+          previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+          patch: Pick<Task, 'repoId'>,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
         requestPullRequestFromAgent: (payload: {
           taskId: string;

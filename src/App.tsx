@@ -506,12 +506,21 @@ export default function App() {
     refreshPlanningDocList,
   ]);
 
+  // Stable ref for cloud sharedRepos + membership checks (avoid stale closures).
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
   // ----- Task provider per active project -----
   const provider = useMemo<TaskProvider | null>(() => {
     if (!project) return null;
     if (project.kind === 'local') return new LocalTaskProvider();
     if (!uid) return null;
-    return new FirestoreTaskProvider(project.id, uid);
+    return new FirestoreTaskProvider(project.id, uid, () => {
+      const p = projectRef.current;
+      return p?.kind === 'cloud' ? p.sharedRepos : [];
+    });
   }, [project?.kind, project?.id, uid]);
 
   useEffect(() => {
@@ -896,10 +905,6 @@ export default function App() {
   useEffect(() => {
     providerRef.current = provider;
   }, [provider]);
-  const projectRef = useRef(project);
-  useEffect(() => {
-    projectRef.current = project;
-  }, [project]);
 
   useCloudSilenceReconciliation({
     enabled: project?.kind === 'cloud',

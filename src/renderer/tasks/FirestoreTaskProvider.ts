@@ -20,6 +20,12 @@ import {
   planTaskSourceBranchFieldsForCreate,
   validateStoredTaskSourceBranchName,
 } from '../../taskBranches';
+import {
+  nextPersistedRepoIdAfterPatch,
+  resolveLocalTaskRepoIdForCreate,
+  resolvePrimaryRepoIdFromList,
+  validateTaskRepoIdPatchValue,
+} from '../../repoIdentity';
 import { getFirebaseFirestore } from '../firebase';
 import type {
   TaskCreateInput,
@@ -37,13 +43,20 @@ const AGENTS: Agent[] = ['claude-code', 'codex', 'cursor'];
 export class FirestoreTaskProvider implements TaskProvider {
   private projectId: string;
   private uid: string;
+  /** Latest shared cloud repos for id validation (from {@link CloudProject.sharedRepos}). */
+  private getSharedRepos: () => ReadonlyArray<{ id: string }>;
   private subscribers = new Set<(tasks: Task[]) => void>();
   private tasks: Task[] = [];
   private unsubSnapshot: (() => void) | null = null;
 
-  constructor(projectId: string, uid: string) {
+  constructor(
+    projectId: string,
+    uid: string,
+    getSharedRepos: () => ReadonlyArray<{ id: string }>,
+  ) {
     this.projectId = projectId;
     this.uid = uid;
+    this.getSharedRepos = getSharedRepos;
   }
 
   subscribe(cb: (tasks: Task[]) => void): () => void {
@@ -65,7 +78,8 @@ export class FirestoreTaskProvider implements TaskProvider {
     this.unsubSnapshot = onSnapshot(
       col,
       (snap) => {
-        this.tasks = snap.docs.map((d) => toTask(d, this.projectId));
+        const primaryRepoId = resolvePrimaryRepoIdFromList(this.getSharedRepos());
+        this.tasks = snap.docs.map((d) => toTask(d, this.projectId, primaryRepoId));
         const out = this.tasks.slice();
         for (const cb of this.subscribers) cb(out);
       },
@@ -91,10 +105,16 @@ export class FirestoreTaskProvider implements TaskProvider {
     if (!branchOk.ok) {
       throw new Error(branchOk.message);
     }
+    const repos = this.getSharedRepos();
+    const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
+    if (!repoResolved.ok) {
+      throw new Error(repoResolved.message);
+    }
     const data = {
       title: input.title,
       status: input.status ?? ('backlog' as TaskStatus),
       agent: input.agent,
+      repoId: repoResolved.repoId,
       createdAt: serverTimestamp(),
       createdBy: this.uid,
       updatedAt: serverTimestamp(),
@@ -165,15 +185,16 @@ export class FirestoreTaskProvider implements TaskProvider {
         ? { agentModel: input.agentModel.trim() }
         : {}),
       ...(input.agentYolo === true ? { agentYolo: true } : {}),
+      repoId: repoResolved.repoId,
     };
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {
+    const previous = this.tasks.find((t) => t.id === id);
+    if (!previous) {
+      throw new Error(`Task not found: ${id}`);
+    }
     if (patch.sourceBranch !== undefined || patch.createSourceBranchIfMissing !== undefined) {
-      const previous = this.tasks.find((t) => t.id === id);
-      if (!previous) {
-        throw new Error(`Task not found: ${id}`);
-      }
       const gate = await window.electronAPI.tasks.assertSourceBranchEditable(
         id,
         {
@@ -186,6 +207,25 @@ export class FirestoreTaskProvider implements TaskProvider {
           ...(patch.createSourceBranchIfMissing !== undefined
             ? { createSourceBranchIfMissing: patch.createSourceBranchIfMissing }
             : {}),
+        },
+      );
+      if (!gate.ok) {
+        throw new Error(gate.message);
+      }
+    }
+    if (patch.repoId !== undefined) {
+      const vr = validateTaskRepoIdPatchValue(this.getSharedRepos(), patch.repoId);
+      if (!vr.ok) {
+        throw new Error(vr.message);
+      }
+      const gate = await window.electronAPI.tasks.assertRepoIdEditable(
+        id,
+        {
+          repoId: previous.repoId,
+          githubPr: previous.githubPr,
+        },
+        {
+          ...(patch.repoId !== undefined ? { repoId: patch.repoId } : {}),
         },
       );
       if (!gate.ok) {
@@ -263,11 +303,12 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.createSourceBranchIfMissing = deleteField();
       }
     }
-    if (patch.githubPr !== undefined) {
-      if (patch.githubPr === null) {
-        updates.githubPr = deleteField();
+    if (patch.repoId !== undefined) {
+      const nextRepoId = nextPersistedRepoIdAfterPatch(previous.repoId, patch.repoId);
+      if (nextRepoId === undefined) {
+        updates.repoId = deleteField();
       } else {
-        updates.githubPr = githubPrToFirestore(patch.githubPr);
+        updates.repoId = nextRepoId;
       }
     }
     await updateDoc(ref, updates);
@@ -275,6 +316,7 @@ export class FirestoreTaskProvider implements TaskProvider {
     return toTask(
       after as unknown as QueryDocumentSnapshot<DocumentData>,
       this.projectId,
+      resolvePrimaryRepoIdFromList(this.getSharedRepos()),
     );
   }
 
@@ -287,6 +329,7 @@ export class FirestoreTaskProvider implements TaskProvider {
 function toTask(
   d: QueryDocumentSnapshot<DocumentData>,
   projectId: string,
+  primaryRepoId: string | undefined,
 ): Task {
   const data = d.data() ?? {};
   const status =
@@ -324,7 +367,7 @@ function toTask(
     ...parseGithubPrFirestoreField(data.githubPr),
     ...parseSourceBranchField(data.sourceBranch),
     ...parseCreateSourceBranchIfMissingField(data.createSourceBranchIfMissing),
-    ...parseGithubPrFirestoreField(data.githubPr),
+    ...parseRepoIdField(data.repoId, primaryRepoId),
   };
 }
 
@@ -394,6 +437,20 @@ function parseCreateSourceBranchIfMissingField(
 ): { createSourceBranchIfMissing: boolean } | Record<string, never> {
   if (val === true) return { createSourceBranchIfMissing: true };
   if (val === false) return { createSourceBranchIfMissing: false };
+  return {};
+}
+
+/** Legacy tasks without `repoId` resolve to the primary shared repo for display/filtering. */
+function parseRepoIdField(
+  raw: unknown,
+  primaryRepoId: string | undefined,
+): { repoId: string } | Record<string, never> {
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    return { repoId: raw.trim() };
+  }
+  if (primaryRepoId !== undefined && primaryRepoId.trim() !== '') {
+    return { repoId: primaryRepoId.trim() };
+  }
   return {};
 }
 

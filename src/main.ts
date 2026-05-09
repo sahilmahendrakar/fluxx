@@ -1687,6 +1687,68 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle(
+    'tasks:assertRepoIdEditable',
+    async (
+      _e,
+      taskId: unknown,
+      previousFields: unknown,
+      patchFields: unknown,
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      if (typeof taskId !== 'string' || !taskId.trim()) {
+        return { ok: false, message: 'Invalid task id' };
+      }
+      const tid = taskId.trim();
+      const prev =
+        previousFields && typeof previousFields === 'object'
+          ? (previousFields as Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr })
+          : {};
+      const patch =
+        patchFields && typeof patchFields === 'object'
+          ? (patchFields as Pick<Task, 'repoId'>)
+          : {};
+      if (patch.repoId === undefined) {
+        return { ok: true };
+      }
+      try {
+        const projectDir = activeProjectDir();
+        const repos = await projectStore.getReposAt(projectDir);
+        const vr = validateTaskRepoIdPatchValue(repos, patch.repoId);
+        if (!vr.ok) {
+          return { ok: false, message: vr.message };
+        }
+        const nextRepoId = nextPersistedRepoIdAfterPatch(prev.repoId, patch.repoId);
+        if (persistedRepoIdsEqual(prev.repoId, nextRepoId)) {
+          return { ok: true };
+        }
+        const linkedPrUrl = (prev.githubPr?.url ?? '').trim();
+        if (linkedPrUrl) {
+          return {
+            ok: false,
+            message:
+              'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
+          };
+        }
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: tid,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir(),
+          rootPath: worktreeService.getRootPath(),
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(tid);
+          return {
+            ok: false,
+            message: `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          };
+        }
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, message };
+      }
+    },
+  );
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
     updateTaskWithTransitionHandling(id, patch, 'ipc:tasks:update'),
   );

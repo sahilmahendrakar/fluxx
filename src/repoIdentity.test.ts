@@ -12,6 +12,7 @@ import {
   repoIdBelongsToProject,
   resolveLocalTaskRepoIdForCreate,
   resolvePrimaryRepoId,
+  resolvePrimaryRepoIdFromList,
   resolveRepoForBranchDiscovery,
   validateTaskRepoIdPatchValue,
 } from './repoIdentity';
@@ -113,6 +114,11 @@ describe('repoIdentity (multi-repo2)', () => {
     expect(resolveRepoForBranchDiscovery(repos, 'missing')).toBeUndefined();
     expect(resolveRepoForBranchDiscovery(repos, 'r2')?.id).toBe('r2');
     expect(resolveRepoForBranchDiscovery(repos, undefined)?.id).toBe('r1');
+  });
+
+  it('resolvePrimaryRepoIdFromList reads first repo id', () => {
+    expect(resolvePrimaryRepoIdFromList([{ id: 'a' }, { id: 'b' }])).toBe('a');
+    expect(resolvePrimaryRepoIdFromList([])).toBeUndefined();
   });
 
   it('effectiveTaskRepoId falls back to primary when task.repoId is blank', () => {

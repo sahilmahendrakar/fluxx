@@ -17,6 +17,76 @@ service cloud.firestore {
         && request.auth.uid == get(/databases/$(database)/documents/projects/$(pid)).data.ownerId;
     }
 
+    /**
+     * Cloud tasks may persist `repoId` (multi-repo2). When the project doc lists
+     * `repos` (shared repo metadata), constrain writes to known ids. Legacy
+     * projects without `repos` cannot be checked here — allow reasonable strings.
+     */
+    function taskRepoIdKeyAbsentOrValid(pid, data) {
+      return !data.keys().hasAny(['repoId'])
+        || data.repoId == null
+        || taskRepoIdFieldValid(pid, data.repoId);
+    }
+
+    function taskRepoIdFieldValid(pid, rid) {
+      return rid is string
+        && rid.size() > 0
+        && rid.size() <= 200
+        && taskRepoIdAllowedForProject(pid, rid);
+    }
+
+    function taskRepoIdAllowedForProject(pid, rid) {
+      let pdata = get(/databases/$(database)/documents/projects/$(pid)).data;
+      return !pdata.keys().hasAny(['repos'])
+        || pdata.repos == null
+        || !(pdata.repos is list)
+        || pdata.repos.size() == 0
+        || repoIdInSharedReposArray(pdata.repos, rid);
+    }
+
+    function repoAtMatches(repos, idx, rid) {
+      return repos.size() > idx
+        && repos[idx] is map
+        && repos[idx].keys().hasAny(['id'])
+        && repos[idx].id == rid;
+    }
+
+    /** Bounded scan (Firestore rules have no loops); supports up to 32 shared repos. */
+    function repoIdInSharedReposArray(repos, rid) {
+      return repoAtMatches(repos, 0, rid)
+        || repoAtMatches(repos, 1, rid)
+        || repoAtMatches(repos, 2, rid)
+        || repoAtMatches(repos, 3, rid)
+        || repoAtMatches(repos, 4, rid)
+        || repoAtMatches(repos, 5, rid)
+        || repoAtMatches(repos, 6, rid)
+        || repoAtMatches(repos, 7, rid)
+        || repoAtMatches(repos, 8, rid)
+        || repoAtMatches(repos, 9, rid)
+        || repoAtMatches(repos, 10, rid)
+        || repoAtMatches(repos, 11, rid)
+        || repoAtMatches(repos, 12, rid)
+        || repoAtMatches(repos, 13, rid)
+        || repoAtMatches(repos, 14, rid)
+        || repoAtMatches(repos, 15, rid)
+        || repoAtMatches(repos, 16, rid)
+        || repoAtMatches(repos, 17, rid)
+        || repoAtMatches(repos, 18, rid)
+        || repoAtMatches(repos, 19, rid)
+        || repoAtMatches(repos, 20, rid)
+        || repoAtMatches(repos, 21, rid)
+        || repoAtMatches(repos, 22, rid)
+        || repoAtMatches(repos, 23, rid)
+        || repoAtMatches(repos, 24, rid)
+        || repoAtMatches(repos, 25, rid)
+        || repoAtMatches(repos, 26, rid)
+        || repoAtMatches(repos, 27, rid)
+        || repoAtMatches(repos, 28, rid)
+        || repoAtMatches(repos, 29, rid)
+        || repoAtMatches(repos, 30, rid)
+        || repoAtMatches(repos, 31, rid);
+    }
+
     match /projects/{pid} {
       allow read: if isSignedIn() && request.auth.uid in resource.data.memberIds;
 
@@ -61,9 +131,11 @@ service cloud.firestore {
         allow read: if isMember(pid);
         allow create: if isMember(pid)
           && request.resource.data.createdBy == request.auth.uid
-          && request.resource.data.updatedBy == request.auth.uid;
+          && request.resource.data.updatedBy == request.auth.uid
+          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data);
         allow update: if isMember(pid)
-          && request.resource.data.updatedBy == request.auth.uid;
+          && request.resource.data.updatedBy == request.auth.uid
+          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data);
         allow delete: if isMember(pid);
 
         match /runners/{uid} {

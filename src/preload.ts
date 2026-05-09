@@ -287,6 +287,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
         previous,
         patch,
       ) as Promise<{ ok: true } | { ok: false; message: string }>,
+    assertRepoIdEditable: (
+      taskId: string,
+      previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+      patch: Pick<Task, 'repoId'>,
+    ) =>
+      ipcRenderer.invoke(
+        'tasks:assertRepoIdEditable',
+        taskId,
+        previous,
+        patch,
+      ) as Promise<{ ok: true } | { ok: false; message: string }>,
     delete: (id: string) =>
       ipcRenderer.invoke('tasks:delete', id) as Promise<void>,
     requestPullRequestFromAgent: (payload: {
