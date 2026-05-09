@@ -2,13 +2,14 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
   type Ref,
 } from 'react';
 import { ListFilter, Search, UserCircle2, X } from 'lucide-react';
-import type { Agent, TaskStatus } from '../types';
+import type { Agent, RepoConfig, TaskStatus } from '../types';
 import { AGENTS, COLUMNS } from '../types';
 import {
   type BoardFilterState,
@@ -26,6 +27,7 @@ import {
   filterByBoardFilterPickerQuery,
 } from './boardFilterOptionSearch';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
+import { repoDisplayLabel } from '../repoIdentity';
 
 /** Visible row labels for special filter rows; substring filter applies when query is non-empty. */
 const FILTER_PICKER_UNLABELED_LABEL = 'Unlabeled';
@@ -133,7 +135,7 @@ function BoardFilterPickerSubPanelHeader({
   );
 }
 
-type AddPanel = 'main' | 'agent' | 'label' | 'status' | 'assignee';
+type AddPanel = 'main' | 'agent' | 'label' | 'status' | 'assignee' | 'repo';
 
 type Props = {
   filter: BoardFilterState;
@@ -141,6 +143,9 @@ type Props = {
   labelOptions: string[];
   doneHiddenCount: number;
   projectMembers?: ProjectMember[];
+  /** Multi-repo board: show repo filter UI (caller gates on flag + repo count). */
+  showRepoFilter?: boolean;
+  projectRepos?: RepoConfig[];
 };
 
 export function BoardFilterBar({
@@ -149,6 +154,8 @@ export function BoardFilterBar({
   labelOptions,
   doneHiddenCount,
   projectMembers,
+  showRepoFilter = false,
+  projectRepos,
 }: Props) {
   const inputId = useId();
   const pickerSearchFieldId = useId();
@@ -181,6 +188,12 @@ export function BoardFilterBar({
     setPanel('main');
     setPickerSearchQuery('');
   };
+
+  const repoFilterTokenLabel = useMemo(() => {
+    if (filter.repoId == null) return '';
+    const r = projectRepos?.find((x) => x.id === filter.repoId);
+    return r ? repoDisplayLabel(r) : filter.repoId;
+  }, [filter.repoId, projectRepos]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -225,11 +238,17 @@ export function BoardFilterBar({
     assigneeOptions,
     (m) => projectMemberDisplayLabel(m),
   );
+  const filteredRepos = filterByBoardFilterPickerQuery(
+    pickerSearchQuery,
+    projectRepos ?? [],
+    (r) => repoDisplayLabel(r),
+  );
 
   const agentPanelEmpty = filteredAgents.length === 0;
   const statusPanelEmpty = filteredColumns.length === 0;
   const labelPanelEmpty = !showUnlabeledRow && filteredLabels.length === 0;
   const assigneePanelEmpty = !showUnassignedRow && filteredAssignees.length === 0;
+  const repoPanelEmpty = filteredRepos.length === 0;
 
   return (
     <div ref={wrapRef} className="relative min-w-0 flex-1">
@@ -306,6 +325,13 @@ export function BoardFilterBar({
                 <ProjectMemberAvatar member={assigneeFilterMember} size="xs" />
               ) : undefined
             }
+          />
+        ) : null}
+        {filter.repoId != null ? (
+          <FilterToken
+            k="repo"
+            v={repoFilterTokenLabel}
+            onRemove={() => set({ repoId: null })}
           />
         ) : null}
         {filter.hideDone ? (
@@ -391,6 +417,16 @@ export function BoardFilterBar({
                       Status
                       <span className="text-zinc-500">›</span>
                     </button>
+                    {showRepoFilter ? (
+                      <button
+                        type="button"
+                        onClick={() => setPanel('repo')}
+                        className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      >
+                        Repository
+                        <span className="text-zinc-500">›</span>
+                      </button>
+                    ) : null}
                     {filter.includeDescription ? (
                       <button
                         type="button"
@@ -613,6 +649,46 @@ export function BoardFilterBar({
                             </button>
                           ))}
                         </>
+                      )}
+                    </div>
+                  </>
+                ) : null}
+                {panel === 'repo' ? (
+                  <>
+                    <BoardFilterPickerSubPanelHeader
+                      onBack={goPickerMain}
+                      searchInputId={pickerSearchFieldId}
+                      listboxId={pickerOptionsListboxId}
+                      searchQuery={pickerSearchQuery}
+                      onSearchQueryChange={setPickerSearchQuery}
+                      searchInputRef={pickerSearchInputRef}
+                      searchPlaceholder="Search repositories..."
+                    />
+                    <div
+                      id={pickerOptionsListboxId}
+                      role="listbox"
+                      aria-label="Repositories"
+                      className="max-h-40 min-h-0 flex-1 overflow-y-auto"
+                    >
+                      {repoPanelEmpty ? (
+                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                          No matches
+                        </div>
+                      ) : (
+                        filteredRepos.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            role="option"
+                            onClick={() => {
+                              set({ repoId: r.id });
+                              setMenuOpen(false);
+                            }}
+                            className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                          >
+                            {repoDisplayLabel(r)}
+                          </button>
+                        ))
                       )}
                     </div>
                   </>

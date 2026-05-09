@@ -19,6 +19,7 @@ import {
   LocalProject,
   Session,
   type ActiveProjectKey,
+  type CloudRepoBindingOverview,
   type PlanningSession,
   type ProjectTabState,
   type RepoConfig,
@@ -329,6 +330,9 @@ export default function App() {
   const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
   /** Loaded for multi-repo2 task UI (repo picker + labels). Null while unused or loading. */
   const [projectRepos, setProjectRepos] = useState<RepoConfig[] | null>(null);
+  /** Cloud multi-repo: local clone path/status per shared repo id for board tooltips. */
+  const [cloudRepoBindingOverview, setCloudRepoBindingOverview] =
+    useState<CloudRepoBindingOverview | null>(null);
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -358,6 +362,11 @@ export default function App() {
 
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
+
+  const cloudSharedRepoIdsKey = useMemo(() => {
+    if (project?.kind !== 'cloud') return '';
+    return project.sharedRepos.map((s) => s.id).join(',');
+  }, [project]);
 
   useEffect(() => {
     if (!project) {
@@ -400,6 +409,38 @@ export default function App() {
       cancelled = true;
     };
   }, [project?.id, project?.rootPath]);
+
+  useEffect(() => {
+    if (
+      !project ||
+      project.kind !== 'cloud' ||
+      !window.electronAPI.featureFlags.multiRepo2
+    ) {
+      setCloudRepoBindingOverview(null);
+      return;
+    }
+    if (project.sharedRepos.length <= 1) {
+      setCloudRepoBindingOverview(null);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.project
+      .getCloudRepoBindingOverview(project.sharedRepos)
+      .then((r) => {
+        if (cancelled) return;
+        if (r && typeof r === 'object' && 'error' in r) {
+          setCloudRepoBindingOverview(null);
+          return;
+        }
+        setCloudRepoBindingOverview(r as CloudRepoBindingOverview);
+      })
+      .catch(() => {
+        if (!cancelled) setCloudRepoBindingOverview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.kind, cloudSharedRepoIdsKey]);
 
   const membersState = useMembers(cloudProjectId);
   const { cloudPlanningDocsSeedModal } = useCloudPlanningDocsMigration(
@@ -3034,6 +3075,7 @@ export default function App() {
                         repoDefaultBranchShort={repoDefaultBranchShort}
                         projectRepos={projectRepos ?? undefined}
                         multiRepo2Enabled={window.electronAPI.featureFlags.multiRepo2}
+                        cloudRepoBindingOverview={cloudRepoBindingOverview ?? undefined}
                         cloudUnblockAutostartClientUid={
                           project.kind === 'cloud' && uid ? uid : undefined
                         }

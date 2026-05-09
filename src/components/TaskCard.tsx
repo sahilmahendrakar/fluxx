@@ -5,6 +5,7 @@ import { broom } from '@lucide/lab';
 import {
   Ban,
   CirclePlay,
+  FolderGit2,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -221,6 +222,10 @@ interface Props {
   prLoading?: boolean;
   prAgentAwaiting?: boolean;
   repoDefaultBranchShort: string;
+  /** When set, branch chip compares against this repo's default (multi-repo), not the board-wide default. */
+  branchChipCompareShort?: string;
+  /** Multi-repo: compact repo label + tooltip (omit when single-repo or flag off). */
+  repoChip?: { label: string; title: string };
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
@@ -247,6 +252,8 @@ export default function TaskCard({
   prLoading = false,
   prAgentAwaiting = false,
   repoDefaultBranchShort,
+  branchChipCompareShort,
+  repoChip,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
   onTaskAgentSpawnPrefsChange,
@@ -267,8 +274,9 @@ export default function TaskCard({
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
   const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
-  const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
-  const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
+  const branchCompareShort = branchChipCompareShort ?? repoDefaultBranchShort;
+  const showBranchChip = taskCardShouldShowSourceBranchChip(task, branchCompareShort);
+  const branchChipLabel = effectiveTaskSourceBranchShort(task, branchCompareShort);
   const branchChipTitle =
     task.createSourceBranchIfMissing === true
       ? `${branchChipLabel} — Flux will create this branch when the task starts`
@@ -384,6 +392,19 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
+                  {repoChip ? (
+                    <span
+                      role="img"
+                      title={repoChip.title}
+                      aria-label={repoChip.title}
+                      className="inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 truncate rounded border border-emerald-500/25 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-200/90"
+                    >
+                      <FolderGit2 className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <span className="truncate" aria-hidden>
+                        {repoChip.label}
+                      </span>
+                    </span>
+                  ) : null}
                   {showBranchChip ? (
                     <span
                       role="img"

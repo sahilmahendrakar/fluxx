@@ -9,7 +9,12 @@
 
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { LocalProject, RepoConfig, Task } from './types';
+import type {
+  CloudRepoLocalBindingStatus,
+  LocalProject,
+  RepoConfig,
+  Task,
+} from './types';
 
 /**
  * Deterministic stable id for the **primary** repo of a project that was
@@ -125,11 +130,6 @@ export function resolveRepoForBranchDiscovery(
 }
 
 /**
- * Display label for a repo card / sidebar header. Prefers the explicit
- * `name`, falls back to `basename(rootPath)`, then to a short id slice
- * so the UI never shows an empty string.
- */
-/**
  * Persists repo id after a patch, matching {@link TaskStore.update} semantics for `repoId`.
  */
 export function nextPersistedRepoIdAfterPatch(
@@ -186,6 +186,11 @@ export function validateTaskRepoIdPatchValue(
   return { ok: true };
 }
 
+/**
+ * Display label for a repo card / sidebar header. Prefers the explicit
+ * `name`, falls back to `basename(rootPath)`, then to a short id slice
+ * so the UI never shows an empty string.
+ */
 export function repoDisplayLabel(
   repo: Pick<RepoConfig, 'id' | 'name' | 'rootPath'>,
 ): string {
@@ -194,4 +199,26 @@ export function repoDisplayLabel(
   const base = path.basename(path.resolve(repo.rootPath ?? ''));
   if (base && base !== '.' && base !== path.sep) return base;
   return repo.id ? `repo:${repo.id.slice(0, 7)}` : 'repo';
+}
+
+/** Tooltip lines for compact repo chips on the board (path and optional cloud clone status). */
+export function repoChipTooltipText(
+  repo: Pick<RepoConfig, 'name' | 'rootPath'>,
+  binding?: CloudRepoLocalBindingStatus,
+): string {
+  const label = repoDisplayLabel(repo as RepoConfig);
+  const resolvedPath = path.resolve(repo.rootPath ?? '');
+  if (!binding) {
+    return `${label}\n${resolvedPath}`;
+  }
+  if (binding.kind === 'missing_binding') {
+    return `${label}\nLocal clone: not bound`;
+  }
+  const statusLine =
+    binding.pathStatus === 'valid'
+      ? 'Clone: ready'
+      : binding.pathStatus === 'missing'
+        ? 'Clone: path missing'
+        : 'Clone: not a git repository';
+  return `${label}\n${binding.rootPath}\n${statusLine}`;
 }
