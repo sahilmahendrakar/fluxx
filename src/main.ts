@@ -11,6 +11,7 @@ import {
   findRepoByIdOrPrimary,
   nextPersistedRepoIdAfterPatch,
   persistedRepoIdsEqual,
+  repoDisplayLabel,
   resolveLocalTaskRepoIdForCreate,
   resolvePrimaryRepoId,
   resolveRepoForBranchDiscovery,
@@ -105,6 +106,7 @@ import type {
   ProjectTabState,
   LocalProject,
   Project,
+  RepoBranchDiscovery,
   RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
@@ -1048,7 +1050,14 @@ app.whenReady().then(async () => {
                 : 'No repository root configured for this project',
           };
         }
-        const base = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+        let base: RepoBranchDiscovery;
+        try {
+          base = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const label = repoDisplayLabel(repo);
+          return { error: `${label}: ${msg}` };
+        }
         if (classifyBranch == null || classifyBranch.trim() === '') {
           return base;
         }
@@ -1571,7 +1580,7 @@ app.whenReady().then(async () => {
       if (!repoResolved.ok) {
         throw new Error(repoResolved.message);
       }
-      const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
+      const repo = resolveRepoForBranchDiscovery(repos, repoResolved.repoId);
       if (!repo?.rootPath) {
         throw new Error('No repository root configured for this project');
       }
@@ -1614,28 +1623,39 @@ app.whenReady().then(async () => {
       const tid = taskId.trim();
       const prev =
         previousFields && typeof previousFields === 'object'
-          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
               githubPr?: TaskGithubPr;
             })
           : {};
       const patch =
         patchFields && typeof patchFields === 'object'
-          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>)
           : {};
       try {
+        const project = projectStore.get();
         const projectDir = activeProjectDir();
         const repos = await projectStore.getReposAt(projectDir);
-        const project = projectStore.get();
-        const rootPathForRepo =
-          project?.rootPath ?? repos.find((r) => r.rootPath)?.rootPath ?? repos[0]?.rootPath;
-        if (!rootPathForRepo) {
-          return { ok: false, message: 'No repository root configured for this project' };
+        if (patch.repoId !== undefined) {
+          const vrRepo = validateTaskRepoIdPatchValue(repos, patch.repoId);
+          if (!vrRepo.ok) {
+            return { ok: false, message: vrRepo.message };
+          }
         }
-        const repo = repos.find((r) => r.rootPath === rootPathForRepo) ?? repos[0];
-        const discovery = await collectRepoBranchDiscovery(
-          rootPathForRepo,
-          repo?.baseBranch ?? 'main',
-        );
+        const repoIdForDiscovery =
+          patch.repoId !== undefined
+            ? nextPersistedRepoIdAfterPatch(prev.repoId, patch.repoId)
+            : prev.repoId;
+        const repoCfg = resolveRepoForBranchDiscovery(repos, repoIdForDiscovery);
+        if (!repoCfg?.rootPath) {
+          return {
+            ok: false,
+            message:
+              repoIdForDiscovery != null && String(repoIdForDiscovery).trim() !== ''
+                ? 'Unknown repository id for this project'
+                : 'No repository root configured for this project',
+          };
+        }
+        const discovery = await collectRepoBranchDiscovery(repoCfg.rootPath, repoCfg.baseBranch);
         const previousTask = {
           id: tid,
           title: '',
@@ -2171,10 +2191,14 @@ app.whenReady().then(async () => {
   ): Promise<{ sourceBranchShort: string; createSourceBranchIfMissing: boolean }> {
     const projectDir = activeProjectDir();
     const repos = await projectStore.getReposAt(projectDir);
-    const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
+    const primaryRepoId = resolvePrimaryRepoId(repos);
+    const repoCfg = resolveRepoForBranchDiscovery(
+      repos,
+      primaryRepoId ? effectiveTaskRepoId(task, primaryRepoId) : undefined,
+    );
     const discovery = await collectRepoBranchDiscovery(
-      project.rootPath,
-      repo?.baseBranch ?? 'main',
+      repoCfg?.rootPath ?? project.rootPath,
+      repoCfg?.baseBranch ?? 'main',
     );
     const sourceEff =
       effectiveTaskSourceBranchShort(task, discovery.defaultBranchShort) ||
@@ -2575,11 +2599,25 @@ app.whenReady().then(async () => {
     if (touchesSourceBranch) {
       const projectDir = activeProjectDir();
       const repos = await projectStore.getReposAt(projectDir);
-      const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
-      const discovery = await collectRepoBranchDiscovery(
-        project.rootPath,
-        repo?.baseBranch ?? 'main',
-      );
+      if (patchToApply.repoId !== undefined) {
+        const vrBranchRepo = validateTaskRepoIdPatchValue(repos, patchToApply.repoId);
+        if (!vrBranchRepo.ok) {
+          throw new Error(vrBranchRepo.message);
+        }
+      }
+      const repoIdForDiscovery =
+        patchToApply.repoId !== undefined
+          ? nextPersistedRepoIdAfterPatch(previous.repoId, patchToApply.repoId)
+          : previous.repoId;
+      const repoCfg = resolveRepoForBranchDiscovery(repos, repoIdForDiscovery);
+      if (!repoCfg?.rootPath) {
+        throw new Error(
+          repoIdForDiscovery != null && String(repoIdForDiscovery).trim() !== ''
+            ? 'Unknown repository id for this project'
+            : 'No repository root configured for this project',
+        );
+      }
+      const discovery = await collectRepoBranchDiscovery(repoCfg.rootPath, repoCfg.baseBranch);
       if (taskSourceBranchSettingsWouldChange(previous, patchToApply, discovery.defaultBranchShort)) {
         if (previous.githubPr?.url?.trim()) {
           throw new Error(

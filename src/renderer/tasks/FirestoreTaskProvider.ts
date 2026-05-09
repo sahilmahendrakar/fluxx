@@ -93,7 +93,13 @@ export class FirestoreTaskProvider implements TaskProvider {
     const db = getFirebaseFirestore();
     const col = collection(db, 'projects', this.projectId, 'tasks');
     const createLabels = normalizeTaskLabels(input.labels);
-    const disc = await window.electronAPI.repo.getBranchDiscovery();
+    const trimmedRepoId =
+      input.repoId !== undefined && String(input.repoId).trim() !== ''
+        ? String(input.repoId).trim()
+        : undefined;
+    const disc = await window.electronAPI.repo.getBranchDiscovery(
+      trimmedRepoId !== undefined ? { repoId: trimmedRepoId } : undefined,
+    );
     if ('error' in disc) {
       throw new Error(disc.error);
     }
@@ -201,12 +207,14 @@ export class FirestoreTaskProvider implements TaskProvider {
           sourceBranch: previous.sourceBranch,
           createSourceBranchIfMissing: previous.createSourceBranchIfMissing,
           githubPr: previous.githubPr,
+          ...(previous.repoId !== undefined ? { repoId: previous.repoId } : {}),
         },
         {
           ...(patch.sourceBranch !== undefined ? { sourceBranch: patch.sourceBranch } : {}),
           ...(patch.createSourceBranchIfMissing !== undefined
             ? { createSourceBranchIfMissing: patch.createSourceBranchIfMissing }
             : {}),
+          ...(patch.repoId !== undefined ? { repoId: patch.repoId } : {}),
         },
       );
       if (!gate.ok) {

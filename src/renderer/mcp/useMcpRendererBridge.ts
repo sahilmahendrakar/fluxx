@@ -297,7 +297,12 @@ async function handleRequest(
       }
       case 'repo.branchDiscovery': {
         const payload = (req.payload ?? {}) as McpBridgeRepoBranchDiscoveryPayload;
-        const raw = await window.electronAPI.repo.getBranchDiscovery(payload.classifyBranch);
+        const raw = await window.electronAPI.repo.getBranchDiscovery({
+          ...(payload.repoId != null && payload.repoId.trim() !== ''
+            ? { repoId: payload.repoId.trim() }
+            : {}),
+          ...(payload.classifyBranch !== undefined ? { classifyBranch: payload.classifyBranch } : {}),
+        });
         if ('error' in raw) {
           return {
             id: req.id,

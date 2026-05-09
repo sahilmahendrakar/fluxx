@@ -114,6 +114,7 @@ export interface McpBridgeProjectInfoResult {
 }
 
 export interface McpBridgeRepoBranchDiscoveryPayload {
+  repoId?: string;
   classifyBranch?: string;
 }
 

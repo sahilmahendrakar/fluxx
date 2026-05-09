@@ -24,6 +24,11 @@ interface Props {
   disabled?: boolean;
   /** Fired from the text field `onBlur` (after suggestion list handling). */
   onInputBlur?: () => void;
+  /**
+   * Reserved for multi-repo2: human-readable repo name when branch discovery is scoped
+   * (forward-compatible; optional copy wiring uses this later).
+   */
+  repoScopeLabel?: string;
 }
 
 function presenceLabel(p: GitBranchPresence): string {

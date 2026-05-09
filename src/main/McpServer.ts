@@ -29,7 +29,7 @@ import type {
   McpBridgeTasksUpdateResult,
 } from '../mcpBridge';
 import { isTaskBlocked } from '../taskDependencies';
-import { resolveLocalTaskRepoIdForCreate } from '../repoIdentity';
+import { resolveLocalTaskRepoIdForCreate, resolveRepoForBranchDiscovery } from '../repoIdentity';
 import { filterTasksByExcludeStatuses, FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
 const MCP_PORT = 47432;
@@ -312,14 +312,13 @@ export class McpServer {
           );
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
-            const repo =
-              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
-            if (!repo?.rootPath) {
-              return jsonToolPayload({ error: 'No repository root configured for this project' });
-            }
             const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
             if (!repoResolved.ok) {
               return jsonToolPayload({ error: repoResolved.message });
+            }
+            const repo = resolveRepoForBranchDiscovery(repos, repoResolved.repoId);
+            if (!repo?.rootPath) {
+              return jsonToolPayload({ error: 'No repository root configured for this project' });
             }
             const discovery = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
             const planned = planTaskSourceBranchFieldsForCreate(discovery, {
@@ -782,6 +781,12 @@ export class McpServer {
       'flux__list_repo_branches',
       'List local and origin remote branch short names for the active repo, the configured default branch, and optionally classify one branch name (exists locally / on origin / missing). Prefer flux__get_project_info for defaultBranchShort alone; use this before batch-creating tasks on specific branches.',
       {
+        repoId: z
+          .string()
+          .optional()
+          .describe(
+            'Multi-repo2: stable repo id within the project (omitted = primary repository)',
+          ),
         classifyBranch: z
           .string()
           .optional()
@@ -797,10 +802,14 @@ export class McpServer {
           }
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
-            const repo =
-              repos.find((r) => r.rootPath === active.project.rootPath) ?? repos[0];
+            const repo = resolveRepoForBranchDiscovery(repos, input.repoId?.trim() || undefined);
             if (!repo?.rootPath) {
-              return jsonToolPayload({ error: 'No repository root configured for this project' });
+              return jsonToolPayload({
+                error:
+                  input.repoId != null && input.repoId.trim() !== ''
+                    ? 'Unknown repository id for this project'
+                    : 'No repository root configured for this project',
+              });
             }
             const disc = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
             if (input.classifyBranch != null && input.classifyBranch.trim() !== '') {
@@ -825,6 +834,9 @@ export class McpServer {
             'repo.branchDiscovery',
             active.activeKey,
             {
+              ...(input.repoId != null && input.repoId.trim() !== ''
+                ? { repoId: input.repoId.trim() }
+                : {}),
               classifyBranch: input.classifyBranch,
             },
           );
