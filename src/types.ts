@@ -373,6 +373,14 @@ export type SessionStartErrorCode =
   | 'WORKTREE_FETCH_FAILED'
   /** Empty branch name after normalization, or repo in a state that cannot supply a base ref. */
   | 'WORKTREE_REPO_INVALID_STATE'
+  /** Task targets a repo id that does not exist on this project configuration. */
+  | 'WORKTREE_REPO_UNKNOWN'
+  /** The configured clone path is missing from disk (moved/unmounted folder). */
+  | 'WORKTREE_REPO_PATH_MISSING'
+  /** Clone path exists but does not contain a `.git` directory or file (not a repo). */
+  | 'WORKTREE_REPO_NOT_GIT'
+  /** Cloud project: shared repo exists but no local clone is bound on this machine. */
+  | 'WORKTREE_REPO_NOT_BOUND'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';

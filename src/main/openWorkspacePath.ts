@@ -204,6 +204,23 @@ export async function resolveTaskWorktreePath(
     const st = await fs.stat(fallback);
     if (st.isDirectory()) return fallback;
   } catch {
+    /* fall through — try multi-repo nested layout */
+  }
+
+  const worktreesRoot = path.join(projectDir, 'worktrees');
+  try {
+    const names = await fs.readdir(worktreesRoot);
+    for (const name of names) {
+      if (!name.trim() || name === taskId) continue;
+      const nested = path.join(worktreesRoot, name, taskId);
+      try {
+        const st = await fs.stat(nested);
+        if (st.isDirectory()) return nested;
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
     return null;
   }
   return null;

@@ -8,7 +8,6 @@ import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
 import {
   effectiveTaskRepoId,
-  findRepoByIdOrPrimary,
   nextPersistedRepoIdAfterPatch,
   persistedRepoIdsEqual,
   repoDisplayLabel,
@@ -112,6 +111,7 @@ import type {
   RepoConfig,
   RepoManagementState,
   RepoSettingsPatch,
+  Session,
   SessionStartOptions,
   SessionStartResult,
   Task,
@@ -128,7 +128,7 @@ import {
   validateStoredTaskSourceBranchName,
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
-import { isWorktreeCreateError } from './main/worktreeCreateError';
+import { isWorktreeCreateError, WorktreeCreateError } from './main/worktreeCreateError';
 import {
   taskHasBlockingWorkspaceState,
   taskSourceBranchSettingsWouldChange,
@@ -446,16 +446,6 @@ app.whenReady().then(async () => {
   await taskStore.init();
 
   const worktreeService = new WorktreeService('', '');
-  worktreeService.setRepoConfigGetter(async (rootPath) => {
-    const projectDir = worktreeService.getProjectDir();
-    if (!projectDir) return null;
-    try {
-      const repos = await projectStore.getReposAt(projectDir);
-      return repos.find((r) => r.rootPath === rootPath) ?? null;
-    } catch {
-      return null;
-    }
-  });
   // Resolve the user's interactive-login-shell env BEFORE the daemon
   // spawns. In packaged macOS GUI launches the parent inherits launchd's
   // minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), which makes `agent`,
@@ -1680,11 +1670,12 @@ app.whenReady().then(async () => {
               'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the base branch.',
           };
         }
+        const repoGitRootsForGuard = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsForGuard,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(tid);
@@ -1749,11 +1740,12 @@ app.whenReady().then(async () => {
               'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
           };
         }
+        const repoGitRootsForRepoPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsForRepoPatch,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(tid);
@@ -1775,10 +1767,13 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'tasks:cleanupResources',
     async (_e, taskId: string): Promise<{ errors: string[] }> => {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
       const errors = await teardownEphemeralResourcesForTask(
         daemonClient,
         worktreeService,
         taskId,
+        repos,
       );
       return { errors };
     },
@@ -2163,42 +2158,96 @@ app.whenReady().then(async () => {
     );
   }
 
-  /**
-   * Multi-repo2: resolve the {@link RepoConfig.id} a new task session
-   * should be tagged with. With the flag off (or no `task.repoId`), this
-   * is just the project's primary repo id — preserving single-repo UX
-   * while still letting the daemon record stable identity.
-   */
-  async function resolveSessionRepoId(params: {
-    project: Project;
-    taskRepoId?: string;
-  }): Promise<string | undefined> {
+  async function gitRootForDaemonSession(session: Session): Promise<string | null> {
     try {
-      const repos = await projectStore.getReposAt(activeProjectDir());
-      const flagOn = isMultiRepo2Enabled();
-      const taskRepoId = (params.taskRepoId ?? '').trim();
-      const candidate = flagOn && taskRepoId.length > 0 ? taskRepoId : undefined;
-      const match = findRepoByIdOrPrimary(repos, candidate);
-      return match?.id;
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const cfg = resolveRepoForBranchDiscovery(repos, session.repoId);
+      const rp = cfg?.rootPath?.trim();
+      if (rp) {
+        try {
+          await fs.access(path.join(path.resolve(rp), '.git'));
+          return path.resolve(rp);
+        } catch {
+          /* fall through */
+        }
+      }
     } catch {
-      return undefined;
+      /* fall through */
     }
+    const fallback = worktreeService.getRootPath()?.trim();
+    return fallback ? path.resolve(fallback) : null;
+  }
+
+  /**
+   * Resolves {@link RepoConfig} for the clone worktrees and agent sessions use.
+   * Validates cloud machine bindings and filesystem paths before session start.
+   */
+  async function resolveRepoConfigForTaskSession(
+    project: Project,
+    task: Task,
+    projectDir: string,
+  ): Promise<RepoConfig> {
+    const repos = await projectStore.getReposAt(projectDir);
+    const primaryId = resolvePrimaryRepoId(repos);
+    if (!primaryId) {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_INVALID_STATE',
+        'No repository is configured for this project.',
+      );
+    }
+
+    const discoveryKey = isMultiRepo2Enabled() ? task.repoId : undefined;
+    const repoCfg = resolveRepoForBranchDiscovery(repos, discoveryKey);
+
+    if (!repoCfg) {
+      const rid = discoveryKey?.trim();
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_UNKNOWN',
+        rid
+          ? `Unknown repository "${rid}" on this project. Pick a repository that exists under Project settings.`
+          : 'No repository root configured for this project.',
+      );
+    }
+
+    if (project.kind === 'cloud') {
+      const mb = project.repoMachineBindings?.[repoCfg.id];
+      if (!mb?.rootPath?.trim()) {
+        throw new WorktreeCreateError(
+          'WORKTREE_REPO_NOT_BOUND',
+          `This machine has no local clone bound for repository "${repoDisplayLabel(repoCfg)}". Bind the repository before starting a task.`,
+        );
+      }
+    }
+
+    const resolvedClone = path.resolve(repoCfg.rootPath);
+    try {
+      await fs.access(resolvedClone);
+    } catch {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_PATH_MISSING',
+        `The repository clone path does not exist: ${resolvedClone}`,
+      );
+    }
+    try {
+      await fs.access(path.join(resolvedClone, '.git'));
+    } catch {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_NOT_GIT',
+        `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
+      );
+    }
+
+    return repoCfg;
   }
 
   async function worktreeSourceOptsForTaskSession(
     task: Task,
-    project: Project,
+    repoCfg: RepoConfig,
   ): Promise<{ sourceBranchShort: string; createSourceBranchIfMissing: boolean }> {
-    const projectDir = activeProjectDir();
-    const repos = await projectStore.getReposAt(projectDir);
-    const primaryRepoId = resolvePrimaryRepoId(repos);
-    const repoCfg = resolveRepoForBranchDiscovery(
-      repos,
-      primaryRepoId ? effectiveTaskRepoId(task, primaryRepoId) : undefined,
-    );
     const discovery = await collectRepoBranchDiscovery(
-      repoCfg?.rootPath ?? project.rootPath,
-      repoCfg?.baseBranch ?? 'main',
+      repoCfg.rootPath,
+      repoCfg.baseBranch,
     );
     const sourceEff =
       effectiveTaskSourceBranchShort(task, discovery.defaultBranchShort) ||
@@ -2336,9 +2385,24 @@ app.whenReady().then(async () => {
     try {
       let worktreePath = '';
       let branch = '';
+      let sessionRepoCfg: RepoConfig | null = null;
       try {
-        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, project);
-        const created = await worktreeService.create(task.id, sourceOpts);
+        const projectDir = activeProjectDir();
+        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir);
+        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg);
+        const layout = isMultiRepo2Enabled() ? ('repo-scoped' as const) : ('legacy-flat' as const);
+        const created = await worktreeService.create({
+          taskId: task.id,
+          repo: {
+            repoId: sessionRepoCfg.id,
+            gitRootPath: sessionRepoCfg.rootPath,
+            baseBranch: sessionRepoCfg.baseBranch,
+            setupScript: sessionRepoCfg.setupScript,
+            env: sessionRepoCfg.env,
+          },
+          source: sourceOpts,
+          layout,
+        });
         worktreePath = created.worktreePath;
         branch = created.branch;
       } catch (err: unknown) {
@@ -2361,6 +2425,13 @@ app.whenReady().then(async () => {
         return finish({ error: 'WORKTREE_FAILED', message });
       }
 
+      if (!sessionRepoCfg) {
+        return finish({
+          error: 'INTERNAL',
+          message: 'Session start did not resolve a repository configuration.',
+        });
+      }
+
       await archiveNonRunningSessionsForTask(task.id);
 
       const { command, args } = options?.resume
@@ -2372,19 +2443,12 @@ app.whenReady().then(async () => {
         args,
         resume: Boolean(options?.resume),
       });
-      // Multi-repo2: tag the daemon session with the repo identity so future
-      // listings and renderer state can disambiguate per-repo. With the flag
-      // off this still resolves to the primary repo (single-repo behavior).
-      const repoId = await resolveSessionRepoId({
-        project,
-        taskRepoId: merged.repoId,
-      });
       const result = await daemonClient.createSession({
         worktreePath,
         branch,
         taskId: task.id,
         projectId: project.id,
-        ...(repoId ? { repoId } : {}),
+        repoId: sessionRepoCfg.id,
         agent: merged.agent,
         command,
         args,
@@ -2400,7 +2464,10 @@ app.whenReady().then(async () => {
           message: result.message,
         });
         try {
-          await worktreeService.remove(worktreePath);
+          await worktreeService.remove(
+            worktreePath,
+            path.resolve(sessionRepoCfg.rootPath),
+          );
         } catch (removeErr: unknown) {
           console.error('[session:start] cleanup worktree after spawn failure', removeErr);
         }
@@ -2624,11 +2691,12 @@ app.whenReady().then(async () => {
             'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first.',
           );
         }
+        const repoGitRootsSourcePatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsSourcePatch,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(id);
@@ -2660,11 +2728,12 @@ app.whenReady().then(async () => {
             'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
           );
         }
+        const repoGitRootsPersistPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsPersistPatch,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(id);
@@ -2692,10 +2761,12 @@ app.whenReady().then(async () => {
         });
       }
       if (autoCleanup) {
+        const cleanupRepos = await projectStore.getReposAt(activeProjectDir());
         const errors = await teardownEphemeralResourcesForTask(
           daemonClient,
           worktreeService,
           id,
+          cleanupRepos,
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {
@@ -2777,7 +2848,12 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
-    await deleteSessionWorkspaceAndStop(daemonClient, worktreeService, sessionId);
+    await deleteSessionWorkspaceAndStop(
+      daemonClient,
+      worktreeService,
+      sessionId,
+      gitRootForDaemonSession,
+    );
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {

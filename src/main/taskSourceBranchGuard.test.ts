@@ -53,7 +53,7 @@ describe('taskHasBlockingWorkspaceState', () => {
       taskId: 'tid',
       listSessions: async () => [{ taskId: 'tid' }],
       projectDir: '/tmp',
-      rootPath: '/tmp',
+      repoGitRoots: ['/tmp'],
     });
     expect(hit).toBe(true);
   });
@@ -68,7 +68,7 @@ describe('taskHasBlockingWorkspaceState', () => {
         taskId: 'missing-task',
         listSessions: async () => [],
         projectDir: cwd,
-        rootPath: cwd,
+        repoGitRoots: [cwd],
       });
       expect(hit).toBe(false);
     } finally {
