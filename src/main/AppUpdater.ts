@@ -235,10 +235,14 @@ export function registerAppUpdater(): void {
       if (!macGithubUpdatesEligible()) {
         return { ok: false, reason: 'NOT_SUPPORTED' };
       }
-      if (state.status !== 'available') {
+      const canRetryAfterDownloadError =
+        state.status === 'error' &&
+        state.phase === 'download' &&
+        advertisedLatestVersion != null;
+      if (state.status !== 'available' && !canRetryAfterDownloadError) {
         return { ok: false, reason: 'NO_UPDATE_AVAILABLE' };
       }
-      if (userDownloadCommitted) {
+      if (userDownloadCommitted && state.status !== 'error') {
         return { ok: false, reason: 'DOWNLOAD_ALREADY_STARTED' };
       }
       userDownloadCommitted = true;

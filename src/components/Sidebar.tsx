@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
@@ -58,6 +58,8 @@ interface SidebarProps {
   onDeleteWorkspace: (sessionId: string) => void;
   onClearProject: () => void;
   onCollapse: () => void;
+  /** Bottom chrome above “Close project” (e.g. app update control). */
+  updateFooter?: ReactNode;
 }
 
 function SidebarCollapseIcon({ className }: { className?: string }) {
@@ -251,6 +253,7 @@ export function Sidebar({
   onDeleteWorkspace,
   onClearProject,
   onCollapse,
+  updateFooter,
 }: SidebarProps) {
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
 
@@ -497,6 +500,7 @@ export function Sidebar({
           <div className="min-h-0 flex-1" aria-hidden />
         </div>
         <div className="border-t border-white/[0.06] pt-2">
+          {updateFooter ? <div className="mb-2">{updateFooter}</div> : null}
           <button
             type="button"
             onClick={onClearProject}
