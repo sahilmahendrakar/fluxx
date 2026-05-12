@@ -12,6 +12,7 @@ import {
   Icon,
   Layers2,
   Loader2,
+  Terminal,
   UserCircle2,
 } from 'lucide-react';
 import { Task } from '../types';
@@ -227,6 +228,10 @@ interface Props {
   hasWorktree?: boolean;
   /** Persist agent / model / YOLO for this task (same fields as task detail & MCP `flux__update_task`). */
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  /** True when a daemon session exists for this task (main-window session tab can be opened). */
+  canOpenTaskWorkspaceTab: boolean;
+  /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function TaskCard({
@@ -250,6 +255,8 @@ export default function TaskCard({
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
   onTaskAgentSpawnPrefsChange,
+  canOpenTaskWorkspaceTab,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
@@ -384,6 +391,33 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
+                  <button
+                    type="button"
+                    disabled={!canOpenTaskWorkspaceTab}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canOpenTaskWorkspaceTab) return;
+                      onOpenTaskWorkspaceTab(task.id);
+                    }}
+                    className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45 ${
+                      canOpenTaskWorkspaceTab
+                        ? 'cursor-pointer text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                        : 'cursor-not-allowed border border-transparent text-zinc-600/50 opacity-70'
+                    }`}
+                    aria-label={
+                      canOpenTaskWorkspaceTab
+                        ? 'Open task workspace in tab'
+                        : 'Open task workspace in tab — unavailable until you start a session from task details'
+                    }
+                    title={
+                      canOpenTaskWorkspaceTab
+                        ? 'Open task workspace in tab'
+                        : 'No session yet — open task details and start a session'
+                    }
+                  >
+                    <Terminal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  </button>
                   {showBranchChip ? (
                     <span
                       role="img"

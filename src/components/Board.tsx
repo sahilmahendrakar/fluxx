@@ -52,6 +52,8 @@ interface Props {
   /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function Board({
@@ -77,6 +79,7 @@ export default function Board({
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -213,6 +216,7 @@ export default function Board({
               sessions={sessions}
               taskHasWorktreeById={taskHasWorktreeById}
               onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+              onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
