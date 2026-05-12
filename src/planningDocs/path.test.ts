@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_PLANNING_RELATIVE_PATH_UTF8_BYTES,
+  isPlanningMarkdownRelativePathForbiddenForUserWrite,
   normalizePlanningDocRelativePath,
   planningFirestoreDocIdToRelativePath,
   planningRelativePathToFirestoreDocId,
@@ -76,5 +77,20 @@ describe('planningRelativePathToFirestoreDocId', () => {
   it('returns null when UTF-8 path exceeds max length', () => {
     const filler = 'a'.repeat(MAX_PLANNING_RELATIVE_PATH_UTF8_BYTES);
     expect(planningRelativePathToFirestoreDocId(`${filler}.md`)).toBeNull();
+  });
+});
+
+describe('isPlanningMarkdownRelativePathForbiddenForUserWrite', () => {
+  it('blocks .flux-docs-sync tree', () => {
+    expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('.flux-docs-sync/state.md')).toBe(true);
+    expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('notes/ok.md')).toBe(false);
+  });
+
+  it('blocks _flux_unsynced tree', () => {
+    expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('_flux_unsynced/backup.md')).toBe(true);
+  });
+
+  it('returns false for invalid paths (handled elsewhere)', () => {
+    expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('../x.md')).toBe(false);
   });
 });

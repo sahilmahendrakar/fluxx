@@ -48,6 +48,7 @@ import type {
 import type {
   PlanningDocsCloudMigrationPersistedV1,
   PlanningDocsListResult,
+  PlanningDocsWriteResult,
 } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 
@@ -425,6 +426,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('planningDocs:read', relativePath) as Promise<
         { content: string } | { error: string }
       >,
+    write: (relativePath: string, content: string) =>
+      ipcRenderer.invoke('planningDocs:write', relativePath, content) as Promise<PlanningDocsWriteResult>,
     applyFirestoreSnapshot: (payload: {
       projectId: string;
       docs: Array<{

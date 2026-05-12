@@ -284,6 +284,7 @@ export default function App() {
     string | null
   >(null);
   const [planningDocFileRevision, setPlanningDocFileRevision] = useState(0);
+  const planningDocsDirtyRef = useRef(false);
   const boardRowRef = useRef<HTMLDivElement>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -2232,7 +2233,19 @@ export default function App() {
     setActiveTabId('board');
   }, []);
 
+  const confirmLeaveDocsWithUnsavedEdits = useCallback((): boolean => {
+    if (activeTabId !== 'docs' || !planningDocsDirtyRef.current) return true;
+    return window.confirm(
+      'You have unsaved changes in the open planning document. Leave Docs without saving?',
+    );
+  }, [activeTabId]);
+
+  const handlePlanningDocsDirtyChange = useCallback((dirty: boolean) => {
+    planningDocsDirtyRef.current = dirty;
+  }, []);
+
   const handlePlanNav = useCallback(() => {
+    if (!confirmLeaveDocsWithUnsavedEdits()) return;
     leaveSettingsIfActive();
     const routeSid = parsePlanTabId(activeTabId);
     if (routeSid) {
@@ -2256,7 +2269,7 @@ export default function App() {
       setActiveTabId('plan');
       setPlanningSidebarOpen(false);
     }
-  }, [activeTabId, planningSidebarOpen]);
+  }, [activeTabId, planningSidebarOpen, confirmLeaveDocsWithUnsavedEdits]);
 
   const handleDocsNav = useCallback(() => {
     leaveSettingsIfActive();
@@ -2268,11 +2281,24 @@ export default function App() {
     setDocsSidebarExpanded((v) => !v);
   }, []);
 
-  const handleSelectPlanningDoc = useCallback((relativePath: string) => {
-    leaveSettingsIfActive();
-    setSelectedPlanningDocPath(relativePath);
-    setActiveTabId('docs');
-  }, []);
+  const handleSelectPlanningDoc = useCallback(
+    (relativePath: string) => {
+      leaveSettingsIfActive();
+      if (
+        planningDocsDirtyRef.current &&
+        selectedPlanningDocPath != null &&
+        relativePath !== selectedPlanningDocPath &&
+        !window.confirm(
+          'Switch documents without saving? Unsaved changes to the current file will be lost.',
+        )
+      ) {
+        return;
+      }
+      setSelectedPlanningDocPath(relativePath);
+      setActiveTabId('docs');
+    },
+    [selectedPlanningDocPath],
+  );
 
   const maxPlanningWidthForRow = useCallback(() => {
     const row = boardRowRef.current;
@@ -2366,6 +2392,7 @@ export default function App() {
   );
 
   const handleOpenSessionTab = useCallback((session: Session) => {
+    if (!confirmLeaveDocsWithUnsavedEdits()) return;
     leaveSettingsIfActive();
     setSessions((prev) => {
       const exists = prev.some((s) => s.id === session.id);
@@ -2382,10 +2409,11 @@ export default function App() {
     });
     setActiveTabId(session.id);
     setSelectedTaskId(null);
-  }, []);
+  }, [confirmLeaveDocsWithUnsavedEdits]);
 
   const handleOpenSessionFromSidebar = useCallback(
     (sessionId: string) => {
+      if (!confirmLeaveDocsWithUnsavedEdits()) return;
       leaveSettingsIfActive();
       const session = sessions.find((s) => s.id === sessionId);
       if (!session) return;
@@ -2398,7 +2426,7 @@ export default function App() {
       setActiveTabId(sessionId);
       setSelectedTaskId(null);
     },
-    [sessions],
+    [sessions, confirmLeaveDocsWithUnsavedEdits],
   );
 
   const handleCloseSessionTab = useCallback((sessionId: string) => {
@@ -2411,11 +2439,15 @@ export default function App() {
     setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
   }, []);
 
-  const handleOpenPlanningInMainTab = useCallback((sessionId: string) => {
-    leaveSettingsIfActive();
-    setOpenPlanningMainTabIds((prev) => new Set(prev).add(sessionId));
-    setActiveTabId(planTabId(sessionId));
-  }, []);
+  const handleOpenPlanningInMainTab = useCallback(
+    (sessionId: string) => {
+      if (!confirmLeaveDocsWithUnsavedEdits()) return;
+      leaveSettingsIfActive();
+      setOpenPlanningMainTabIds((prev) => new Set(prev).add(sessionId));
+      setActiveTabId(planTabId(sessionId));
+    },
+    [confirmLeaveDocsWithUnsavedEdits],
+  );
 
   const handleClosePlanningMainTab = useCallback(
     async (sessionId: string) => {
@@ -2473,30 +2505,50 @@ export default function App() {
   }, [activeTabId, handleClosePlanningMainTab]);
 
   const handleOpenSettingsTab = useCallback(() => {
+    if (activeTabId === 'docs' && !confirmLeaveDocsWithUnsavedEdits()) {
+      return;
+    }
     if (readProjectHashRoute() !== 'settings') {
       pushProjectSettingsRoute();
     }
-  }, []);
+  }, [activeTabId, confirmLeaveDocsWithUnsavedEdits]);
 
   const handleCloseSettingsTab = useCallback(() => {
     replaceProjectWorkspaceRoute();
   }, []);
 
-  const handleSelectWorkspaceTab = useCallback((tabId: string) => {
-    if (tabId === 'settings') {
-      if (readProjectHashRoute() !== 'settings') {
-        pushProjectSettingsRoute();
+  const handleSelectWorkspaceTab = useCallback(
+    (tabId: string) => {
+      if (tabId === 'settings') {
+        if (activeTabId === 'docs' && !confirmLeaveDocsWithUnsavedEdits()) {
+          return;
+        }
+        if (readProjectHashRoute() !== 'settings') {
+          pushProjectSettingsRoute();
+        }
+        return;
       }
-      return;
-    }
-    leaveSettingsIfActive();
-    setActiveTabId(tabId);
-  }, []);
+      if (
+        activeTabId === 'docs' &&
+        tabId !== 'docs' &&
+        !confirmLeaveDocsWithUnsavedEdits()
+      ) {
+        return;
+      }
+      leaveSettingsIfActive();
+      setActiveTabId(tabId);
+    },
+    [activeTabId, confirmLeaveDocsWithUnsavedEdits],
+  );
 
-  const handleSelectPlanningTabFromBar = useCallback((sessionId: string) => {
-    leaveSettingsIfActive();
-    setActiveTabId(planTabId(sessionId));
-  }, []);
+  const handleSelectPlanningTabFromBar = useCallback(
+    (sessionId: string) => {
+      if (!confirmLeaveDocsWithUnsavedEdits()) return;
+      leaveSettingsIfActive();
+      setActiveTabId(planTabId(sessionId));
+    },
+    [confirmLeaveDocsWithUnsavedEdits],
+  );
 
   useEffect(() => {
     try {
@@ -3057,6 +3109,7 @@ export default function App() {
                     planningDocsFirestoreStream={planningDocsFirestoreStream}
                     firebaseConfigured={isFirebaseConfigured()}
                     onPlanningDocsMutated={() => void refreshPlanningDocList()}
+                    onDirtyChange={handlePlanningDocsDirtyChange}
                   />
                 </div>
               </div>

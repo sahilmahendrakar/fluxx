@@ -78,7 +78,10 @@ import type {
   PlanningDocsResolveConflictPayload,
   PlanningDocsRevealSyncFolderResult,
 } from './planningDocs/syncTypes';
-import type { PlanningDocsCloudMigrationPersistedV1 } from './planningDocs/types';
+import type {
+  PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsWriteResult,
+} from './planningDocs/types';
 import {
   createPlanningDocsProviderBundle,
   planningDocsProviderForActiveProject,
@@ -2577,6 +2580,21 @@ app.whenReady().then(async () => {
       relativePath: string,
     ): Promise<{ content: string } | { error: string }> => {
       return activePlanningDocsProvider().read(relativePath);
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:write',
+    async (_e, relativePath: unknown, content: unknown): Promise<PlanningDocsWriteResult> => {
+      if (typeof relativePath !== 'string' || typeof content !== 'string') {
+        return { error: 'INVALID_CONTENT' };
+      }
+      const result = await activePlanningDocsProvider().write(relativePath, content);
+      if ('ok' in result && result.ok) {
+        notifyPlanningDocsChanged();
+        planningDocsWatcher?.sync();
+      }
+      return result;
     },
   );
 
