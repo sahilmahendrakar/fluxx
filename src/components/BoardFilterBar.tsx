@@ -1,5 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type Ref } from 'react';
-import { ListFilter, Search, X } from 'lucide-react';
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from 'react';
+import { ListFilter, Search, UserCircle2, X } from 'lucide-react';
 import type { Agent, TaskStatus } from '../types';
 import { AGENTS, COLUMNS } from '../types';
 import {
@@ -17,6 +25,7 @@ import {
   boardFilterPickerLabelMatches,
   filterByBoardFilterPickerQuery,
 } from './boardFilterOptionSearch';
+import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 
 /** Visible row labels for special filter rows; substring filter applies when query is non-empty. */
 const FILTER_PICKER_UNLABELED_LABEL = 'Unlabeled';
@@ -31,17 +40,22 @@ function FilterToken({
   k,
   v,
   title,
+  leading,
 }: {
   onRemove: () => void;
   k: string;
   v: string;
   title?: string;
+  leading?: ReactNode;
 }) {
   return (
     <span
       title={title}
-      className="inline-flex max-w-[min(100%,14rem)] shrink-0 items-center gap-0.5 rounded border border-sky-500/20 bg-sky-950/35 pl-2 pr-0.5 text-[11px] leading-tight text-sky-100/90"
+      className={`inline-flex max-w-[min(100%,14rem)] shrink-0 items-center rounded border border-sky-500/20 bg-sky-950/35 pl-2 pr-0.5 text-[11px] leading-tight text-sky-100/90 ${
+        leading ? 'gap-1' : 'gap-0.5'
+      }`}
     >
+      {leading ? <span className="shrink-0">{leading}</span> : null}
       <span className="min-w-0 truncate">
         <span className="text-sky-400/80">{k}</span>
         <span className="text-zinc-500"> = </span>
@@ -155,6 +169,10 @@ export function BoardFilterBar({
     const member = assigneeOptions.find((m) => m.uid === value);
     return member ? projectMemberDisplayLabel(member) : value;
   };
+  const assigneeFilterMember =
+    filter.assignee != null && filter.assignee !== UNASSIGNED_ASSIGNEE_VALUE
+      ? assigneeOptions.find((m) => m.uid === filter.assignee)
+      : undefined;
   const set = (patch: Partial<BoardFilterState>) => {
     onFilterChange({ ...filter, ...patch });
   };
@@ -283,6 +301,11 @@ export function BoardFilterBar({
             k="assignee"
             v={assigneeLabel(filter.assignee)}
             onRemove={() => set({ assignee: null })}
+            leading={
+              assigneeFilterMember ? (
+                <ProjectMemberAvatar member={assigneeFilterMember} size="xs" />
+              ) : undefined
+            }
           />
         ) : null}
         {filter.hideDone ? (
@@ -560,9 +583,16 @@ export function BoardFilterBar({
                                 set({ assignee: UNASSIGNED_ASSIGNEE_VALUE });
                                 setMenuOpen(false);
                               }}
-                              className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
-                              {FILTER_PICKER_UNASSIGNED_LABEL}
+                              <UserCircle2
+                                className="h-5 w-5 shrink-0 text-zinc-500"
+                                strokeWidth={1.5}
+                                aria-hidden
+                              />
+                              <span className="min-w-0 flex-1 truncate text-zinc-400">
+                                {FILTER_PICKER_UNASSIGNED_LABEL}
+                              </span>
                             </button>
                           ) : null}
                           {filteredAssignees.map((member) => (
@@ -574,9 +604,12 @@ export function BoardFilterBar({
                                 set({ assignee: member.uid });
                                 setMenuOpen(false);
                               }}
-                              className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
-                              {projectMemberDisplayLabel(member)}
+                              <ProjectMemberAvatar member={member} size="xs" />
+                              <span className="min-w-0 flex-1 truncate">
+                                {projectMemberDisplayLabel(member)}
+                              </span>
                             </button>
                           ))}
                         </>
