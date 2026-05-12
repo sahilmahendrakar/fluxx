@@ -19,8 +19,10 @@ import {
   LocalProject,
   Session,
   type ActiveProjectKey,
+  type CloudRepoBindingOverview,
   type PlanningSession,
   type ProjectTabState,
+  type RepoConfig,
   type TaskPrErrorCode,
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
@@ -81,6 +83,7 @@ import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
   defaultTaskAgentForProject,
   hydrateCloudProject,
+  primaryRootPathFromCloudBinding,
 } from './cloudBindingPrefs';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from './planningDocs/types';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
@@ -126,6 +129,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     githubPr,
     sourceBranch,
     createSourceBranchIfMissing,
+    repoId,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -169,6 +173,14 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       delete next.createSourceBranchIfMissing;
     }
   }
+  if (repoId !== undefined) {
+    if (typeof repoId === 'string' && repoId.trim() === '') {
+      next = { ...next };
+      delete next.repoId;
+    } else {
+      next = { ...next, repoId };
+    }
+  }
   return next;
 }
 
@@ -199,6 +211,8 @@ const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
   BRANCH_PUSH_FAILED: 'Fix the push error shown above (permissions, network, or diverged history), then retry.',
   PR_CREATE_FAILED: 'Check the GitHub CLI output for details, then retry.',
   TASK_METADATA_REQUIRED: 'Ensure this task has a title (edit the task if needed), then try again.',
+  PR_REPO_MISMATCH:
+    "This pull request is for a different GitHub repository than this task's clone. Check the task's repository and the linked PR URL, then try again.",
 };
 
 type TaskPrIpcFailure = Extract<
@@ -315,8 +329,14 @@ export default function App() {
   const pendingAgentPrDiscoveryLastAtRef = useRef<Map<string, number>>(new Map());
   const worktreeResolveGenRef = useRef(0);
   const memberPhotoRefreshKeyRef = useRef('');
+  const projectReposLoadSeqRef = useRef(0);
   const [autoStartWhenUnblockedProject, setAutoStartWhenUnblockedProject] = useState(false);
   const [repoDefaultBranchShort, setRepoDefaultBranchShort] = useState('main');
+  /** Loaded for task UI (repo picker + labels). Null while loading. */
+  const [projectRepos, setProjectRepos] = useState<RepoConfig[] | null>(null);
+  /** Cloud multi-repo: local clone path/status per shared repo id for board tooltips. */
+  const [cloudRepoBindingOverview, setCloudRepoBindingOverview] =
+    useState<CloudRepoBindingOverview | null>(null);
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -347,6 +367,11 @@ export default function App() {
   const cloudProjectId = project?.kind === 'cloud' ? project.id : null;
   const runners = useRunners(cloudProjectId);
 
+  const cloudSharedRepoIdsKey = useMemo(() => {
+    if (project?.kind !== 'cloud') return '';
+    return project.sharedRepos.map((s) => s.id).join(',');
+  }, [project]);
+
   useEffect(() => {
     if (!project) {
       setRepoDefaultBranchShort('main');
@@ -369,6 +394,63 @@ export default function App() {
       cancelled = true;
     };
   }, [project?.id, project?.rootPath, project?.kind]);
+
+  const refreshProjectRepos = useCallback(async (): Promise<RepoConfig[]> => {
+    const seq = ++projectReposLoadSeqRef.current;
+    if (!project) {
+      setProjectRepos(null);
+      return [];
+    }
+    try {
+      const repos = await window.electronAPI.project.getRepos();
+      if (seq === projectReposLoadSeqRef.current) setProjectRepos(repos);
+      return repos;
+    } catch (err) {
+      console.warn('[App] project.getRepos failed', err);
+      const fallback = project.kind === 'local' ? project.repos : [];
+      if (seq === projectReposLoadSeqRef.current) setProjectRepos(fallback);
+      return fallback;
+    }
+  }, [project]);
+
+  useEffect(() => {
+    void refreshProjectRepos();
+    return () => {
+      projectReposLoadSeqRef.current += 1;
+    };
+  }, [refreshProjectRepos]);
+
+  useEffect(() => {
+    if (
+      !project ||
+      project.kind !== 'cloud'
+    ) {
+      setCloudRepoBindingOverview(null);
+      return;
+    }
+    if (project.sharedRepos.length <= 1) {
+      setCloudRepoBindingOverview(null);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.project
+      .getCloudRepoBindingOverview(project.sharedRepos)
+      .then((r) => {
+        if (cancelled) return;
+        if (r && typeof r === 'object' && 'error' in r) {
+          setCloudRepoBindingOverview(null);
+          return;
+        }
+        setCloudRepoBindingOverview(r as CloudRepoBindingOverview);
+      })
+      .catch(() => {
+        if (!cancelled) setCloudRepoBindingOverview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.kind, cloudSharedRepoIdsKey]);
+
   const membersState = useMembers(cloudProjectId);
   const { cloudPlanningDocsSeedModal } = useCloudPlanningDocsMigration(
     project?.kind === 'cloud' ? project : null,
@@ -416,6 +498,7 @@ export default function App() {
               ownerId: cur.ownerId,
               memberIds: cur.memberIds,
               createdAt: cur.createdAt,
+              repos: cur.sharedRepos,
             },
             binding,
           )
@@ -496,12 +579,21 @@ export default function App() {
     refreshPlanningDocList,
   ]);
 
+  // Stable ref for cloud sharedRepos + membership checks (avoid stale closures).
+  const projectRef = useRef(project);
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
   // ----- Task provider per active project -----
   const provider = useMemo<TaskProvider | null>(() => {
     if (!project) return null;
     if (project.kind === 'local') return new LocalTaskProvider();
     if (!uid) return null;
-    return new FirestoreTaskProvider(project.id, uid);
+    return new FirestoreTaskProvider(project.id, uid, () => {
+      const p = projectRef.current;
+      return p?.kind === 'cloud' ? p.sharedRepos : [];
+    });
   }, [project?.kind, project?.id, uid]);
 
   useEffect(() => {
@@ -647,7 +739,7 @@ export default function App() {
   const tasksWorktreeIdsKey = useMemo(
     () =>
       tasks
-        .map((t) => t.id)
+        .map((t) => `${t.id}\t${t.repoId ?? ''}`)
         .sort()
         .join('\0'),
     [tasks],
@@ -672,15 +764,14 @@ export default function App() {
       setTaskHasWorktreeById({});
       return;
     }
-    const ids = tasksRef.current.map((t) => t.id);
-    if (ids.length === 0) {
+    if (tasksRef.current.length === 0) {
       setTaskHasWorktreeById({});
       return;
     }
     const gen = ++worktreeResolveGenRef.current;
     const handle = window.setTimeout(() => {
       void api
-        .resolveWorktrees(ids)
+        .resolveWorktrees(tasksRef.current.map((t) => ({ taskId: t.id, repoId: t.repoId })))
         .then((map) => {
           if (worktreeResolveGenRef.current !== gen) return;
           setTaskHasWorktreeById(map);
@@ -756,9 +847,25 @@ export default function App() {
         }
         return;
       }
+      const primaryPath = primaryRootPathFromCloudBinding(
+        match.id,
+        binding,
+        match.repos,
+      );
+      if (!primaryPath) {
+        await window.electronAPI.projects.clearActive();
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        return;
+      }
       const result = await window.electronAPI.projects.activateCloud({
         id: match.id,
-        rootPath: binding.rootPath,
+        rootPath: primaryPath,
+        ...(match.repos?.length
+          ? { sharedRepos: match.repos }
+          : {}),
       });
       if (cancelled) return;
       if (!result || 'error' in result) {
@@ -782,19 +889,58 @@ export default function App() {
     cloudProjectsState.projects,
   ]);
 
+  // Multi-repo2 cloud: keep ~/.flux workspace `repos[]` aligned with shared repo ids + bindings.
+  useEffect(() => {
+    if (!project || project.kind !== 'cloud') return;
+    if (project.sharedRepos.length === 0) return;
+    let cancelled = false;
+    void window.electronAPI.project
+      .syncCloudSharedRepos(project.sharedRepos)
+      .then((result) => {
+        if (cancelled) return;
+        if ('error' in result) {
+          console.warn('[App] syncCloudSharedRepos failed', result.error);
+          return;
+        }
+        void refreshProjectRepos();
+      })
+      .catch((err) => {
+        console.warn('[App] syncCloudSharedRepos', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project?.id,
+    project?.kind,
+    project?.kind === 'cloud' ? project.sharedRepos : undefined,
+    refreshProjectRepos,
+  ]);
+
   // Keep cloud project's Firestore-side fields fresh when the snapshot updates.
   useEffect(() => {
     if (!project || project.kind !== 'cloud') return;
     if (cloudProjectsState.status !== 'ready') return;
     const fresh = cloudProjectsState.projects.find((p) => p.id === project.id);
     if (!fresh) return;
+    const reposChanged =
+      fresh.repos !== undefined &&
+      JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
-      fresh.createdAt !== project.createdAt;
+      fresh.createdAt !== project.createdAt ||
+      reposChanged;
     if (!changed) return;
-    setProject({ ...project, ...fresh });
+    setProject({
+      ...project,
+      name: fresh.name,
+      ownerId: fresh.ownerId,
+      memberIds: fresh.memberIds,
+      createdAt: fresh.createdAt,
+      ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
+    });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
 
   useEffect(() => {
@@ -862,10 +1008,6 @@ export default function App() {
   useEffect(() => {
     providerRef.current = provider;
   }, [provider]);
-  const projectRef = useRef(project);
-  useEffect(() => {
-    projectRef.current = project;
-  }, [project]);
 
   useCloudSilenceReconciliation({
     enabled: project?.kind === 'cloud',
@@ -1617,11 +1759,20 @@ export default function App() {
   );
 
   const handleUpdateTask = useCallback(
-    (id: string, patch: Partial<Task>) => {
+    (id: string, patch: TaskPatch) => {
+      const { githubPr: patchGithubPr, ...patchRest } = patch;
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== id) return t;
-          let next: Task = { ...t, ...patch };
+          let next: Task = { ...t, ...patchRest };
+          if (patchGithubPr !== undefined) {
+            if (patchGithubPr === null) {
+              next = { ...next };
+              delete next.githubPr;
+            } else {
+              next = { ...next, githubPr: patchGithubPr };
+            }
+          }
           if (patch.labels !== undefined) {
             const n = normalizeTaskLabels(patch.labels);
             if (n.length > 0) {
@@ -1648,6 +1799,15 @@ export default function App() {
           if (patch.createSourceBranchIfMissing !== undefined && !patch.createSourceBranchIfMissing) {
             next = { ...next };
             delete next.createSourceBranchIfMissing;
+          }
+          if (patch.repoId !== undefined) {
+            const rid = typeof patch.repoId === 'string' ? patch.repoId.trim() : '';
+            if (rid.length === 0) {
+              next = { ...next };
+              delete next.repoId;
+            } else {
+              next = { ...next, repoId: rid };
+            }
           }
           next = {
             ...next,
@@ -1682,16 +1842,22 @@ export default function App() {
       if (patch.autoStartOnUnblock !== undefined) {
         persistable.autoStartOnUnblock = patch.autoStartOnUnblock;
       }
-      if (patch.assigneeId !== undefined) {
-        persistable.assigneeId = patch.assigneeId;
-      }
-      if (patch.sourceBranch !== undefined) {
-        persistable.sourceBranch = patch.sourceBranch;
-      }
-      if (patch.createSourceBranchIfMissing !== undefined) {
-        persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
-      }
-      if (Object.keys(persistable).length === 0) return;
+          if (patch.assigneeId !== undefined) {
+            persistable.assigneeId = patch.assigneeId;
+          }
+          if (patch.sourceBranch !== undefined) {
+            persistable.sourceBranch = patch.sourceBranch;
+          }
+          if (patch.createSourceBranchIfMissing !== undefined) {
+            persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
+          }
+          if (patch.repoId !== undefined) {
+            persistable.repoId = patch.repoId;
+          }
+          if (patchGithubPr !== undefined) {
+            persistable.githubPr = patchGithubPr;
+          }
+          if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
       if (existing) clearTimeout(existing.timer);
@@ -1989,7 +2155,11 @@ export default function App() {
       agent: Agent,
       labelInput?: string[],
       assigneeId?: string,
-      branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+      branch?: {
+        sourceBranch?: string;
+        createSourceBranchIfMissing?: boolean;
+        repoId?: string;
+      },
     ) => {
       if (!provider) return;
       try {
@@ -2016,6 +2186,7 @@ export default function App() {
           ...(branch?.createSourceBranchIfMissing !== undefined
             ? { createSourceBranchIfMissing: branch.createSourceBranchIfMissing }
             : {}),
+          ...(branch?.repoId !== undefined ? { repoId: branch.repoId } : {}),
         });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
@@ -2642,7 +2813,7 @@ export default function App() {
       return {
         sessionId,
         title,
-        running: s?.status === 'running' ?? false,
+        running: s?.status === 'running',
       };
     });
   }, [openPlanningMainTabIds, planningSessions]);
@@ -2912,6 +3083,8 @@ export default function App() {
                             onTaskPrClick: (id) => void handleTaskPrClick(id),
                             prLoading: prLoadingTaskId === item.session.taskId,
                             prAgentAwaiting: Boolean(prAgentAwaitingByTaskId[item.session.taskId]),
+                            projectRepos: projectRepos ?? undefined,
+                            multiRepo2Enabled: true,
                           }
                         : undefined
                     }
@@ -2990,6 +3163,9 @@ export default function App() {
                           void handleUpdateTask(id, { assigneeId })
                         }
                         repoDefaultBranchShort={repoDefaultBranchShort}
+                        projectRepos={projectRepos ?? undefined}
+                        multiRepo2Enabled
+                        cloudRepoBindingOverview={cloudRepoBindingOverview ?? undefined}
                         cloudUnblockAutostartClientUid={
                           project.kind === 'cloud' && uid ? uid : undefined
                         }
@@ -3039,6 +3215,8 @@ export default function App() {
                             ? Boolean(prAgentAwaitingByTaskId[selectedTask.id])
                             : false
                         }
+                        projectRepos={projectRepos ?? undefined}
+                        multiRepo2Enabled
                       />
                     </div>
                     <div
@@ -3132,6 +3310,13 @@ export default function App() {
                   currentUserEmail={userEmail ?? undefined}
                   onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
                   onProjectAgentPrefsRefresh={refreshPlanningRelatedProjectState}
+                  onCloudSharedReposChanged={(sharedRepos) => {
+                    setProject((cur) =>
+                      cur && cur.kind === 'cloud'
+                        ? { ...cur, sharedRepos }
+                        : cur,
+                    );
+                  }}
                 />
               </div>
             ) : null}

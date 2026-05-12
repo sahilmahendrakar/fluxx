@@ -10,10 +10,12 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
+  updateDoc,
   where,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
+import type { CloudSharedRepo } from '../../types';
 import { getFirebaseFirestore } from '../firebase';
 
 /**
@@ -26,6 +28,8 @@ export interface CloudProjectSummary {
   ownerId: string;
   memberIds: string[];
   createdAt: string;
+  /** Shared logical repos for the team (Firestore `repos` field). */
+  repos?: CloudSharedRepo[];
 }
 
 export function subscribeToCloudProjects(
@@ -52,16 +56,44 @@ export function subscribeToCloudProjects(
   );
 }
 
+function parseFirestoreRepos(raw: unknown): CloudSharedRepo[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: CloudSharedRepo[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const o = item as Record<string, unknown>;
+    if (
+      typeof o.id !== 'string' ||
+      typeof o.name !== 'string' ||
+      typeof o.baseBranch !== 'string'
+    ) {
+      continue;
+    }
+    const repo: CloudSharedRepo = {
+      id: o.id,
+      name: o.name,
+      baseBranch: o.baseBranch,
+    };
+    if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
+      repo.remoteUrl = o.remoteUrl.trim();
+    }
+    out.push(repo);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function toCloudProjectSummary(
   d: QueryDocumentSnapshot<DocumentData>,
 ): CloudProjectSummary {
   const data = d.data();
+  const repos = parseFirestoreRepos(data.repos);
   return {
     id: d.id,
     name: typeof data.name === 'string' ? data.name : '(unnamed)',
     ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
     memberIds: Array.isArray(data.memberIds) ? (data.memberIds as string[]) : [],
     createdAt: tsToIso(data.createdAt),
+    ...(repos ? { repos } : {}),
   };
 }
 
@@ -131,6 +163,14 @@ export async function createCloudProject(
     memberIds: [uid],
     createdAt: new Date().toISOString(),
   };
+}
+
+export async function updateCloudProjectRepos(
+  projectId: string,
+  repos: CloudSharedRepo[],
+): Promise<void> {
+  const db = getFirebaseFirestore();
+  await updateDoc(doc(db, 'projects', projectId), { repos });
 }
 
 /** Owner-only delete. Rules enforce this. */

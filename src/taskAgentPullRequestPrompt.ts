@@ -14,6 +14,10 @@ export type TaskAgentPullRequestPromptParams = {
   prBody?: string;
   /** Absolute path to Flux-written `create-pr.md` (project-level, outside the worktree). */
   instructionsAbsolutePath: string;
+  /** Repository label for this task (`multi-repo2`); keeps agents from opening PRs in the wrong repo. */
+  repoDisplayLabel?: string;
+  /** Absolute clone root for that repository (informational). */
+  repoRootPath?: string;
 };
 
 /**
@@ -26,7 +30,7 @@ export function buildCreatePrInstructionsMarkdown(): string {
     '',
     "Use this task's git worktree as cwd. The user asked Flux to delegate PR creation to you (the task agent), not to run `gh pr create` from the Flux app.",
     '',
-    'The Flux prompt that referenced this file includes the **task id**, **task title**, **head branch**, **PR base branch**, and suggested PR title/body. Use those values for the steps below.',
+    'The Flux prompt that referenced this file includes the **task id**, **task title**, **repository** (when Flux knows which clone), **head branch**, **PR base branch**, and suggested PR title/body. Use those values for the steps below.',
     '',
     '## What to do',
     '1. Inspect the repo: `git status`, and `git diff` / `git diff --staged` as needed.',
@@ -71,11 +75,22 @@ export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptPar
   const titleEscaped = title.replace(/`/g, "'");
   const instructionsPath = p.instructionsAbsolutePath.trim();
 
-  return [
+  const repoLabel = (p.repoDisplayLabel ?? '').trim();
+  const repoPath = (p.repoRootPath ?? '').trim();
+
+  const lines: string[] = [
     '## Flux: open a GitHub pull request for this task',
     '',
     '- **Task id:** `' + p.taskId + '`',
     '- **Task title:** ' + (p.taskTitle.trim() || '(untitled)'),
+  ];
+  if (repoLabel) {
+    lines.push('- **Repository:** ' + repoLabel);
+  }
+  if (repoPath) {
+    lines.push('- **Repository clone path:** `' + repoPath + '`');
+  }
+  lines.push(
     '- **Head branch (push from here):** `' + p.headBranch + '`',
     '- **PR base branch (GitHub `--base`):** `' + p.baseBranch + '`',
     '- **Suggested PR title:** `' + titleEscaped + '`',
@@ -88,5 +103,7 @@ export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptPar
     'Read the full instructions at `' + instructionsPath + '` and follow them to commit, push, and open the PR. Reply with the **PR URL** when done.',
     '',
     '**Constraints:** Do not commit secrets, API keys, `.env` with real credentials, or large generated artifacts unless clearly intended for the repo.',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }

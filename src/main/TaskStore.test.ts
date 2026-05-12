@@ -4,6 +4,108 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TaskStore } from './TaskStore';
 
+describe('TaskStore multi-repo2 repoId migration', () => {
+  let dir: string;
+
+  afterEach(async () => {
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('backfills missing repoId on existing rows to the primary repo and persists once', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-repoid-'));
+    // Seed a legacy tasks.json: one task with no `repoId`, one already tagged.
+    const tasksPath = path.join(dir, 'tasks.json');
+    await fs.writeFile(
+      tasksPath,
+      JSON.stringify(
+        [
+          {
+            id: 'a',
+            title: 'legacy',
+            status: 'backlog',
+            agent: 'cursor',
+            createdAt: '2025-01-01T00:00:00.000Z',
+            projectId: 'p1',
+          },
+          {
+            id: 'b',
+            title: 'already-tagged',
+            status: 'backlog',
+            agent: 'cursor',
+            createdAt: '2025-01-01T00:00:00.000Z',
+            projectId: 'p1',
+            repoId: 'custom-repo',
+          },
+        ],
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const store = new TaskStore(dir);
+    await store.init();
+
+    await store.migrateMissingRepoIds('primary');
+    const all = store.getAll();
+    expect(all.find((t) => t.id === 'a')?.repoId).toBe('primary');
+    expect(all.find((t) => t.id === 'b')?.repoId).toBe('custom-repo');
+
+    // Persisted to disk.
+    const onDisk = JSON.parse(await fs.readFile(tasksPath, 'utf8')) as Array<{
+      id: string;
+      repoId?: string;
+    }>;
+    expect(onDisk.find((r) => r.id === 'a')?.repoId).toBe('primary');
+    expect(onDisk.find((r) => r.id === 'b')?.repoId).toBe('custom-repo');
+
+    // Idempotent: a second migration call doesn't rewrite anything.
+    const before = await fs.stat(tasksPath);
+    await new Promise((r) => setTimeout(r, 10));
+    await store.migrateMissingRepoIds('primary');
+    const after = await fs.stat(tasksPath);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+  });
+
+  it('update keeps repoId when patching title or status', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-repoid-preserve-'));
+    const store = new TaskStore(dir);
+    await store.init();
+    const created = await store.create({
+      title: 't',
+      agent: 'cursor',
+      projectId: 'p1',
+      repoId: 'repo-a',
+    });
+    const titlePatched = await store.update(created.id, { title: 'new title' });
+    expect(titlePatched.repoId).toBe('repo-a');
+
+    const statusPatched = await store.update(created.id, { status: 'in-progress' });
+    expect(statusPatched.repoId).toBe('repo-a');
+
+    const labelsPatched = await store.update(created.id, { labels: ['x'] });
+    expect(labelsPatched.repoId).toBe('repo-a');
+  });
+
+  it('create accepts an explicit repoId and round-trips it', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-repoid-create-'));
+    const store = new TaskStore(dir);
+    await store.init();
+    const created = await store.create({
+      title: 't',
+      agent: 'cursor',
+      projectId: 'p1',
+      repoId: 'r-extra',
+    });
+    expect(created.repoId).toBe('r-extra');
+
+    const updated = await store.update(created.id, { repoId: '' });
+    expect(updated.repoId).toBeUndefined();
+  });
+});
+
 describe('TaskStore sourceBranch fields', () => {
   let dir: string;
 

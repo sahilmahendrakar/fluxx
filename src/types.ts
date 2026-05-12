@@ -62,10 +62,36 @@ export type RepoBranchDiscoveryResponse = RepoBranchDiscovery & {
 };
 
 /**
+ * IPC payload for `repo:getBranchDiscovery`.
+ * Back-compat: main still accepts a bare string meaning `classifyBranch` only (primary repo).
+ */
+export type RepoBranchDiscoveryRequest = {
+  repoId?: string;
+  classifyBranch?: string;
+};
+
+/** Fields editable through project repo settings IPC (by root path or repo id). */
+export type RepoSettingsPatch = Partial<
+  Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env' | 'name'>
+>;
+
+/**
  * Per-repo configuration stored locally. The schema supports multiple repos
- * per project; today the list always has length 1 (matching `Project.rootPath`).
+ * per project (see `multi-repo2` feature flag); today the list always has
+ * length 1 (matching `Project.rootPath`).
+ *
+ * `id` is the **stable identity** for a repo within a project — never use
+ * `rootPath` as identity since users move clones around. Legacy single-repo
+ * configs are migrated on load to a deterministic primary id derived from
+ * the project (see `deriveStablePrimaryRepoIdForProject` in
+ * `src/repoIdentity.ts`). `name` is a human-readable display label —
+ * defaults to `path.basename(rootPath)` when missing.
  */
 export interface RepoConfig {
+  /** Stable identity within a project (NOT `rootPath`). Backfilled by `multi-repo2` migrations. */
+  id: string;
+  /** Human-readable label; falls back to `basename(rootPath)`. */
+  name?: string;
   rootPath: string;
   /** Branch fetched + used as base for new task worktrees. Default: 'main'. */
   baseBranch: string;
@@ -74,6 +100,22 @@ export interface RepoConfig {
   /** Optional .env contents written to `<worktree>/.env` for each new task. */
   env?: string;
 }
+
+export type RepoPathStatus = 'valid' | 'missing' | 'not_git';
+
+export interface RepoManagementState {
+  pathStatus: RepoPathStatus;
+  removalBlocked: boolean;
+  blockingTaskCount: number;
+  blockingWorkspaceCount: number;
+}
+
+/** Local clone + path check for one shared cloud repo (multi-repo2 settings / IPC). */
+export type CloudRepoLocalBindingStatus =
+  | { kind: 'missing_binding' }
+  | { kind: 'bound'; rootPath: string; pathStatus: RepoPathStatus };
+
+export type CloudRepoBindingOverview = Record<string, CloudRepoLocalBindingStatus>;
 
 export interface LocalProject {
   id: string;
@@ -114,18 +156,48 @@ export interface LocalProject {
 }
 
 /**
- * Cloud project as returned to the renderer for the **active** project: the
- * Firestore document plus the per-user local rootPath from LocalBindingStore.
- * Cloud projects in the projects list (not yet activated) don't carry rootPath
- * — see `CloudProjectSummary` in renderer code.
+ * Shared team metadata for one logical repository in a cloud project (Firestore).
+ * Does not include machine-local paths or `.env` / setup scripts — those stay in
+ * {@link CloudProjectLocalBinding} / {@link RepoConfig}.
  */
+export interface CloudSharedRepo {
+  /** Stable identity within the cloud project (matches keys in `repoBindings`). */
+  id: string;
+  /** Display label for lists and headers. */
+  name: string;
+  /** Branch used as the integration line for tasks / PRs (informational for cloud). */
+  baseBranch: string;
+  /** Optional origin URL for display / validation. */
+  remoteUrl?: string;
+}
+
+/**
+ * Per-machine clone location for one {@link CloudSharedRepo.id} (localBindings.json only).
+ */
+export interface CloudRepoMachineBinding {
+  rootPath: string;
+  lastOpenedAt: string;
+}
+
 /**
  * Per-machine record in `localBindings.json`. Optional fields are per-user prefs
  * for that cloud project (not synced).
  */
 export interface CloudProjectLocalBinding {
-  rootPath: string;
+  /**
+   * Legacy single-repo clone path. Migrated into `repoBindings` under a stable
+   * primary id (`deriveStablePrimaryRepoIdForProject`) and then omitted on save.
+   */
+  rootPath?: string;
+  /** Updated when the binding row is touched; mirrors the primary repo entry where applicable. */
   lastOpenedAt: string;
+  /**
+   * Which shared repo supplies {@link CloudProject.rootPath} / workspace layout when several
+   * repos are bound. Usually inferred when only one `repoBindings` entry exists.
+   */
+  primaryRepoId?: string;
+  /** Per-repo local clone paths keyed by {@link CloudSharedRepo.id}. */
+  repoBindings?: Record<string, CloudRepoMachineBinding>;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
   planningModels?: AgentSessionModelDefaults;
@@ -141,6 +213,7 @@ export interface CloudProjectLocalBinding {
   autoDeleteTaskWhenDone?: boolean;
 }
 
+/** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
 export interface CloudProject {
   id: string;
   kind: 'cloud';
@@ -148,7 +221,18 @@ export interface CloudProject {
   ownerId: string;
   memberIds: string[];
   createdAt: string;
+  /**
+   * Primary workspace root for layout, tasks, and worktrees — the bound clone for
+   * the primary shared repo (multi-repo2: same as `repoMachineBindings[primary]`).
+   */
   rootPath: string;
+  /** Shared repo list from Firestore; may be synthesized when the doc has none yet. */
+  sharedRepos: CloudSharedRepo[];
+  /**
+   * Local clone per shared repo id on this machine. Keys omitted when that repo
+   * has no binding yet (multi-repo team projects).
+   */
+  repoMachineBindings: Partial<Record<string, CloudRepoMachineBinding>>;
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
   planningModels?: AgentSessionModelDefaults;
@@ -195,6 +279,7 @@ export type TaskPrErrorCode =
   | 'BRANCH_PUSH_FAILED'
   | 'PR_CREATE_FAILED'
   | 'PR_VIEW_FAILED'
+  | 'PR_REPO_MISMATCH'
   | 'PR_BASE_BRANCH_MISSING_REMOTE'
   | 'PR_BASE_BRANCH_PUSH_FAILED';
 
@@ -268,6 +353,13 @@ export interface Task {
    * was chosen from discovery (already exists), and `true` when the user typed a new name.
    */
   createSourceBranchIfMissing?: boolean;
+  /**
+   * Identity of the {@link RepoConfig} this task belongs to (multi-repo2). Optional on
+   * legacy rows — readers should resolve missing values to the project's primary repo
+   * (see `resolvePrimaryRepoId` in `src/repoIdentity.ts`). Backfilled by
+   * `TaskStore.migrateMissingRepoIds` on first load.
+   */
+  repoId?: string;
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
 }
@@ -289,6 +381,14 @@ export type SessionStartErrorCode =
   | 'WORKTREE_FETCH_FAILED'
   /** Empty branch name after normalization, or repo in a state that cannot supply a base ref. */
   | 'WORKTREE_REPO_INVALID_STATE'
+  /** Task targets a repo id that does not exist on this project configuration. */
+  | 'WORKTREE_REPO_UNKNOWN'
+  /** The configured clone path is missing from disk (moved/unmounted folder). */
+  | 'WORKTREE_REPO_PATH_MISSING'
+  /** Clone path exists but does not contain a `.git` directory or file (not a repo). */
+  | 'WORKTREE_REPO_NOT_GIT'
+  /** Cloud project: shared repo exists but no local clone is bound on this machine. */
+  | 'WORKTREE_REPO_NOT_BOUND'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';
@@ -321,6 +421,13 @@ export interface Session {
   id: string;
   taskId: string;
   projectId: string;
+  /**
+   * Identity of the {@link RepoConfig} the session's worktree was created from
+   * (multi-repo2). Optional on rows from older daemon responses — renderers must
+   * not crash on absence; treat missing as the active primary repo where needed
+   * (see `resolvePrimaryRepoId` in `src/repoIdentity.ts`).
+   */
+  repoId?: string;
   worktreePath: string;
   branch: string;
   status: SessionStatus;
@@ -330,6 +437,29 @@ export interface Session {
 
 /** Where to open a task worktree folder from the main process (`workspace:openPath`). */
 export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manager';
+
+/** Payload for `workspace:resolveTaskWorktree` — bare string is legacy (`taskId` only). */
+export type ResolveTaskWorktreeIpcPayload =
+  | string
+  | { taskId: string; repoId?: string | null };
+
+/**
+ * Structured failure when no on-disk/session path exists — distinguishes missing clone
+ * binding from “repo ok but no worktree yet” (`multi-repo2`).
+ */
+export type ResolveTaskWorktreeDetailCode =
+  | 'no-project-dir'
+  | 'repo-unknown'
+  | 'repo-not-bound'
+  | 'repo-path-missing'
+  | 'repo-not-git'
+  | 'no-worktree';
+
+/** Result of `workspace:resolveTaskWorktree` (path null when nothing exists yet or repo unavailable). */
+export type ResolveTaskWorktreeIpcResult = {
+  path: string | null;
+  detail?: { code: ResolveTaskWorktreeDetailCode; message: string };
+};
 
 /** Planning assistant PTY session (one of many per project in the daemon). */
 export interface PlanningSession {

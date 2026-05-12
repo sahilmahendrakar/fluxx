@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { hydrateCloudProject } from '../cloudBindingPrefs';
+import {
+  hydrateCloudProject,
+  primaryRootPathFromCloudBinding,
+} from '../cloudBindingPrefs';
 import type { CloudProject, LocalProject } from '../types';
 import type { AuthState } from '../renderer/auth/useAuth';
 import type { CloudProjectsState } from '../renderer/projects/useCloudProjects';
@@ -118,9 +121,21 @@ export function ProjectsListView({
         setCloudError('Could not read local project binding.');
         return;
       }
+      const primaryPath = primaryRootPathFromCloudBinding(
+        summary.id,
+        binding,
+        summary.repos,
+      );
+      if (!primaryPath) {
+        setCloudError('Could not read local project binding.');
+        return;
+      }
       const result = await window.electronAPI.projects.activateCloud({
         id: summary.id,
-        rootPath: binding.rootPath,
+        rootPath: primaryPath,
+        ...(summary.repos?.length
+          ? { sharedRepos: summary.repos }
+          : {}),
       });
       if (!result || 'error' in result) {
         setCloudError(
