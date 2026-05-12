@@ -1,0 +1,57 @@
+src/daemon/terminalEnv.test.ts
+  ai_agent 1-69
+src/main/DaemonClient.ts
+  ai_agent 1010-1029,1032-1041
+pnpm-lock.yaml
+  ai_agent 29-31,1349-1351,6175
+vite.daemon.config.ts
+  ai_agent 2,5-10,14,20-27
+package.json
+  s_3522aef50423b2::t_49f428caba4994 68
+docs/daemon-packaging.md
+  ai_agent 1-466
+src/daemon/SessionRuntime.ts
+  ai_agent 6,75-79,81,85
+src/main/userShellEnv.test.ts
+  ai_agent 1-57
+src/main/userShellEnv.ts
+  ai_agent 1-331
+src/components/Terminal.tsx
+  s_3522aef50423b2::t_63c1c1a09d26bb 161-190
+  s_3522aef50423b2::t_2aa1414563ad75 10
+  s_3522aef50423b2::t_21d4c50bbcd962 318-323
+  s_3522aef50423b2::t_b4849553b5d16f 132-139
+runtime-dependencies.ts
+  ai_agent 1-70
+src/main.ts
+  s_3522aef50423b2::t_6799887ec92ce5 15
+  s_3522aef50423b2::t_548ca5aa581561 425-435
+src/daemon/terminalEnv.ts
+  ai_agent 1-74
+forge.config.ts
+  ai_agent 7,11-12,15,28-84,88-98,101-110,113-126,159-162,180-182,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "ea2269ffabfa414da95fe6e0f7795b902bc073a7",
+  "prompts": {},
+  "humans": {
+    "h_d2c1d28943b3a6": {
+      "author": "Sahil Mahendrakar"
+    },
+    "h_e6d0d96fe8d12d": {
+      "author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3522aef50423b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "05348fe1-c7c2-4e05-8aab-3fa0e8362d81",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null
+    }
+  }
+}
