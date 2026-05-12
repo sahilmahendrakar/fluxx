@@ -1,0 +1,64 @@
+vite.daemon.config.ts
+  s_3522aef50423b2::t_d6f2be1e7ba518 2,5-10,14,20-27
+forge.config.ts
+  s_4c950f321a2793::t_9a1837b16cc6bd 7
+  s_4c950f321a2793::t_121f86fbaa3046 35-41,92,98,101-110
+  s_4c950f321a2793::t_ae8896f96bbda4 182
+  s_3522aef50423b2::t_b5b4e922ca3c8a 11-12,15,28-34,42-84,88-91,93-97,113-126,159-162,180-181,188
+src/daemon/terminalEnv.ts
+  s_3522aef50423b2::t_b2eeb384175330 1-74
+src/daemon/SessionRuntime.ts
+  s_3522aef50423b2::t_07e894f700c281 75-79,81,85
+  s_3522aef50423b2::t_8acfdf48450f37 6
+src/daemon/terminalEnv.test.ts
+  s_3522aef50423b2::t_530e4fffd0bfbf 1-69
+src/main.ts
+  s_3522aef50423b2::t_548ca5aa581561 427-437
+  s_3522aef50423b2::t_6799887ec92ce5 15
+src/main/userShellEnv.test.ts
+  s_3522aef50423b2::t_1559af3cbea2f2 1-57
+runtime-dependencies.ts
+  s_3522aef50423b2::t_4e97dbef0479d6 1-70
+src/main/userShellEnv.ts
+  s_3522aef50423b2::t_3a0aeb7a031614 1-331
+docs/daemon-packaging.md
+  s_3522aef50423b2::t_d9b22b679b6371 327-383
+  s_3522aef50423b2::t_eb799a3efd80f0 431-435
+  s_3522aef50423b2::t_1aaf361bbd2cc2 427-430
+  s_3522aef50423b2::t_1c37efe963768b 1-326,414-426,436-466
+  s_3522aef50423b2::t_77f76af75d5035 384-413
+src/main/DaemonClient.ts
+  s_3522aef50423b2::t_4950fdaa7070c0 1010-1029,1032-1041
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "f1b99cfbe5c8cc1c3e214884201edd672f80e850",
+  "prompts": {},
+  "humans": {
+    "h_d2c1d28943b3a6": {
+      "author": "Sahil Mahendrakar"
+    },
+    "h_e6d0d96fe8d12d": {
+      "author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3522aef50423b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "05348fe1-c7c2-4e05-8aab-3fa0e8362d81",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    },
+    "s_4c950f321a2793": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3541296c-f876-43a2-8f54-d94034125baa",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
