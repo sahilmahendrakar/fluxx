@@ -68,6 +68,7 @@ import {
 } from './renderer/tasks/useCloudSilenceReconciliation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
+import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked } from './taskDependencies';
 import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
@@ -2582,6 +2583,15 @@ export default function App() {
     setSelectedTaskId(null);
   }, [confirmLeaveDocsWithUnsavedEdits]);
 
+  const handleOpenTaskWorkspaceFromBoard = useCallback(
+    (taskId: string) => {
+      const session = selectSessionForTaskWorkspace(sessions, taskId);
+      if (!session) return;
+      handleOpenSessionTab(session);
+    },
+    [sessions, handleOpenSessionTab],
+  );
+
   const handleOpenSessionFromSidebar = useCallback(
     (sessionId: string) => {
       if (!confirmLeaveDocsWithUnsavedEdits()) return;
@@ -3174,6 +3184,7 @@ export default function App() {
                         onTaskAgentSpawnPrefsChange={(id, patch) =>
                           void handleUpdateTask(id, patch)
                         }
+                        onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
                       />
                       <TaskDetailPanel
                         task={selectedTask}

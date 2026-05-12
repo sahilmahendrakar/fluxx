@@ -16,6 +16,7 @@ import { normalizeGitBranchShortName } from '../taskBranches';
 import TaskCard from './TaskCard';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { ProjectMember } from '../renderer/projects/members';
+import { selectSessionForTaskWorkspace } from '../sessionWorkspacePick';
 
 interface Props {
   id: TaskStatus;
@@ -47,6 +48,7 @@ interface Props {
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function Column({
@@ -77,6 +79,7 @@ export default function Column({
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isReview = id === 'review';
@@ -141,6 +144,8 @@ export default function Column({
                 );
                 const diskWorktree = taskHasWorktreeById[task.id] === true;
                 const hasWorktree = sessionWorktree || diskWorktree;
+                const canOpenTaskWorkspaceTab =
+                  selectSessionForTaskWorkspace(sessions, task.id) !== undefined;
                 const effectiveRepo =
                   showRepoBoardUi && projectRepos?.length
                     ? findRepoByIdOrPrimary(projectRepos, task.repoId)
@@ -184,6 +189,8 @@ export default function Column({
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
                     onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+                    canOpenTaskWorkspaceTab={canOpenTaskWorkspaceTab}
+                    onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
                   />
                 );
               })}
