@@ -261,7 +261,7 @@ export default function App() {
   const [taskPrError, setTaskPrError] = useState<string | null>(null);
   /** Per-task: Flux task worktree exists on disk or is tied to a session worktree path. */
   const [taskHasWorktreeById, setTaskHasWorktreeById] = useState<Record<string, boolean>>({});
-  const [planPanelOpen, setPlanPanelOpen] = useState(false);
+  const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
   const [planningSidebarActiveId, setPlanningSidebarActiveId] = useState<string | null>(
@@ -283,6 +283,7 @@ export default function App() {
   >(null);
   const [planningDocFileRevision, setPlanningDocFileRevision] = useState(0);
   const boardRowRef = useRef<HTMLDivElement>(null);
+  const pendingPlanningSidebarRestoreRef = useRef<boolean | null>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const openTabIdsRef = useRef(openTabIds);
@@ -383,6 +384,8 @@ export default function App() {
 
   const projectHashRoute = useProjectHashRoute();
   const settingsRouteActive = projectHashRoute === 'settings';
+  const planPanelOpen =
+    planningSidebarOpen && activeTabId === 'board' && !settingsRouteActive;
 
   const refreshPlanningSessions = useCallback(async () => {
     const api = window.electronAPI.planning;
@@ -1094,6 +1097,31 @@ export default function App() {
   }, [planningSessions, planningSidebarActiveId]);
 
   useEffect(() => {
+    if (!planningSidebarOpen) return;
+    if (planningSessions.length === 0) return;
+    if (!planningSidebarActiveId) {
+      setPlanningSidebarOpen(false);
+      return;
+    }
+    if (!planningSessions.some((s) => s.id === planningSidebarActiveId)) {
+      setPlanningSidebarOpen(false);
+    }
+  }, [planningSidebarOpen, planningSidebarActiveId, planningSessions]);
+
+  useEffect(() => {
+    if (!project) return;
+    const pending = pendingPlanningSidebarRestoreRef.current;
+    if (pending == null) return;
+    if (planningSessions.length === 0) return;
+    pendingPlanningSidebarRestoreRef.current = null;
+    if (!pending) return;
+    const sid = planningSidebarActiveId;
+    setPlanningSidebarOpen(
+      Boolean(sid && planningSessions.some((s) => s.id === sid)),
+    );
+  }, [project?.id, planningSessions, planningSidebarActiveId]);
+
+  useEffect(() => {
     if (!project) {
       setSessions([]);
       setSessionStartPendingTaskIds(new Set());
@@ -1101,9 +1129,13 @@ export default function App() {
       setActiveTabId('board');
       setPlanningSessions([]);
       setPlanningSidebarActiveId(null);
+      setPlanningSidebarOpen(false);
+      pendingPlanningSidebarRestoreRef.current = null;
       setOpenPlanningMainTabIds(new Set());
       return;
     }
+    setPlanningSidebarOpen(false);
+    pendingPlanningSidebarRestoreRef.current = null;
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
     setActiveTabId((prev) => {
       if (prev === 'settings') return 'board';
@@ -1180,6 +1212,7 @@ export default function App() {
         setOpenTabIds(new Set(restoredOpen));
         setOpenPlanningMainTabIds(new Set(persisted.openPlanningTabIds ?? []));
         setPlanningSidebarActiveId(persisted.planningSidebarActiveSessionId ?? null);
+        pendingPlanningSidebarRestoreRef.current = persisted.planningSidebarOpen === true;
         if (persisted.activeTaskId === 'settings') {
           setActiveTabId('board');
           pushProjectSettingsRoute();
@@ -1209,6 +1242,7 @@ export default function App() {
       activeTaskId: activeTabId,
       openPlanningTabIds: Array.from(openPlanningMainTabIds),
       planningSidebarActiveSessionId: planningSidebarActiveId,
+      planningSidebarOpen,
     };
     void window.electronAPI.projects
       .setTabs(projectKey, tabs)
@@ -1222,6 +1256,7 @@ export default function App() {
     activeTabId,
     openPlanningMainTabIds,
     planningSidebarActiveId,
+    planningSidebarOpen,
   ]);
 
   const pendingRef = useRef<
@@ -2163,7 +2198,7 @@ export default function App() {
     prAgentFollowupTimersByTaskIdRef.current.clear();
     prAgentPromptSentTaskIdsRef.current.clear();
     setPrAgentAwaitingByTaskId({});
-    setPlanPanelOpen(false);
+    setPlanningSidebarOpen(false);
     replaceProjectWorkspaceRoute();
     setActiveTabId('board');
     setDocsSidebarExpanded(false);
@@ -2193,7 +2228,7 @@ export default function App() {
     prAgentFollowupTimersByTaskIdRef.current.clear();
     prAgentPromptSentTaskIdsRef.current.clear();
     setPrAgentAwaitingByTaskId({});
-    setPlanPanelOpen(false);
+    setPlanningSidebarOpen(false);
     replaceProjectWorkspaceRoute();
     setDocsSidebarExpanded(false);
     setPlanningDocFiles([]);
@@ -2213,7 +2248,7 @@ export default function App() {
     const routeSid = parsePlanTabId(activeTabId);
     if (routeSid) {
       setPlanningSidebarActiveId(routeSid);
-      setPlanPanelOpen(true);
+      setPlanningSidebarOpen(true);
       setActiveTabId('board');
       return;
     }
@@ -2223,21 +2258,20 @@ export default function App() {
     }
     if (activeTabId !== 'board') {
       setActiveTabId('board');
-      setPlanPanelOpen(true);
+      setPlanningSidebarOpen(true);
       return;
     }
-    if (!planPanelOpen) {
-      setPlanPanelOpen(true);
+    if (!planningSidebarOpen) {
+      setPlanningSidebarOpen(true);
     } else {
       setActiveTabId('plan');
-      setPlanPanelOpen(false);
+      setPlanningSidebarOpen(false);
     }
-  }, [activeTabId, planPanelOpen]);
+  }, [activeTabId, planningSidebarOpen]);
 
   const handleDocsNav = useCallback(() => {
     leaveSettingsIfActive();
     setActiveTabId('docs');
-    setPlanPanelOpen(false);
     setDocsSidebarExpanded(true);
   }, []);
 
@@ -2249,20 +2283,7 @@ export default function App() {
     leaveSettingsIfActive();
     setSelectedPlanningDocPath(relativePath);
     setActiveTabId('docs');
-    setPlanPanelOpen(false);
   }, []);
-
-  useEffect(() => {
-    if (activeTabId === 'docs') {
-      setPlanPanelOpen(false);
-    }
-  }, [activeTabId]);
-
-  useEffect(() => {
-    if (settingsRouteActive) {
-      setPlanPanelOpen(false);
-    }
-  }, [settingsRouteActive]);
 
   const maxPlanningWidthForRow = useCallback(() => {
     const row = boardRowRef.current;
@@ -2456,10 +2477,10 @@ export default function App() {
     }
     if (activeTabId === 'plan') {
       setActiveTabId('board');
-      setPlanPanelOpen(false);
+      setPlanningSidebarOpen(false);
       return;
     }
-    setPlanPanelOpen(false);
+    setPlanningSidebarOpen(false);
   }, [activeTabId, handleClosePlanningMainTab]);
 
   const handleOpenSettingsTab = useCallback(() => {
@@ -2921,7 +2942,7 @@ export default function App() {
                         onTogglePlanPanel={() => {
                           leaveSettingsIfActive();
                           setActiveTabId('board');
-                          setPlanPanelOpen((v) => !v);
+                          setPlanningSidebarOpen((v) => !v);
                         }}
                         projectMembers={projectMembers}
                         onTaskAssigneeChange={(id, assigneeId) =>

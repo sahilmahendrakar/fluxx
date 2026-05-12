@@ -91,12 +91,17 @@ export class AppStateStore {
             : v.planningSidebarActiveSessionId === null
               ? null
               : undefined;
+        const planningSidebarOpen =
+          typeof v.planningSidebarOpen === 'boolean' ? v.planningSidebarOpen : undefined;
         tabs[key] = {
           openTaskIds: ids,
           activeTaskId: active,
           ...(openPlanning ? { openPlanningTabIds: openPlanning } : {}),
           ...(planningSidebarActive !== undefined
             ? { planningSidebarActiveSessionId: planningSidebarActive }
+            : {}),
+          ...(planningSidebarOpen !== undefined
+            ? { planningSidebarOpen }
             : {}),
         };
       }
