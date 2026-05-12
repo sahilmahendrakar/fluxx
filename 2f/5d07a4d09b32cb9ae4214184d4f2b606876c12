@@ -1,0 +1,27 @@
+src/components/Terminal.tsx
+  s_3522aef50423b2::t_b4849553b5d16f 131-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "2f5d07a4d09b32cb9ae4214184d4f2b606876c12",
+  "prompts": {},
+  "humans": {
+    "h_d2c1d28943b3a6": {
+      "author": "Sahil Mahendrakar"
+    },
+    "h_e6d0d96fe8d12d": {
+      "author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3522aef50423b2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "05348fe1-c7c2-4e05-8aab-3fa0e8362d81",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
