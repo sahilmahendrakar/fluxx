@@ -2287,7 +2287,6 @@ export default function App() {
         const result = await window.electronAPI.tasks.requestPullRequestFromAgent({
           taskId,
           ...(title ? { title } : {}),
-          ...(task.description !== undefined ? { description: task.description } : {}),
         });
         if (!result.ok) {
           setTaskPrError(formatTaskPullRequestError(result));

@@ -8,10 +8,6 @@ export type TaskAgentPullRequestPromptParams = {
   headBranch: string;
   /** Resolved PR base branch (task source branch or project default). */
   baseBranch: string;
-  /** Optional PR title; defaults to task title. */
-  prTitle?: string;
-  /** Optional PR body. */
-  prBody?: string;
   /** Absolute path to Flux-written `create-pr.md` (project-level, outside the worktree). */
   instructionsAbsolutePath: string;
   /** Repository label for this task (`multi-repo2`); keeps agents from opening PRs in the wrong repo. */
@@ -22,7 +18,8 @@ export type TaskAgentPullRequestPromptParams = {
 
 /**
  * Static PR workflow written to `<projectDir>/agent-instructions/create-pr.md`.
- * Per-task values (id, branches, title, body) are in the short chat prompt only.
+ * Per-task values (id, title, branches) are in the short chat prompt; the agent
+ * chooses PR title and body from context.
  */
 export function buildCreatePrInstructionsMarkdown(): string {
   return [
@@ -30,7 +27,7 @@ export function buildCreatePrInstructionsMarkdown(): string {
     '',
     "Use this task's git worktree as cwd. The user asked Flux to delegate PR creation to you (the task agent), not to run `gh pr create` from the Flux app.",
     '',
-    'The Flux prompt that referenced this file includes the **task id**, **task title**, **repository** (when Flux knows which clone), **head branch**, **PR base branch**, and suggested PR title/body. Use those values for the steps below.',
+    'The Flux prompt that referenced this file includes the **task id**, **task title**, **repository** (when Flux knows which clone), **head branch**, and **PR base branch**. Choose an appropriate PR title and body from the task and repo context.',
     '',
     '## What to do',
     '1. Inspect the repo: `git status`, and `git diff` / `git diff --staged` as needed.',
@@ -68,11 +65,6 @@ export function resolveAgentPullRequestBranchContext(params: {
  * (avoids Cursor truncating long pastes in its input viewport).
  */
 export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptParams): string {
-  const title = (p.prTitle ?? p.taskTitle).trim() || p.taskTitle.trim();
-  const body =
-    (p.prBody ?? '').trim() ||
-    `_Task_: ${p.taskTitle.trim() || p.taskId}`;
-  const titleEscaped = title.replace(/`/g, "'");
   const instructionsPath = p.instructionsAbsolutePath.trim();
 
   const repoLabel = (p.repoDisplayLabel ?? '').trim();
@@ -93,12 +85,6 @@ export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptPar
   lines.push(
     '- **Head branch (push from here):** `' + p.headBranch + '`',
     '- **PR base branch (GitHub `--base`):** `' + p.baseBranch + '`',
-    '- **Suggested PR title:** `' + titleEscaped + '`',
-    '- **Suggested PR body (edit if needed):**',
-    '',
-    '```',
-    body,
-    '```',
     '',
     'Read the full instructions at `' + instructionsPath + '` and follow them to commit, push, and open the PR. Reply with the **PR URL** when done.',
     '',

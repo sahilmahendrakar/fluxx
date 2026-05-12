@@ -277,7 +277,6 @@ declare global {
         requestPullRequestFromAgent: (payload: {
           taskId: string;
           title?: string;
-          description?: string;
         }) => Promise<TaskRequestPullRequestFromAgentResult>;
         refreshPullRequest: (payload: {
           taskId: string;
