@@ -62,8 +62,6 @@ describe('buildTaskAgentPullRequestPrompt', () => {
       taskTitle: 'Backend fix',
       headBranch: 'flux/task-b',
       baseBranch: 'develop',
-      prTitle: 'Backend fix',
-      prBody: '_Task_: Backend fix',
       instructionsAbsolutePath: instructionsPath,
       repoDisplayLabel: 'service-b',
       repoRootPath: '/Users/me/projects/service-b',
@@ -73,17 +71,16 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     expect(text).toContain('`flux/task-b`');
     expect(text).toContain('`develop`');
     expect(text).not.toContain('`main`');
+    expect(text).not.toContain('Suggested PR');
   });
 
-  it('includes task id, title, branches, body, instructions path, and cursor needle', () => {
+  it('includes task id, title, branches, instructions path, and constraints', () => {
     const instructionsPath = '/tmp/flux-project/agent-instructions/create-pr.md';
     const text = buildTaskAgentPullRequestPrompt({
       taskId: 'task-42',
       taskTitle: 'Fix login bug',
       headBranch: 'flux/task-42',
       baseBranch: 'main',
-      prTitle: 'Fix login bug',
-      prBody: '_Task_: Fix login bug',
       instructionsAbsolutePath: instructionsPath,
     });
     expect(text).toContain('`task-42`');
@@ -93,5 +90,7 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     expect(text).toContain('`' + instructionsPath + '`');
     expect(text).toContain('Do not commit secrets');
     expect(text).not.toContain('git status');
+    expect(text).not.toContain('Suggested PR');
+    expect(text).not.toContain('```');
   });
 });

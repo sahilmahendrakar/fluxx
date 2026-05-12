@@ -2007,27 +2007,14 @@ app.whenReady().then(async () => {
   });
 
   /**
-   * Writes PTY input and mirrors `session:write` side effects (task status / cloud notify).
-   * Submission detection matches the renderer: only CR/LF breaks silence / needs-input.
+   * Task UX when the user (or automation) submits a line to a task session PTY
+   * (`\r` / `\n`). Kept separate from {@link sendTaskSessionTerminalInput} so
+   * `tasks:requestPullRequestFromAgent` can await daemon writes then apply the
+   * same effects without double-sending bytes.
    */
-  function sendTaskSessionTerminalInput(sessionId: string, data: string): void {
-    if (isSessionInputDebugEnabled()) {
-      const taskId = sessionTaskMap.get(sessionId) ?? null;
-      console.log('[session:input]', {
-        sessionId,
-        taskId,
-        codeUnits: data.length,
-        repr: describeSessionInputForLog(data),
-      });
-    }
-
-    daemonClient.writeSession(sessionId, data);
-
+  function applyTaskSessionSubmitSideEffects(sessionId: string): void {
     const taskId = sessionTaskMap.get(sessionId);
     if (!taskId) return;
-
-    const submitted = data.includes('\r') || data.includes('\n');
-    if (!submitted) return;
 
     const project = projectStore.get();
     if (project) {
@@ -2049,13 +2036,35 @@ app.whenReady().then(async () => {
     }
   }
 
+  /**
+   * Writes PTY input and mirrors `session:write` side effects (task status / cloud notify).
+   * Submission detection matches the renderer: only CR/LF breaks silence / needs-input.
+   */
+  function sendTaskSessionTerminalInput(sessionId: string, data: string): void {
+    if (isSessionInputDebugEnabled()) {
+      const taskId = sessionTaskMap.get(sessionId) ?? null;
+      console.log('[session:input]', {
+        sessionId,
+        taskId,
+        codeUnits: data.length,
+        repr: describeSessionInputForLog(data),
+      });
+    }
+
+    daemonClient.writeSession(sessionId, data);
+
+    const submitted = data.includes('\r') || data.includes('\n');
+    if (!submitted) return;
+    applyTaskSessionSubmitSideEffects(sessionId);
+  }
+
   ipcMain.handle(
     'tasks:requestPullRequestFromAgent',
     async (_e, raw: unknown): Promise<TaskRequestPullRequestFromAgentResult> => {
       if (!raw || typeof raw !== 'object') {
         return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
       }
-      const o = raw as { taskId?: unknown; title?: unknown; description?: unknown };
+      const o = raw as { taskId?: unknown; title?: unknown };
       const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
       if (!taskId) {
         return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
@@ -2067,12 +2076,8 @@ app.whenReady().then(async () => {
       const project = projectStore.get();
       const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       let title = typeof o.title === 'string' ? o.title.trim() : '';
-      let description = typeof o.description === 'string' ? o.description : '';
       if (taskRow) {
         if (!title) title = taskRow.title.trim();
-        if (o.description === undefined && taskRow.description) {
-          description = taskRow.description;
-        }
       }
       if (!title) {
         return {
@@ -2159,7 +2164,6 @@ app.whenReady().then(async () => {
         };
       }
 
-      const prBody = description.trim() || `_Task_: ${title}`;
       let instructionsPath: string;
       try {
         const instructionsDir = path.join(activeProjectDir(), 'agent-instructions');
@@ -2181,26 +2185,37 @@ app.whenReady().then(async () => {
         taskTitle: title,
         headBranch,
         baseBranch,
-        prTitle: title,
-        prBody,
         instructionsAbsolutePath: instructionsPath,
         repoDisplayLabel: repoCfg ? repoDisplayLabel(repoCfg) : undefined,
         repoRootPath: repoCfg?.rootPath,
       });
+      // Bracketed paste + submit must be **two awaited daemon writes**. Reasons:
+      // - One chunk ending in `\x1b[201~\r` often leaves multiline text in the
+      //   agent input without submitting (Cursor agent CLI; others).
+      // - `daemonClient.writeSession` is fire-and-forget; a lone `\r` after paste
+      //   can be dropped or reordered relative to PTY consumption without await.
+      // - Paste must not go through `sendTaskSessionTerminalInput` alone: the
+      //   prompt body contains `\n`, which would trigger false "submit" side effects.
       const pasteInput = wrapAsXtermBracketedPaste(payload);
       const submitInput = '\r';
-      const combinedInput = `${pasteInput}${submitInput}`;
-      const useCursorSplitPasteSubmit = taskRow?.agent === 'cursor';
-      // Multiline paste uses bracketed paste markers; `\n` inside the body must not hit
-      // `sendTaskSessionTerminalInput` alone (it treats `\n` as submit). Cursor: one
-      // chunk `\x1b[201~\r` left the prompt in the input without submitting — paste then
-      // await RPC, then `\r` only (Claude: single combined write still works).
-      if (useCursorSplitPasteSubmit) {
-        await daemonClient.writeSessionAwait(session.id, pasteInput);
-        sendTaskSessionTerminalInput(session.id, submitInput);
-      } else {
-        sendTaskSessionTerminalInput(session.id, combinedInput);
+      if (isSessionInputDebugEnabled()) {
+        const tid = sessionTaskMap.get(session.id) ?? session.taskId;
+        console.log('[session:input]', {
+          sessionId: session.id,
+          taskId: tid,
+          codeUnits: pasteInput.length,
+          repr: describeSessionInputForLog(pasteInput),
+        });
+        console.log('[session:input]', {
+          sessionId: session.id,
+          taskId: tid,
+          codeUnits: submitInput.length,
+          repr: describeSessionInputForLog(submitInput),
+        });
       }
+      await daemonClient.writeSessionAwait(session.id, pasteInput);
+      await daemonClient.writeSessionAwait(session.id, submitInput);
+      applyTaskSessionSubmitSideEffects(session.id);
       return { ok: true, sessionId: session.id };
     },
   );
