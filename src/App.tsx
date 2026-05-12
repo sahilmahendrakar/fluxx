@@ -38,6 +38,7 @@ import { ProjectSettingsView } from './components/ProjectSettingsView';
 import { TabBar, buildSessionTabs } from './components/TabBar';
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
+import { taskDeleteNeedsWorkspaceConfirmation } from './taskDeleteWorkspaceConfirmation';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
 import { useMembers } from './renderer/projects/useMembers';
@@ -114,19 +115,6 @@ function isWorkspaceSessionTabId(tabId: string): boolean {
   if (STATIC_TAB_IDS.has(tabId)) return false;
   if (tabId.startsWith(PLAN_TAB_PREFIX)) return false;
   return true;
-}
-
-/**
- * When true, deleting the task should show an in-app confirm first (board `TaskCard` uses
- * disk worktree map + session list; any task-linked session covers agents before a path exists).
- */
-function taskDeleteNeedsWorkspaceConfirmation(
-  taskId: string,
-  sessions: Session[],
-  taskHasWorktreeById: Record<string, boolean>,
-): boolean {
-  if (taskHasWorktreeById[taskId] === true) return true;
-  return sessions.some((s) => s.taskId === taskId);
 }
 
 /** Apply debounced cloud patches onto a server task for optimistic UI (`null` clears optional fields). */
