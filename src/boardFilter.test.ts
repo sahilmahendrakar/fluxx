@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyBoardFilters, type BoardFilterState, UNLABELED_VALUE } from './boardFilter';
+import {
+  applyBoardFilters,
+  boardFiltersAreActive,
+  type BoardFilterState,
+  UNASSIGNED_ASSIGNEE_VALUE,
+  UNLABELED_VALUE,
+} from './boardFilter';
 import type { Task, TaskStatus } from './types';
 
 function task(
@@ -20,6 +26,7 @@ const base: BoardFilterState = {
   agent: 'all',
   status: 'all',
   label: null,
+  assignee: null,
   hideDone: false,
 };
 
@@ -104,5 +111,43 @@ describe('applyBoardFilters', () => {
     expect(applyBoardFilters(list, { ...base, status: 'review' }).map((x) => x.id)).toEqual([
       '5',
     ]);
+  });
+
+  it('filters by assignee id', () => {
+    const withAssignees: Task[] = [
+      task('a', { title: 'A', status: 'backlog', agent: 'cursor', assigneeId: 'u1' }),
+      task('b', { title: 'B', status: 'backlog', agent: 'cursor', assigneeId: 'u2' }),
+      task('c', { title: 'C', status: 'backlog', agent: 'cursor' }),
+    ];
+    expect(
+      applyBoardFilters(withAssignees, { ...base, assignee: 'u1' }).map((x) => x.id),
+    ).toEqual(['a']);
+  });
+
+  it('filters to unassigned only', () => {
+    const withAssignees: Task[] = [
+      task('a', { title: 'A', status: 'backlog', agent: 'cursor', assigneeId: 'u1' }),
+      task('b', { title: 'B', status: 'backlog', agent: 'cursor', assigneeId: null }),
+      task('c', { title: 'C', status: 'backlog', agent: 'cursor' }),
+    ];
+    expect(
+      applyBoardFilters(withAssignees, {
+        ...base,
+        assignee: UNASSIGNED_ASSIGNEE_VALUE,
+      }).map((x) => x.id),
+    ).toEqual(['b', 'c']);
+  });
+});
+
+describe('boardFiltersAreActive', () => {
+  it('is false for defaults', () => {
+    expect(boardFiltersAreActive({ ...base })).toBe(false);
+  });
+
+  it('is true when assignee filter is set', () => {
+    expect(boardFiltersAreActive({ ...base, assignee: 'u1' })).toBe(true);
+    expect(
+      boardFiltersAreActive({ ...base, assignee: UNASSIGNED_ASSIGNEE_VALUE }),
+    ).toBe(true);
   });
 });

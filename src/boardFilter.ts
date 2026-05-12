@@ -8,12 +8,17 @@ export const UNLABELED_VALUE = '__unlabeled__' as const;
 
 export type BoardLabelFilter = typeof UNLABELED_VALUE | string | null;
 
+export const UNASSIGNED_ASSIGNEE_VALUE = '__unassigned__' as const;
+
+export type BoardAssigneeFilter = typeof UNASSIGNED_ASSIGNEE_VALUE | string | null;
+
 export type BoardFilterState = {
   search: string;
   includeDescription: boolean;
   agent: Agent | 'all';
   status: BoardStatusFilter;
   label: BoardLabelFilter;
+  assignee: BoardAssigneeFilter;
   hideDone: boolean;
 };
 
@@ -23,6 +28,7 @@ export const DEFAULT_BOARD_FILTER: BoardFilterState = {
   agent: 'all',
   status: 'all',
   label: null,
+  assignee: null,
   hideDone: false,
 };
 
@@ -63,6 +69,14 @@ export function applyBoardFilters(
         }
       }
     }
+    if (filters.assignee != null) {
+      const taskAssignee = t.assigneeId;
+      if (filters.assignee === UNASSIGNED_ASSIGNEE_VALUE) {
+        if (taskAssignee != null && taskAssignee !== '') return false;
+      } else if (taskAssignee !== filters.assignee) {
+        return false;
+      }
+    }
     if (q) {
       const inTitle = textMatches(q, t.title);
       const inDesc =
@@ -85,6 +99,7 @@ export function boardFiltersAreActive(
     f.agent !== defaults.agent ||
     f.status !== defaults.status ||
     f.label !== defaults.label ||
+    f.assignee !== defaults.assignee ||
     f.hideDone !== defaults.hideDone
   );
 }

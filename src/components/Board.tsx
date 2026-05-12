@@ -146,6 +146,7 @@ export default function Board({
             onFilterChange={setBoardFilter}
             labelOptions={labelOptionsForSelect}
             doneHiddenCount={doneHiddenCount}
+            projectMembers={projectMembers}
           />
           <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center">
             <button

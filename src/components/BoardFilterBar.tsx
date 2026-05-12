@@ -6,8 +6,13 @@ import {
   type BoardFilterState,
   boardFiltersAreActive,
   DEFAULT_BOARD_FILTER,
+  UNASSIGNED_ASSIGNEE_VALUE,
   UNLABELED_VALUE,
 } from '../boardFilter';
+import {
+  type ProjectMember,
+  projectMemberDisplayLabel,
+} from '../renderer/projects/members';
 
 const agentLabel = (id: Agent) => AGENTS.find((a) => a.id === id)?.label ?? id;
 
@@ -46,13 +51,14 @@ function FilterToken({
   );
 }
 
-type AddPanel = 'main' | 'agent' | 'label' | 'status';
+type AddPanel = 'main' | 'agent' | 'label' | 'status' | 'assignee';
 
 type Props = {
   filter: BoardFilterState;
   onFilterChange: (next: BoardFilterState) => void;
   labelOptions: string[];
   doneHiddenCount: number;
+  projectMembers?: ProjectMember[];
 };
 
 export function BoardFilterBar({
@@ -60,6 +66,7 @@ export function BoardFilterBar({
   onFilterChange,
   labelOptions,
   doneHiddenCount,
+  projectMembers,
 }: Props) {
   const inputId = useId();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -67,6 +74,15 @@ export function BoardFilterBar({
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const hasActive = boardFiltersAreActive(filter);
+  const assigneeOptions = projectMembers ?? [];
+  const showAssigneeFilter = assigneeOptions.length > 0;
+  const assigneeLabel = (value: Exclude<BoardFilterState['assignee'], null>) => {
+    if (value === UNASSIGNED_ASSIGNEE_VALUE) {
+      return 'Unassigned';
+    }
+    const member = assigneeOptions.find((m) => m.uid === value);
+    return member ? projectMemberDisplayLabel(member) : value;
+  };
   const set = (patch: Partial<BoardFilterState>) => {
     onFilterChange({ ...filter, ...patch });
   };
@@ -139,6 +155,13 @@ export function BoardFilterBar({
             onRemove={() => set({ label: null })}
           />
         ) : null}
+        {filter.assignee != null ? (
+          <FilterToken
+            k="assignee"
+            v={assigneeLabel(filter.assignee)}
+            onRemove={() => set({ assignee: null })}
+          />
+        ) : null}
         {filter.hideDone ? (
           <FilterToken
             k="done"
@@ -204,6 +227,16 @@ export function BoardFilterBar({
                       Label
                       <span className="text-zinc-500">›</span>
                     </button>
+                    {showAssigneeFilter ? (
+                      <button
+                        type="button"
+                        onClick={() => setPanel('assignee')}
+                        className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      >
+                        Assignee
+                        <span className="text-zinc-500">›</span>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => setPanel('status')}
@@ -317,6 +350,42 @@ export function BoardFilterBar({
                           className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                         >
                           {lab}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                {panel === 'assignee' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPanel('main')}
+                      className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
+                    >
+                      ‹ Back
+                    </button>
+                    <div className="max-h-40 overflow-y-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          set({ assignee: UNASSIGNED_ASSIGNEE_VALUE });
+                          setMenuOpen(false);
+                        }}
+                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                      >
+                        Unassigned
+                      </button>
+                      {assigneeOptions.map((member) => (
+                        <button
+                          key={member.uid}
+                          type="button"
+                          onClick={() => {
+                            set({ assignee: member.uid });
+                            setMenuOpen(false);
+                          }}
+                          className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
+                        >
+                          {projectMemberDisplayLabel(member)}
                         </button>
                       ))}
                     </div>
