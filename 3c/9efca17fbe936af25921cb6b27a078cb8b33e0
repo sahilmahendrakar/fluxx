@@ -1,0 +1,38 @@
+src/sessionWorkspacePick.ts
+  s_15641949eb1f82::t_be984b86a9562d 1-28
+src/components/TaskCard.tsx
+  s_15641949eb1f82::t_7239d3d06a5434 231-234
+  s_15641949eb1f82::t_9aec69eb3e822e 15
+  s_15641949eb1f82::t_6f136daab4c403 394-420
+  s_15641949eb1f82::t_65a6a350b01296 258-259
+src/components/Board.tsx
+  s_15641949eb1f82::t_4f26be11f2c93f 219
+  s_15641949eb1f82::t_e7c0b1786d4972 82
+  s_15641949eb1f82::t_c6f73ba72b4775 55-56
+src/App.tsx
+  s_15641949eb1f82::t_62d9505f5a8e36 2378-2386
+  s_15641949eb1f82::t_374e73debfd962 2949
+  s_15641949eb1f82::t_72fdd8e5d9cbff 69
+src/components/Column.tsx
+  s_15641949eb1f82::t_6d3f9fd637397b 128-129
+  s_15641949eb1f82::t_7610984955ca05 35
+  s_15641949eb1f82::t_2fff33e851d33b 63
+  s_15641949eb1f82::t_f28d0024bb7973 153-154
+  s_15641949eb1f82::t_6c154ca4b6b709 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "3c9efca17fbe936af25921cb6b27a078cb8b33e0",
+  "prompts": {},
+  "sessions": {
+    "s_15641949eb1f82": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "10d5f2ff-f94c-4f1b-82b6-647ecf81f85c",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
