@@ -1,4 +1,11 @@
-import type { ActiveProjectKey, Agent, Task, TaskGithubPr, TaskStatus } from './types';
+import type {
+  ActiveProjectKey,
+  Agent,
+  RepoPathStatus,
+  Task,
+  TaskGithubPr,
+  TaskStatus,
+} from './types';
 
 export const MCP_BRIDGE_REQUEST_CHANNEL = 'mcp:rendererBridge:request';
 export const MCP_BRIDGE_RESPONSE_CHANNEL = 'mcp:rendererBridge:response';
@@ -36,6 +43,8 @@ export interface McpBridgeTaskCreateInput {
   createSourceBranchIfMissing?: boolean;
   agentModel?: string;
   agentYolo?: boolean;
+  /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
+  repoId?: string;
 }
 
 export interface McpBridgeTaskPatch {
@@ -50,6 +59,7 @@ export interface McpBridgeTaskPatch {
   githubPr?: TaskGithubPr | null;
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
+  repoId?: string;
 }
 
 export interface McpBridgeTasksCreatePayload {
@@ -92,6 +102,25 @@ export type McpBridgeResponse =
   | { id: string; ok: true; data: unknown }
   | { id: string; ok: false; code: McpBridgeErrorCode; message: string };
 
+/** One repository row for `flux__get_project_info` when multi-repo2 is enabled. */
+export interface McpBridgeProjectInfoRepoSummary {
+  id: string;
+  /** Human-readable name (cloud: Firestore label; local: Flux repo name / folder). */
+  label: string;
+  /** True for the repo that supplies the project workspace root / primary clone. */
+  isPrimary: boolean;
+  /** Branch configured in Flux as the integration line for this repo. */
+  configuredDefaultBranch: string;
+  /** Resolved default short branch name from git discovery on this machine, when it succeeds. */
+  defaultBranchShort?: string;
+  /** Absolute clone path when this machine has a binding (cloud) or local config path. */
+  rootPath?: string;
+  /** Local disk: whether the configured path exists and looks like a git repo. */
+  pathStatus?: RepoPathStatus;
+  /** Cloud: whether this machine has a clone registered for the shared repo id. */
+  binding?: 'bound' | 'missing_binding';
+}
+
 export interface McpBridgeProjectInfoResult {
   name: string;
   activeKey: ActiveProjectKey;
@@ -108,9 +137,17 @@ export interface McpBridgeProjectInfoResult {
   defaultBranchShort?: string;
   /** When branch discovery failed (e.g. missing git), explains why defaultBranchShort is absent. */
   branchDiscoveryError?: string;
+  /**
+   * Multi-repo2: every configured repository with labels, primary marker, and binding/path hints.
+   * Omitted when the feature flag is off (single-repo shape unchanged for agents).
+   */
+  repos?: McpBridgeProjectInfoRepoSummary[];
+  /** Multi-repo2: stable id of the primary repo (same as {@link McpBridgeProjectInfoRepoSummary.isPrimary}). */
+  primaryRepoId?: string;
 }
 
 export interface McpBridgeRepoBranchDiscoveryPayload {
+  repoId?: string;
   classifyBranch?: string;
 }
 

@@ -4,12 +4,19 @@ import type {
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
   PlanningSession,
   ProjectTabState,
+  RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  RepoManagementState,
+  RepoSettingsPatch,
+  ResolveTaskWorktreeIpcPayload,
+  ResolveTaskWorktreeIpcResult,
   Session,
   SessionStartOptions,
   SessionStartResult,
@@ -78,8 +85,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workspace:openPath', dirPath, target) as Promise<
         { ok: true } | { error: string }
       >,
-    resolveTaskWorktree: (taskId: string) =>
-      ipcRenderer.invoke('workspace:resolveTaskWorktree', taskId) as Promise<string | null>,
+    resolveTaskWorktree: (payload: ResolveTaskWorktreeIpcPayload) =>
+      ipcRenderer.invoke('workspace:resolveTaskWorktree', payload) as Promise<ResolveTaskWorktreeIpcResult>,
   },
   project: {
     get: () => ipcRenderer.invoke('project:get') as Promise<LocalProject | null>,
@@ -103,12 +110,63 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     getRepos: () =>
       ipcRenderer.invoke('project:getRepos') as Promise<RepoConfig[]>,
-    updateRepo: (payload: {
-      rootPath: string;
-      patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
-    }) =>
+    getRepoManagementStates: () =>
+      ipcRenderer.invoke('project:getRepoManagementStates') as Promise<
+        | Record<string, RepoManagementState>
+        | { error: string }
+      >,
+    pickRepoDirectory: () =>
+      ipcRenderer.invoke('project:pickRepoDirectory') as Promise<
+        | { rootPath: string }
+        | { error: 'NOT_GIT_REPO' }
+        | { error: string }
+        | null
+      >,
+    updateRepo: (payload: { rootPath: string; patch: RepoSettingsPatch }) =>
       ipcRenderer.invoke('project:updateRepo', payload) as Promise<
         { ok: true; repos: RepoConfig[] } | { error: string }
+      >,
+    updateRepoById: (payload: { repoId: string; patch: RepoSettingsPatch }) =>
+      ipcRenderer.invoke('project:updateRepoById', payload) as Promise<
+        | { ok: true; repos: RepoConfig[] }
+        | { error: string }
+      >,
+    addRepo: (payload: { rootPath: string }) =>
+      ipcRenderer.invoke('project:addRepo', payload) as Promise<
+        | { ok: true; repos: RepoConfig[] }
+        | { error: string }
+      >,
+    removeRepo: (payload: { repoId: string }) =>
+      ipcRenderer.invoke('project:removeRepo', payload) as Promise<
+        | { ok: true; repos: RepoConfig[] }
+        | { error: string }
+      >,
+    setPrimaryRepo: (payload: { repoId: string }) =>
+      ipcRenderer.invoke('project:setPrimaryRepo', payload) as Promise<
+        | { ok: true; repos: RepoConfig[] }
+        | { error: string }
+      >,
+    getPrimaryRepoId: () =>
+      ipcRenderer.invoke('project:getPrimaryRepoId') as Promise<
+        { ok: true; repoId: string | null } | { error: string }
+      >,
+    getCloudRepoBindingOverview: (sharedRepos: CloudSharedRepo[]) =>
+      ipcRenderer.invoke('project:getCloudRepoBindingOverview', sharedRepos) as Promise<
+        | CloudRepoBindingOverview
+        | { error: string; code?: string }
+      >,
+    bindCloudSharedRepo: (payload: {
+      repoId: string;
+      rootPath: string;
+      sharedRepos: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('project:bindCloudSharedRepo', payload) as Promise<
+        | { ok: true; binding: CloudProjectLocalBinding }
+        | { error: string; code?: 'NOT_GIT_REPO' }
+      >,
+    syncCloudSharedRepos: (sharedRepos: CloudSharedRepo[]) =>
+      ipcRenderer.invoke('project:syncCloudSharedRepos', sharedRepos) as Promise<
+        { ok: true } | { error: string }
       >,
     getAutoStartSessionOnInProgress: () =>
       ipcRenderer.invoke('project:getAutoStartSessionOnInProgress') as Promise<boolean>,
@@ -169,14 +227,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'projects:pickDirectoryForCloud',
         cloudProjectId,
       ) as Promise<DirPickResult>,
-    activateCloud: (payload: { id: string; rootPath: string }) =>
+    activateCloud: (payload: {
+      id: string;
+      rootPath: string;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
     clearLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void      >,
   },
   repo: {
-    getBranchDiscovery: (requestedBranch?: string) =>
-      ipcRenderer.invoke('repo:getBranchDiscovery', requestedBranch) as Promise<
+    getBranchDiscovery: (arg?: string | RepoBranchDiscoveryRequest) =>
+      ipcRenderer.invoke('repo:getBranchDiscovery', arg) as Promise<
         RepoBranchDiscoveryResponse | { error: string }
       >,
   },
@@ -210,6 +272,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       createSourceBranchIfMissing?: boolean;
       agentModel?: string;
       agentYolo?: boolean;
+      repoId?: string;
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -229,18 +292,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'autoStartOnUnblock'
           | 'sourceBranch'
           | 'createSourceBranchIfMissing'
+          | 'repoId'
         >
       > & { githubPr?: TaskGithubPr | null },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (
       taskId: string,
-      previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+      previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
         githubPr?: TaskGithubPr;
       },
-      patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+      patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>,
     ) =>
       ipcRenderer.invoke(
         'tasks:assertSourceBranchEditable',
+        taskId,
+        previous,
+        patch,
+      ) as Promise<{ ok: true } | { ok: false; message: string }>,
+    assertRepoIdEditable: (
+      taskId: string,
+      previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+      patch: Pick<Task, 'repoId'>,
+    ) =>
+      ipcRenderer.invoke(
+        'tasks:assertRepoIdEditable',
         taskId,
         previous,
         patch,

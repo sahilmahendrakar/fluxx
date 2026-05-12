@@ -6,9 +6,25 @@ import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
+import {
+  effectiveTaskRepoId,
+  nextPersistedRepoIdAfterPatch,
+  persistedRepoIdsEqual,
+  repoDisplayLabel,
+  resolveLocalTaskRepoIdForCreate,
+  resolvePrimaryRepoId,
+  resolveRepoForBranchDiscovery,
+  validateTaskRepoIdPatchValue,
+} from './repoIdentity';
 import { McpServer } from './main/McpServer';
 import { McpRendererBridge } from './main/McpRendererBridge';
 import { AppStateStore } from './main/AppStateStore';
+import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
+import { hydrateCloudProject } from './cloudBindingPrefs';
+import {
+  migrateLegacyCloudBinding,
+  primaryRootPathFromCloudBinding,
+} from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
 import { DaemonClient } from './main/DaemonClient';
@@ -26,11 +42,14 @@ import {
   taskInitialPrompt,
 } from './main/agentSpawn';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
-import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
+import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
   ghPrViewCurrentBranchOpen,
   ghPrViewJson,
   prMetadataRefMismatchWarning,
+  readOriginRemote,
+  resolveGithubPrGitOperationPaths,
+  validateGithubPrMatchesTaskRemote,
 } from './main/githubTaskPr';
 import { resolveProjectRepoDefaultBranchShort } from './main/resolveProjectRepoDefaultBranch';
 import {
@@ -89,17 +108,26 @@ import type {
   ActiveProjectKey,
   Agent,
   AgentSpawnDefaultsPatch,
+  CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   ProjectTabState,
   LocalProject,
   Project,
+  RepoBranchDiscovery,
+  RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  RepoManagementState,
+  RepoSettingsPatch,
+  Session,
   SessionStartOptions,
   SessionStartResult,
   Task,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentResult,
+  ResolveTaskWorktreeIpcResult,
 } from './types';
 import {
   classifyGitBranchPresence,
@@ -110,7 +138,7 @@ import {
   validateStoredTaskSourceBranchName,
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
-import { isWorktreeCreateError } from './main/worktreeCreateError';
+import { isWorktreeCreateError, WorktreeCreateError } from './main/worktreeCreateError';
 import {
   taskHasBlockingWorkspaceState,
   taskSourceBranchSettingsWouldChange,
@@ -245,6 +273,7 @@ async function migrateLegacyProjectsJson(params: {
       const { project, projectDir } = await projectStore.create(p.rootPath);
       await taskStore.reinit(projectDir);
       await taskStore.migrateMissingProjectIds(project.id);
+      await migrateTaskRepoIdsForProject(taskStore, project);
       worktreeService.setRootPath(project.rootPath);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
@@ -327,12 +356,27 @@ async function migrateLegacyProjectsJson(params: {
   const { project, projectDir } = await projectStore.create(chosen.rootPath);
   await taskStore.reinit(projectDir);
   await taskStore.migrateMissingProjectIds(project.id);
+  await migrateTaskRepoIdsForProject(taskStore, project);
   worktreeService.setRootPath(project.rootPath);
   worktreeService.setProjectDir(projectDir);
   await appStateStore.set({
     lastOpenedProjectDir: projectDir,
     activeProjectKey: { kind: 'local', id: project.id },
   });
+}
+
+/**
+ * Multi-repo2 task migration: backfill `Task.repoId` to the project's
+ * primary repo for legacy rows. Lifted out so every taskStore.reinit
+ * site can call it consistently.
+ */
+async function migrateTaskRepoIdsForProject(
+  taskStore: TaskStore,
+  project: LocalProject,
+): Promise<void> {
+  const primary = resolvePrimaryRepoId(project);
+  if (!primary) return;
+  await taskStore.migrateMissingRepoIds(primary);
 }
 
 // Matches renderer `bg-gray-950` (Tailwind default palette) so native chrome
@@ -379,6 +423,17 @@ const createWindow = () => {
     mainWindow = null;
   });
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[mainWindow] did-fail-load', {
+      errorCode,
+      errorDescription,
+      validatedURL,
+    });
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[mainWindow] render-process-gone', details);
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -412,16 +467,6 @@ app.whenReady().then(async () => {
   await taskStore.init();
 
   const worktreeService = new WorktreeService('', '');
-  worktreeService.setRepoConfigGetter(async (rootPath) => {
-    const projectDir = worktreeService.getProjectDir();
-    if (!projectDir) return null;
-    try {
-      const repos = await projectStore.getReposAt(projectDir);
-      return repos.find((r) => r.rootPath === rootPath) ?? null;
-    } catch {
-      return null;
-    }
-  });
   // Resolve the user's interactive-login-shell env BEFORE the daemon
   // spawns. In packaged macOS GUI launches the parent inherits launchd's
   // minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), which makes `agent`,
@@ -540,6 +585,7 @@ app.whenReady().then(async () => {
       const project = projectStore.get();
       if (project && project.id === activeProjectKey.id) {
         await taskStore.reinit(lastOpenedProjectDir);
+        await migrateTaskRepoIdsForProject(taskStore, project);
         await projectStore.ensureLayoutForRoot(project.rootPath);
         worktreeService.setRootPath(project.rootPath);
         worktreeService.setProjectDir(lastOpenedProjectDir);
@@ -567,6 +613,7 @@ app.whenReady().then(async () => {
       const project = projectStore.get();
       if (project) {
         await taskStore.reinit(lastOpenedProjectDir);
+        await migrateTaskRepoIdsForProject(taskStore, project);
         await projectStore.ensureLayoutForRoot(project.rootPath);
         worktreeService.setRootPath(project.rootPath);
         worktreeService.setProjectDir(lastOpenedProjectDir);
@@ -590,18 +637,24 @@ app.whenReady().then(async () => {
   if (activeProjectKey?.kind === 'cloud') {
     const binding = bindingStore.get(activeProjectKey.id);
     if (binding) {
-      try {
-        await fs.access(path.join(binding.rootPath, '.git'));
-        activeRootPath = binding.rootPath;
-      } catch {
-        activeRootPath = '';
+      const boundRoot = primaryRootPathFromCloudBinding(activeProjectKey.id, binding);
+      if (boundRoot) {
+        try {
+          await fs.access(path.join(boundRoot, '.git'));
+          activeRootPath = boundRoot;
+        } catch {
+          activeRootPath = '';
+        }
       }
     }
   }
 
   if (activeProjectKey?.kind === 'cloud' && activeRootPath) {
     try {
-      const { projectDir } = await projectStore.ensureLayoutForRoot(activeRootPath);
+      const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
+        activeProjectKey.id,
+        activeRootPath,
+      );
       worktreeService.setRootPath(activeRootPath);
       worktreeService.setProjectDir(projectDir);
     } catch {
@@ -641,12 +694,13 @@ app.whenReady().then(async () => {
 
   async function pickDirectory(
     title: string,
+    buttonLabel = 'Open project',
   ): Promise<{ rootPath: string } | { error: 'NOT_GIT_REPO' } | null> {
     const win = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
       properties: ['openDirectory' as const],
       title,
-      buttonLabel: 'Open project',
+      buttonLabel,
     };
     const result = win
       ? await dialog.showOpenDialog(win, dialogOpts)
@@ -665,6 +719,7 @@ app.whenReady().then(async () => {
     const { project, projectDir } = await projectStore.create(rootPath);
     await taskStore.reinit(projectDir);
     await taskStore.migrateMissingProjectIds(project.id);
+    await migrateTaskRepoIdsForProject(taskStore, project);
     worktreeService.setRootPath(rootPath);
     worktreeService.setProjectDir(projectDir);
     await appStateStore.set({
@@ -818,32 +873,345 @@ app.whenReady().then(async () => {
     return projectStore.getReposAt(activeProjectDir());
   });
 
+  async function repoPathStatus(rootPath: string): Promise<RepoManagementState['pathStatus']> {
+    const resolved = path.resolve(rootPath);
+    try {
+      await fs.access(resolved);
+    } catch {
+      return 'missing';
+    }
+    try {
+      await fs.access(path.join(resolved, '.git'));
+      return 'valid';
+    } catch {
+      return 'not_git';
+    }
+  }
+
+  const UNBOUND_REPO_BRANCH_DISCOVERY =
+    'No local clone is bound for this repository. Open Project settings → Project Config and use “Bind local folder” for that repository.';
+
+  function parseCloudSharedReposArg(raw: unknown): CloudSharedRepo[] {
+    if (!Array.isArray(raw)) return [];
+    const out: CloudSharedRepo[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const o = item as Record<string, unknown>;
+      if (
+        typeof o.id !== 'string' ||
+        typeof o.name !== 'string' ||
+        typeof o.baseBranch !== 'string'
+      ) {
+        continue;
+      }
+      const repo: CloudSharedRepo = {
+        id: o.id.trim(),
+        name: o.name,
+        baseBranch: o.baseBranch,
+      };
+      if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
+        repo.remoteUrl = o.remoteUrl.trim();
+      }
+      out.push(repo);
+    }
+    return out;
+  }
+
+  async function syncCloudReposDiskFromBinding(params: {
+    cloudProjectId: string;
+    projectDir: string;
+    sharedRepos: CloudSharedRepo[];
+  }): Promise<void> {
+    const binding = bindingStore.get(params.cloudProjectId);
+    if (!binding) return;
+    const built = repoConfigsFromCloudSharedAndBinding(
+      params.cloudProjectId,
+      params.sharedRepos,
+      binding,
+    );
+    if (!built || built.repos.length === 0) return;
+    await projectStore.applyCloudRepoBindings(
+      params.projectDir,
+      built.primaryRootPath,
+      built.repos,
+    );
+  }
+
+  async function activeConfigProjectId(projectDir: string): Promise<string> {
+    const loaded = projectStore.get()?.id ?? '';
+    if (loaded) return loaded;
+    try {
+      const parsed = JSON.parse(
+        await fs.readFile(path.join(projectDir, 'config.json'), 'utf8'),
+      ) as { id?: string };
+      if (typeof parsed.id === 'string') return parsed.id;
+    } catch {
+      // Fall through to the shared validation error below.
+    }
+    throw new Error('Invalid project configuration');
+  }
+
+  async function repoRemovalBlockers(params: {
+    configProjectId: string;
+    repoId: string;
+    repos: RepoConfig[];
+  }): Promise<{ taskCount: number; workspaceCount: number }> {
+    const primaryRepoId = params.repos[0]?.id;
+    if (!primaryRepoId) {
+      throw new Error('No repositories configured');
+    }
+
+    const localProject = projectStore.get();
+    const tasks =
+      localProject?.id === params.configProjectId
+        ? taskStore.getAll(params.configProjectId)
+        : [];
+
+    const taskCount = tasks.filter(
+      (t) => effectiveTaskRepoId(t, primaryRepoId) === params.repoId,
+    ).length;
+
+    const sessions = await daemonClient.listSessions();
+    let workspaceCount = 0;
+    for (const s of sessions) {
+      if (s.projectId !== params.configProjectId) continue;
+
+      let effectiveRepo = s.repoId?.trim();
+      if (!effectiveRepo || effectiveRepo.length === 0) {
+        const task = tasks.find((x) => x.id === s.taskId);
+        effectiveRepo = task
+          ? effectiveTaskRepoId(task, primaryRepoId)
+          : primaryRepoId;
+      }
+      if (effectiveRepo === params.repoId) {
+        workspaceCount += 1;
+      }
+    }
+
+    return { taskCount, workspaceCount };
+  }
+
+  function normalizeBranchDiscoveryArg(
+    raw: unknown,
+  ): { repoId?: string; classifyBranch?: string } {
+    if (raw == null) return {};
+    if (typeof raw === 'string') {
+      return { classifyBranch: raw };
+    }
+    if (typeof raw === 'object') {
+      const o = raw as RepoBranchDiscoveryRequest;
+      const repoId =
+        typeof o.repoId === 'string' && o.repoId.trim() !== ''
+          ? o.repoId.trim()
+          : undefined;
+      const classifyBranch =
+        typeof o.classifyBranch === 'string' ? o.classifyBranch : undefined;
+      return { ...(repoId !== undefined ? { repoId } : {}), classifyBranch };
+    }
+    return {};
+  }
+
+  async function assertRepoUnusedForRemoval(params: {
+    configProjectId: string;
+    repoId: string;
+    repos: RepoConfig[];
+  }): Promise<void> {
+    const blockers = await repoRemovalBlockers(params);
+    if (blockers.taskCount > 0) {
+      throw new Error(
+        `Cannot remove repository: ${blockers.taskCount} task(s) still reference it.`,
+      );
+    }
+
+    if (blockers.workspaceCount > 0) {
+      throw new Error(
+        `Cannot remove repository: ${blockers.workspaceCount} workspace(s) still reference it.`,
+      );
+    }
+  }
+
+  ipcMain.handle(
+    'project:getRepoManagementStates',
+    async (): Promise<
+      | Record<string, RepoManagementState>
+      | { error: string }
+    > => {
+      try {
+        const projectDir = activeProjectDir();
+        const repos = await projectStore.getReposAt(projectDir);
+        const projectId = await activeConfigProjectId(projectDir);
+        const entries = await Promise.all(
+          repos.map(async (repo): Promise<[string, RepoManagementState]> => {
+            const [pathState, blockers] = await Promise.all([
+              repoPathStatus(repo.rootPath),
+              repoRemovalBlockers({
+                configProjectId: projectId,
+                repoId: repo.id,
+                repos,
+              }),
+            ]);
+            return [
+              repo.id,
+              {
+                pathStatus: pathState,
+                removalBlocked: blockers.taskCount > 0 || blockers.workspaceCount > 0,
+                blockingTaskCount: blockers.taskCount,
+                blockingWorkspaceCount: blockers.workspaceCount,
+              },
+            ];
+          }),
+        );
+        return Object.fromEntries(entries);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'project:pickRepoDirectory',
+    async (): Promise<
+      | { rootPath: string }
+      | { error: 'NOT_GIT_REPO' }
+      | { error: string }
+      | null
+    > => {
+      return pickDirectory('Add repository to project', 'Add repository');
+    },
+  );
+
+  ipcMain.handle(
+    'project:getCloudRepoBindingOverview',
+    async (_e, rawSharedRepos: unknown): Promise<
+      CloudRepoBindingOverview | { error: string; code?: string }
+    > => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') {
+        return { error: 'No cloud project is open.', code: 'NOT_CLOUD' };
+      }
+      const sharedRepos = parseCloudSharedReposArg(rawSharedRepos);
+      const binding = bindingStore.get(key.id);
+      const migrated = binding ? migrateLegacyCloudBinding(key.id, binding) : null;
+      const rb = migrated?.repoBindings ?? {};
+      const out: CloudRepoBindingOverview = {};
+      for (const sr of sharedRepos) {
+        const machine = rb[sr.id];
+        if (!machine?.rootPath) {
+          out[sr.id] = { kind: 'missing_binding' };
+          continue;
+        }
+        const pathStatus = await repoPathStatus(machine.rootPath);
+        out[sr.id] = {
+          kind: 'bound',
+          rootPath: machine.rootPath,
+          pathStatus,
+        };
+      }
+      return out;
+    },
+  );
+
+  ipcMain.handle(
+    'project:bindCloudSharedRepo',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; binding: CloudProjectLocalBinding }
+      | { error: string; code?: 'NOT_GIT_REPO' }
+    > => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') {
+        return { error: 'No cloud project is open.' };
+      }
+      if (!payload || typeof payload !== 'object') {
+        return { error: 'Invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const rootPath = typeof p.rootPath === 'string' ? p.rootPath.trim() : '';
+      const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+      if (!repoId) return { error: 'repoId is required' };
+      if (!rootPath) return { error: 'rootPath is required' };
+      try {
+        await fs.access(path.join(rootPath, '.git'));
+      } catch {
+        return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
+      }
+      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, rootPath);
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'No active workspace directory.' };
+      }
+      await syncCloudReposDiskFromBinding({
+        cloudProjectId: key.id,
+        projectDir,
+        sharedRepos,
+      });
+      return { ok: true, binding };
+    },
+  );
+
+  ipcMain.handle(
+    'project:syncCloudSharedRepos',
+    async (_e, rawSharedRepos: unknown): Promise<{ ok: true } | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (key?.kind !== 'cloud') return { error: 'No cloud project is open.' };
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No workspace' };
+      const sharedRepos = parseCloudSharedReposArg(rawSharedRepos);
+      await syncCloudReposDiskFromBinding({
+        cloudProjectId: key.id,
+        projectDir,
+        sharedRepos,
+      });
+      return { ok: true };
+    },
+  );
+
   ipcMain.handle(
     'repo:getBranchDiscovery',
     async (
       _e,
-      requestedBranch?: string,
+      arg?: string | RepoBranchDiscoveryRequest,
     ): Promise<RepoBranchDiscoveryResponse | { error: string }> => {
       try {
         const projectDir = activeProjectDir();
         const repos = await projectStore.getReposAt(projectDir);
-        const repo = repos[0];
+        const { repoId, classifyBranch } = normalizeBranchDiscoveryArg(arg);
+        const repo = resolveRepoForBranchDiscovery(repos, repoId);
         if (!repo?.rootPath) {
-          return { error: 'No repository root configured for this project' };
+          const explicit = repoId != null && repoId.trim().length > 0;
+          const activeKey = appStateStore.get().activeProjectKey;
+          return {
+            error: explicit
+              ? activeKey?.kind === 'cloud'
+                ? UNBOUND_REPO_BRANCH_DISCOVERY
+                : `Unknown repository id "${repoId?.trim()}" for this local project. Open Project settings → Project Config and choose a repository that exists on this project.`
+              : 'No repository root configured for this project',
+          };
         }
-        const base = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
-        if (requestedBranch == null || requestedBranch.trim() === '') {
+        let base: RepoBranchDiscovery;
+        try {
+          base = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const label = repoDisplayLabel(repo);
+          return { error: `${label}: ${msg}` };
+        }
+        if (classifyBranch == null || classifyBranch.trim() === '') {
           return base;
         }
         const { normalizedShort, presence } = classifyGitBranchPresence(
-          requestedBranch,
+          classifyBranch,
           base.localBranches,
           base.remoteBranches,
         );
         return {
           ...base,
           classification: {
-            raw: requestedBranch,
+            raw: classifyBranch,
             normalizedShort,
             presence,
           },
@@ -860,7 +1228,7 @@ app.whenReady().then(async () => {
       _e,
       payload: {
         rootPath: string;
-        patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
+        patch: RepoSettingsPatch;
       },
     ): Promise<{ ok: true; repos: RepoConfig[] } | { error: string }> => {
       try {
@@ -870,6 +1238,121 @@ app.whenReady().then(async () => {
           payload.patch,
         );
         return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'project:updateRepoById',
+    async (
+      _e,
+      payload: { repoId: string; patch: RepoSettingsPatch },
+    ): Promise<
+      | { ok: true; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        const rid = (payload.repoId ?? '').trim();
+        if (!rid) {
+          return { error: 'repoId is required' };
+        }
+        const repos = await projectStore.updateRepoByIdAt(
+          activeProjectDir(),
+          rid,
+          payload.patch,
+        );
+        return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'project:addRepo',
+    async (
+      _e,
+      payload: { rootPath: string },
+    ): Promise<
+      | { ok: true; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        const root = (payload.rootPath ?? '').trim();
+        if (!root) {
+          return { error: 'rootPath is required' };
+        }
+        const repos = await projectStore.addRepoAt(activeProjectDir(), root);
+        return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'project:removeRepo',
+    async (
+      _e,
+      payload: { repoId: string },
+    ): Promise<
+      | { ok: true; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        const rid = (payload.repoId ?? '').trim();
+        if (!rid) {
+          return { error: 'repoId is required' };
+        }
+        const projectDir = activeProjectDir();
+        const reposBefore = await projectStore.getReposAt(projectDir);
+        const projectId = await activeConfigProjectId(projectDir);
+        await assertRepoUnusedForRemoval({
+          configProjectId: projectId,
+          repoId: rid,
+          repos: reposBefore,
+        });
+        const repos = await projectStore.removeRepoAt(projectDir, rid);
+        return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'project:setPrimaryRepo',
+    async (
+      _e,
+      payload: { repoId: string },
+    ): Promise<
+      | { ok: true; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        const rid = (payload.repoId ?? '').trim();
+        if (!rid) {
+          return { error: 'repoId is required' };
+        }
+        const repos = await projectStore.setPrimaryRepoAt(
+          activeProjectDir(),
+          rid,
+        );
+        return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'project:getPrimaryRepoId',
+    async (): Promise<{ ok: true; repoId: string | null } | { error: string }> => {
+      try {
+        const repos = await projectStore.getReposAt(activeProjectDir());
+        return { ok: true, repoId: repos[0]?.id ?? null };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
@@ -1057,6 +1540,7 @@ app.whenReady().then(async () => {
       await projectStore.ensureLayoutForRoot(project.rootPath);
       await taskStore.reinit(projectDir);
       await taskStore.migrateMissingProjectIds(project.id);
+      await migrateTaskRepoIdsForProject(taskStore, project);
       worktreeService.setRootPath(project.rootPath);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
@@ -1111,12 +1595,17 @@ app.whenReady().then(async () => {
       const picked = await pickDirectory('Pick the local folder for this project');
       if (!picked || 'error' in picked) return picked;
       const binding = await bindingStore.set(cloudProjectId, picked.rootPath);
-      return { rootPath: binding.rootPath };
+      const primary =
+        primaryRootPathFromCloudBinding(cloudProjectId, binding) ?? picked.rootPath;
+      return { rootPath: primary };
     },
   );
   ipcMain.handle(
     'projects:activateCloud',
-    async (_e, payload: { id: string; rootPath: string }) => {
+    async (
+      _e,
+      payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
+    ) => {
       try {
         await fs.access(path.join(payload.rootPath, '.git'));
       } catch {
@@ -1125,12 +1614,22 @@ app.whenReady().then(async () => {
       await bindingStore.set(payload.id, payload.rootPath);
       await projectStore.clear();
       await taskStore.reinit('');
-      const { projectDir } = await projectStore.ensureLayoutForRoot(payload.rootPath);
+      const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
+        payload.id,
+        payload.rootPath,
+      );
       worktreeService.setRootPath(payload.rootPath);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
       });
+      if (payload.sharedRepos && payload.sharedRepos.length > 0) {
+        await syncCloudReposDiskFromBinding({
+          cloudProjectId: payload.id,
+          projectDir,
+          sharedRepos: payload.sharedRepos,
+        });
+      }
       return { ok: true as const };
     },
   );
@@ -1161,14 +1660,31 @@ app.whenReady().then(async () => {
   ipcMain.handle('workspace:openPath', async (_e, rawPath: unknown, rawTarget: unknown) =>
     openWorkspacePath(rawPath, rawTarget),
   );
-  ipcMain.handle('workspace:resolveTaskWorktree', async (_e, taskId: unknown) => {
-    if (typeof taskId !== 'string' || !taskId.trim()) return null;
-    return resolveTaskWorktreePath(
-      taskId.trim(),
-      () => daemonClient.listSessions(),
-      worktreeService.getProjectDir(),
-    );
-  });
+  ipcMain.handle(
+    'workspace:resolveTaskWorktree',
+    async (_e, payload: unknown): Promise<ResolveTaskWorktreeIpcResult> => {
+      const parsed = parseResolveTaskWorktreePayload(payload);
+      const taskId = parsed.taskId;
+      if (!taskId) {
+        return {
+          path: null,
+          detail: { code: 'no-worktree', message: 'Invalid task id.' },
+        };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      const resolved = await resolveTaskWorktreePath(
+        taskId,
+        () => daemonClient.listSessions(),
+        projectDir ?? '',
+        parsed.repoId,
+      );
+      if (resolved) {
+        return { path: resolved };
+      }
+      const detail = await detailWhenResolveFailed(parsed.repoId, projectDir);
+      return { path: null, detail };
+    },
+  );
 
   // ---- Email (Resend) ----
   console.log(
@@ -1211,6 +1727,7 @@ app.whenReady().then(async () => {
         createSourceBranchIfMissing?: boolean;
         agentModel?: string;
         agentYolo?: boolean;
+        repoId?: string;
       },
     ) => {
       const project = projectStore.get();
@@ -1219,7 +1736,11 @@ app.whenReady().then(async () => {
       }
       const projectDir = activeProjectDir();
       const repos = await projectStore.getReposAt(projectDir);
-      const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
+      const repoResolved = resolveLocalTaskRepoIdForCreate(repos, input.repoId);
+      if (!repoResolved.ok) {
+        throw new Error(repoResolved.message);
+      }
+      const repo = resolveRepoForBranchDiscovery(repos, repoResolved.repoId);
       if (!repo?.rootPath) {
         throw new Error('No repository root configured for this project');
       }
@@ -1242,6 +1763,7 @@ app.whenReady().then(async () => {
         ...input,
         ...extra,
         projectId: project.id,
+        repoId: repoResolved.repoId,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
       });
@@ -1261,28 +1783,39 @@ app.whenReady().then(async () => {
       const tid = taskId.trim();
       const prev =
         previousFields && typeof previousFields === 'object'
-          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+          ? (previousFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
               githubPr?: TaskGithubPr;
             })
           : {};
       const patch =
         patchFields && typeof patchFields === 'object'
-          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>)
+          ? (patchFields as Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>)
           : {};
       try {
+        const project = projectStore.get();
         const projectDir = activeProjectDir();
         const repos = await projectStore.getReposAt(projectDir);
-        const project = projectStore.get();
-        const rootPathForRepo =
-          project?.rootPath ?? repos.find((r) => r.rootPath)?.rootPath ?? repos[0]?.rootPath;
-        if (!rootPathForRepo) {
-          return { ok: false, message: 'No repository root configured for this project' };
+        if (patch.repoId !== undefined) {
+          const vrRepo = validateTaskRepoIdPatchValue(repos, patch.repoId);
+          if (!vrRepo.ok) {
+            return { ok: false, message: vrRepo.message };
+          }
         }
-        const repo = repos.find((r) => r.rootPath === rootPathForRepo) ?? repos[0];
-        const discovery = await collectRepoBranchDiscovery(
-          rootPathForRepo,
-          repo?.baseBranch ?? 'main',
-        );
+        const repoIdForDiscovery =
+          patch.repoId !== undefined
+            ? nextPersistedRepoIdAfterPatch(prev.repoId, patch.repoId)
+            : prev.repoId;
+        const repoCfg = resolveRepoForBranchDiscovery(repos, repoIdForDiscovery);
+        if (!repoCfg?.rootPath) {
+          return {
+            ok: false,
+            message:
+              repoIdForDiscovery != null && String(repoIdForDiscovery).trim() !== ''
+                ? 'Unknown repository id for this project'
+                : 'No repository root configured for this project',
+          };
+        }
+        const discovery = await collectRepoBranchDiscovery(repoCfg.rootPath, repoCfg.baseBranch);
         const previousTask = {
           id: tid,
           title: '',
@@ -1307,11 +1840,13 @@ app.whenReady().then(async () => {
               'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the base branch.',
           };
         }
+        const repoGitRootsForGuard = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
+          repoId: prev.repoId,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsForGuard,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(tid);
@@ -1334,16 +1869,88 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle(
+    'tasks:assertRepoIdEditable',
+    async (
+      _e,
+      taskId: unknown,
+      previousFields: unknown,
+      patchFields: unknown,
+    ): Promise<{ ok: true } | { ok: false; message: string }> => {
+      if (typeof taskId !== 'string' || !taskId.trim()) {
+        return { ok: false, message: 'Invalid task id' };
+      }
+      const tid = taskId.trim();
+      const prev =
+        previousFields && typeof previousFields === 'object'
+          ? (previousFields as Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr })
+          : {};
+      const patch =
+        patchFields && typeof patchFields === 'object'
+          ? (patchFields as Pick<Task, 'repoId'>)
+          : {};
+      if (patch.repoId === undefined) {
+        return { ok: true };
+      }
+      try {
+        const projectDir = activeProjectDir();
+        const repos = await projectStore.getReposAt(projectDir);
+        const vr = validateTaskRepoIdPatchValue(repos, patch.repoId);
+        if (!vr.ok) {
+          return { ok: false, message: vr.message };
+        }
+        const nextRepoId = nextPersistedRepoIdAfterPatch(prev.repoId, patch.repoId);
+        if (persistedRepoIdsEqual(prev.repoId, nextRepoId)) {
+          return { ok: true };
+        }
+        const linkedPrUrl = (prev.githubPr?.url ?? '').trim();
+        if (linkedPrUrl) {
+          return {
+            ok: false,
+            message:
+              'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
+          };
+        }
+        const repoGitRootsForRepoPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: tid,
+          repoId: prev.repoId,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsForRepoPatch,
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(tid);
+          return {
+            ok: false,
+            message: `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          };
+        }
+        return { ok: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, message };
+      }
+    },
+  );
   ipcMain.handle('tasks:update', async (_e, id, patch) =>
     updateTaskWithTransitionHandling(id, patch, 'ipc:tasks:update'),
   );
   ipcMain.handle(
     'tasks:cleanupResources',
     async (_e, taskId: string): Promise<{ errors: string[] }> => {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const project = projectStore.get();
+      const taskRepoId = project
+        ? taskStore.getAll(project.id).find((t) => t.id === taskId)?.repoId?.trim() || null
+        : null;
       const errors = await teardownEphemeralResourcesForTask(
         daemonClient,
         worktreeService,
         taskId,
+        repos,
+        taskRepoId,
       );
       return { errors };
     },
@@ -1354,13 +1961,43 @@ app.whenReady().then(async () => {
   ipcMain.handle('tasks:resolveWorktrees', async (_e, raw: unknown): Promise<Record<string, boolean>> => {
     const projectDir = worktreeService.getProjectDir();
     if (!projectDir) return {};
-    const ids = Array.isArray(raw)
-      ? raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
-      : [];
-    const capped = ids.slice(0, 400);
+    let entries: { taskId: string; repoId?: string | null }[] = [];
+    if (Array.isArray(raw)) {
+      const first = raw[0];
+      if (
+        first &&
+        typeof first === 'object' &&
+        typeof (first as { taskId?: unknown }).taskId === 'string'
+      ) {
+        entries = raw
+          .filter((x): x is { taskId: string; repoId?: unknown } => {
+            return Boolean(
+              x &&
+                typeof x === 'object' &&
+                typeof (x as { taskId?: unknown }).taskId === 'string' &&
+                String((x as { taskId: string }).taskId).trim().length > 0,
+            );
+          })
+          .map((x) => ({
+            taskId: String(x.taskId).trim(),
+            repoId:
+              typeof x.repoId === 'string' ? x.repoId : x.repoId === null ? null : undefined,
+          }));
+      } else {
+        entries = raw
+          .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+          .map((x) => ({ taskId: x.trim() }));
+      }
+    }
+    const capped = entries.slice(0, 400);
     const out: Record<string, boolean> = {};
-    for (const taskId of capped) {
-      const p = await resolveTaskWorktreePath(taskId, () => daemonClient.listSessions(), projectDir);
+    for (const { taskId, repoId } of capped) {
+      const p = await resolveTaskWorktreePath(
+        taskId,
+        () => daemonClient.listSessions(),
+        projectDir,
+        repoId,
+      );
       out[taskId] = Boolean(p);
     }
     return out;
@@ -1425,15 +2062,13 @@ app.whenReady().then(async () => {
         return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
       }
       const project = projectStore.get();
+      const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       let title = typeof o.title === 'string' ? o.title.trim() : '';
       let description = typeof o.description === 'string' ? o.description : '';
-      if (project) {
-        const row = taskStore.getAll(project.id).find((t) => t.id === taskId);
-        if (row) {
-          if (!title) title = row.title.trim();
-          if (o.description === undefined && row.description) {
-            description = row.description;
-          }
+      if (taskRow) {
+        if (!title) title = taskRow.title.trim();
+        if (o.description === undefined && taskRow.description) {
+          description = taskRow.description;
         }
       }
       if (!title) {
@@ -1445,7 +2080,7 @@ app.whenReady().then(async () => {
       }
 
       const sessions = await daemonClient.listSessions();
-      const session = sessions.find((s) => s.taskId === taskId);
+      const session = pickSessionForTaskWorktree(sessions, taskId, taskRow?.repoId);
       if (!session) {
         return {
           ok: false,
@@ -1500,12 +2135,14 @@ app.whenReady().then(async () => {
         };
       }
 
+      const repos = project ? await projectStore.getReposAt(activeProjectDir()) : [];
+      const primaryRepoId = resolvePrimaryRepoId(repos) ?? '';
       const repoDefaultBranch = await resolveProjectRepoDefaultBranchShort({
         projectStore,
         activeProjectDir,
         rootPath,
+        repoId: taskRow ? effectiveTaskRepoId(taskRow, primaryRepoId) : undefined,
       });
-      const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const { baseBranch, headBranch } = resolveAgentPullRequestBranchContext({
         task: taskRow ?? {},
         projectDefaultBranchShort: repoDefaultBranch,
@@ -1535,6 +2172,7 @@ app.whenReady().then(async () => {
             'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
         };
       }
+      const repoCfg = resolveRepoForBranchDiscovery(repos, taskRow?.repoId);
       const payload = buildTaskAgentPullRequestPrompt({
         taskId,
         taskTitle: title,
@@ -1543,6 +2181,8 @@ app.whenReady().then(async () => {
         prTitle: title,
         prBody,
         instructionsAbsolutePath: instructionsPath,
+        repoDisplayLabel: repoCfg ? repoDisplayLabel(repoCfg) : undefined,
+        repoRootPath: repoCfg?.rootPath,
       });
       const pasteInput = wrapAsXtermBracketedPaste(payload);
       const submitInput = '\r';
@@ -1578,20 +2218,31 @@ app.whenReady().then(async () => {
       if (!rootPath || !projectDir) {
         return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
       }
+      const project = projectStore.get();
+      const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const worktreePath = await resolveTaskWorktreePath(
         taskId,
         () => daemonClient.listSessions(),
         projectDir,
+        row?.repoId,
       );
-      const ghCwd = worktreePath || rootPath || projectDir;
-      const project = projectStore.get();
+      const repos = await projectStore.getReposAt(projectDir);
+      const resolvedPaths = await resolveGithubPrGitOperationPaths({
+        repos,
+        taskRepoId: row?.repoId,
+        worktreePath,
+      });
+      if (!resolvedPaths.ok) {
+        return resolvedPaths;
+      }
+      const { ghCwd, gitRootPath } = resolvedPaths;
+
       let prUrl = '';
       const fromPayload =
         o.githubPr && typeof o.githubPr === 'object' && typeof (o.githubPr as TaskGithubPr).url === 'string'
           ? String((o.githubPr as TaskGithubPr).url).trim()
           : '';
       if (fromPayload) prUrl = fromPayload;
-      const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       if (!prUrl && project) {
         prUrl = row?.githubPr?.url?.trim() ?? '';
       }
@@ -1611,6 +2262,11 @@ app.whenReady().then(async () => {
         console.warn('[tasks:refreshPullRequest] gh view failed', taskId, viewed.message);
         return viewed;
       }
+
+      const origin = await readOriginRemote(gitRootPath);
+      if (!origin.ok) return origin;
+      const mismatch = validateGithubPrMatchesTaskRemote(viewed.githubPr.url, origin.url);
+      if (mismatch) return mismatch;
 
       const metadataMismatchWarning = row?.githubPr
         ? prMetadataRefMismatchWarning(row.githubPr, viewed.githubPr)
@@ -1714,29 +2370,197 @@ app.whenReady().then(async () => {
     }
     const binding = bindingStore.get(activeKey.id);
     if (!binding) throw new Error('Cloud project is not bound to a local folder');
-    const prefs = bindingStore.getPrefs(activeKey.id);
+    const primaryPath = primaryRootPathFromCloudBinding(activeKey.id, binding);
+    if (!primaryPath) throw new Error('Cloud project is not bound to a local folder');
+    return hydrateCloudProject(
+      {
+        id: activeKey.id,
+        name: path.basename(primaryPath),
+        ownerId: '',
+        memberIds: [],
+        createdAt: '',
+      },
+      binding,
+    );
+  }
+
+  function parseResolveTaskWorktreePayload(raw: unknown): {
+    taskId: string;
+    repoId?: string | null;
+  } {
+    if (typeof raw === 'string') {
+      return { taskId: raw.trim() };
+    }
+    if (raw && typeof raw === 'object' && typeof (raw as { taskId?: unknown }).taskId === 'string') {
+      const o = raw as { taskId: string; repoId?: unknown };
+      const repoId = o.repoId;
+      return {
+        taskId: o.taskId.trim(),
+        repoId: typeof repoId === 'string' || repoId === null ? repoId : undefined,
+      };
+    }
+    return { taskId: '' };
+  }
+
+  async function detailWhenResolveFailed(
+    repoId: string | null | undefined,
+    projectDir: string | null,
+  ): Promise<NonNullable<ResolveTaskWorktreeIpcResult['detail']>> {
+    if (!projectDir?.trim()) {
+      return {
+        code: 'no-project-dir',
+        message: 'No Flux project directory is open.',
+      };
+    }
+    const rid = repoId?.trim();
+    if (!rid) {
+      return {
+        code: 'no-worktree',
+        message:
+          "No workspace folder yet. Start this task's agent session to create a worktree.",
+      };
+    }
+    let project: Project;
+    try {
+      project = await resolveProjectForStart();
+    } catch {
+      return {
+        code: 'no-project-dir',
+        message: 'No project is open.',
+      };
+    }
+    const repos = await projectStore.getReposAt(activeProjectDir());
+    const repoCfg = resolveRepoForBranchDiscovery(repos, rid);
+    if (!repoCfg) {
+      return {
+        code: 'repo-unknown',
+        message:
+          'Unknown repository for this task. Choose a repository that exists under Project settings.',
+      };
+    }
+    if (project.kind === 'cloud') {
+      const mb = project.repoMachineBindings?.[repoCfg.id];
+      if (!mb?.rootPath?.trim()) {
+        return {
+          code: 'repo-not-bound',
+          message: `This machine has no local clone bound for repository "${repoDisplayLabel(repoCfg)}". Bind the repository in Project settings before opening the workspace.`,
+        };
+      }
+    }
+    const resolvedClone = path.resolve(repoCfg.rootPath);
+    try {
+      await fs.access(resolvedClone);
+    } catch {
+      return {
+        code: 'repo-path-missing',
+        message: `The repository clone path does not exist: ${resolvedClone}`,
+      };
+    }
+    try {
+      await fs.access(path.join(resolvedClone, '.git'));
+    } catch {
+      return {
+        code: 'repo-not-git',
+        message: `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
+      };
+    }
     return {
-      id: activeKey.id,
-      kind: 'cloud',
-      name: path.basename(binding.rootPath),
-      rootPath: binding.rootPath,
-      ownerId: '',
-      memberIds: [],
-      createdAt: '',
-      ...prefs,
+      code: 'no-worktree',
+      message:
+        "No workspace folder yet. Start this task's agent session to create a worktree.",
     };
+  }
+
+  async function gitRootForDaemonSession(session: Session): Promise<string | null> {
+    try {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const cfg = resolveRepoForBranchDiscovery(repos, session.repoId);
+      const rp = cfg?.rootPath?.trim();
+      if (rp) {
+        try {
+          await fs.access(path.join(path.resolve(rp), '.git'));
+          return path.resolve(rp);
+        } catch {
+          /* fall through */
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+    const fallback = worktreeService.getRootPath()?.trim();
+    return fallback ? path.resolve(fallback) : null;
+  }
+
+  /**
+   * Resolves {@link RepoConfig} for the clone worktrees and agent sessions use.
+   * Validates cloud machine bindings and filesystem paths before session start.
+   */
+  async function resolveRepoConfigForTaskSession(
+    project: Project,
+    task: Task,
+    projectDir: string,
+  ): Promise<RepoConfig> {
+    const repos = await projectStore.getReposAt(projectDir);
+    const primaryId = resolvePrimaryRepoId(repos);
+    if (!primaryId) {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_INVALID_STATE',
+        'No repository is configured for this project.',
+      );
+    }
+
+    const discoveryKey = task.repoId;
+    const repoCfg = resolveRepoForBranchDiscovery(repos, discoveryKey);
+
+    if (!repoCfg) {
+      const rid = discoveryKey?.trim();
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_UNKNOWN',
+        rid
+          ? `Unknown repository "${rid}" on this project. Pick a repository that exists under Project settings.`
+          : 'No repository root configured for this project.',
+      );
+    }
+
+    if (project.kind === 'cloud') {
+      const mb = project.repoMachineBindings?.[repoCfg.id];
+      if (!mb?.rootPath?.trim()) {
+        throw new WorktreeCreateError(
+          'WORKTREE_REPO_NOT_BOUND',
+          `This machine has no local clone bound for repository "${repoDisplayLabel(repoCfg)}". Bind the repository before starting a task.`,
+        );
+      }
+    }
+
+    const resolvedClone = path.resolve(repoCfg.rootPath);
+    try {
+      await fs.access(resolvedClone);
+    } catch {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_PATH_MISSING',
+        `The repository clone path does not exist: ${resolvedClone}`,
+      );
+    }
+    try {
+      await fs.access(path.join(resolvedClone, '.git'));
+    } catch {
+      throw new WorktreeCreateError(
+        'WORKTREE_REPO_NOT_GIT',
+        `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
+      );
+    }
+
+    return repoCfg;
   }
 
   async function worktreeSourceOptsForTaskSession(
     task: Task,
-    project: Project,
+    repoCfg: RepoConfig,
   ): Promise<{ sourceBranchShort: string; createSourceBranchIfMissing: boolean }> {
-    const projectDir = activeProjectDir();
-    const repos = await projectStore.getReposAt(projectDir);
-    const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
     const discovery = await collectRepoBranchDiscovery(
-      project.rootPath,
-      repo?.baseBranch ?? 'main',
+      repoCfg.rootPath,
+      repoCfg.baseBranch,
     );
     const sourceEff =
       effectiveTaskSourceBranchShort(task, discovery.defaultBranchShort) ||
@@ -1874,9 +2698,24 @@ app.whenReady().then(async () => {
     try {
       let worktreePath = '';
       let branch = '';
+      let sessionRepoCfg: RepoConfig | null = null;
       try {
-        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, project);
-        const created = await worktreeService.create(task.id, sourceOpts);
+        const projectDir = activeProjectDir();
+        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir);
+        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg);
+        const layout = 'repo-scoped' as const;
+        const created = await worktreeService.create({
+          taskId: task.id,
+          repo: {
+            repoId: sessionRepoCfg.id,
+            gitRootPath: sessionRepoCfg.rootPath,
+            baseBranch: sessionRepoCfg.baseBranch,
+            setupScript: sessionRepoCfg.setupScript,
+            env: sessionRepoCfg.env,
+          },
+          source: sourceOpts,
+          layout,
+        });
         worktreePath = created.worktreePath;
         branch = created.branch;
       } catch (err: unknown) {
@@ -1899,6 +2738,13 @@ app.whenReady().then(async () => {
         return finish({ error: 'WORKTREE_FAILED', message });
       }
 
+      if (!sessionRepoCfg) {
+        return finish({
+          error: 'INTERNAL',
+          message: 'Session start did not resolve a repository configuration.',
+        });
+      }
+
       await archiveNonRunningSessionsForTask(task.id);
 
       const { command, args } = options?.resume
@@ -1915,6 +2761,7 @@ app.whenReady().then(async () => {
         branch,
         taskId: task.id,
         projectId: project.id,
+        repoId: sessionRepoCfg.id,
         agent: merged.agent,
         command,
         args,
@@ -1930,7 +2777,10 @@ app.whenReady().then(async () => {
           message: result.message,
         });
         try {
-          await worktreeService.remove(worktreePath);
+          await worktreeService.remove(
+            worktreePath,
+            path.resolve(sessionRepoCfg.rootPath),
+          );
         } catch (removeErr: unknown) {
           console.error('[session:start] cleanup worktree after spawn failure', removeErr);
         }
@@ -1969,6 +2819,7 @@ app.whenReady().then(async () => {
       | 'autoStartOnUnblock'
       | 'sourceBranch'
       | 'createSourceBranchIfMissing'
+      | 'repoId'
     >
   > & { githubPr?: TaskGithubPr | null };
 
@@ -2128,22 +2979,38 @@ app.whenReady().then(async () => {
     if (touchesSourceBranch) {
       const projectDir = activeProjectDir();
       const repos = await projectStore.getReposAt(projectDir);
-      const repo = repos.find((r) => r.rootPath === project.rootPath) ?? repos[0];
-      const discovery = await collectRepoBranchDiscovery(
-        project.rootPath,
-        repo?.baseBranch ?? 'main',
-      );
+      if (patchToApply.repoId !== undefined) {
+        const vrBranchRepo = validateTaskRepoIdPatchValue(repos, patchToApply.repoId);
+        if (!vrBranchRepo.ok) {
+          throw new Error(vrBranchRepo.message);
+        }
+      }
+      const repoIdForDiscovery =
+        patchToApply.repoId !== undefined
+          ? nextPersistedRepoIdAfterPatch(previous.repoId, patchToApply.repoId)
+          : previous.repoId;
+      const repoCfg = resolveRepoForBranchDiscovery(repos, repoIdForDiscovery);
+      if (!repoCfg?.rootPath) {
+        throw new Error(
+          repoIdForDiscovery != null && String(repoIdForDiscovery).trim() !== ''
+            ? 'Unknown repository id for this project'
+            : 'No repository root configured for this project',
+        );
+      }
+      const discovery = await collectRepoBranchDiscovery(repoCfg.rootPath, repoCfg.baseBranch);
       if (taskSourceBranchSettingsWouldChange(previous, patchToApply, discovery.defaultBranchShort)) {
         if (previous.githubPr?.url?.trim()) {
           throw new Error(
             'Cannot change this task\'s source branch while a GitHub pull request is linked. Clear the pull request metadata on the task first.',
           );
         }
+        const repoGitRootsSourcePatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
+          repoId: previous.repoId,
           listSessions: () => daemonClient.listSessions(),
-          projectDir: worktreeService.getProjectDir(),
-          rootPath: worktreeService.getRootPath(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsSourcePatch,
         });
         if (locked) {
           const fluxBranch = fluxTaskWorkBranchName(id);
@@ -2157,6 +3024,37 @@ app.whenReady().then(async () => {
         const v = validateStoredTaskSourceBranchName(candidate);
         if (!v.ok) {
           throw new Error(v.message);
+        }
+      }
+    }
+
+    if (patchToApply.repoId !== undefined) {
+      const projectDir = activeProjectDir();
+      const repos = await projectStore.getReposAt(projectDir);
+      const vr = validateTaskRepoIdPatchValue(repos, patchToApply.repoId);
+      if (!vr.ok) {
+        throw new Error(vr.message);
+      }
+      const nextRepoId = nextPersistedRepoIdAfterPatch(previous.repoId, patchToApply.repoId);
+      if (!persistedRepoIdsEqual(previous.repoId, nextRepoId)) {
+        if (previous.githubPr?.url?.trim()) {
+          throw new Error(
+            'Cannot change this task\'s repository while a GitHub pull request is linked. Clear the pull request metadata on the task first, then you can change the repository.',
+          );
+        }
+        const repoGitRootsPersistPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
+        const locked = await taskHasBlockingWorkspaceState({
+          taskId: id,
+          repoId: previous.repoId,
+          listSessions: () => daemonClient.listSessions(),
+          projectDir: worktreeService.getProjectDir() || projectDir,
+          repoGitRoots: repoGitRootsPersistPatch,
+        });
+        if (locked) {
+          const fluxBranch = fluxTaskWorkBranchName(id);
+          throw new Error(
+            `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+          );
         }
       }
     }
@@ -2178,10 +3076,13 @@ app.whenReady().then(async () => {
         });
       }
       if (autoCleanup) {
+        const cleanupRepos = await projectStore.getReposAt(activeProjectDir());
         const errors = await teardownEphemeralResourcesForTask(
           daemonClient,
           worktreeService,
           id,
+          cleanupRepos,
+          updated.repoId?.trim() ?? null,
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {
@@ -2263,7 +3164,12 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
-    await deleteSessionWorkspaceAndStop(daemonClient, worktreeService, sessionId);
+    await deleteSessionWorkspaceAndStop(
+      daemonClient,
+      worktreeService,
+      sessionId,
+      gitRootForDaemonSession,
+    );
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
@@ -2388,7 +3294,7 @@ app.whenReady().then(async () => {
         const updated = projectStore.get();
         project = updated ?? local;
       } else {
-        const binding = bindingStore.get(activeKey.id);
+        let binding = bindingStore.get(activeKey.id);
         projectDir = worktreeService.getProjectDir();
         if (!binding || !projectDir) {
           return { error: 'No project open' };
@@ -2403,17 +3309,24 @@ app.whenReady().then(async () => {
           const message = err instanceof Error ? err.message : String(err);
           return { error: 'CONFIG_WRITE_FAILED', message };
         }
-        project = {
-          id: activeKey.id,
-          kind: 'cloud',
-          name: path.basename(binding.rootPath),
-          rootPath: binding.rootPath,
-          ownerId: '',
-          memberIds: [],
-          createdAt: '',
-          ...prefs,
-          planningAgent,
-        };
+        binding = bindingStore.get(activeKey.id);
+        if (!binding) {
+          return { error: 'No project open' };
+        }
+        const primaryPath = primaryRootPathFromCloudBinding(activeKey.id, binding);
+        if (!primaryPath) {
+          return { error: 'No project open' };
+        }
+        project = hydrateCloudProject(
+          {
+            id: activeKey.id,
+            name: path.basename(primaryPath),
+            ownerId: '',
+            memberIds: [],
+            createdAt: '',
+          },
+          binding,
+        );
       }
 
       const planningDir = path.join(projectDir, 'planning');

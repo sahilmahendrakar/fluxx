@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { UserCircle2 } from 'lucide-react';
-import { Agent, AGENTS, type RepoBranchDiscovery } from '../types';
+import { Agent, AGENTS, type RepoBranchDiscovery, type RepoConfig } from '../types';
+import { repoDisplayLabel, resolvePrimaryRepoId } from '../repoIdentity';
 import { buildCreateTaskBranchPayload, gitBranchShortNameLooksValid } from '../taskBranches';
 import { TaskLabelsField } from './TaskLabelsField';
 import type { ProjectMember } from '../renderer/projects/members';
@@ -14,7 +15,11 @@ interface Props {
     agent: Agent,
     labels: string[],
     assigneeId?: string,
-    branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+    branch?: {
+      sourceBranch?: string;
+      createSourceBranchIfMissing?: boolean;
+      repoId?: string;
+    },
   ) => void;
   /** Union of labels on existing tasks, for the picker. */
   labelCatalog: string[];
@@ -22,6 +27,9 @@ interface Props {
   defaultAgent?: Agent;
   /** Cloud-only: team members available for assignment. */
   projectMembers?: ProjectMember[];
+  /** When set with multiple entries and multi-repo2, shows repo selector before branch. */
+  projectRepos?: RepoConfig[];
+  multiRepo2Enabled?: boolean;
 }
 
 export default function NewTaskModal({
@@ -30,6 +38,8 @@ export default function NewTaskModal({
   labelCatalog,
   defaultAgent = 'claude-code',
   projectMembers,
+  projectRepos,
+  multiRepo2Enabled = false,
 }: Props) {
   const [title, setTitle] = useState('');
   const [agent, setAgent] = useState<Agent>(defaultAgent);
@@ -40,8 +50,17 @@ export default function NewTaskModal({
   const [branchDiscoveryLoading, setBranchDiscoveryLoading] = useState(true);
   const [branchDiscoveryError, setBranchDiscoveryError] = useState<string | null>(null);
   const [branchInput, setBranchInput] = useState('');
+  const showRepoPicker =
+    Boolean(multiRepo2Enabled && projectRepos && projectRepos.length > 1);
+  const primaryRepoId = resolvePrimaryRepoId(projectRepos ?? []) ?? '';
+  const [selectedRepoId, setSelectedRepoId] = useState(primaryRepoId);
   const inputRef = useRef<HTMLInputElement>(null);
   const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showRepoPicker || !primaryRepoId) return;
+    setSelectedRepoId(primaryRepoId);
+  }, [showRepoPicker, primaryRepoId]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -51,7 +70,11 @@ export default function NewTaskModal({
     let cancelled = false;
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
-    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+    const discoveryArg =
+      showRepoPicker && selectedRepoId
+        ? { repoId: selectedRepoId }
+        : undefined;
+    void window.electronAPI.repo.getBranchDiscovery(discoveryArg).then((r) => {
       if (cancelled) return;
       setBranchDiscoveryLoading(false);
       if ('error' in r) {
@@ -66,7 +89,7 @@ export default function NewTaskModal({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [showRepoPicker, selectedRepoId]);
 
   useEffect(() => {
     setAgent(defaultAgent);
@@ -99,7 +122,11 @@ export default function NewTaskModal({
   const submit = () => {
     if (!canSubmit) return;
     const branch = buildCreateTaskBranchPayload(branchInput, branchDiscovery);
-    onCreate(trimmed, agent, labels, assigneeId, branch);
+    const withRepo =
+      showRepoPicker && selectedRepoId
+        ? { ...branch, repoId: selectedRepoId }
+        : branch;
+    onCreate(trimmed, agent, labels, assigneeId, withRepo);
   };
 
   /** Defined only for cloud projects (may be empty while members load). */
@@ -148,6 +175,29 @@ export default function NewTaskModal({
             compact
           />
         </div>
+
+        {showRepoPicker ? (
+          <div className="mt-4">
+            <label
+              htmlFor="new-task-repo"
+              className="block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
+            >
+              Repository
+            </label>
+            <select
+              id="new-task-repo"
+              value={selectedRepoId}
+              onChange={(e) => setSelectedRepoId(e.target.value)}
+              className="mt-1.5 w-full cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none transition focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12]"
+            >
+              {(projectRepos ?? []).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {repoDisplayLabel(r)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
 
         <div className="mt-4">
           <TaskSourceBranchPicker

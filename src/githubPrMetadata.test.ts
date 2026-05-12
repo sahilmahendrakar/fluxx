@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   githubPrRefreshViewEqual,
+  githubPrUrlMatchesGitRemote,
+  parseGithubOwnerRepoFromPrUrl,
+  parseGithubOwnerRepoFromRemote,
   parseGithubPrField,
   parseGhPrViewJsonStdout,
   parseGhPrViewRecord,
@@ -161,6 +164,28 @@ describe('githubPrRefreshViewEqual', () => {
       baseBranch: 'main',
     };
     expect(githubPrRefreshViewEqual(prev, next)).toBe(false);
+  });
+});
+
+describe('GitHub owner/repo parsing (repo-aware PR validation)', () => {
+  it('parses PR urls and remotes to comparable slugs', () => {
+    expect(parseGithubOwnerRepoFromPrUrl('https://github.com/Org/MyRepo/pull/12')).toEqual({
+      owner: 'org',
+      repo: 'myrepo',
+    });
+    expect(parseGithubOwnerRepoFromRemote('git@github.com:Org/MyRepo.git')).toEqual({
+      owner: 'org',
+      repo: 'myrepo',
+    });
+    expect(githubPrUrlMatchesGitRemote('https://github.com/Org/MyRepo/pull/1', 'git@github.com:Org/MyRepo')).toBe(
+      true,
+    );
+    expect(
+      githubPrUrlMatchesGitRemote(
+        'https://github.com/other/other/pull/1',
+        'git@github.com:Org/MyRepo.git',
+      ),
+    ).toBe(false);
   });
 });
 

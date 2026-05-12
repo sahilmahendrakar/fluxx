@@ -10,7 +10,7 @@ const execFile = promisify(execFileCallback);
 
 async function initGitRepo(cwd: string): Promise<void> {
   await fs.mkdir(cwd, { recursive: true });
-  await execFile('git', ['init'], { cwd });
+  await execFile('git', ['init', '-b', 'main'], { cwd });
   await execFile('git', ['config', 'user.email', 'flux@test'], { cwd });
   await execFile('git', ['config', 'user.name', 'flux'], { cwd });
   await fs.writeFile(path.join(cwd, 'f.txt'), 'a\n', 'utf8');

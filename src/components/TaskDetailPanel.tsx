@@ -25,7 +25,15 @@ import {
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
   type RepoBranchDiscovery,
+  type RepoConfig,
+  type ResolveTaskWorktreeIpcResult,
 } from '../types';
+import {
+  effectiveTaskRepoId,
+  findRepoByIdOrPrimary,
+  repoDisplayLabel,
+  resolvePrimaryRepoId,
+} from '../repoIdentity';
 import {
   type ProjectMember,
   projectMemberDisplayLabel,
@@ -62,6 +70,7 @@ import {
   planTaskSourceBranchFieldsForCreate,
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
+import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 
 function taskAgentSupportsCliResume(agent: Agent): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
@@ -96,7 +105,7 @@ export interface TaskDetailPanelProps {
   taskSessionStartPending?: boolean;
   onSelectTask: (id: string) => void;
   onClose: () => void;
-  onUpdate: (id: string, patch: Partial<Task>) => void;
+  onUpdate: (id: string, patch: TaskPatch) => void;
   onDelete: (id: string, opts?: { closeDetail?: boolean }) => void;
   /** Present when a teammate (not the current user) is running an agent on this task. */
   remoteRunner?: { uid: string; displayName?: string; photoURL?: string } | null;
@@ -132,6 +141,9 @@ export interface TaskDetailPanelProps {
    * (no overlay, no mirror terminal — use the Agent tab for output).
    */
   layout?: 'board' | 'sessionWorkspace';
+  /** From `project:getRepos` when multi-repo2 is enabled. */
+  projectRepos?: RepoConfig[];
+  multiRepo2Enabled?: boolean;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -229,6 +241,8 @@ export default function TaskDetailPanel({
   prLoading = false,
   prAgentAwaiting = false,
   layout = 'board',
+  projectRepos,
+  multiRepo2Enabled = false,
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
   const asideRef = useRef<HTMLElement>(null);
@@ -259,11 +273,26 @@ export default function TaskDetailPanel({
   const assigneeMenuWrapRef = useRef<HTMLDivElement>(null);
   /** Local path for “Open in” (running session, stopped session, or leftover worktree on disk). */
   const [resolvedWorktreePath, setResolvedWorktreePath] = useState<string | null>(null);
+  /** When path is missing, explains repo binding vs no worktree (`workspace:resolveTaskWorktree`). */
+  const [worktreeResolveDetail, setWorktreeResolveDetail] = useState<
+    ResolveTaskWorktreeIpcResult['detail'] | null
+  >(null);
   const [branchDiscovery, setBranchDiscovery] = useState<RepoBranchDiscovery | null>(null);
   const [branchDiscoveryLoading, setBranchDiscoveryLoading] = useState(false);
   const [branchDiscoveryError, setBranchDiscoveryError] = useState<string | null>(null);
   const [branchDraft, setBranchDraft] = useState('');
+  /** Effective {@link RepoConfig.id} while editing repository (multi-repo2). */
+  const [repoDraftId, setRepoDraftId] = useState('');
+  const [sourceMetadataError, setSourceMetadataError] = useState<string | null>(null);
   const [anySessionForTask, setAnySessionForTask] = useState(false);
+
+  const primaryRepoId = useMemo(
+    () => resolvePrimaryRepoId(projectRepos ?? []) ?? '',
+    [projectRepos],
+  );
+  const showRepoSection = Boolean(
+    multiRepo2Enabled && projectRepos && projectRepos.length > 1,
+  );
 
   const labelCatalog = useMemo(
     () => projectLabelCatalog(projectTasks),
@@ -287,15 +316,46 @@ export default function TaskDetailPanel({
     setBranchDiscoveryError(null);
     setBranchDiscoveryLoading(false);
     setBranchDraft('');
+    setRepoDraftId('');
+    setSourceMetadataError(null);
     setAnySessionForTask(false);
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task || !primaryRepoId) return;
+    setRepoDraftId(effectiveTaskRepoId(task, primaryRepoId));
+  }, [task?.id, task?.repoId, primaryRepoId]);
+
+  const branchSourceLocked = useMemo(() => {
+    if (!task) return false;
+    return Boolean(
+      taskSessionStartPending ||
+        resolvedWorktreePath ||
+        anySessionForTask ||
+        session?.id,
+    );
+  }, [task?.id, taskSessionStartPending, resolvedWorktreePath, anySessionForTask, session?.id]);
+
+  const repoFieldLocked = useMemo(
+    () => Boolean(task && (branchSourceLocked || task.githubPr?.url?.trim())),
+    [task, branchSourceLocked],
+  );
+
+  const discoveryRepoId = useMemo(() => {
+    if (!task || !primaryRepoId) return '';
+    const effective = effectiveTaskRepoId(task, primaryRepoId);
+    if (!showRepoSection) return effective;
+    if (repoFieldLocked) return effective;
+    return repoDraftId || effective;
+  }, [task, primaryRepoId, showRepoSection, repoFieldLocked, repoDraftId]);
 
   useEffect(() => {
     if (!task) return;
     let cancelled = false;
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
-    void window.electronAPI.repo.getBranchDiscovery().then((r) => {
+    const arg = discoveryRepoId ? { repoId: discoveryRepoId } : undefined;
+    void window.electronAPI.repo.getBranchDiscovery(arg).then((r) => {
       if (cancelled) return;
       setBranchDiscoveryLoading(false);
       if ('error' in r) {
@@ -308,12 +368,28 @@ export default function TaskDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [task?.id]);
+  }, [task?.id, discoveryRepoId, primaryRepoId]);
 
   useEffect(() => {
     if (!task || !branchDiscovery) return;
+    const taskRepo = effectiveTaskRepoId(task, primaryRepoId);
+    if (showRepoSection && !repoFieldLocked && repoDraftId !== taskRepo) {
+      setBranchDraft(branchDiscovery.defaultBranchShort);
+      return;
+    }
     setBranchDraft(effectiveTaskSourceBranchShort(task, branchDiscovery.defaultBranchShort));
-  }, [task?.id, task?.sourceBranch, task?.createSourceBranchIfMissing, branchDiscovery]);
+  }, [
+    task,
+    task?.id,
+    task?.sourceBranch,
+    task?.createSourceBranchIfMissing,
+    task?.repoId,
+    branchDiscovery,
+    repoDraftId,
+    repoFieldLocked,
+    showRepoSection,
+    primaryRepoId,
+  ]);
 
   useEffect(() => {
     if (!task) {
@@ -339,13 +415,19 @@ export default function TaskDetailPanel({
   useEffect(() => {
     if (!task) {
       setResolvedWorktreePath(null);
+      setWorktreeResolveDetail(null);
       return;
     }
     let cancelled = false;
     const refreshWorktreePath = () => {
-      void window.electronAPI.workspace.resolveTaskWorktree(task.id).then((p) => {
-        if (!cancelled) setResolvedWorktreePath(p);
-      });
+      void window.electronAPI.workspace
+        .resolveTaskWorktree({ taskId: task.id, repoId: task.repoId })
+        .then((r) => {
+          if (!cancelled) {
+            setResolvedWorktreePath(r.path);
+            setWorktreeResolveDetail(r.detail ?? null);
+          }
+        });
     };
     refreshWorktreePath();
     const unsubExit = window.electronAPI.sessions.onExit((ex) => {
@@ -357,7 +439,7 @@ export default function TaskDetailPanel({
       unsubExit();
       unsubTasks();
     };
-  }, [task?.id, session?.id, session?.worktreePath, taskSessionStartPending]);
+  }, [task?.id, task?.repoId, session?.id, session?.worktreePath, taskSessionStartPending]);
 
   useEffect(() => {
     if (!task) return;
@@ -784,26 +866,72 @@ export default function TaskDetailPanel({
     onDelete(task.id, { closeDetail: layout === 'board' });
   };
 
-  const branchSourceLocked = useMemo(() => {
-    if (!task) return false;
-    return Boolean(
-      taskSessionStartPending ||
-        resolvedWorktreePath ||
-        anySessionForTask ||
-        session?.id,
-    );
-  }, [task?.id, taskSessionStartPending, resolvedWorktreePath, anySessionForTask, session?.id]);
-
-  const persistBranchDraft = useCallback(() => {
-    if (!task || !branchDiscovery || branchSourceLocked) return;
+  const persistSourceMetadata = useCallback(async () => {
+    if (!task || !branchDiscovery || repoFieldLocked) return;
     if (!gitBranchShortNameLooksValid(branchDraft)) return;
     const planned = planTaskSourceBranchFieldsForCreate(branchDiscovery, {
       sourceBranch: branchDraft.trim() === '' ? undefined : branchDraft,
     });
-    if (taskSourceBranchPersistIsNoOp(task, planned, branchDiscovery)) return;
-    const patch = buildTaskSourceBranchPersistPatch(planned, branchDiscovery);
-    onUpdate(task.id, patch);
-  }, [task, branchDiscovery, branchSourceLocked, branchDraft, onUpdate]);
+    const branchPersistPatch = buildTaskSourceBranchPersistPatch(planned, branchDiscovery);
+    const branchNoOp = taskSourceBranchPersistIsNoOp(task, planned, branchDiscovery);
+    const nextRepo = repoDraftId || effectiveTaskRepoId(task, primaryRepoId);
+    const repoChanged = effectiveTaskRepoId(task, primaryRepoId) !== nextRepo;
+
+    if (branchNoOp && !repoChanged) return;
+
+    const combined: Partial<Task> = {};
+    if (!branchNoOp) {
+      Object.assign(combined, branchPersistPatch);
+    }
+    if (repoChanged && showRepoSection) {
+      combined.repoId = nextRepo;
+    }
+
+    if (Object.keys(combined).length === 0) return;
+
+    if (repoChanged && showRepoSection) {
+      const r = await window.electronAPI.tasks.assertRepoIdEditable(
+        task.id,
+        { repoId: task.repoId, githubPr: task.githubPr },
+        { repoId: nextRepo },
+      );
+      if (!r.ok) {
+        setSourceMetadataError(r.message);
+        return;
+      }
+    }
+
+    if (!branchNoOp || (repoChanged && showRepoSection)) {
+      const g = await window.electronAPI.tasks.assertSourceBranchEditable(
+        task.id,
+        {
+          sourceBranch: task.sourceBranch,
+          createSourceBranchIfMissing: task.createSourceBranchIfMissing,
+          repoId: task.repoId,
+          githubPr: task.githubPr,
+        },
+        {
+          ...combined,
+        },
+      );
+      if (!g.ok) {
+        setSourceMetadataError(g.message);
+        return;
+      }
+    }
+
+    setSourceMetadataError(null);
+    onUpdate(task.id, combined);
+  }, [
+    task,
+    branchDiscovery,
+    repoFieldLocked,
+    branchDraft,
+    repoDraftId,
+    primaryRepoId,
+    showRepoSection,
+    onUpdate,
+  ]);
 
   if (!task) {
     return null;
@@ -833,6 +961,17 @@ export default function TaskDetailPanel({
   );
   const descriptionRaw = task.description ?? '';
   const hasDescription = descriptionRaw.trim().length > 0;
+
+  const effectiveRepoForLabel = effectiveTaskRepoId(task, primaryRepoId);
+  const repoRowForLabel = findRepoByIdOrPrimary(projectRepos ?? [], effectiveRepoForLabel);
+  const repoLabelDisplay = repoRowForLabel
+    ? repoDisplayLabel(repoRowForLabel)
+    : effectiveRepoForLabel || '—';
+  const discoveryRepoForScope = findRepoByIdOrPrimary(projectRepos ?? [], discoveryRepoId);
+  const branchScopeLabel =
+    showRepoSection && discoveryRepoForScope
+      ? repoDisplayLabel(discoveryRepoForScope)
+      : undefined;
 
   const addBlocker = (blockerId: string) => {
     const next = [...(task.blockedByTaskIds ?? []), blockerId];
@@ -927,7 +1066,15 @@ export default function TaskDetailPanel({
                   Mark as done
                 </button>
               ) : null}
-              <OpenInWorkspaceButton worktreePath={resolvedWorktreePath} size="md" />
+              <OpenInWorkspaceButton
+                worktreePath={resolvedWorktreePath}
+                disabledReason={
+                  resolvedWorktreePath?.trim()
+                    ? undefined
+                    : worktreeResolveDetail?.message ?? undefined
+                }
+                size="md"
+              />
               <GithubPrIconButton
                 githubPr={task.githubPr}
                 taskId={task.id}
@@ -1274,6 +1421,31 @@ export default function TaskDetailPanel({
               ) : null}
 
               <div className="border-t border-white/[0.04] pt-4">
+                {showRepoSection ? (
+                  <div className="mb-4">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                      Repository
+                    </p>
+                    {repoFieldLocked ? (
+                      <p className="mt-1.5 text-[13px] text-zinc-200">{repoLabelDisplay}</p>
+                    ) : (
+                      <select
+                        id={`task-${task.id}-repo`}
+                        value={repoDraftId}
+                        onChange={(e) => setRepoDraftId(e.target.value)}
+                        onBlur={() => void persistSourceMetadata()}
+                        className={`${propertySelectClass} mt-1.5`}
+                      >
+                        {(projectRepos ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {repoDisplayLabel(r)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ) : null}
+
                 <TaskSourceBranchPicker
                   variant="panel"
                   idPrefix={`task-${task.id}-branch`}
@@ -1282,19 +1454,25 @@ export default function TaskDetailPanel({
                   discovery={branchDiscovery}
                   discoveryLoading={branchDiscoveryLoading}
                   discoveryError={branchDiscoveryError}
-                  editable={!branchSourceLocked}
-                  onInputBlur={persistBranchDraft}
+                  editable={!repoFieldLocked}
+                  repoScopeLabel={branchScopeLabel}
+                  onInputBlur={() => void persistSourceMetadata()}
                 />
-                {branchSourceLocked ? (
+                {sourceMetadataError ? (
+                  <p className="mt-2 text-[11px] leading-snug text-red-300/90" role="alert">
+                    {sourceMetadataError}
+                  </p>
+                ) : null}
+                {repoFieldLocked ? (
                   <p className="mt-2 text-[11px] leading-snug text-amber-200/85">
-                    This branch is fixed once there is a worktree or any agent session for the task
-                    (including after the session ends), or while a session is starting. Metadata is
-                    shared on cloud projects; git availability is always evaluated on this computer.
+                    {task.githubPr?.url?.trim()
+                      ? 'Repository and source branch cannot be edited while a GitHub pull request is linked to this task. Clear the pull request metadata first.'
+                      : 'The repository and source branch are fixed once there is a worktree or any agent session for this task (including after the session ends), or while a session is starting. On cloud projects, metadata is shared with your team; git branch lists are always read from this computer.'}
                   </p>
                 ) : (
                   <p className="mt-2 text-[11px] text-zinc-600">
-                    Updates when you leave the branch field. If session start fails locally, check
-                    the error message and your clone.
+                    Updates when you leave the repository or branch field. If session start fails
+                    locally, check the error message and your clone.
                   </p>
                 )}
               </div>

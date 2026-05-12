@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyBoardFilters,
   boardFiltersAreActive,
-  type BoardFilterState,
+  type ApplyBoardFiltersRepoContext,
   UNASSIGNED_ASSIGNEE_VALUE,
+  type BoardFilterState,
   UNLABELED_VALUE,
 } from './boardFilter';
 import type { Task, TaskStatus } from './types';
@@ -28,6 +29,7 @@ const base: BoardFilterState = {
   label: null,
   assignee: null,
   hideDone: false,
+  repoId: null,
 };
 
 describe('applyBoardFilters', () => {
@@ -137,6 +139,43 @@ describe('applyBoardFilters', () => {
       }).map((x) => x.id),
     ).toEqual(['b', 'c']);
   });
+
+  it('filters by repo id using effective repo (missing repoId → primary)', () => {
+    const primary = 'repo-primary';
+    const secondary = 'repo-b';
+    const repoCtx: ApplyBoardFiltersRepoContext = { primaryRepoId: primary };
+    const withRepos: Task[] = [
+      task('a', { title: 'On primary implicit', status: 'backlog', agent: 'cursor' }),
+      task('b', {
+        title: 'On primary explicit',
+        status: 'backlog',
+        agent: 'cursor',
+        repoId: primary,
+      }),
+      task('c', { title: 'On B', status: 'backlog', agent: 'cursor', repoId: secondary }),
+    ];
+    expect(
+      applyBoardFilters(withRepos, { ...base, repoId: secondary }, repoCtx).map((t) => t.id),
+    ).toEqual(['c']);
+    expect(
+      applyBoardFilters(withRepos, { ...base, repoId: primary }, repoCtx).map((t) => t.id),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('repo filter combines with search', () => {
+    const repoCtx: ApplyBoardFiltersRepoContext = { primaryRepoId: 'p1' };
+    const withRepos: Task[] = [
+      task('x', { title: 'Alpha', status: 'backlog', agent: 'cursor', repoId: 'r2' }),
+      task('y', { title: 'Beta', status: 'backlog', agent: 'cursor', repoId: 'r2' }),
+    ];
+    expect(
+      applyBoardFilters(
+        withRepos,
+        { ...base, repoId: 'r2', search: 'Alpha' },
+        repoCtx,
+      ).map((t) => t.id),
+    ).toEqual(['x']);
+  });
 });
 
 describe('boardFiltersAreActive', () => {
@@ -149,5 +188,9 @@ describe('boardFiltersAreActive', () => {
     expect(
       boardFiltersAreActive({ ...base, assignee: UNASSIGNED_ASSIGNEE_VALUE }),
     ).toBe(true);
+  });
+
+  it('is true when repo filter is set', () => {
+    expect(boardFiltersAreActive({ ...base, repoId: 'repo-b' })).toBe(true);
   });
 });

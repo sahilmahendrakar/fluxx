@@ -4,10 +4,17 @@ import type {
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
+  CloudRepoBindingOverview,
+  CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
+  RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  RepoManagementState,
+  RepoSettingsPatch,
+  ResolveTaskWorktreeIpcPayload,
+  ResolveTaskWorktreeIpcResult,
   Session,
   SessionStartOptions,
   SessionStartResult,
@@ -83,7 +90,9 @@ declare global {
           dirPath: string,
           target: OpenWorkspaceTarget,
         ) => Promise<{ ok: true } | { error: string }>;
-        resolveTaskWorktree: (taskId: string) => Promise<string | null>;
+        resolveTaskWorktree: (
+          payload: ResolveTaskWorktreeIpcPayload,
+        ) => Promise<ResolveTaskWorktreeIpcResult>;
       };
       project: {
         get: () => Promise<LocalProject | null>;
@@ -102,8 +111,62 @@ declare global {
         getRepos: () => Promise<RepoConfig[]>;
         updateRepo: (payload: {
           rootPath: string;
-          patch: Partial<Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env'>>;
+          patch: RepoSettingsPatch;
         }) => Promise<{ ok: true; repos: RepoConfig[] } | { error: string }>;
+        getRepoManagementStates: () => Promise<
+          | Record<string, RepoManagementState>
+          | { error: string }
+        >;
+        pickRepoDirectory: () => Promise<
+          | { rootPath: string }
+          | { error: 'NOT_GIT_REPO' }
+          | { error: string }
+          | null
+        >;
+        updateRepoById: (payload: {
+          repoId: string;
+          patch: RepoSettingsPatch;
+        }) => Promise<
+          | { ok: true; repos: RepoConfig[] }
+          | { error: string }
+        >;
+        addRepo: (payload: {
+          rootPath: string;
+        }) => Promise<
+          | { ok: true; repos: RepoConfig[] }
+          | { error: string }
+        >;
+        removeRepo: (payload: {
+          repoId: string;
+        }) => Promise<
+          | { ok: true; repos: RepoConfig[] }
+          | { error: string }
+        >;
+        setPrimaryRepo: (payload: {
+          repoId: string;
+        }) => Promise<
+          | { ok: true; repos: RepoConfig[] }
+          | { error: string }
+        >;
+        getPrimaryRepoId: () => Promise<
+          { ok: true; repoId: string | null } | { error: string }
+        >;
+        getCloudRepoBindingOverview: (
+          sharedRepos: CloudSharedRepo[],
+        ) => Promise<
+          CloudRepoBindingOverview | { error: string; code?: string }
+        >;
+        bindCloudSharedRepo: (payload: {
+          repoId: string;
+          rootPath: string;
+          sharedRepos: CloudSharedRepo[];
+        }) => Promise<
+          | { ok: true; binding: CloudProjectLocalBinding }
+          | { error: string; code?: 'NOT_GIT_REPO' }
+        >;
+        syncCloudSharedRepos: (
+          sharedRepos: CloudSharedRepo[],
+        ) => Promise<{ ok: true } | { error: string }>;
         getAutoStartSessionOnInProgress: () => Promise<boolean>;
         setAutoStartSessionOnInProgress: (
           enabled: boolean,
@@ -141,6 +204,7 @@ declare global {
         activateCloud: (payload: {
           id: string;
           rootPath: string;
+          sharedRepos?: CloudSharedRepo[];
         }) => Promise<ActivateCloudResult>;
         clearLocalBinding: (cloudProjectId: string) => Promise<void>;
       };
@@ -158,7 +222,7 @@ declare global {
       };
       repo: {
         getBranchDiscovery: (
-          requestedBranch?: string,
+          arg?: string | RepoBranchDiscoveryRequest,
         ) => Promise<RepoBranchDiscoveryResponse | { error: string }>;
       };
       tasks: {
@@ -172,6 +236,7 @@ declare global {
           createSourceBranchIfMissing?: boolean;
           agentModel?: string;
           agentYolo?: boolean;
+          repoId?: string;
         }) => Promise<Task>;
         update: (
           id: string,
@@ -191,15 +256,21 @@ declare global {
             | 'autoStartOnUnblock'
             | 'sourceBranch'
             | 'createSourceBranchIfMissing'
+            | 'repoId'
           >
         > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
         assertSourceBranchEditable: (
           taskId: string,
-          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'> & {
+          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
             githubPr?: TaskGithubPr;
           },
-          patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing'>,
+          patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>,
+        ) => Promise<{ ok: true } | { ok: false; message: string }>;
+        assertRepoIdEditable: (
+          taskId: string,
+          previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+          patch: Pick<Task, 'repoId'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
         requestPullRequestFromAgent: (payload: {
@@ -211,7 +282,11 @@ declare global {
           taskId: string;
           githubPr?: TaskGithubPr;
         }) => Promise<TaskPullRequestIpcResult>;
-        resolveWorktrees: (taskIds: string[]) => Promise<Record<string, boolean>>;
+        resolveWorktrees: (
+          taskIdsOrEntries:
+            | string[]
+            | { taskId: string; repoId?: string | null }[],
+        ) => Promise<Record<string, boolean>>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
         onUserInput: (
