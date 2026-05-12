@@ -97,7 +97,7 @@ export interface TaskDetailPanelProps {
   onSelectTask: (id: string) => void;
   onClose: () => void;
   onUpdate: (id: string, patch: Partial<Task>) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, opts?: { closeDetail?: boolean }) => void;
   /** Present when a teammate (not the current user) is running an agent on this task. */
   remoteRunner?: { uid: string; displayName?: string; photoURL?: string } | null;
   onOpenSessionTab: (session: Session) => void;
@@ -781,9 +781,7 @@ export default function TaskDetailPanel({
 
   const handleDelete = () => {
     if (!task) return;
-    if (!window.confirm('Delete this task?')) return;
-    onDelete(task.id);
-    onClose();
+    onDelete(task.id, { closeDetail: layout === 'board' });
   };
 
   const branchSourceLocked = useMemo(() => {

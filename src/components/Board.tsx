@@ -27,7 +27,7 @@ interface Props {
   ) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
-  onDeleteTask: (id: string) => void;
+  onDeleteTask: (id: string, opts?: { closeDetail?: boolean }) => void;
   onRequestCleanupTask: (id: string) => void;
   cleanupLoadingTaskId: string | null;
   onCardClick: (id: string) => void;

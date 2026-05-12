@@ -11,7 +11,7 @@ interface Props {
   tasks: Task[];
   allTasks: Task[];
   onNewTask?: () => void;
-  onDeleteTask: (id: string) => void;
+  onDeleteTask: (id: string, opts?: { closeDetail?: boolean }) => void;
   onRequestCleanupTask?: (id: string) => void;
   cleanupLoadingTaskId?: string | null;
   onCardClick: (id: string) => void;
