@@ -1,0 +1,38 @@
+src/App.tsx
+  s_31fc43ad084f8b::t_16436618305c70 2934
+  s_31fc43ad084f8b::t_003804d957682c 265-266
+  s_31fc43ad084f8b::t_67f5df88c769e5 2220
+  s_31fc43ad084f8b::t_a0a413d3c078ee 1244-1247
+  s_31fc43ad084f8b::t_7042b83a1d9b63 2240,2250,2253-2254,2257,2259
+  s_31fc43ad084f8b::t_35a0ea8c719286 2189
+  s_31fc43ad084f8b::t_bc69d6d876475c 1107-1108
+  s_31fc43ad084f8b::t_263c4dc1b6abc4 1187
+  s_31fc43ad084f8b::t_b7231b3c9799e9 2469,2472
+  s_31fc43ad084f8b::t_3ed744c2ca3d34 1217
+  s_31fc43ad084f8b::t_35c46d0b915744 1231,1234-1243
+src/main/projectTabStateDiskParse.test.ts
+  s_31fc43ad084f8b::t_91a22369ddb5da 1-41
+src/main/AppStateStore.ts
+  s_31fc43ad084f8b::t_77f29b9c586199 5
+  s_31fc43ad084f8b::t_53fe8811ca484a 76-77
+src/main/projectTabStateDiskParse.ts
+  s_31fc43ad084f8b::t_dd0be027cb3829 1-32
+src/types.ts
+  s_31fc43ad084f8b::t_7210fb8cb4d36f 38-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "ca6600a9cd679e5cf9ac21f720df9012ecae0558",
+  "prompts": {},
+  "sessions": {
+    "s_31fc43ad084f8b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "dca3e1cf-25c5-4d80-b7ee-30aed96c37b1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
