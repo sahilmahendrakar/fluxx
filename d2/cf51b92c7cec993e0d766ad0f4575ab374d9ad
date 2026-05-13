@@ -1,0 +1,42 @@
+src/components/TaskListSurface.tsx
+  s_400ebce32cfbbf::t_86898607f56ced 12,22-25,27
+  s_400ebce32cfbbf::t_84eef12908a4ee 1-11,13-21,26,28-31
+src/components/Board.tsx
+  s_400ebce32cfbbf::t_badc7cc8737db5 185-197,199-201,208-224,226-258,260-262,306-321,336
+  s_400ebce32cfbbf::t_d87a193a812ae7 26
+  s_400ebce32cfbbf::t_7d5af731de9bc6 78-80
+  s_400ebce32cfbbf::t_d16205656c4e39 202-206
+  s_400ebce32cfbbf::t_55f507a607c629 11
+  s_400ebce32cfbbf::t_39247fa1e47190 110-111
+  s_400ebce32cfbbf::t_4a6f668fd22f77 259
+src/types.ts
+  s_400ebce32cfbbf::t_0238b9360e0ac9 27-29
+  s_400ebce32cfbbf::t_f8aa885d5edf95 46-50
+src/main/projectTabStateDiskParse.test.ts
+  s_400ebce32cfbbf::t_b71154473c683d 41-77
+src/App.tsx
+  s_400ebce32cfbbf::t_12c9ea223c0a10 1391
+  s_400ebce32cfbbf::t_0dfe5f02250428 1345
+  s_400ebce32cfbbf::t_0e3f2f6a3b30b7 3241-3242
+  s_400ebce32cfbbf::t_a4c04122f85b0c 26
+  s_400ebce32cfbbf::t_a2dc1154de3974 1376
+  s_400ebce32cfbbf::t_a9c98126fc54c9 292-294
+src/main/projectTabStateDiskParse.ts
+  s_400ebce32cfbbf::t_ef937fdb579707 23-24,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "d2cf51b92c7cec993e0d766ad0f4575ab374d9ad",
+  "prompts": {},
+  "sessions": {
+    "s_400ebce32cfbbf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f28dff26-e73e-435f-9c1c-10cc0396578f",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
