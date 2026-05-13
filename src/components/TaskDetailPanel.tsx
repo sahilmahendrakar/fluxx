@@ -56,9 +56,8 @@ import {
   invalidateSessionAttachCache,
 } from '../terminal/warmAttach';
 import {
-  MIRROR_TERMINAL_VIEW_POLICY,
+  INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY,
   terminalShouldAutoFit,
-  terminalShouldForwardInput,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
@@ -738,11 +737,16 @@ export default function TaskDetailPanel({
         session?.status === 'error') &&
       !sessionWorkspace,
   );
+  // Interactive mirror: same fixed-snapshot attach as read-only mirror (`getApplyAttachOptionsForViewPolicy`
+  // is identical), but `interactionMode: 'interactive'` so `Terminal` wires `onData` → `sessions.write`.
+  // Keep `viewPolicy` stable across running→stopped to avoid tearing down the PTY stream effect; stdin is
+  // gated below with `sessionRunning`. If this panel and a workspace tab both show the same session, both
+  // may write to one PTY when focused (same as multiple terminals attached to one session).
   useTerminalPtyStream({
     terminalRef,
     id: sessionId ?? '',
     enabled: sessionReadyForPty,
-    viewPolicy: MIRROR_TERMINAL_VIEW_POLICY,
+    viewPolicy: INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY,
     getAttach: () => {
       const id = sessionId;
       if (!id) {
@@ -1873,13 +1877,8 @@ export default function TaskDetailPanel({
                   <TerminalComponent
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
-                    onData={
-                      sessionRunning &&
-                      terminalShouldForwardInput(MIRROR_TERMINAL_VIEW_POLICY)
-                        ? handleTerminalData
-                        : undefined
-                    }
-                    autoFit={terminalShouldAutoFit(MIRROR_TERMINAL_VIEW_POLICY)}
+                    onData={sessionRunning ? handleTerminalData : undefined}
+                    autoFit={terminalShouldAutoFit(INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY)}
                     hideCursor
                   />
                 </div>
