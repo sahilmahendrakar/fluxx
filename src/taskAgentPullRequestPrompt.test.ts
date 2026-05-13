@@ -7,7 +7,7 @@ import {
 import type { Task } from './types';
 
 describe('resolveAgentPullRequestBranchContext', () => {
-  it('uses task sourceBranch when set, else project default', () => {
+  it('uses task sourceBranch when set, else per-repo project default', () => {
     expect(
       resolveAgentPullRequestBranchContext({
         task: {} as Pick<Task, 'sourceBranch'>,
@@ -15,6 +15,14 @@ describe('resolveAgentPullRequestBranchContext', () => {
         sessionBranch: 'flux/task-abc',
       }),
     ).toEqual({ baseBranch: 'main', headBranch: 'flux/task-abc' });
+
+    expect(
+      resolveAgentPullRequestBranchContext({
+        task: {} as Pick<Task, 'sourceBranch'>,
+        projectDefaultBranchShort: 'release',
+        sessionBranch: 'flux/task-abc',
+      }),
+    ).toEqual({ baseBranch: 'release', headBranch: 'flux/task-abc' });
 
     expect(
       resolveAgentPullRequestBranchContext({
@@ -47,15 +55,32 @@ describe('buildCreatePrInstructionsMarkdown', () => {
 });
 
 describe('buildTaskAgentPullRequestPrompt', () => {
-  it('includes task id, title, branches, body, instructions path, and cursor needle', () => {
+  it('includes repository label and clone path with head and base branches for multi-repo clarity', () => {
+    const instructionsPath = '/tmp/flux-project/agent-instructions/create-pr.md';
+    const text = buildTaskAgentPullRequestPrompt({
+      taskId: 'task-b',
+      taskTitle: 'Backend fix',
+      headBranch: 'flux/task-b',
+      baseBranch: 'develop',
+      instructionsAbsolutePath: instructionsPath,
+      repoDisplayLabel: 'service-b',
+      repoRootPath: '/Users/me/projects/service-b',
+    });
+    expect(text).toContain('- **Repository:** service-b');
+    expect(text).toContain('`/Users/me/projects/service-b`');
+    expect(text).toContain('`flux/task-b`');
+    expect(text).toContain('`develop`');
+    expect(text).not.toContain('`main`');
+    expect(text).not.toContain('Suggested PR');
+  });
+
+  it('includes task id, title, branches, instructions path, and constraints', () => {
     const instructionsPath = '/tmp/flux-project/agent-instructions/create-pr.md';
     const text = buildTaskAgentPullRequestPrompt({
       taskId: 'task-42',
       taskTitle: 'Fix login bug',
       headBranch: 'flux/task-42',
       baseBranch: 'main',
-      prTitle: 'Fix login bug',
-      prBody: '_Task_: Fix login bug',
       instructionsAbsolutePath: instructionsPath,
     });
     expect(text).toContain('`task-42`');
@@ -65,5 +90,7 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     expect(text).toContain('`' + instructionsPath + '`');
     expect(text).toContain('Do not commit secrets');
     expect(text).not.toContain('git status');
+    expect(text).not.toContain('Suggested PR');
+    expect(text).not.toContain('```');
   });
 });

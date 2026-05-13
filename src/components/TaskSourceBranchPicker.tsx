@@ -24,6 +24,11 @@ interface Props {
   disabled?: boolean;
   /** Fired from the text field `onBlur` (after suggestion list handling). */
   onInputBlur?: () => void;
+  /**
+   * Reserved for multi-repo2: human-readable repo name when branch discovery is scoped
+   * (forward-compatible; optional copy wiring uses this later).
+   */
+  repoScopeLabel?: string;
 }
 
 function presenceLabel(p: GitBranchPresence): string {
@@ -61,6 +66,7 @@ export default function TaskSourceBranchPicker({
   editable = true,
   disabled = false,
   onInputBlur,
+  repoScopeLabel,
 }: Props) {
   const reactId = useId();
   const listboxId = `${idPrefix}-${reactId}-branches`;
@@ -112,12 +118,19 @@ export default function TaskSourceBranchPicker({
 
   return (
     <div className="space-y-1.5">
-      <label
-        htmlFor={`${idPrefix}-branch-input`}
-        className={`block text-[11px] font-medium uppercase tracking-[0.12em] ${muted ? 'text-zinc-500' : 'text-zinc-600'}`}
-      >
-        Source branch
-      </label>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <label
+          htmlFor={`${idPrefix}-branch-input`}
+          className={`block text-[11px] font-medium uppercase tracking-[0.12em] ${muted ? 'text-zinc-500' : 'text-zinc-600'}`}
+        >
+          Source branch
+        </label>
+        {repoScopeLabel ? (
+          <span className="text-[11px] text-zinc-500" title="Branch list scope">
+            {repoScopeLabel}
+          </span>
+        ) : null}
+      </div>
 
       {discoveryLoading ? (
         <p className="text-[12px] text-zinc-500" role="status">

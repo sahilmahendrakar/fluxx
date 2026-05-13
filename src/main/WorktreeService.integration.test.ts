@@ -12,7 +12,7 @@ const execFile = promisify(execFileCallback);
 
 async function initGitRepo(cwd: string): Promise<void> {
   await fs.mkdir(cwd, { recursive: true });
-  await execFile('git', ['init'], { cwd });
+  await execFile('git', ['init', '-b', 'main'], { cwd });
   await execFile('git', ['config', 'user.email', 'flux@test'], { cwd });
   await execFile('git', ['config', 'user.name', 'flux'], { cwd });
   await fs.writeFile(path.join(cwd, 'f.txt'), 'a\n', 'utf8');
@@ -32,6 +32,8 @@ async function localBranchExists(cwd: string, shortName: string): Promise<boolea
 }
 
 describe('WorktreeService.create integration', () => {
+  const legacyLayout = 'legacy-flat' as const;
+
   it('creates missing source branch from default then worktree, and remove drops only flux branch', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-'));
     const gitRoot = path.join(root, 'repo');
@@ -41,19 +43,111 @@ describe('WorktreeService.create integration', () => {
       const svc = new WorktreeService(gitRoot, projectDir);
       const taskId = 'mytaskid';
       const sourceName = 'flux-int-source';
-      const { worktreePath, branch } = await svc.create(taskId, {
-        sourceBranchShort: sourceName,
-        createSourceBranchIfMissing: true,
+      const primaryRepoId =
+        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      const { worktreePath, branch } = await svc.create({
+        taskId,
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: sourceName,
+          createSourceBranchIfMissing: true,
+        },
+        layout: legacyLayout,
       });
       expect(branch).toBe(fluxTaskWorkBranchName(taskId));
+      expect(worktreePath).toBe(path.join(projectDir, 'worktrees', taskId));
       await expect(fs.stat(worktreePath)).resolves.toBeDefined();
       expect(await localBranchExists(gitRoot, sourceName)).toBe(true);
       expect(await localBranchExists(gitRoot, branch)).toBe(true);
 
-      await svc.remove(worktreePath);
+      await svc.remove(worktreePath, path.resolve(gitRoot));
 
       expect(await localBranchExists(gitRoot, sourceName)).toBe(true);
       expect(await localBranchExists(gitRoot, branch)).toBe(false);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('scopes worktrees under worktrees/<repoId>/<taskId> for two clones with different default branches', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-multi-'));
+    const gitRootA = path.join(root, 'repo-a');
+    const gitRootB = path.join(root, 'repo-b');
+    const projectDir = path.join(root, 'flux-project');
+    const repoIdA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const repoIdB = 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+    try {
+      await initGitRepo(gitRootA);
+      await initGitRepo(gitRootB);
+      await execFile('git', ['branch', '-m', 'develop'], { cwd: gitRootB });
+
+      const svc = new WorktreeService(gitRootA, projectDir);
+      await fs.mkdir(projectDir, { recursive: true });
+
+      const taskA = 'task-on-main-clone';
+      const srcA = 'main-a-only';
+      const outA = await svc.create({
+        taskId: taskA,
+        repo: {
+          repoId: repoIdA,
+          gitRootPath: gitRootA,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: srcA,
+          createSourceBranchIfMissing: true,
+        },
+        layout: 'repo-scoped',
+      });
+      expect(outA.worktreePath).toBe(
+        path.join(projectDir, 'worktrees', repoIdA, taskA),
+      );
+
+      const taskB = 'task-on-develop-clone';
+      const srcB = 'develop';
+      const outB = await svc.create({
+        taskId: taskB,
+        repo: {
+          repoId: repoIdB,
+          gitRootPath: gitRootB,
+          baseBranch: 'develop',
+        },
+        source: {
+          sourceBranchShort: srcB,
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+      expect(outB.worktreePath).toBe(
+        path.join(projectDir, 'worktrees', repoIdB, taskB),
+      );
+
+      const headA = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd: outA.worktreePath,
+        encoding: 'utf8',
+      });
+      const tipSrcA = await execFile('git', ['rev-parse', srcA], {
+        cwd: gitRootA,
+        encoding: 'utf8',
+      });
+      expect(headA.stdout.trim()).toBe(tipSrcA.stdout.trim());
+
+      const headB = await execFile('git', ['rev-parse', 'HEAD'], {
+        cwd: outB.worktreePath,
+        encoding: 'utf8',
+      });
+      const tipDevelop = await execFile('git', ['rev-parse', 'develop'], {
+        cwd: gitRootB,
+        encoding: 'utf8',
+      });
+      expect(headB.stdout.trim()).toBe(tipDevelop.stdout.trim());
+
+      await svc.remove(outA.worktreePath, path.resolve(gitRootA));
+      await svc.remove(outB.worktreePath, path.resolve(gitRootB));
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
@@ -67,9 +161,19 @@ describe('WorktreeService.create integration', () => {
       await initGitRepo(gitRoot);
       const svc = new WorktreeService(gitRoot, projectDir);
       await expect(
-        svc.create('t2', {
-          sourceBranchShort: 'does-not-exist',
-          createSourceBranchIfMissing: false,
+        svc.create({
+          taskId: 't2',
+          repo: {
+            repoId:
+              'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+            gitRootPath: gitRoot,
+            baseBranch: 'main',
+          },
+          source: {
+            sourceBranchShort: 'does-not-exist',
+            createSourceBranchIfMissing: false,
+          },
+          layout: legacyLayout,
         }),
       ).rejects.toSatisfy(
         (e: unknown) =>
@@ -104,9 +208,19 @@ describe('WorktreeService.create integration', () => {
       expect(localMainSha).not.toBe(originMainSha);
 
       const svc = new WorktreeService(gitRoot, projectDir);
-      const { worktreePath } = await svc.create('task-origin-main', {
-        sourceBranchShort: 'main',
-        createSourceBranchIfMissing: false,
+      const { worktreePath } = await svc.create({
+        taskId: 'task-origin-main',
+        repo: {
+          repoId:
+            'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: legacyLayout,
       });
       const { stdout: wtHeadOut } = await execFile('git', ['rev-parse', 'HEAD'], {
         cwd: worktreePath,
@@ -115,7 +229,7 @@ describe('WorktreeService.create integration', () => {
       expect(wtHeadOut.trim()).toBe(originMainSha);
       expect(wtHeadOut.trim()).not.toBe(localMainSha);
 
-      await svc.remove(worktreePath);
+      await svc.remove(worktreePath, path.resolve(gitRoot));
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
@@ -133,9 +247,19 @@ describe('WorktreeService.create integration', () => {
 
       const svc = new WorktreeService(gitRoot, projectDir);
       const taskId = 'reuseme';
-      const { branch } = await svc.create(taskId, {
-        sourceBranchShort: 'first-source',
-        createSourceBranchIfMissing: false,
+      const { branch } = await svc.create({
+        taskId,
+        repo: {
+          repoId:
+            'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'first-source',
+          createSourceBranchIfMissing: false,
+        },
+        layout: legacyLayout,
       });
       expect(await localBranchExists(gitRoot, branch)).toBe(true);
 
@@ -145,9 +269,19 @@ describe('WorktreeService.create integration', () => {
       await execFile('git', ['commit', '-am', 'on second'], { cwd: gitRoot });
       await execFile('git', ['checkout', 'main'], { cwd: gitRoot });
 
-      const again = await svc.create(taskId, {
-        sourceBranchShort: 'second-source',
-        createSourceBranchIfMissing: false,
+      const again = await svc.create({
+        taskId,
+        repo: {
+          repoId:
+            'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'second-source',
+          createSourceBranchIfMissing: false,
+        },
+        layout: legacyLayout,
       });
       const head = await execFile('git', ['rev-parse', 'HEAD'], {
         cwd: again.worktreePath,
@@ -164,7 +298,7 @@ describe('WorktreeService.create integration', () => {
       expect(head.stdout.trim()).toBe(firstTip.stdout.trim());
       expect(head.stdout.trim()).not.toBe(secondTip.stdout.trim());
 
-      await svc.remove(again.worktreePath);
+      await svc.remove(again.worktreePath, path.resolve(gitRoot));
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

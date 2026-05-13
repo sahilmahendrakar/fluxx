@@ -114,6 +114,13 @@ export interface CreateSessionParams {
   branch: string;
   taskId: string;
   projectId: string;
+  /**
+   * Multi-repo2: stable id of the {@link RepoConfig} this worktree belongs
+   * to. Optional for backward compatibility — daemon copies it onto the
+   * returned `Session.repoId` when present, and renderer/main treat
+   * missing values as the project's primary repo.
+   */
+  repoId?: string;
   agent: Agent;
   command: string;
   args: string[];

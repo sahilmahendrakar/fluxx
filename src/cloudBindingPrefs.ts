@@ -3,8 +3,21 @@ import type {
   AgentSessionModelDefaults,
   CloudProject,
   CloudProjectLocalBinding,
+  CloudRepoMachineBinding,
+  CloudSharedRepo,
   LocalProject,
 } from './types';
+import {
+  migrateLegacyCloudBinding,
+  primaryMachineBinding,
+} from './cloudLocalBindingMigration';
+import {
+  deriveStablePrimaryRepoIdForProject,
+  normalizeRepoRootPathForIdentity,
+  repoRootBasename,
+} from './repoIdentity';
+
+export { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
 
 /** Matches `ProjectStore` defaults for the same preference keys. */
 export const CLOUD_BINDING_DEFAULT_PLANNING_AGENT: Agent = 'claude-code';
@@ -59,6 +72,55 @@ export function resolvedPrefsFromBinding(
   };
 }
 
+function sharedReposForHydration(
+  projectId: string,
+  summaryRepos: CloudSharedRepo[] | undefined,
+  primary: { rootPath: string },
+): CloudSharedRepo[] {
+  if (summaryRepos && summaryRepos.length > 0) return summaryRepos;
+  const id = deriveStablePrimaryRepoIdForProject({
+    projectId,
+    rootPath: primary.rootPath,
+  });
+  return [
+    {
+      id,
+      name: repoRootBasename(primary.rootPath),
+      baseBranch: 'main',
+    },
+  ];
+}
+
+function repoMachineBindingsForHydration(
+  sharedRepos: CloudSharedRepo[],
+  binding: CloudProjectLocalBinding,
+): Partial<Record<string, CloudRepoMachineBinding>> {
+  const rb = binding.repoBindings;
+  const out: Partial<Record<string, CloudRepoMachineBinding>> = {};
+  for (const repo of sharedRepos) {
+    const entry = rb?.[repo.id];
+    if (entry) out[repo.id] = entry;
+  }
+  return out;
+}
+
+/**
+ * Stable id of the shared repo whose local clone is {@link CloudProject.rootPath}
+ * (primary workspace). Falls back to the first {@link CloudProject.sharedRepos} entry.
+ */
+export function resolveCloudPrimaryRepoId(
+  project: Pick<CloudProject, 'rootPath' | 'sharedRepos' | 'repoMachineBindings'>,
+): string | undefined {
+  const primaryPath = normalizeRepoRootPathForIdentity(project.rootPath);
+  for (const sr of project.sharedRepos) {
+    const machine = project.repoMachineBindings[sr.id];
+    if (machine && normalizeRepoRootPathForIdentity(machine.rootPath) === primaryPath) {
+      return sr.id;
+    }
+  }
+  return project.sharedRepos[0]?.id;
+}
+
 /** Active cloud project for the renderer (Firestore row + local binding + prefs). */
 export function hydrateCloudProject(
   summary: {
@@ -67,10 +129,17 @@ export function hydrateCloudProject(
     ownerId: string;
     memberIds: string[];
     createdAt: string;
+    repos?: CloudSharedRepo[];
   },
   binding: CloudProjectLocalBinding,
 ): CloudProject {
   const prefs = resolvedPrefsFromBinding(binding);
+  const migrated = migrateLegacyCloudBinding(summary.id, binding);
+  const primary = primaryMachineBinding(summary.id, migrated, summary.repos);
+  if (!primary) {
+    throw new Error('[hydrateCloudProject] binding has no primary repo path');
+  }
+  const sharedRepos = sharedReposForHydration(summary.id, summary.repos, primary);
   return {
     id: summary.id,
     kind: 'cloud',
@@ -78,7 +147,9 @@ export function hydrateCloudProject(
     ownerId: summary.ownerId,
     memberIds: summary.memberIds,
     createdAt: summary.createdAt,
-    rootPath: binding.rootPath,
+    rootPath: primary.rootPath,
+    sharedRepos,
+    repoMachineBindings: repoMachineBindingsForHydration(sharedRepos, migrated),
     ...prefs,
   };
 }

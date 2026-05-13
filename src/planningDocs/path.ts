@@ -1,4 +1,8 @@
 import path from 'node:path';
+import { isUnderPlanningUnsyncedPrefix } from './cloudPlanningDocsMigration';
+
+/** Internal sync metadata under `planning/` — not editable as planning docs in-app. */
+export const PLANNING_DOCS_DISK_SYNC_REL_PREFIX = '.flux-docs-sync';
 
 const MD_SUFFIX = '.md';
 const BASE64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -110,4 +114,13 @@ export function planningFirestoreDocIdToRelativePath(docId: string): string | nu
   } catch {
     return null;
   }
+}
+
+/** True for `.flux-docs-sync/**` and `_flux_unsynced/**` (same rules as push listing). */
+export function isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath: string): boolean {
+  const norm = normalizePlanningDocRelativePath(relativePath);
+  if (!norm) return false;
+  const sync = PLANNING_DOCS_DISK_SYNC_REL_PREFIX;
+  if (norm === sync || norm.startsWith(`${sync}/`)) return true;
+  return isUnderPlanningUnsyncedPrefix(norm);
 }

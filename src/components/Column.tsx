@@ -1,10 +1,23 @@
 import type { ReactNode } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
-import { Session, Task, TaskStatus } from '../types';
+import {
+  Session,
+  Task,
+  TaskStatus,
+  type CloudRepoBindingOverview,
+  type RepoConfig,
+} from '../types';
+import {
+  findRepoByIdOrPrimary,
+  repoChipTooltipText,
+  repoDisplayLabel,
+} from '../repoIdentity';
+import { normalizeGitBranchShortName } from '../taskBranches';
 import TaskCard from './TaskCard';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import type { ProjectMember } from '../renderer/projects/members';
+import { selectSessionForTaskWorkspace } from '../sessionWorkspacePick';
 
 interface Props {
   id: TaskStatus;
@@ -28,10 +41,15 @@ interface Props {
   prLoadingTaskId?: string | null;
   prAgentAwaitingByTaskId?: Record<string, boolean>;
   repoDefaultBranchShort: string;
+  /** Multi-repo board: repo chips + repo-scoped branch default from {@link RepoConfig.baseBranch}. */
+  showRepoBoardUi?: boolean;
+  projectRepos?: RepoConfig[];
+  cloudRepoBindingOverview?: CloudRepoBindingOverview;
   cloudUnblockAutostartClientUid?: string;
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function Column({
@@ -55,10 +73,14 @@ export default function Column({
   prLoadingTaskId,
   prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
+  showRepoBoardUi = false,
+  projectRepos,
+  cloudRepoBindingOverview,
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isReview = id === 'review';
@@ -123,6 +145,26 @@ export default function Column({
                 );
                 const diskWorktree = taskHasWorktreeById[task.id] === true;
                 const hasWorktree = sessionWorktree || diskWorktree;
+                const canOpenTaskWorkspaceTab =
+                  selectSessionForTaskWorkspace(sessions, task.id) !== undefined;
+                const effectiveRepo =
+                  showRepoBoardUi && projectRepos?.length
+                    ? findRepoByIdOrPrimary(projectRepos, task.repoId)
+                    : undefined;
+                const repoChip =
+                  showRepoBoardUi && effectiveRepo
+                    ? {
+                        label: repoDisplayLabel(effectiveRepo),
+                        title: repoChipTooltipText(
+                          effectiveRepo,
+                          cloudRepoBindingOverview?.[effectiveRepo.id],
+                        ),
+                      }
+                    : undefined;
+                const branchChipCompareShort =
+                  showRepoBoardUi && effectiveRepo
+                    ? normalizeGitBranchShortName(effectiveRepo.baseBranch || 'main')
+                    : undefined;
                 return (
                   <TaskCard
                     key={task.id}
@@ -143,9 +185,13 @@ export default function Column({
                     prLoading={prLoadingTaskId === task.id}
                     prAgentAwaiting={Boolean(prAgentAwaitingByTaskId?.[task.id])}
                     repoDefaultBranchShort={repoDefaultBranchShort}
+                    branchChipCompareShort={branchChipCompareShort}
+                    repoChip={repoChip}
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
                     onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+                    canOpenTaskWorkspaceTab={canOpenTaskWorkspaceTab}
+                    onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
                   />
                 );
               })}

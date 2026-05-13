@@ -53,30 +53,68 @@ export function taskSourceBranchSettingsWouldChange(
  */
 export async function taskHasBlockingWorkspaceState(input: {
   taskId: string;
+  /** When set, also treats `worktrees/<repoId>/<taskId>` as blocking (`multi-repo2`). */
+  repoId?: string | null;
   listSessions: () => Promise<{ taskId: string }[]>;
   projectDir: string;
-  rootPath: string;
+  /** Every configured clone root (`RepoConfig.rootPath`) for this project. */
+  repoGitRoots: readonly string[];
 }): Promise<boolean> {
   const sessions = await input.listSessions();
   if (sessions.some((s) => s.taskId === input.taskId)) {
     return true;
   }
 
-  const wt = path.join(input.projectDir, 'worktrees', input.taskId);
+  const rid = input.repoId?.trim();
+  if (rid) {
+    const repoScoped = path.join(input.projectDir, 'worktrees', rid, input.taskId);
+    try {
+      await fs.access(repoScoped);
+      return true;
+    } catch {
+      /* no repo-scoped dir */
+    }
+  }
+
+  const legacyDir = path.join(input.projectDir, 'worktrees', input.taskId);
   try {
-    await fs.access(wt);
+    await fs.access(legacyDir);
     return true;
   } catch {
-    /* no dir */
+    /* no legacy dir */
+  }
+
+  const worktreesRoot = path.join(input.projectDir, 'worktrees');
+  try {
+    const names = await fs.readdir(worktreesRoot);
+    for (const name of names) {
+      if (!name.trim() || name === input.taskId) continue;
+      const nested = path.join(worktreesRoot, name, input.taskId);
+      try {
+        await fs.access(nested);
+        return true;
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* no worktrees root */
   }
 
   const branch = fluxTaskWorkBranchName(input.taskId);
-  try {
-    await execFile('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
-      cwd: input.rootPath,
-    });
-    return true;
-  } catch {
-    return false;
+  const seen = new Set<string>();
+  for (const raw of input.repoGitRoots) {
+    const cwd = path.resolve(raw);
+    if (seen.has(cwd)) continue;
+    seen.add(cwd);
+    try {
+      await execFile('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd,
+      });
+      return true;
+    } catch {
+      /* no branch in this repo */
+    }
   }
+  return false;
 }

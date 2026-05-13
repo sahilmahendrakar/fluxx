@@ -1,7 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
-import { Session, Task, TaskStatus, COLUMNS, Agent } from '../types';
+import {
+  Session,
+  Task,
+  TaskStatus,
+  COLUMNS,
+  Agent,
+  type CloudRepoBindingOverview,
+  type RepoConfig,
+} from '../types';
 import { projectLabelCatalog } from '../taskLabels';
+import { resolvePrimaryRepoId } from '../repoIdentity';
 import type { ProjectMember } from '../renderer/projects/members';
 import {
   applyBoardFilters,
@@ -24,7 +33,11 @@ interface Props {
     agent: Agent,
     labels?: string[],
     assigneeId?: string,
-    branch?: { sourceBranch?: string; createSourceBranchIfMissing?: boolean },
+    branch?: {
+      sourceBranch?: string;
+      createSourceBranchIfMissing?: boolean;
+      repoId?: string;
+    },
   ) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
@@ -46,6 +59,11 @@ interface Props {
   prAgentAwaitingByTaskId?: Record<string, boolean>;
   /** Configured / detected default short branch name for branch chips on cards. */
   repoDefaultBranchShort: string;
+  /** From main (`project:getRepos`) when multi-repo2 is enabled; drives new-task repo picker. */
+  projectRepos?: RepoConfig[];
+  multiRepo2Enabled?: boolean;
+  /** Cloud: optional per-repo clone path/status for repo chip tooltips on cards. */
+  cloudRepoBindingOverview?: CloudRepoBindingOverview;
   /** Cloud + signed-in: used to lock per-task unblock autostart when another member is assignee. */
   cloudUnblockAutostartClientUid?: string;
   /** Active daemon sessions (used with disk resolution to know if a task worktree exists). */
@@ -53,6 +71,8 @@ interface Props {
   /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function Board({
@@ -74,10 +94,14 @@ export default function Board({
   prLoadingTaskId,
   prAgentAwaitingByTaskId,
   repoDefaultBranchShort,
+  projectRepos,
+  multiRepo2Enabled = false,
+  cloudRepoBindingOverview,
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -109,9 +133,22 @@ export default function Board({
     );
   }, [boardFilter.label, labelCatalog]);
 
+  const showRepoBoardUi =
+    multiRepo2Enabled && projectRepos != null && projectRepos.length > 1;
+
+  const primaryRepoId = useMemo(
+    () => resolvePrimaryRepoId(projectRepos ?? []),
+    [projectRepos],
+  );
+
+  const repoFilterContext = useMemo(
+    () => (primaryRepoId != null ? { primaryRepoId } : undefined),
+    [primaryRepoId],
+  );
+
   const visibleTasks = useMemo(
-    () => applyBoardFilters(allTasks, boardFilter),
-    [allTasks, boardFilter],
+    () => applyBoardFilters(allTasks, boardFilter, repoFilterContext),
+    [allTasks, boardFilter, repoFilterContext],
   );
 
   const onLabelClick = useCallback((label: string) => {
@@ -148,6 +185,8 @@ export default function Board({
             labelOptions={labelOptionsForSelect}
             doneHiddenCount={doneHiddenCount}
             projectMembers={projectMembers}
+            showRepoFilter={showRepoBoardUi}
+            projectRepos={projectRepos}
           />
           <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center">
             <button
@@ -210,10 +249,14 @@ export default function Board({
               prLoadingTaskId={prLoadingTaskId}
               prAgentAwaitingByTaskId={prAgentAwaitingByTaskId}
               repoDefaultBranchShort={repoDefaultBranchShort}
+              showRepoBoardUi={showRepoBoardUi}
+              projectRepos={projectRepos}
+              cloudRepoBindingOverview={cloudRepoBindingOverview}
               cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
               sessions={sessions}
               taskHasWorktreeById={taskHasWorktreeById}
               onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+              onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? 'No tasks yet. Create one to get started.'
@@ -232,6 +275,8 @@ export default function Board({
           labelCatalog={labelCatalog}
           defaultAgent={defaultTaskAgent}
           projectMembers={projectMembers}
+          projectRepos={projectRepos}
+          multiRepo2Enabled={multiRepo2Enabled}
           onClose={() => setModalOpen(false)}
           onCreate={(title, agent, labels, assigneeId, branch) => {
             onCreateTask(title, agent, labels, assigneeId, branch);

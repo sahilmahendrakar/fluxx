@@ -73,6 +73,15 @@ export type PlanningDocsReadResult =
   | { content: string }
   | { error: PlanningDocsReadErrorCode };
 
+export type PlanningDocsWriteErrorCode =
+  | 'NO_PROJECT'
+  | 'INVALID_PATH'
+  | 'FORBIDDEN_PATH'
+  | 'INVALID_CONTENT'
+  | 'IO_ERROR';
+
+export type PlanningDocsWriteResult = { ok: true } | { error: PlanningDocsWriteErrorCode };
+
 /**
  * Firestore document shape for `projects/{projectId}/planningDocs/{docId}`.
  *

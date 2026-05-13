@@ -5,12 +5,14 @@ import { broom } from '@lucide/lab';
 import {
   Ban,
   CirclePlay,
+  FolderGit2,
   GitBranch,
   GitMerge,
   GitPullRequest,
   GitPullRequestCreate,
   Icon,
   Loader2,
+  Terminal,
   UserCircle2,
 } from 'lucide-react';
 import { Task } from '../types';
@@ -225,12 +227,20 @@ interface Props {
   prLoading?: boolean;
   prAgentAwaiting?: boolean;
   repoDefaultBranchShort: string;
+  /** When set, branch chip compares against this repo's default (multi-repo), not the board-wide default. */
+  branchChipCompareShort?: string;
+  /** Multi-repo: compact repo label + tooltip (omit when single-repo or flag off). */
+  repoChip?: { label: string; title: string };
   /** Cloud: current user uid — when set and task has another assignee, per-task unblock toggle is read-only. */
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
   hasWorktree?: boolean;
   /** Persist agent / model / YOLO for this task (same fields as task detail & MCP `flux__update_task`). */
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  /** True when a daemon session exists for this task (main-window session tab can be opened). */
+  canOpenTaskWorkspaceTab: boolean;
+  /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
+  onOpenTaskWorkspaceTab: (taskId: string) => void;
 }
 
 export default function TaskCard({
@@ -251,9 +261,13 @@ export default function TaskCard({
   prLoading = false,
   prAgentAwaiting = false,
   repoDefaultBranchShort,
+  branchChipCompareShort,
+  repoChip,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
   onTaskAgentSpawnPrefsChange,
+  canOpenTaskWorkspaceTab,
+  onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
@@ -271,8 +285,9 @@ export default function TaskCard({
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
   const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
-  const showBranchChip = taskCardShouldShowSourceBranchChip(task, repoDefaultBranchShort);
-  const branchChipLabel = effectiveTaskSourceBranchShort(task, repoDefaultBranchShort);
+  const branchCompareShort = branchChipCompareShort ?? repoDefaultBranchShort;
+  const showBranchChip = taskCardShouldShowSourceBranchChip(task, branchCompareShort);
+  const branchChipLabel = effectiveTaskSourceBranchShort(task, branchCompareShort);
   const branchChipTitle =
     task.createSourceBranchIfMissing === true
       ? `${branchChipLabel} — Flux will create this branch when the task starts`
@@ -384,6 +399,46 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
+                  <button
+                    type="button"
+                    disabled={!canOpenTaskWorkspaceTab}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canOpenTaskWorkspaceTab) return;
+                      onOpenTaskWorkspaceTab(task.id);
+                    }}
+                    className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45 ${
+                      canOpenTaskWorkspaceTab
+                        ? 'cursor-pointer text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
+                        : 'cursor-not-allowed border border-transparent text-zinc-600/50 opacity-70'
+                    }`}
+                    aria-label={
+                      canOpenTaskWorkspaceTab
+                        ? 'Open task workspace in tab'
+                        : 'Open task workspace in tab — unavailable until you start a session from task details'
+                    }
+                    title={
+                      canOpenTaskWorkspaceTab
+                        ? 'Open task workspace in tab'
+                        : 'No session yet — open task details and start a session'
+                    }
+                  >
+                    <Terminal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  </button>
+                  {repoChip ? (
+                    <span
+                      role="img"
+                      title={repoChip.title}
+                      aria-label={repoChip.title}
+                      className="inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 truncate rounded border border-emerald-500/25 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-200/90"
+                    >
+                      <FolderGit2 className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <span className="truncate" aria-hidden>
+                        {repoChip.label}
+                      </span>
+                    </span>
+                  ) : null}
                   {showBranchChip ? (
                     <span
                       role="img"

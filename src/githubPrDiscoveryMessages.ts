@@ -44,6 +44,7 @@ export function shouldStopPrAgentFollowupDiscovery(
 ): boolean {
   if (
     code === 'PR_VIEW_FAILED' ||
+    code === 'PR_REPO_MISMATCH' ||
     code === 'GH_AUTH_FAILED' ||
     code === 'GH_NOT_INSTALLED' ||
     code === 'NO_GITHUB_REMOTE'

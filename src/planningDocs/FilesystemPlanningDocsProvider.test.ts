@@ -54,4 +54,26 @@ describe('FilesystemPlanningDocsProvider', () => {
     const got = await provider.read('notes/deep.md');
     expect(got).toEqual({ content: 'x' });
   });
+
+  it('write persists utf8 and read round-trips', async () => {
+    const w = await provider.write('notes/deep.md', 'updated body');
+    expect(w).toEqual({ ok: true });
+    const got = await provider.read('notes/deep.md');
+    expect(got).toEqual({ content: 'updated body' });
+  });
+
+  it('write returns FORBIDDEN_PATH under .flux-docs-sync', async () => {
+    const w = await provider.write('.flux-docs-sync/nope.md', 'x');
+    expect(w).toEqual({ error: 'FORBIDDEN_PATH' });
+  });
+
+  it('write returns INVALID_PATH for traversal', async () => {
+    const w = await provider.write('../outside.md', 'x');
+    expect(w).toEqual({ error: 'INVALID_PATH' });
+  });
+
+  it('write returns INVALID_CONTENT for embedded null', async () => {
+    const w = await provider.write('top.md', 'a\0b');
+    expect(w).toEqual({ error: 'INVALID_CONTENT' });
+  });
 });

@@ -5,8 +5,9 @@ import type {
   PlanningDocsBackendKind,
   PlanningDocsListResult,
   PlanningDocsReadResult,
+  PlanningDocsWriteResult,
 } from './types';
-import { safeResolvePlanningMarkdownAbsPath } from './path';
+import { isPlanningMarkdownRelativePathForbiddenForUserWrite, safeResolvePlanningMarkdownAbsPath } from './path';
 
 function errnoCode(err: unknown): string | undefined {
   return err && typeof err === 'object' && 'code' in err
@@ -39,6 +40,7 @@ export interface PlanningDocsProvider {
   readonly backendKind: PlanningDocsBackendKind;
   list(): Promise<PlanningDocsListResult>;
   read(relativePath: string): Promise<PlanningDocsReadResult>;
+  write(relativePath: string, content: string): Promise<PlanningDocsWriteResult>;
 }
 
 export class FilesystemPlanningDocsProvider implements PlanningDocsProvider {
@@ -79,6 +81,30 @@ export class FilesystemPlanningDocsProvider implements PlanningDocsProvider {
     } catch (err: unknown) {
       if (errnoCode(err) === 'ENOENT') return { error: 'NOT_FOUND' };
       return { error: 'READ_FAILED' };
+    }
+  }
+
+  async write(relativePath: string, content: string): Promise<PlanningDocsWriteResult> {
+    if (typeof content !== 'string' || content.includes('\0')) {
+      return { error: 'INVALID_CONTENT' };
+    }
+    const planningDir = this.getPlanningDir();
+    if (!planningDir) {
+      return { error: 'NO_PROJECT' };
+    }
+    if (isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath)) {
+      return { error: 'FORBIDDEN_PATH' };
+    }
+    const filePath = safeResolvePlanningMarkdownAbsPath(planningDir, relativePath);
+    if (!filePath) {
+      return { error: 'INVALID_PATH' };
+    }
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, 'utf8');
+      return { ok: true };
+    } catch {
+      return { error: 'IO_ERROR' };
     }
   }
 }

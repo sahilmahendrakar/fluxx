@@ -74,9 +74,11 @@ function broadcast(channel: string, payload?: unknown): void {
 }
 
 function stripTerminalControlSequences(data: string): string {
-  return data
-    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+  /* eslint-disable no-control-regex -- strip OSC sequences and CSI SGR from daemon stream text */
+  const withoutOsc = data.replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '');
+  const withoutCsi = withoutOsc.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+  /* eslint-enable no-control-regex */
+  return withoutCsi;
 }
 
 function sleep(ms: number): Promise<void> {

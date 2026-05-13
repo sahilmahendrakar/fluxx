@@ -7,8 +7,10 @@ import type {
   LocalProject,
   Task,
 } from '../../types';
+import { resolveCloudPrimaryRepoId } from '../../cloudBindingPrefs';
 import type {
   McpBridgeMember,
+  McpBridgeProjectInfoRepoSummary,
   McpBridgeProjectInfoResult,
   McpBridgeRepoBranchDiscoveryPayload,
   McpBridgeRequest,
@@ -127,10 +129,25 @@ async function handleRequest(
             message: 'tasks.create requires payload.input',
           };
         }
-        const created = await provider.create(payload.input);
-        if (payload.input.description !== undefined) {
+        const input = payload.input;
+        if (project.kind === 'cloud') {
+          const rid = input.repoId?.trim();
+          if (rid) {
+            const known = project.sharedRepos.some((r) => r.id === rid);
+            if (!known) {
+              return {
+                id: req.id,
+                ok: false,
+                code: 'INVALID_PAYLOAD',
+                message: `Unknown repository id for this project: ${rid}`,
+              };
+            }
+          }
+        }
+        const created = await provider.create(input);
+        if (input.description !== undefined) {
           const withDescription = await provider.update(created.id, {
-            description: payload.input.description,
+            description: input.description,
           });
           return { id: req.id, ok: true, data: withDescription };
         }
@@ -149,6 +166,20 @@ async function handleRequest(
         const previous =
           tasksSnapshot.find((t) => t.id === payload.taskId) ?? null;
         let patch = payload.patch;
+        if (
+          project.kind === 'cloud' &&
+          patch.repoId !== undefined
+        ) {
+          const rid = String(patch.repoId).trim();
+          if (rid !== '' && !project.sharedRepos.some((r) => r.id === rid)) {
+            return {
+              id: req.id,
+              ok: false,
+              code: 'INVALID_PAYLOAD',
+              message: `Unknown repository id for this project: ${rid}`,
+            };
+          }
+        }
         if (
           project.kind === 'cloud' &&
           uid &&
@@ -293,11 +324,65 @@ async function handleRequest(
           ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
           ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
         };
+        if (project.kind === 'cloud') {
+          const primaryRepoId = resolveCloudPrimaryRepoId(project);
+          const repos: McpBridgeProjectInfoRepoSummary[] = await Promise.all(
+            project.sharedRepos.map(async (sr) => {
+              const machine = project.repoMachineBindings[sr.id];
+              const binding: McpBridgeProjectInfoRepoSummary['binding'] = machine
+                ? 'bound'
+                : 'missing_binding';
+              let repoDefaultShort: string | undefined;
+              if (machine) {
+                const rawDisc = await window.electronAPI.repo.getBranchDiscovery({
+                  repoId: sr.id,
+                });
+                if (!('error' in rawDisc)) {
+                  repoDefaultShort = rawDisc.defaultBranchShort;
+                }
+              }
+              return {
+                id: sr.id,
+                label: sr.name,
+                isPrimary: primaryRepoId !== undefined && sr.id === primaryRepoId,
+                configuredDefaultBranch: sr.baseBranch,
+                ...(repoDefaultShort !== undefined ? { defaultBranchShort: repoDefaultShort } : {}),
+                ...(machine ? { rootPath: machine.rootPath } : {}),
+                binding,
+              };
+            }),
+          );
+          if (primaryRepoId !== undefined) {
+            result.primaryRepoId = primaryRepoId;
+          }
+          result.repos = repos;
+        }
         return { id: req.id, ok: true, data: result };
       }
       case 'repo.branchDiscovery': {
         const payload = (req.payload ?? {}) as McpBridgeRepoBranchDiscoveryPayload;
-        const raw = await window.electronAPI.repo.getBranchDiscovery(payload.classifyBranch);
+        const repoIdArg =
+          payload.repoId != null &&
+          payload.repoId.trim() !== '' &&
+          project.kind === 'cloud'
+            ? payload.repoId.trim()
+            : undefined;
+        if (
+          repoIdArg &&
+          project.kind === 'cloud' &&
+          !project.sharedRepos.some((r) => r.id === repoIdArg)
+        ) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: `Unknown repository id for this project: ${repoIdArg}`,
+          };
+        }
+        const raw = await window.electronAPI.repo.getBranchDiscovery({
+          ...(repoIdArg !== undefined ? { repoId: repoIdArg } : {}),
+          ...(payload.classifyBranch !== undefined ? { classifyBranch: payload.classifyBranch } : {}),
+        });
         if ('error' in raw) {
           return {
             id: req.id,

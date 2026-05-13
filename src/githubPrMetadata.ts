@@ -122,3 +122,53 @@ export function parseGhPrViewJsonStdout(jsonStr: string): TaskGithubPr | null {
   }
   return null;
 }
+
+/** Parsed `owner/repo` slug from a github.com PR URL or git remote (for repo-aware PR validation). */
+export type GithubOwnerRepo = { owner: string; repo: string };
+
+function normalizeGithubRepoSegment(name: string): string {
+  return name.replace(/\.git$/i, '').toLowerCase();
+}
+
+/** Parses `https://github.com/<owner>/<repo>/pull/<n>` (http supported). */
+export function parseGithubOwnerRepoFromPrUrl(url: string): GithubOwnerRepo | null {
+  const m = url.trim().match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/\d+/i);
+  if (!m) return null;
+  return { owner: m[1].toLowerCase(), repo: normalizeGithubRepoSegment(m[2]) };
+}
+
+/** Parses common `origin` forms that {@link isGithubHostingRemote} accepts (see `main/githubTaskPr.ts`). */
+export function parseGithubOwnerRepoFromRemote(remote: string): GithubOwnerRepo | null {
+  const t = remote.trim();
+  if (!t) return null;
+  let m = /^git@github\.com:([^/]+)\/(.+)$/i.exec(t);
+  if (m) {
+    return { owner: m[1].toLowerCase(), repo: normalizeGithubRepoSegment(m[2]) };
+  }
+  m = /^ssh:\/\/git@github\.com\/([^/]+)\/(.+)$/i.exec(t);
+  if (m) {
+    return { owner: m[1].toLowerCase(), repo: normalizeGithubRepoSegment(m[2]) };
+  }
+  try {
+    const u = new URL(t);
+    if (u.hostname !== 'github.com') return null;
+    const segments = u.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (segments.length >= 2) {
+      return {
+        owner: segments[0].toLowerCase(),
+        repo: normalizeGithubRepoSegment(segments[1]),
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** True when the PR URL's repository matches the clone's GitHub `origin` owner/repo. */
+export function githubPrUrlMatchesGitRemote(prUrl: string, remoteUrl: string): boolean {
+  const pr = parseGithubOwnerRepoFromPrUrl(prUrl);
+  const rem = parseGithubOwnerRepoFromRemote(remoteUrl);
+  if (!pr || !rem) return false;
+  return pr.owner === rem.owner && pr.repo === rem.repo;
+}

@@ -1,9 +1,12 @@
 import { execFile as execFileCallback } from 'node:child_process';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { promisify } from 'node:util';
-import type { TaskGithubPr, TaskPrErrorCode } from '../types';
+import type { RepoConfig, TaskGithubPr, TaskPrErrorCode } from '../types';
+import { parseGithubOwnerRepoFromPrUrl, parseGithubOwnerRepoFromRemote, parseGhPrViewJsonStdout } from '../githubPrMetadata';
+import { resolveRepoForBranchDiscovery } from '../repoIdentity';
 import { branchForTaskId } from '../taskBranch';
 import { normalizeGitBranchShortName } from '../taskBranches';
-import { parseGhPrViewJsonStdout } from '../githubPrMetadata';
 
 const execFile = promisify(execFileCallback);
 
@@ -440,6 +443,61 @@ export async function ghPrViewCurrentBranchOpen(worktreePath: string): Promise<T
     return { ok: true, githubPr: parsed };
   }
   return noOpenPullRequest();
+}
+
+/**
+ * Resolves cwd for `gh` (prefer the task worktree when present) and the repo root
+ * used to read `origin` / validate PR URLs (`multi-repo2`).
+ */
+export async function resolveGithubPrGitOperationPaths(params: {
+  repos: RepoConfig[];
+  taskRepoId: string | undefined;
+  worktreePath: string | null;
+}): Promise<
+  | { ok: true; ghCwd: string; gitRootPath: string; repo: RepoConfig }
+  | TaskPrError
+> {
+  if (!params.repos.length) {
+    return {
+      ok: false,
+      code: 'NO_PROJECT',
+      message: 'No git repositories are configured for this Flux project.',
+    };
+  }
+  const repoCfg = resolveRepoForBranchDiscovery(params.repos, params.taskRepoId);
+  if (!repoCfg) {
+    return {
+      ok: false,
+      code: 'NO_PROJECT',
+      message:
+        'This task targets a repository that is not configured in this project. Check Project Settings or the task repository field.',
+    };
+  }
+  const gitRootPath = path.resolve(repoCfg.rootPath);
+  let ghCwd = gitRootPath;
+  const wt = params.worktreePath?.trim();
+  if (wt) {
+    try {
+      const st = await fs.stat(wt);
+      if (st.isDirectory()) ghCwd = wt;
+    } catch {
+      /* use repo root */
+    }
+  }
+  return { ok: true, ghCwd, gitRootPath, repo: repoCfg };
+}
+
+/** When both URLs parse as github.com owner/repo slugs, rejects PRs that are not from this clone's origin. */
+export function validateGithubPrMatchesTaskRemote(prUrl: string, originRemoteUrl: string): TaskPrError | null {
+  const prSlug = parseGithubOwnerRepoFromPrUrl(prUrl);
+  const originSlug = parseGithubOwnerRepoFromRemote(originRemoteUrl);
+  if (!prSlug || !originSlug) return null;
+  if (prSlug.owner === originSlug.owner && prSlug.repo === originSlug.repo) return null;
+  return {
+    ok: false,
+    code: 'PR_REPO_MISMATCH',
+    message: `This pull request is on GitHub at ${prSlug.owner}/${prSlug.repo}, but this task's clone uses origin ${originSlug.owner}/${originSlug.repo}.`,
+  };
 }
 
 export async function createPullRequestForTaskWorktree(params: {

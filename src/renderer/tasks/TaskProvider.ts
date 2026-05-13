@@ -16,6 +16,7 @@ export type TaskPatch = Partial<
     | 'assigneeId'
     | 'sourceBranch'
     | 'createSourceBranchIfMissing'
+    | 'repoId'
   >
 > & {
   workspaceCleanedAt?: string | null;
@@ -36,6 +37,8 @@ export type TaskCreateInput = {
   createSourceBranchIfMissing?: boolean;
   agentModel?: string;
   agentYolo?: boolean;
+  /** Multi-repo2: must belong to the active project when set; otherwise the primary repo is used. */
+  repoId?: string;
 };
 
 /**

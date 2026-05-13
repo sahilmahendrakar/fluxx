@@ -63,6 +63,7 @@ export class LocalTaskProvider implements TaskProvider {
       ...(input.createSourceBranchIfMissing !== undefined
         ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
         : {}),
+      ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
     });
     this.tasks = [...this.tasks, task];
     this.emit();

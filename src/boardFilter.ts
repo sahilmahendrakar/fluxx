@@ -1,4 +1,5 @@
 import type { Agent, Task, TaskStatus } from './types';
+import { effectiveTaskRepoId } from './repoIdentity';
 import { normalizeTaskLabels } from './taskLabels';
 
 /** `'all'` shows every column; otherwise only tasks in that status. */
@@ -20,6 +21,8 @@ export type BoardFilterState = {
   label: BoardLabelFilter;
   assignee: BoardAssigneeFilter;
   hideDone: boolean;
+  /** When set, only tasks whose effective repo id matches (multi-repo board). */
+  repoId: string | null;
 };
 
 export const DEFAULT_BOARD_FILTER: BoardFilterState = {
@@ -30,6 +33,7 @@ export const DEFAULT_BOARD_FILTER: BoardFilterState = {
   label: null,
   assignee: null,
   hideDone: false,
+  repoId: null,
 };
 
 function textMatches(query: string, value: string | undefined): boolean {
@@ -39,6 +43,10 @@ function textMatches(query: string, value: string | undefined): boolean {
   return value.toLowerCase().includes(query);
 }
 
+export type ApplyBoardFiltersRepoContext = {
+  primaryRepoId: string;
+};
+
 /**
  * Subset of tasks shown on the board; does not mutate the task list.
  * Label filter uses the same case rules as `normalizeTaskLabels` for matching.
@@ -46,11 +54,23 @@ function textMatches(query: string, value: string | undefined): boolean {
 export function applyBoardFilters(
   tasks: readonly Task[],
   filters: BoardFilterState,
+  repoContext?: ApplyBoardFiltersRepoContext,
 ): Task[] {
   const q = filters.search.trim().toLowerCase();
+  const wantRepoId = filters.repoId?.trim() ?? null;
   return tasks.filter((t) => {
     if (filters.hideDone && t.status === 'done') {
       return false;
+    }
+    if (wantRepoId != null && wantRepoId !== '') {
+      const primary = repoContext?.primaryRepoId?.trim();
+      if (primary != null && primary !== '') {
+        if (effectiveTaskRepoId(t, primary) !== wantRepoId) {
+          return false;
+        }
+      } else if ((t.repoId ?? '').trim() !== wantRepoId) {
+        return false;
+      }
     }
     if (filters.agent !== 'all' && t.agent !== filters.agent) {
       return false;
@@ -100,6 +120,7 @@ export function boardFiltersAreActive(
     f.status !== defaults.status ||
     f.label !== defaults.label ||
     f.assignee !== defaults.assignee ||
-    f.hideDone !== defaults.hideDone
+    f.hideDone !== defaults.hideDone ||
+    f.repoId !== defaults.repoId
   );
 }
