@@ -8,6 +8,7 @@ import {
   Agent,
   type CloudRepoBindingOverview,
   type RepoConfig,
+  type TaskSurfaceLayout,
 } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
 import { resolvePrimaryRepoId } from '../repoIdentity';
@@ -22,6 +23,7 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
+import { TaskListSurface } from './TaskListSurface';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 
@@ -73,6 +75,9 @@ interface Props {
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
+  /** Kanban vs list placeholder; persisted per project in {@link ProjectTabState.taskLayout}. */
+  surfaceLayout: TaskSurfaceLayout;
+  onSurfaceLayoutChange: (layout: TaskSurfaceLayout) => void;
 }
 
 export default function Board({
@@ -102,6 +107,8 @@ export default function Board({
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
   onOpenTaskWorkspaceTab,
+  surfaceLayout,
+  onSurfaceLayoutChange,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -175,57 +182,84 @@ export default function Board({
   const noMatches = !projectIsEmpty && visibleTasks.length === 0;
   const filtersActive = boardFiltersAreActive(boardFilter);
 
-  return (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <div className="flex shrink-0 flex-col gap-2 border-b border-gray-800 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
-          <BoardFilterBar
-            filter={boardFilter}
-            onFilterChange={setBoardFilter}
-            labelOptions={labelOptionsForSelect}
-            doneHiddenCount={doneHiddenCount}
-            projectMembers={projectMembers}
-            showRepoFilter={showRepoBoardUi}
-            projectRepos={projectRepos}
-          />
-          <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center">
-            <button
-              type="button"
-              onClick={onTogglePlanPanel}
-              className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
-                planPanelOpen
-                  ? 'border-gray-700 bg-gray-800 text-gray-200'
-                  : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
-              }`}
-            >
-              Plan
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
-            >
-              + New task
-            </button>
-          </div>
-        </div>
-        {noMatches ? (
+  const chrome = (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-gray-800 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
+        <BoardFilterBar
+          filter={boardFilter}
+          onFilterChange={setBoardFilter}
+          labelOptions={labelOptionsForSelect}
+          doneHiddenCount={doneHiddenCount}
+          projectMembers={projectMembers}
+          showRepoFilter={showRepoBoardUi}
+          projectRepos={projectRepos}
+        />
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-end sm:self-center">
           <div
-            className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"
-            role="status"
+            className="flex rounded-lg border border-zinc-700/90 bg-zinc-950/40 p-0.5 shadow-sm"
+            role="radiogroup"
+            aria-label="Task layout"
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+              e.preventDefault();
+              onSurfaceLayoutChange(surfaceLayout === 'board' ? 'list' : 'board');
+            }}
           >
-            No tasks match these filters.{' '}
-            <button
-              type="button"
-              onClick={() => setBoardFilter({ ...DEFAULT_BOARD_FILTER })}
-              className="font-medium text-amber-100/95 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-200/60"
-            >
-              Clear filters
-            </button>
-            {' '}
-            to see the full board.
+            {(['board', 'list'] as const).map((layout) => (
+              <button
+                key={layout}
+                type="button"
+                role="radio"
+                aria-checked={surfaceLayout === layout}
+                tabIndex={surfaceLayout === layout ? 0 : -1}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 ${
+                  surfaceLayout === layout
+                    ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                onClick={() => onSurfaceLayoutChange(layout)}
+              >
+                {layout === 'board' ? 'Board' : 'List'}
+              </button>
+            ))}
           </div>
-        ) : null}
+          <button
+            type="button"
+            onClick={onTogglePlanPanel}
+            className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+              planPanelOpen
+                ? 'border-gray-700 bg-gray-800 text-gray-200'
+                : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
+            }`}
+          >
+            Plan
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
+          >
+            + New task
+          </button>
+        </div>
+      </div>
+      {noMatches ? (
+        <div
+          className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"
+          role="status"
+        >
+          No tasks match these filters.{' '}
+          <button
+            type="button"
+            onClick={() => setBoardFilter({ ...DEFAULT_BOARD_FILTER })}
+            className="font-medium text-amber-100/95 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-200/60"
+          >
+            Clear filters
+          </button>{' '}
+          to see {surfaceLayout === 'list' ? 'all tasks' : 'the full board'}.
+        </div>
+      ) : null}
+      {surfaceLayout === 'board' ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-4">
           {COLUMNS.map((col) => (
             <Column
@@ -269,7 +303,22 @@ export default function Board({
             />
           ))}
         </div>
-      </div>
+      ) : (
+        <TaskListSurface
+          visibleTasks={visibleTasks}
+          projectIsEmpty={projectIsEmpty}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {surfaceLayout === 'board' ? (
+        <DragDropContext onDragEnd={onDragEnd}>{chrome}</DragDropContext>
+      ) : (
+        chrome
+      )}
       {modalOpen ? (
         <NewTaskModal
           labelCatalog={labelCatalog}
@@ -284,6 +333,6 @@ export default function Board({
           }}
         />
       ) : null}
-    </DragDropContext>
+    </>
   );
 }

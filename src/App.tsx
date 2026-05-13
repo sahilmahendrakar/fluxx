@@ -23,6 +23,7 @@ import {
   type PlanningSession,
   type ProjectTabState,
   type RepoConfig,
+  type TaskSurfaceLayout,
   type TaskPrErrorCode,
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
@@ -288,6 +289,9 @@ export default function App() {
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   /** Persisted: user wants the board planning strip open (see {@link ProjectTabState.planningSidebarOpen}). */
   const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
+  /** Persisted: board columns vs list placeholder (see {@link ProjectTabState.taskLayout}). */
+  const [taskSurfaceLayout, setTaskSurfaceLayout] =
+    useState<TaskSurfaceLayout>('board');
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
   const [planningSidebarActiveId, setPlanningSidebarActiveId] = useState<string | null>(
@@ -1338,6 +1342,7 @@ export default function App() {
         setOpenPlanningMainTabIds(new Set(persisted.openPlanningTabIds ?? []));
         setPlanningSidebarActiveId(persisted.planningSidebarActiveSessionId ?? null);
         setPlanningSidebarOpen(persisted.planningSidebarOpen === true);
+        setTaskSurfaceLayout(persisted.taskLayout === 'list' ? 'list' : 'board');
         if (persisted.activeTaskId === 'settings') {
           setActiveTabId('board');
           pushProjectSettingsRoute();
@@ -1368,6 +1373,7 @@ export default function App() {
       openPlanningTabIds: Array.from(openPlanningMainTabIds),
       planningSidebarActiveSessionId: planningSidebarActiveId,
       planningSidebarOpen,
+      ...(taskSurfaceLayout === 'list' ? { taskLayout: 'list' as const } : {}),
     };
     void window.electronAPI.projects
       .setTabs(projectKey, tabs)
@@ -1382,6 +1388,7 @@ export default function App() {
     openPlanningMainTabIds,
     planningSidebarActiveId,
     planningSidebarOpen,
+    taskSurfaceLayout,
   ]);
 
   useEffect(() => {
@@ -3231,6 +3238,8 @@ export default function App() {
                           void handleUpdateTask(id, patch)
                         }
                         onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
+                        surfaceLayout={taskSurfaceLayout}
+                        onSurfaceLayoutChange={setTaskSurfaceLayout}
                       />
                       <TaskDetailPanel
                         task={selectedTask}

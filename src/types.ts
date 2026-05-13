@@ -24,6 +24,9 @@ export interface ActiveProjectKey {
   id: string;
 }
 
+/** Main-window task workspace layout for the board tab (see {@link ProjectTabState.taskLayout}). */
+export type TaskSurfaceLayout = 'board' | 'list';
+
 /**
  * Tab-strip restoration state — per project, remember which task tabs
  * were open and which was active. Planning fields mirror task patterns.
@@ -40,6 +43,11 @@ export interface ProjectTabState {
    * task tab; cleared on explicit dismiss). Absent on disk means false.
    */
   planningSidebarOpen?: boolean;
+  /**
+   * Task tab body: kanban columns vs list surface. Absent or `'board'` on disk means
+   * the classic board (back-compat).
+   */
+  taskLayout?: TaskSurfaceLayout;
 }
 
 /**

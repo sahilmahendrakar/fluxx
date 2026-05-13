@@ -20,6 +20,8 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
         ? null
         : undefined;
   const planningSidebarOpen = v.planningSidebarOpen === true ? true : undefined;
+  const taskLayout =
+    v.taskLayout === 'list' || v.taskLayout === 'board' ? v.taskLayout : undefined;
   return {
     openTaskIds: ids,
     activeTaskId: active,
@@ -28,5 +30,6 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
       ? { planningSidebarActiveSessionId: planningSidebarActive }
       : {}),
     ...(planningSidebarOpen ? { planningSidebarOpen: true } : {}),
+    ...(taskLayout === 'list' ? { taskLayout: 'list' as const } : {}),
   };
 }

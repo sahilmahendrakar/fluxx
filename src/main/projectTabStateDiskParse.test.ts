@@ -38,4 +38,41 @@ describe('parseProjectTabStateDiskValue', () => {
       }),
     ).not.toHaveProperty('planningSidebarOpen');
   });
+
+  it('preserves taskLayout list when set', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskLayout: 'list',
+      }),
+    ).toEqual({
+      openTaskIds: [],
+      activeTaskId: 'board',
+      taskLayout: 'list',
+    });
+  });
+
+  it('omits taskLayout when board or absent (default kanban)', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskLayout: 'board',
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+    expect(
+      parseProjectTabStateDiskValue({ openTaskIds: [], activeTaskId: null }),
+    ).not.toHaveProperty('taskLayout');
+  });
+
+  it('drops invalid taskLayout values', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskLayout: 'grid' as unknown as string,
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+  });
 });
