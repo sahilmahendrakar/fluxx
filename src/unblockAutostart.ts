@@ -6,7 +6,8 @@ export type UnblockAutostartPolicy = {
   autoStartSessionOnInProgress: boolean;
   /**
    * Project default for dependency-unblock autostart. Only applies when the task
-   * has an assignee (per-task `autoStartOnUnblock` and in-progress autostart are separate).
+   * has an assignee. Per-task `autoStartOnUnblock` overrides: `true` forces on,
+   * `false` forces off, omitted inherits this flag.
    */
   autoStartWhenUnblocked: boolean;
 };
@@ -29,16 +30,61 @@ export function cloudUnblockAutostartAssigneeGateAllows(
   return assignee === String(clientUid).trim();
 }
 
+/**
+ * Dependency-unblock auto-start only (ignores {@link UnblockAutostartPolicy.autoStartSessionOnInProgress}).
+ * `autoStartOnUnblock`: omitted = inherit project default (when unblocked + assignee); `true` / `false` override.
+ */
+export function effectiveWhenUnblockedAutostart(task: Task, projectWhenUnblocked: boolean): boolean {
+  if (task.autoStartOnUnblock === true) return true;
+  if (task.autoStartOnUnblock === false) return false;
+  return projectWhenUnblocked === true && Boolean(task.assigneeId?.trim());
+}
+
+/**
+ * Board / detail UI: whether the blocked chip (and matching checkbox) should show the
+ * “will auto-start when unblocked” state. When the project default is on, inheriting tasks
+ * read as enabled unless explicitly opted out — even when an assignee is still required
+ * at unblock time for cloud automation (see {@link effectiveWhenUnblockedAutostart}).
+ */
+export function whenUnblockedAutostartBoardChipEffective(
+  task: Task,
+  projectWhenUnblocked: boolean,
+): boolean {
+  if (task.autoStartOnUnblock === false) return false;
+  if (task.autoStartOnUnblock === true) return true;
+  return projectWhenUnblocked === true;
+}
+
+/**
+ * Single-click toggle for the blocked-row control: flip effective when-unblocked autostart
+ * and return a patch (`null` clears stored value = inherit project default).
+ */
+export function patchAutoStartOnUnblockAfterToggle(
+  task: Task,
+  projectWhenUnblocked: boolean,
+): { autoStartOnUnblock: boolean | null } {
+  const eff = whenUnblockedAutostartBoardChipEffective(task, projectWhenUnblocked);
+  const cur = task.autoStartOnUnblock;
+
+  if (eff) {
+    if (cur === true) {
+      return { autoStartOnUnblock: projectWhenUnblocked ? false : null };
+    }
+    return { autoStartOnUnblock: false };
+  }
+  if (cur === false) {
+    return { autoStartOnUnblock: projectWhenUnblocked ? null : true };
+  }
+  return { autoStartOnUnblock: true };
+}
+
 export function shouldAutostartUnblockedTask(
   task: Task,
   policy: UnblockAutostartPolicy,
 ): boolean {
   if (task.status === 'done') return false;
-  const projectWhenUnblockedApplies =
-    policy.autoStartWhenUnblocked === true && Boolean(task.assigneeId?.trim());
   return (
-    projectWhenUnblockedApplies ||
-    task.autoStartOnUnblock === true ||
+    effectiveWhenUnblockedAutostart(task, policy.autoStartWhenUnblocked === true) ||
     policy.autoStartSessionOnInProgress === true
   );
 }

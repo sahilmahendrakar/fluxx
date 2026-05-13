@@ -470,7 +470,7 @@ export class McpServer {
           .boolean()
           .optional()
           .describe(
-            'If true, auto-start a session when the last dependency completes (in addition to project default for "when unblocked")',
+            'When true, auto-start when the last dependency completes even if the project default is off. When false, opt out of the project “when unblocked” default for this task (requires an assignee for that default to apply). Omit to leave unchanged.',
           ),
         assigneeEmail: z
           .string()

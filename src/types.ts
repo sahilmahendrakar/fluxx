@@ -340,7 +340,11 @@ export interface Task {
   assigneeId?: string | null;
   /** Task ids in the same project that must be `done` before this task is unblocked. */
   blockedByTaskIds?: string[];
-  /** If true, auto-start a session for this task when the last dependency completes, even if project “when unblocked” is off. */
+  /**
+   * When-unblocked session auto-start override: `true` forces on, `false` forces off (e.g. opt out
+   * while the project default is on). When omitted, the task inherits the project “when unblocked”
+   * default (which only applies when the task has an assignee on cloud boards).
+   */
   autoStartOnUnblock?: boolean;
   /**
    * Git branch this task is logically based on (PR merge target / conceptual base).

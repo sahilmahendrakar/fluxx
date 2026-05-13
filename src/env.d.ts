@@ -254,12 +254,14 @@ declare global {
             | 'workspaceCleanedAt'
             | 'blockedByTaskIds'
             | 'labels'
-            | 'autoStartOnUnblock'
             | 'sourceBranch'
             | 'createSourceBranchIfMissing'
             | 'repoId'
           >
-        > & { githubPr?: TaskGithubPr | null },
+        > & {
+          githubPr?: TaskGithubPr | null;
+          autoStartOnUnblock?: boolean | null;
+        },
       ) => Promise<Task>;
         assertSourceBranchEditable: (
           taskId: string,

@@ -11,7 +11,6 @@ import {
   GitPullRequest,
   GitPullRequestCreate,
   Icon,
-  Layers2,
   Loader2,
   Terminal,
   UserCircle2,
@@ -20,6 +19,11 @@ import { Task } from '../types';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
+import type { TaskPatch } from '../renderer/tasks/TaskProvider';
+import {
+  patchAutoStartOnUnblockAfterToggle,
+  whenUnblockedAutostartBoardChipEffective,
+} from '../unblockAutostart';
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 
@@ -214,7 +218,7 @@ interface Props {
   onCardClick: (id: string) => void;
   onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
-  onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
+  onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   assigneeMember?: ProjectMember;
   /** Cloud: roster for quick assign from the card. Omit on local projects (no assignee slot on cards). */
   cloudProjectMembers?: ProjectMember[];
@@ -249,7 +253,7 @@ export default function TaskCard({
   onCardClick,
   onLabelClick,
   autoStartWhenUnblockedProject,
-  onToggleTaskAutoStartOnUnblock,
+  onPatchTaskAutoStartOnUnblock,
   assigneeMember,
   cloudProjectMembers,
   onTaskAssigneeChange,
@@ -271,8 +275,8 @@ export default function TaskCard({
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const blocked = isTaskBlocked(task, allTasks);
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
-  const perTaskUnblockAuto = task.autoStartOnUnblock === true;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
+  const effectiveUnblockAutostart = whenUnblockedAutostartBoardChipEffective(task, projectUnblockAuto);
   const prUrl = task.githubPr?.url?.trim() ?? '';
   const prState = task.githubPr?.state;
   const prMergedAt = task.githubPr?.mergedAt?.trim() ?? '';
@@ -296,19 +300,15 @@ export default function TaskCard({
 
   const unblockChipTitle = unblockToggleLockedByOtherAssignee
     ? 'Only the assignee can change per-task auto-start when unblocked for this task'
-    : perTaskUnblockAuto
-      ? 'Per-task auto-start when unblocked is on — click to turn off'
-      : projectUnblockAuto
-        ? 'This project auto-starts when unblocked — click to add a per-task override (on)'
-        : 'Click to auto-start a session when the last dependency completes (this task)';
+    : effectiveUnblockAutostart
+      ? 'Will auto-start a session when the last dependency completes — click to turn off'
+      : 'Will not auto-start when the last dependency completes — click to turn on';
 
   const unblockChipAriaLabel = unblockToggleLockedByOtherAssignee
     ? 'Blocked: only the assignee can change per-task auto-start when unblocked for this task'
-    : perTaskUnblockAuto
-      ? 'Blocked: per-task auto-start when unblocked is on; click to turn off'
-      : projectUnblockAuto
-        ? 'Blocked: this project auto-starts when unblocked; click to add a per-task override to turn auto-start on for this task'
-        : 'Blocked: click to enable auto-start when unblocked for this task';
+    : effectiveUnblockAutostart
+      ? 'Blocked: will auto-start when unblocked; click to turn off'
+      : 'Blocked: will not auto-start when unblocked; click to turn on';
 
   const tryOpenTaskDetail = () => {
     onCardClick(task.id);
@@ -462,24 +462,23 @@ export default function TaskCard({
                       onClick={(e) => {
                         e.stopPropagation();
                         if (unblockToggleLockedByOtherAssignee) return;
-                        onToggleTaskAutoStartOnUnblock(task.id, !perTaskUnblockAuto);
+                        onPatchTaskAutoStartOnUnblock(
+                          task.id,
+                          patchAutoStartOnUnblockAfterToggle(task, projectUnblockAuto),
+                        );
                       }}
                       title={unblockChipTitle}
                       aria-label={unblockChipAriaLabel}
                       className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border transition ${
                         unblockToggleLockedByOtherAssignee
                           ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
-                          : perTaskUnblockAuto
+                          : effectiveUnblockAutostart
                             ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
-                            : projectUnblockAuto
-                              ? 'border-sky-500/30 bg-sky-500/[0.08] text-sky-200/90 hover:border-sky-400/40'
-                              : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
+                            : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
                       }`}
                     >
-                      {perTaskUnblockAuto ? (
+                      {effectiveUnblockAutostart ? (
                         <CirclePlay className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                      ) : projectUnblockAuto ? (
-                        <Layers2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       ) : (
                         <Ban className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       )}

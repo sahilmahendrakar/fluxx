@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Task, TaskGithubPr } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
-import { validateBlockedByTaskIds } from '../taskDependencies';
+import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
 import { normalizeTaskLabels } from '../taskLabels';
 
 type TaskInput = {
@@ -158,6 +158,34 @@ export class TaskStore {
     return this.tasks.filter((t) => t.projectId === projectId);
   }
 
+  /**
+   * When project “auto-start when unblocked” is turned on, drop per-task `autoStartOnUnblock`
+   * on blocked tasks so prior opt-in/opt-out choices are not carried over.
+   */
+  async bulkClearAutoStartOnUnblockForBlockedTasks(projectId: string): Promise<number> {
+    if (!this.filePath) {
+      return 0;
+    }
+    const ids = new Set(taskIdsToClearAutoStartOnUnblockWhenAutomationEnables(this.getAll(projectId)));
+    if (ids.size === 0) {
+      return 0;
+    }
+    let cleared = 0;
+    this.tasks = this.tasks.map((t) => {
+      if (!ids.has(t.id) || t.autoStartOnUnblock === undefined) {
+        return t;
+      }
+      const next = { ...t };
+      delete next.autoStartOnUnblock;
+      cleared += 1;
+      return next;
+    });
+    if (cleared > 0) {
+      await this.save();
+    }
+    return cleared;
+  }
+
   async create(input: TaskInput): Promise<Task> {
     if (!this.filePath) {
       throw new Error('No project directory open for tasks');
@@ -226,12 +254,15 @@ export class TaskStore {
         | 'workspaceCleanedAt'
         | 'blockedByTaskIds'
         | 'labels'
-        | 'autoStartOnUnblock'
         | 'sourceBranch'
         | 'createSourceBranchIfMissing'
         | 'repoId'
       >
-    > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null },
+    > & {
+      autoStartOnUnblock?: boolean | null;
+      assigneeId?: string | null;
+      githubPr?: TaskGithubPr | null;
+    },
   ): Promise<Task> {
     if (!this.filePath) {
       throw new Error('No project directory open for tasks');
@@ -241,7 +272,12 @@ export class TaskStore {
       throw new Error(`Task not found: ${id}`);
     }
     const current = this.tasks[index];
-    const { assigneeId: patchAssigneeId, githubPr: patchGithubPr, ...patchRest } = patch;
+    const {
+      assigneeId: patchAssigneeId,
+      githubPr: patchGithubPr,
+      autoStartOnUnblock: patchAsou,
+      ...patchRest
+    } = patch;
     const updated: Task = {
       ...current,
       ...patchRest,
@@ -254,11 +290,11 @@ export class TaskStore {
         delete updated.labels;
       }
     }
-    if (patch.autoStartOnUnblock !== undefined) {
-      if (patch.autoStartOnUnblock) {
-        updated.autoStartOnUnblock = true;
-      } else {
+    if (patchAsou !== undefined) {
+      if (patchAsou === null) {
         delete updated.autoStartOnUnblock;
+      } else {
+        updated.autoStartOnUnblock = patchAsou;
       }
     }
     if (patchAssigneeId !== undefined) {
@@ -291,18 +327,11 @@ export class TaskStore {
       }
     }
     if (patch.repoId !== undefined) {
-      const next = (patch.repoId ?? '').trim();
-      if (next.length === 0) {
+      const nextRepo = (patch.repoId ?? '').trim();
+      if (nextRepo.length === 0) {
         delete updated.repoId;
       } else {
-        updated.repoId = next;
-      }
-    }
-    if (patchGithubPr !== undefined) {
-      if (patchGithubPr === null) {
-        delete updated.githubPr;
-      } else {
-        updated.githubPr = patchGithubPr;
+        updated.repoId = nextRepo;
       }
     }
     this.tasks[index] = updated;

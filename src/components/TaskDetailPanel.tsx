@@ -28,6 +28,7 @@ import {
   type RepoConfig,
   type ResolveTaskWorktreeIpcResult,
 } from '../types';
+import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import {
   effectiveTaskRepoId,
   findRepoByIdOrPrimary,
@@ -43,6 +44,10 @@ import {
   isTaskBlocked,
   validateBlockedByTaskIds,
 } from '../taskDependencies';
+import {
+  patchAutoStartOnUnblockAfterToggle,
+  whenUnblockedAutostartBoardChipEffective,
+} from '../unblockAutostart';
 import { projectLabelCatalog } from '../taskLabels';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_CHIP_STYLES } from './AgentBadge';
@@ -70,7 +75,6 @@ import {
   planTaskSourceBranchFieldsForCreate,
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
-import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 
 function taskAgentSupportsCliResume(agent: Agent): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
@@ -951,6 +955,10 @@ export default function TaskDetailPanel({
       task.assigneeId?.trim() &&
       task.assigneeId !== implicitSessionAssigneeUid,
   );
+  const effectiveWhenUnblockedAuto = whenUnblockedAutostartBoardChipEffective(
+    task,
+    autoStartWhenUnblockedProject,
+  );
   const depQueryLower = depSearch.trim().toLowerCase();
   const pickCandidates = projectTasks.filter(
     (t) =>
@@ -1579,10 +1587,15 @@ export default function TaskDetailPanel({
                     <input
                       type="checkbox"
                       disabled={unblockAutoStartCheckboxLocked}
-                      checked={task.autoStartOnUnblock === true}
+                      checked={effectiveWhenUnblockedAuto}
                       onChange={(e) => {
                         if (unblockAutoStartCheckboxLocked) return;
-                        onUpdate(task.id, { autoStartOnUnblock: e.target.checked });
+                        const want = e.target.checked;
+                        if (want === effectiveWhenUnblockedAuto) return;
+                        onUpdate(
+                          task.id,
+                          patchAutoStartOnUnblockAfterToggle(task, autoStartWhenUnblockedProject),
+                        );
                       }}
                       className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/[0.2] bg-[#09090b] disabled:cursor-not-allowed"
                     />
@@ -1591,10 +1604,9 @@ export default function TaskDetailPanel({
                         Auto-start when unblocked
                       </span>
                       <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
-                        Start a session when the last dependency is completed
-                        {autoStartWhenUnblockedProject
-                          ? ' (this project can also auto-start from settings).'
-                          : ' (or enable the project default in settings).'}
+                        Matches the board chip: when on, a session starts as soon as the last
+                        dependency completes. You can opt this task out even if the project default
+                        is on, or opt in when the default is off.
                         {unblockAutoStartCheckboxLocked ? (
                           <span className="mt-1 block text-zinc-500">
                             Only the assignee can edit this while the task is assigned to someone

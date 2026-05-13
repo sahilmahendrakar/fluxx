@@ -70,7 +70,7 @@ import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
 import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
-import { isTaskBlocked } from './taskDependencies';
+import { isTaskBlocked, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from './taskDependencies';
 import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
 import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
 import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlanningDocsFirestorePush';
@@ -130,6 +130,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     githubPr,
     sourceBranch,
     createSourceBranchIfMissing,
+    autoStartOnUnblock,
     repoId,
     ...rest
   } = patch;
@@ -172,6 +173,14 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     } else {
       next = { ...next };
       delete next.createSourceBranchIfMissing;
+    }
+  }
+  if (autoStartOnUnblock !== undefined) {
+    if (autoStartOnUnblock === null) {
+      next = { ...next };
+      delete next.autoStartOnUnblock;
+    } else {
+      next = { ...next, autoStartOnUnblock };
     }
   }
   if (repoId !== undefined) {
@@ -1772,17 +1781,38 @@ export default function App() {
 
   const handleUpdateTask = useCallback(
     (id: string, patch: TaskPatch) => {
-      const { githubPr: patchGithubPr, ...patchRest } = patch;
+      const {
+        autoStartOnUnblock: patchAsou,
+        githubPr: patchGh,
+        workspaceCleanedAt: patchWsc,
+        ...patchRest
+      } = patch;
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== id) return t;
           let next: Task = { ...t, ...patchRest };
-          if (patchGithubPr !== undefined) {
-            if (patchGithubPr === null) {
+          if (patchGh !== undefined) {
+            if (patchGh === null) {
               next = { ...next };
               delete next.githubPr;
             } else {
-              next = { ...next, githubPr: patchGithubPr };
+              next = { ...next, githubPr: patchGh };
+            }
+          }
+          if (patchWsc !== undefined) {
+            if (patchWsc === null) {
+              next = { ...next };
+              delete next.workspaceCleanedAt;
+            } else {
+              next = { ...next, workspaceCleanedAt: patchWsc };
+            }
+          }
+          if (patchAsou !== undefined) {
+            if (patchAsou === null) {
+              next = { ...next };
+              delete next.autoStartOnUnblock;
+            } else {
+              next = { ...next, autoStartOnUnblock: patchAsou };
             }
           }
           if (patch.labels !== undefined) {
@@ -1792,14 +1822,6 @@ export default function App() {
             } else {
               next = { ...next };
               delete next.labels;
-            }
-          }
-          if (patch.autoStartOnUnblock !== undefined) {
-            if (patch.autoStartOnUnblock) {
-              next = { ...next, autoStartOnUnblock: true };
-            } else {
-              next = { ...next };
-              delete next.autoStartOnUnblock;
             }
           }
           if (patch.sourceBranch !== undefined) {
@@ -1851,24 +1873,24 @@ export default function App() {
       if (patch.labels !== undefined) {
         persistable.labels = normalizeTaskLabels(patch.labels);
       }
-      if (patch.autoStartOnUnblock !== undefined) {
-        persistable.autoStartOnUnblock = patch.autoStartOnUnblock;
+      if (patchAsou !== undefined) {
+        persistable.autoStartOnUnblock = patchAsou;
       }
-          if (patch.assigneeId !== undefined) {
-            persistable.assigneeId = patch.assigneeId;
-          }
-          if (patch.sourceBranch !== undefined) {
-            persistable.sourceBranch = patch.sourceBranch;
-          }
-          if (patch.createSourceBranchIfMissing !== undefined) {
-            persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
-          }
-          if (patch.repoId !== undefined) {
-            persistable.repoId = patch.repoId;
-          }
-          if (patchGithubPr !== undefined) {
-            persistable.githubPr = patchGithubPr;
-          }
+      if (patch.assigneeId !== undefined) {
+        persistable.assigneeId = patch.assigneeId;
+      }
+      if (patch.sourceBranch !== undefined) {
+        persistable.sourceBranch = patch.sourceBranch;
+      }
+      if (patch.createSourceBranchIfMissing !== undefined) {
+        persistable.createSourceBranchIfMissing = patch.createSourceBranchIfMissing;
+      }
+      if (patch.repoId !== undefined) {
+        persistable.repoId = patch.repoId;
+      }
+      if (patchGh !== undefined) {
+        persistable.githubPr = patchGh;
+      }
           if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
@@ -1892,6 +1914,20 @@ export default function App() {
       pendingRef.current.set(id, { patch: merged, timer, preFlushTask });
     },
     [flushUpdate, project?.kind, uid],
+  );
+
+  const handleAutoStartWhenUnblockedProjectChange = useCallback(
+    (enabled: boolean) => {
+      setAutoStartWhenUnblockedProject(enabled);
+      if (!enabled || project?.kind !== 'cloud' || !provider) {
+        return;
+      }
+      const ids = taskIdsToClearAutoStartOnUnblockWhenAutomationEnables(tasksRef.current);
+      for (const id of ids) {
+        void handleUpdateTask(id, { autoStartOnUnblock: null });
+      }
+    },
+    [project?.kind, provider, handleUpdateTask],
   );
 
   const handleDragEnd = useCallback(
@@ -3166,8 +3202,8 @@ export default function App() {
                         cleanupLoadingTaskId={cleanupLoadingTaskId}
                         onCardClick={(id) => setSelectedTaskId(id)}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-                        onToggleTaskAutoStartOnUnblock={(id, enabled) =>
-                          void handleUpdateTask(id, { autoStartOnUnblock: enabled })
+                        onPatchTaskAutoStartOnUnblock={(id, patch) =>
+                          void handleUpdateTask(id, patch)
                         }
                         onTaskPrClick={(id) => void handleTaskPrClick(id)}
                         prLoadingTaskId={prLoadingTaskId}
@@ -3329,7 +3365,7 @@ export default function App() {
                   currentUid={uid}
                   currentUserDisplayName={displayName}
                   currentUserEmail={userEmail ?? undefined}
-                  onAutoStartWhenUnblockedChange={setAutoStartWhenUnblockedProject}
+                  onAutoStartWhenUnblockedChange={handleAutoStartWhenUnblockedProjectChange}
                   onProjectAgentPrefsRefresh={refreshPlanningRelatedProjectState}
                   onCloudSharedReposChanged={(sharedRepos) => {
                     setProject((cur) =>

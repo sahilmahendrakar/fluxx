@@ -4,6 +4,7 @@ import {
   getBlockingTasks,
   getBlockedTasks,
   isTaskBlocked,
+  taskIdsToClearAutoStartOnUnblockWhenAutomationEnables,
   validateBlockedByTaskIds,
   wouldCreateDependencyCycle,
 } from './taskDependencies';
@@ -13,6 +14,22 @@ const base = (over: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task
   createdAt: '2020-01-01',
   projectId: 'p1',
   ...over,
+});
+
+describe('taskIdsToClearAutoStartOnUnblockWhenAutomationEnables', () => {
+  it('targets blocked tasks with an override only', () => {
+    const a = base({ id: 'a', title: 'A', status: 'in-progress' });
+    const blocked = base({
+      id: 'b',
+      title: 'B',
+      status: 'backlog',
+      blockedByTaskIds: ['a'],
+      autoStartOnUnblock: false,
+    });
+    const free = base({ id: 'c', title: 'C', status: 'backlog', autoStartOnUnblock: true });
+    const all = [a, blocked, free];
+    expect(taskIdsToClearAutoStartOnUnblockWhenAutomationEnables(all).sort()).toEqual(['b']);
+  });
 });
 
 describe('taskDependencies', () => {

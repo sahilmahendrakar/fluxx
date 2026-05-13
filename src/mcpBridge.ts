@@ -54,7 +54,7 @@ export interface McpBridgeTaskPatch {
   agent?: Agent;
   blockedByTaskIds?: string[];
   labels?: string[];
-  autoStartOnUnblock?: boolean;
+  autoStartOnUnblock?: boolean | null;
   assigneeId?: string | null;
   githubPr?: TaskGithubPr | null;
   sourceBranch?: string;

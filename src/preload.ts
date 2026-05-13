@@ -290,12 +290,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'workspaceCleanedAt'
           | 'blockedByTaskIds'
           | 'labels'
-          | 'autoStartOnUnblock'
           | 'sourceBranch'
           | 'createSourceBranchIfMissing'
           | 'repoId'
         >
-      > & { githubPr?: TaskGithubPr | null },
+      > & {
+        githubPr?: TaskGithubPr | null;
+        autoStartOnUnblock?: boolean | null;
+      },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (
       taskId: string,

@@ -23,6 +23,7 @@ import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
+import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 
 interface Props {
   allTasks: Task[];
@@ -45,7 +46,7 @@ interface Props {
   cleanupLoadingTaskId: string | null;
   onCardClick: (id: string) => void;
   autoStartWhenUnblockedProject: boolean;
-  onToggleTaskAutoStartOnUnblock: (taskId: string, enabled: boolean) => void;
+  onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
   /** Cloud-only: team members for the assignee picker. */
@@ -84,7 +85,7 @@ export default function Board({
   cleanupLoadingTaskId,
   onCardClick,
   autoStartWhenUnblockedProject,
-  onToggleTaskAutoStartOnUnblock,
+  onPatchTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
   projectMembers,
@@ -240,7 +241,7 @@ export default function Board({
               onCardClick={onCardClick}
               onLabelClick={onLabelClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
-              onToggleTaskAutoStartOnUnblock={onToggleTaskAutoStartOnUnblock}
+              onPatchTaskAutoStartOnUnblock={onPatchTaskAutoStartOnUnblock}
               membersMap={membersMap}
               projectMembers={projectMembers}
               onTaskAssigneeChange={onTaskAssigneeChange}

@@ -20,6 +20,18 @@ export function isTaskBlocked(task: Task, allTasks: Task[]): boolean {
   return getBlockingTasks(task, allTasks).length > 0;
 }
 
+/** When project “auto-start when unblocked” is enabled, clear per-task overrides on blocked work. */
+export function taskIdsToClearAutoStartOnUnblockWhenAutomationEnables(allTasks: Task[]): string[] {
+  return allTasks
+    .filter(
+      (t) =>
+        t.status !== 'done' &&
+        t.autoStartOnUnblock !== undefined &&
+        isTaskBlocked(t, allTasks),
+    )
+    .map((t) => t.id);
+}
+
 /** Tasks that list `taskId` as a blocker (dependents), for “Blocks N” indicators. */
 export function getBlockedTasks(taskId: string, allTasks: Task[]): Task[] {
   return allTasks.filter((t) => (t.blockedByTaskIds ?? []).includes(taskId));

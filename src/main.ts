@@ -1416,6 +1416,15 @@ app.whenReady().then(async () => {
           };
         }
         const next = await projectStore.setAutoStartWhenUnblockedAt(activeProjectDir(), enabled);
+        if (next === true) {
+          const activeProject = projectStore.get();
+          if (activeProject) {
+            const cleared = await taskStore.bulkClearAutoStartOnUnblockForBlockedTasks(activeProject.id);
+            if (cleared > 0) {
+              broadcastLocalTasksChanged();
+            }
+          }
+        }
         return { ok: true, enabled: next };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -2834,12 +2843,15 @@ app.whenReady().then(async () => {
       | 'workspaceCleanedAt'
       | 'blockedByTaskIds'
       | 'labels'
-      | 'autoStartOnUnblock'
       | 'sourceBranch'
       | 'createSourceBranchIfMissing'
       | 'repoId'
     >
-  > & { githubPr?: TaskGithubPr | null };
+  > & {
+    githubPr?: TaskGithubPr | null;
+    /** `null` clears stored value (inherit project default for when-unblocked). */
+    autoStartOnUnblock?: boolean | null;
+  };
 
   const unblockAutostartInFlight = new Set<string>();
 

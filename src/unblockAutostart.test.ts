@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Task } from './types';
 import {
   cloudUnblockAutostartAssigneeGateAllows,
+  effectiveWhenUnblockedAutostart,
   findDependentsForUnblockAutostart,
   isFullUnblockTransition,
+  patchAutoStartOnUnblockAfterToggle,
   shouldAutostartUnblockedTask,
+  whenUnblockedAutostartBoardChipEffective,
 } from './unblockAutostart';
 
 const base = (t: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task => ({
@@ -54,6 +57,159 @@ describe('shouldAutostartUnblockedTask', () => {
 
   it('is false when all flags are off', () => {
     expect(shouldAutostartUnblockedTask(base({ id: 'x', title: '', status: 'backlog' }), p(false, false))).toBe(false);
+  });
+
+  it('is false when project “when unblocked” is on and task opts out', () => {
+    expect(
+      shouldAutostartUnblockedTask(
+        base({
+          id: 'x',
+          title: '',
+          status: 'backlog',
+          assigneeId: 'alice',
+          autoStartOnUnblock: false,
+        }),
+        p(false, true),
+      ),
+    ).toBe(false);
+  });
+
+  it('is still true when opted out of when-unblocked but in-progress autostart is on', () => {
+    expect(
+      shouldAutostartUnblockedTask(
+        base({
+          id: 'x',
+          title: '',
+          status: 'backlog',
+          assigneeId: 'alice',
+          autoStartOnUnblock: false,
+        }),
+        p(true, true),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('effectiveWhenUnblockedAutostart', () => {
+  const base = (t: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task => ({
+    agent: 'cursor',
+    createdAt: '2020-01-01',
+    projectId: 'p',
+    ...t,
+  });
+
+  it('inherits project on only with assignee', () => {
+    expect(
+      effectiveWhenUnblockedAutostart(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'a' }),
+        true,
+      ),
+    ).toBe(true);
+    expect(effectiveWhenUnblockedAutostart(base({ id: 'x', title: '', status: 'backlog' }), true)).toBe(
+      false,
+    );
+  });
+
+  it('respects explicit false over project on + assignee', () => {
+    expect(
+      effectiveWhenUnblockedAutostart(
+        base({
+          id: 'x',
+          title: '',
+          status: 'backlog',
+          assigneeId: 'a',
+          autoStartOnUnblock: false,
+        }),
+        true,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('whenUnblockedAutostartBoardChipEffective', () => {
+  const base = (t: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task => ({
+    agent: 'cursor',
+    createdAt: '2020-01-01',
+    projectId: 'p',
+    ...t,
+  });
+
+  it('shows on for inherit + project on even without assignee', () => {
+    expect(whenUnblockedAutostartBoardChipEffective(base({ id: 'x', title: '', status: 'backlog' }), true)).toBe(
+      true,
+    );
+  });
+
+  it('shows off for inherit + project off', () => {
+    expect(whenUnblockedAutostartBoardChipEffective(base({ id: 'x', title: '', status: 'backlog' }), false)).toBe(
+      false,
+    );
+  });
+
+  it('shows off when opted out', () => {
+    expect(
+      whenUnblockedAutostartBoardChipEffective(
+        base({ id: 'x', title: '', status: 'backlog', autoStartOnUnblock: false }),
+        true,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('patchAutoStartOnUnblockAfterToggle', () => {
+  const base = (t: Partial<Task> & Pick<Task, 'id' | 'title' | 'status'>): Task => ({
+    agent: 'cursor',
+    createdAt: '2020-01-01',
+    projectId: 'p',
+    ...t,
+  });
+
+  it('inherit + project on + assignee → toggle off yields false', () => {
+    expect(
+      patchAutoStartOnUnblockAfterToggle(
+        base({ id: 'x', title: '', status: 'backlog', assigneeId: 'a' }),
+        true,
+      ),
+    ).toEqual({ autoStartOnUnblock: false });
+  });
+
+  it('inherit + project on + no assignee → toggle off yields false', () => {
+    expect(
+      patchAutoStartOnUnblockAfterToggle(base({ id: 'x', title: '', status: 'backlog' }), true),
+    ).toEqual({ autoStartOnUnblock: false });
+  });
+
+  it('explicit false + project on → toggle on yields null (inherit)', () => {
+    expect(
+      patchAutoStartOnUnblockAfterToggle(
+        base({
+          id: 'x',
+          title: '',
+          status: 'backlog',
+          assigneeId: 'a',
+          autoStartOnUnblock: false,
+        }),
+        true,
+      ),
+    ).toEqual({ autoStartOnUnblock: null });
+  });
+
+  it('per-task true + project off → toggle off yields null', () => {
+    expect(
+      patchAutoStartOnUnblockAfterToggle(
+        base({ id: 'x', title: '', status: 'backlog', autoStartOnUnblock: true }),
+        false,
+      ),
+    ).toEqual({ autoStartOnUnblock: null });
+  });
+
+  it('per-task true + project on → toggle off yields false', () => {
+    expect(
+      patchAutoStartOnUnblockAfterToggle(
+        base({ id: 'x', title: '', status: 'backlog', autoStartOnUnblock: true }),
+        true,
+      ),
+    ).toEqual({ autoStartOnUnblock: false });
   });
 });
 
