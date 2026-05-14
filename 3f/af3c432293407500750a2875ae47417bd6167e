@@ -1,0 +1,70 @@
+src/main/AppStateStore.ts
+  s_cd47c56e31f910::t_aced3b2332dce3 35-36
+  s_cd47c56e31f910::t_9fa47b6557e73f 108-126
+src/main/ProjectStore.test.ts
+  s_cd47c56e31f910::t_b3ac1ffeae5378 11
+  s_cd47c56e31f910::t_519cab4356b689 492-544
+src/preload.ts
+  s_cd47c56e31f910::t_538a599829dac9 214-220
+  s_cd47c56e31f910::t_e072604427cc89 245
+src/env.d.ts
+  s_cd47c56e31f910::t_07359c0c7dcf22 197-202
+src/main/projectFluxRemoval.ts
+  s_cd47c56e31f910::t_87d25af6faf8c3 9
+  s_cd47c56e31f910::t_a452950d5313d6 131,133,135-136
+  s_cd47c56e31f910::t_034fc76272332b 168
+  s_cd47c56e31f910::t_b34dbc7ff71ffa 1-7,10-70,72-88,90-130,132,134,137-167,169-182,184-186,188-216
+  s_cd47c56e31f910::t_dbe42ff0997593 89
+  s_cd47c56e31f910::t_2674643dcb9b43 71
+  s_cd47c56e31f910::t_3aab1dcf9f5080 183
+  s_cd47c56e31f910::t_016ff430a6c4bf 8
+  s_cd47c56e31f910::t_3fc40fbda80769 187
+src/main/AppStateStore.test.ts
+  s_cd47c56e31f910::t_744483c22466c1 1-3,5-53
+  s_cd47c56e31f910::t_9b9f135a527d63 4
+src/main/ProjectStore.ts
+  s_cd47c56e31f910::t_1e419d54a5f2c1 1250-1304
+  s_cd47c56e31f910::t_d5aa7395ed153f 80-91
+  s_cd47c56e31f910::t_d7f4d3d602ac58 55
+  s_cd47c56e31f910::t_40c2bc3067ffc6 953-957
+  s_cd47c56e31f910::t_d5aec58e615987 1052
+src/main/projectDirLayout.ts
+  s_cd47c56e31f910::t_c6b902086a1a61 297-315
+src/components/ProjectsListView.tsx
+  s_cd47c56e31f910::t_e8117c8bc2b81b 113,132-133
+  s_cd47c56e31f910::t_de98aaf6636784 50-51
+  s_cd47c56e31f910::t_d89b25d88977c9 240,245,256-268
+  s_cd47c56e31f910::t_8f1d6bb6393a8f 104-112,114-131,134-166
+  s_cd47c56e31f910::t_a6299effa6773f 486-494,509,511
+  s_cd47c56e31f910::t_b0ba5778e1ba3c 652-661
+  s_cd47c56e31f910::t_01f65c374dc113 608,610
+  s_cd47c56e31f910::t_b4d22afbe72a5a 425-426,429-437
+  s_cd47c56e31f910::t_8c6c3552743ad4 408-424,427-428,438-439
+  s_cd47c56e31f910::t_f6903ba72c086c 250-255,270-274
+  s_cd47c56e31f910::t_8c75c42fb2c07a 538,541-542,552-553
+  s_cd47c56e31f910::t_34eb32ada4f756 46-49
+  s_cd47c56e31f910::t_acc9f2ac2f1dd4 172
+  s_cd47c56e31f910::t_ab03256ab42094 539-540,543-551
+  s_cd47c56e31f910::t_3da2fc11049f6f 572-574,576-579,582,584,587-591,607,609,612,616-617
+  s_cd47c56e31f910::t_b25d576012ddaf 275
+src/main.ts
+  s_cd47c56e31f910::t_d70ad1d851c005 762-769
+  s_cd47c56e31f910::t_bc7939c9a6f00f 1595-1605,1608-1626
+  s_cd47c56e31f910::t_96643f576f1849 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "3faf3c432293407500750a2875ae47417bd6167e",
+  "prompts": {},
+  "sessions": {
+    "s_cd47c56e31f910": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "50334f28-6f0d-48e1-9a53-f5344731de0b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
