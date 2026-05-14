@@ -4,7 +4,8 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Task } from '../types';
 import { effectiveTaskSourceBranchShort } from '../taskBranches';
-import { fluxTaskWorkBranchName } from './fluxTaskBranch';
+import { expectedFluxWorkBranchForTask } from './fluxTaskBranch';
+import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
 
@@ -49,10 +50,13 @@ export function taskSourceBranchSettingsWouldChange(
 
 /**
  * True when a Flux task workspace is present: any daemon session for the task,
- * an on-disk worktree directory, or the generated `flux/task-*` branch.
+ * an on-disk worktree directory, or the Flux task work branch (legacy `flux/task-*`
+ * or persisted `fluxWorkBranch` on the task).
  */
 export async function taskHasBlockingWorkspaceState(input: {
   taskId: string;
+  /** Persisted Flux work branch when known (Firestore / tasks.json). */
+  fluxWorkBranch?: string | null;
   /** When set, also treats `worktrees/<repoId>/<taskId>` as blocking (`multi-repo2`). */
   repoId?: string | null;
   listSessions: () => Promise<{ taskId: string }[]>;
@@ -66,6 +70,17 @@ export async function taskHasBlockingWorkspaceState(input: {
   }
 
   const rid = input.repoId?.trim();
+  const fw = input.fluxWorkBranch?.trim();
+  if (rid && fw) {
+    const fluxScoped = path.join(input.projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxBranch(fw));
+    try {
+      await fs.access(fluxScoped);
+      return true;
+    } catch {
+      /* no flux-scoped dir */
+    }
+  }
+
   if (rid) {
     const repoScoped = path.join(input.projectDir, 'worktrees', rid, input.taskId);
     try {
@@ -101,7 +116,29 @@ export async function taskHasBlockingWorkspaceState(input: {
     /* no worktrees root */
   }
 
-  const branch = fluxTaskWorkBranchName(input.taskId);
+  if (!rid && fw) {
+    const worktreesRoot = path.join(input.projectDir, 'worktrees');
+    try {
+      const names = await fs.readdir(worktreesRoot);
+      for (const name of names) {
+        if (!name.trim()) continue;
+        const fluxNested = path.join(worktreesRoot, name, ...worktreePathSegmentsForFluxBranch(fw));
+        try {
+          await fs.access(fluxNested);
+          return true;
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* no worktrees root */
+    }
+  }
+
+  const branch = expectedFluxWorkBranchForTask({
+    id: input.taskId,
+    fluxWorkBranch: input.fluxWorkBranch ?? undefined,
+  });
   const seen = new Set<string>();
   for (const raw of input.repoGitRoots) {
     const cwd = path.resolve(raw);

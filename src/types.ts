@@ -348,7 +348,8 @@ export interface Task {
   autoStartOnUnblock?: boolean;
   /**
    * Git branch this task is logically based on (PR merge target / conceptual base).
-   * Distinct from {@link Session.branch}, which is the generated `flux/task-<id>` work branch.
+   * Distinct from {@link Session.branch}, which is the Flux task worktree branch
+   * (historically `flux/task-<id>`, now usually `<git-author-slug>/<title-slug>`).
    * When omitted on legacy rows, treat as the project default (`RepoConfig.baseBranch` / detected default).
    */
   sourceBranch?: string;
@@ -365,6 +366,12 @@ export interface Task {
    * `TaskStore.migrateMissingRepoIds` on first load.
    */
   repoId?: string;
+  /**
+   * Flux task work branch persisted after the first successful worktree creation
+   * (`<author-slug>/<title-slug>` with optional collision suffix). Omitted on older
+   * tasks: treat as the legacy `flux/task-<id>` pattern from `src/main/fluxTaskBranch.ts`.
+   */
+  fluxWorkBranch?: string;
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
 }
@@ -446,7 +453,7 @@ export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manag
 /** Payload for `workspace:resolveTaskWorktree` — bare string is legacy (`taskId` only). */
 export type ResolveTaskWorktreeIpcPayload =
   | string
-  | { taskId: string; repoId?: string | null };
+  | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null };
 
 /**
  * Structured failure when no on-disk/session path exists — distinguishes missing clone

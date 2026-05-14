@@ -257,6 +257,7 @@ export class TaskStore {
         | 'sourceBranch'
         | 'createSourceBranchIfMissing'
         | 'repoId'
+        | 'fluxWorkBranch'
       >
     > & {
       autoStartOnUnblock?: boolean | null;

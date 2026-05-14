@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import type { RepoConfig, Session } from '../types';
 import type { DaemonClient } from './DaemonClient';
 import type { WorktreeService } from './WorktreeService';
+import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
 
 /**
  * Stop a daemon session, close its shells, and remove its git worktree — same
@@ -41,8 +42,10 @@ export async function teardownEphemeralResourcesForTask(
   worktreeService: WorktreeService,
   taskId: string,
   repos: readonly RepoConfig[],
-  /** Persists which repository this task targets — drives repo-scoped `worktrees/<repoId>/<taskId>` cleanup. */
+  /** Persists which repository this task targets — drives repo-scoped `worktrees/<repoId>/…` cleanup. */
   taskRepoId?: string | null,
+  /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
+  fluxWorkBranch?: string | null,
 ): Promise<string[]> {
   const errors: string[] = [];
   let sessionIds: string[] = [];
@@ -97,6 +100,25 @@ export async function teardownEphemeralResourcesForTask(
   }
 
   const rid = taskRepoId?.trim();
+  const fw = fluxWorkBranch?.trim();
+  if (rid && fw) {
+    const fluxScoped = path.join(projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxBranch(fw));
+    try {
+      await fs.access(fluxScoped);
+      const cfg = repos.find((r) => r.id === rid);
+      const gitRoot = cfg?.rootPath?.trim() ? path.resolve(cfg.rootPath) : null;
+      try {
+        await worktreeService.remove(fluxScoped, gitRoot);
+      } catch (err) {
+        errors.push(
+          `Worktree cleanup (flux ${rid}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    } catch {
+      /* no flux-scoped dir */
+    }
+  }
+
   if (rid) {
     const repoScoped = path.join(projectDir, 'worktrees', rid, taskId);
     try {
@@ -138,6 +160,36 @@ export async function teardownEphemeralResourcesForTask(
     }
   } catch {
     /* no worktrees root */
+  }
+
+  if (!rid && fw) {
+    try {
+      const names = await fs.readdir(worktreesRoot);
+      for (const name of names) {
+        if (!name.trim()) continue;
+        const fluxNested = path.join(
+          worktreesRoot,
+          name,
+          ...worktreePathSegmentsForFluxBranch(fw),
+        );
+        try {
+          await fs.access(fluxNested);
+        } catch {
+          continue;
+        }
+        const cfg = repos.find((r) => r.id === name);
+        const gitRoot = cfg?.rootPath?.trim() ? path.resolve(cfg.rootPath) : null;
+        try {
+          await worktreeService.remove(fluxNested, gitRoot);
+        } catch (err) {
+          errors.push(
+            `Worktree cleanup (flux ${name}): ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    } catch {
+      /* no worktrees root */
+    }
   }
 
   return errors;

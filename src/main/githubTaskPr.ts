@@ -2,7 +2,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { RepoConfig, TaskGithubPr, TaskPrErrorCode } from '../types';
+import type { RepoConfig, Task, TaskGithubPr, TaskPrErrorCode } from '../types';
 import {
   parseGithubOwnerRepoFromPrUrl,
   parseGithubOwnerRepoFromRemote,
@@ -10,7 +10,7 @@ import {
   parseGhPrViewJsonStdoutList,
 } from '../githubPrMetadata';
 import { resolveRepoForBranchDiscovery } from '../repoIdentity';
-import { branchForTaskId } from '../taskBranch';
+import { expectedTaskFluxWorkBranch } from '../taskBranch';
 import { normalizeGitBranchShortName } from '../taskBranches';
 
 const execFile = promisify(execFileCallback);
@@ -163,8 +163,8 @@ export async function readCurrentBranch(worktreePath: string): Promise<string | 
   }
 }
 
-export function expectTaskBranch(taskId: string, branch: string): TaskPrError | null {
-  const expected = branchForTaskId(taskId);
+export function expectTaskWorkBranch(task: Pick<Task, 'id' | 'fluxWorkBranch'>, branch: string): TaskPrError | null {
+  const expected = expectedTaskFluxWorkBranch(task);
   if (branch !== expected) {
     return {
       ok: false,
@@ -173,6 +173,11 @@ export function expectTaskBranch(taskId: string, branch: string): TaskPrError | 
     };
   }
   return null;
+}
+
+/** @deprecated Use {@link expectTaskWorkBranch}. */
+export function expectTaskBranch(taskId: string, branch: string): TaskPrError | null {
+  return expectTaskWorkBranch({ id: taskId }, branch);
 }
 
 async function gitPushHead(worktreePath: string): Promise<TaskPrError | null> {
@@ -546,13 +551,13 @@ export function validateGithubPrMatchesTaskRemote(prUrl: string, originRemoteUrl
 export async function createPullRequestForTaskWorktree(params: {
   worktreePath: string;
   gitRootPath: string;
-  taskId: string;
+  task: Pick<Task, 'id' | 'fluxWorkBranch'>;
   title: string;
   body: string;
   /** Normalized short branch name: task source branch, else project default. */
   baseBranch: string;
 }): Promise<TaskPrCreateOk | TaskPrError> {
-  const { worktreePath, gitRootPath, taskId, title, body, baseBranch } = params;
+  const { worktreePath, gitRootPath, task, title, body, baseBranch } = params;
   const prBase = normalizeGitBranchShortName(baseBranch);
   if (!prBase) {
     return {
@@ -571,7 +576,7 @@ export async function createPullRequestForTaskWorktree(params: {
   const branchResult = await readCurrentBranch(worktreePath);
   if (typeof branchResult !== 'string') return branchResult;
 
-  const branchCheck = expectTaskBranch(taskId, branchResult);
+  const branchCheck = expectTaskWorkBranch(task, branchResult);
   if (branchCheck) return branchCheck;
 
   const baseReady = await ensureRemotePrBaseBranch(gitRootPath, prBase);

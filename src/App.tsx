@@ -749,7 +749,7 @@ export default function App() {
   const tasksWorktreeIdsKey = useMemo(
     () =>
       tasks
-        .map((t) => `${t.id}\t${t.repoId ?? ''}`)
+        .map((t) => `${t.id}\t${t.repoId ?? ''}\t${t.fluxWorkBranch ?? ''}`)
         .sort()
         .join('\0'),
     [tasks],
@@ -781,7 +781,13 @@ export default function App() {
     const gen = ++worktreeResolveGenRef.current;
     const handle = window.setTimeout(() => {
       void api
-        .resolveWorktrees(tasksRef.current.map((t) => ({ taskId: t.id, repoId: t.repoId })))
+        .resolveWorktrees(
+          tasksRef.current.map((t) => ({
+            taskId: t.id,
+            repoId: t.repoId,
+            fluxWorkBranch: t.fluxWorkBranch,
+          })),
+        )
         .then((map) => {
           if (worktreeResolveGenRef.current !== gen) return;
           setTaskHasWorktreeById(map);
@@ -1147,6 +1153,18 @@ export default function App() {
         .catch((err) => {
           console.error('[task:status] Firestore write failed (in-progress)', { taskId, err });
         });
+    });
+  }, [project?.kind]);
+
+  useEffect(() => {
+    if (project?.kind !== 'cloud') return;
+    return window.electronAPI.tasks.onPersistFluxWorkBranch(({ taskId, fluxWorkBranch }) => {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, fluxWorkBranch } : t)),
+      );
+      void providerRef.current?.update(taskId, { fluxWorkBranch }).catch((err) => {
+        console.error('[task:fluxWorkBranch] Firestore write failed', { taskId, err });
+      });
     });
   }, [project?.kind]);
 
@@ -1888,10 +1906,13 @@ export default function App() {
       if (patch.repoId !== undefined) {
         persistable.repoId = patch.repoId;
       }
+      if (patch.fluxWorkBranch !== undefined) {
+        persistable.fluxWorkBranch = patch.fluxWorkBranch;
+      }
       if (patchGh !== undefined) {
         persistable.githubPr = patchGh;
       }
-          if (Object.keys(persistable).length === 0) return;
+      if (Object.keys(persistable).length === 0) return;
 
       const existing = pendingRef.current.get(id);
       if (existing) clearTimeout(existing.timer);

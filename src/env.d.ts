@@ -250,29 +250,33 @@ declare global {
               | 'agentModel'
               | 'agentYolo'
               | 'description'
-            | 'orderKey'
-            | 'workspaceCleanedAt'
-            | 'blockedByTaskIds'
-            | 'labels'
-            | 'sourceBranch'
-            | 'createSourceBranchIfMissing'
-            | 'repoId'
-          >
-        > & {
-          githubPr?: TaskGithubPr | null;
-          autoStartOnUnblock?: boolean | null;
-        },
-      ) => Promise<Task>;
+              | 'orderKey'
+              | 'workspaceCleanedAt'
+              | 'blockedByTaskIds'
+              | 'labels'
+              | 'sourceBranch'
+              | 'createSourceBranchIfMissing'
+              | 'repoId'
+              | 'fluxWorkBranch'
+            >
+          > & {
+            githubPr?: TaskGithubPr | null;
+            autoStartOnUnblock?: boolean | null;
+          },
+        ) => Promise<Task>;
         assertSourceBranchEditable: (
           taskId: string,
-          previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
+          previous: Pick<
+            Task,
+            'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxWorkBranch'
+          > & {
             githubPr?: TaskGithubPr;
           },
           patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         assertRepoIdEditable: (
           taskId: string,
-          previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+          previous: Pick<Task, 'repoId' | 'fluxWorkBranch'> & { githubPr?: TaskGithubPr },
           patch: Pick<Task, 'repoId'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
@@ -287,12 +291,15 @@ declare global {
         resolveWorktrees: (
           taskIdsOrEntries:
             | string[]
-            | { taskId: string; repoId?: string | null }[],
+            | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null }[],
         ) => Promise<Record<string, boolean>>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
         onUserInput: (
           cb: (p: { sessionId: string; taskId: string }) => void,
+        ) => () => void;
+        onPersistFluxWorkBranch: (
+          cb: (p: { taskId: string; fluxWorkBranch: string }) => void,
         ) => () => void;
       };
       sessions: {

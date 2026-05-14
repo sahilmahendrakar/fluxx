@@ -52,7 +52,7 @@ export function buildCloudGithubPrRefreshPatch(input: {
       enabled: autoMoveToReviewWhenPrOpen,
       taskStatus: live.status,
       githubPr: refreshed,
-      taskId: live.id,
+      task: live,
     })
   ) {
     patch.status = 'review';
