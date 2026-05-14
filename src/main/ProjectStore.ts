@@ -31,6 +31,13 @@ import {
   stableLocalProjectIdForRoot,
   writeProjectDirMigrationConflict,
 } from './projectDirLayout';
+import {
+  DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE,
+  DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
+  DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+  DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
+  DEFAULT_AUTO_START_WHEN_UNBLOCKED,
+} from '../cloudBindingPrefs';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
@@ -1073,11 +1080,11 @@ export class ProjectStore {
         addedAt: now,
         planningAgent: DEFAULT_AGENT,
         defaultTaskAgent: DEFAULT_AGENT,
-        autoStartSessionOnInProgress: false,
-        autoStartWhenUnblocked: false,
-        autoCleanupWorkspaceWhenDone: false,
-        autoMarkDoneWhenPrMerged: false,
-        autoMoveToReviewWhenPrOpen: false,
+        autoStartSessionOnInProgress: DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
+        autoStartWhenUnblocked: DEFAULT_AUTO_START_WHEN_UNBLOCKED,
+        autoCleanupWorkspaceWhenDone: DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE,
+        autoMarkDoneWhenPrMerged: DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
+        autoMoveToReviewWhenPrOpen: DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
         repos: [
           {
             id: primaryRepoId,

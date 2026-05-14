@@ -19,9 +19,20 @@ import {
 
 export { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
 
-/** Matches `ProjectStore` defaults for the same preference keys. */
+/** Matches new local `config.json` defaults from `ProjectStore.materialiseProjectDir`. */
 export const CLOUD_BINDING_DEFAULT_PLANNING_AGENT: Agent = 'claude-code';
 export const CLOUD_BINDING_DEFAULT_TASK_AGENT: Agent = 'claude-code';
+
+/** When absent from `localBindings.json`, cloud bindings inherit these (explicit `true`/`false` wins). */
+export const DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS = true;
+export const DEFAULT_AUTO_START_WHEN_UNBLOCKED = false;
+export const DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE = false;
+export const DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED = true;
+export const DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN = true;
+
+function automationPref(value: boolean | undefined, whenUnset: boolean): boolean {
+  return typeof value === 'boolean' ? value : whenUnset;
+}
 
 export interface ResolvedCloudBindingPrefs {
   planningAgent: Agent;
@@ -43,7 +54,7 @@ function isAgent(value: unknown): value is Agent {
   );
 }
 
-/** Preference slice with defaults aligned to `LocalProject`. */
+/** Effective prefs for a cloud machine binding; missing automation keys use {@link DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS} and related constants. */
 export function resolvedPrefsFromBinding(
   binding: CloudProjectLocalBinding | null | undefined,
 ): ResolvedCloudBindingPrefs {
@@ -62,13 +73,25 @@ export function resolvedPrefsFromBinding(
       ? { taskDefaultModels: binding.taskDefaultModels }
       : {}),
     ...(binding?.defaultTaskAgentYolo === true ? { defaultTaskAgentYolo: true } : {}),
-    autoStartSessionOnInProgress: binding?.autoStartSessionOnInProgress === true,
-    autoStartWhenUnblocked: binding?.autoStartWhenUnblocked === true,
+    autoStartSessionOnInProgress: automationPref(
+      binding?.autoStartSessionOnInProgress,
+      DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
+    ),
+    autoStartWhenUnblocked: automationPref(
+      binding?.autoStartWhenUnblocked,
+      DEFAULT_AUTO_START_WHEN_UNBLOCKED,
+    ),
     autoCleanupWorkspaceWhenDone:
       binding?.autoCleanupWorkspaceWhenDone === true ||
       binding?.autoDeleteTaskWhenDone === true,
-    autoMarkDoneWhenPrMerged: binding?.autoMarkDoneWhenPrMerged === true,
-    autoMoveToReviewWhenPrOpen: binding?.autoMoveToReviewWhenPrOpen === true,
+    autoMarkDoneWhenPrMerged: automationPref(
+      binding?.autoMarkDoneWhenPrMerged,
+      DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
+    ),
+    autoMoveToReviewWhenPrOpen: automationPref(
+      binding?.autoMoveToReviewWhenPrOpen,
+      DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+    ),
   };
 }
 
