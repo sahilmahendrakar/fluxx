@@ -8,7 +8,7 @@ import {
   ProjectStore,
 } from './ProjectStore';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
-import { stableLocalProjectIdForRoot } from './projectDirLayout';
+import { stableLocalProjectIdForRoot, legacyCloudProjectDir, assertSafeToDeleteLegacyFlatProjectsRoot } from './projectDirLayout';
 
 const TEST_PROJECT_ID = 'p1';
 
@@ -486,6 +486,59 @@ describe('ProjectStore repo-id operations', () => {
     const repos = await store.removeRepoAt(projectDir, rid);
     expect(repos).toHaveLength(1);
     expect(repos[0].rootPath).toBe(path.resolve(rootA));
+  });
+});
+
+describe('ProjectStore.listMaterializationDirsForProjectId', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-materialization-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('returns only directories whose config id matches, across canonical and legacy cloud paths', async () => {
+    const rootLocal = path.join(tmp, 'repo-local');
+    await fs.mkdir(rootLocal, { recursive: true });
+    const localId = stableLocalProjectIdForRoot(rootLocal);
+    const canonical = path.join(tmp, 'projects', localId);
+    await writeLegacyConfig(canonical, rootLocal, { id: localId });
+
+    const otherRoot = path.join(tmp, 'repo-other');
+    await fs.mkdir(otherRoot, { recursive: true });
+    const otherId = stableLocalProjectIdForRoot(otherRoot);
+    await writeLegacyConfig(path.join(tmp, 'projects', otherId), otherRoot, { id: otherId });
+
+    const cloudId = 'cloudProj_1';
+    const legacyCloud = legacyCloudProjectDir(tmp, cloudId);
+    await writeLegacyConfig(legacyCloud, rootLocal, { id: cloudId, name: 'Team' });
+
+    const store = new ProjectStore(tmp);
+    const localDirs = await store.listMaterializationDirsForProjectId(localId);
+    expect(localDirs.map((p) => path.resolve(p))).toEqual([path.resolve(canonical)]);
+
+    const cloudDirs = await store.listMaterializationDirsForProjectId(cloudId);
+    expect(cloudDirs.map((p) => path.resolve(p))).toEqual([path.resolve(legacyCloud)]);
+  });
+
+  it('refuses unsafe legacy flat ~/.flux/projects root deletion when nested projects exist', async () => {
+    const projectsRoot = path.join(tmp, 'projects');
+    const nested = path.join(projectsRoot, 'nested');
+    await writeLegacyConfig(nested, path.join(tmp, 'r2'), { id: 'nested-proj' });
+    await writeLegacyConfig(projectsRoot, path.join(tmp, 'r1'), { id: 'flat-proj' });
+
+    await expect(assertSafeToDeleteLegacyFlatProjectsRoot(tmp, projectsRoot)).rejects.toThrow(
+      /Refusing to delete/,
+    );
+  });
+
+  it('allows legacy flat ~/.flux/projects root deletion when no nested project dirs exist', async () => {
+    const projectsRoot = path.join(tmp, 'projects');
+    await writeLegacyConfig(projectsRoot, path.join(tmp, 'r1'), { id: 'flat-only' });
+    await expect(assertSafeToDeleteLegacyFlatProjectsRoot(tmp, projectsRoot)).resolves.toBeUndefined();
   });
 });
 

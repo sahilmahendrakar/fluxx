@@ -43,6 +43,12 @@ export function ProjectsListView({
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [localRemovalError, setLocalRemovalError] = useState<string | null>(null);
+  const [cloudLocalCleanupError, setCloudLocalCleanupError] = useState<string | null>(null);
+  const [cloudLocalCleanupId, setCloudLocalCleanupId] = useState<string | null>(null);
+  const [cloudDeleteCleanupWarning, setCloudDeleteCleanupWarning] = useState<string | null>(null);
+  /** Local project id currently undergoing `Remove from Flux` cleanup. */
+  const [localRemovalId, setLocalRemovalId] = useState<string | null>(null);
 
   const uid = auth.user?.uid ?? null;
 
@@ -95,14 +101,75 @@ export function ProjectsListView({
     if (active) onProjectActivated(active);
   };
 
-  const handleRemoveLocal = async (id: string) => {
-    await window.electronAPI.projects.removeLocal(id);
-    await refreshLocal();
+  const handleRemoveLocalFlux = async (id: string, name: string) => {
+    if (
+      !window.confirm(
+        `Remove "${name}" from Flux?\n\nThis deletes Flux-owned data under ~/.flux for this project (tasks, planning docs, MCP config, and Flux-managed git worktrees), stops any running task or planning sessions for it, and clears saved tabs. Your original repository clone is not deleted.`,
+      )
+    ) {
+      return;
+    }
+    setLocalRemovalError(null);
+    setLocalRemovalId(id);
+    try {
+      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+        kind: 'local',
+        id,
+      });
+      const lines = [
+        ...result.errors,
+        ...result.warnings.map((w) => `Warning: ${w}`),
+      ];
+      if (lines.length > 0) {
+        setLocalRemovalError(lines.join('\n'));
+      }
+      await refreshLocal();
+    } catch (err) {
+      console.error('[removeFluxOwnedLocalState local]', err);
+      setLocalRemovalError(
+        err instanceof Error ? err.message : 'Could not remove project from Flux.',
+      );
+    } finally {
+      setLocalRemovalId(null);
+    }
+  };
+
+  const handleRemoveCloudLocalData = async (summary: CloudProjectSummary) => {
+    if (
+      !window.confirm(
+        `Remove local Flux data for "${summary.name}"?\n\nThis machine will forget the local folder binding, delete Flux materialized files under ~/.flux for this team project, stop related sessions, and clear saved tabs. The team project in the cloud is unchanged. Your git clone is not deleted.`,
+      )
+    ) {
+      return;
+    }
+    setCloudLocalCleanupError(null);
+    setCloudLocalCleanupId(summary.id);
+    try {
+      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+        kind: 'cloud',
+        id: summary.id,
+      });
+      const lines = [
+        ...result.errors,
+        ...result.warnings.map((w) => `Warning: ${w}`),
+      ];
+      if (lines.length > 0) {
+        setCloudLocalCleanupError(lines.join('\n'));
+      }
+    } catch (err) {
+      console.error('[removeFluxOwnedLocalState cloud]', err);
+      setCloudLocalCleanupError(
+        err instanceof Error ? err.message : 'Could not remove local team project data.',
+      );
+    } finally {
+      setCloudLocalCleanupId(null);
+    }
   };
 
   const handleOpenCloud = async (summary: CloudProjectSummary) => {
     if (!uid) return;
     setCloudError(null);
+    setCloudLocalCleanupError(null);
     setActivatingId(summary.id);
     try {
       let binding = await window.electronAPI.projects.getLocalBinding(summary.id);
@@ -170,16 +237,42 @@ export function ProjectsListView({
     if (summary.ownerId !== uid) return;
     if (
       !window.confirm(
-        `Delete "${summary.name}"? This removes the project for everyone.`,
+        `Delete "${summary.name}" from the team?\n\nThis removes the Firestore project for everyone. Any teammate who still has a clone can keep working locally, but shared Flux task data in the cloud will be gone.`,
       )
     ) {
       return;
     }
+    setCloudDeleteCleanupWarning(null);
     try {
       await deleteCloudProject(summary.id);
-      await window.electronAPI.projects.clearLocalBinding(summary.id);
     } catch (err) {
       console.error('[deleteCloudProject] failed', err);
+      setCloudError(
+        err instanceof Error ? err.message : 'Could not delete the team project.',
+      );
+      return;
+    }
+    try {
+      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+        kind: 'cloud',
+        id: summary.id,
+      });
+      const lines = [
+        ...result.errors,
+        ...result.warnings.map((w) => `Warning: ${w}`),
+      ];
+      if (lines.length > 0) {
+        setCloudDeleteCleanupWarning(
+          `The team project was deleted, but some local cleanup steps failed:\n${lines.join('\n')}`,
+        );
+      }
+    } catch (err) {
+      console.error('[removeFluxOwnedLocalState after team delete]', err);
+      setCloudDeleteCleanupWarning(
+        `The team project was deleted, but local cleanup failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   };
 
@@ -312,6 +405,38 @@ export function ProjectsListView({
               </p>
             ) : null}
 
+            {cloudDeleteCleanupWarning ? (
+              <div
+                role="alert"
+                className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95"
+              >
+                <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudDeleteCleanupWarning}</p>
+                <button
+                  type="button"
+                  onClick={() => setCloudDeleteCleanupWarning(null)}
+                  className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-amber-200/90 hover:bg-amber-500/15"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+
+            {cloudLocalCleanupError ? (
+              <div
+                className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
+                role="alert"
+              >
+                <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudLocalCleanupError}</p>
+                <button
+                  type="button"
+                  onClick={() => setCloudLocalCleanupError(null)}
+                  className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+
             {cloudProjects.status === 'loading' ? (
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
                 Loading…
@@ -358,6 +483,15 @@ export function ProjectsListView({
                           </div>
                         </div>
                       </button>
+                      <button
+                        type="button"
+                        disabled={cloudLocalCleanupId === p.id}
+                        onClick={() => void handleRemoveCloudLocalData(p)}
+                        className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
+                        title="Remove local Flux data and unbind this machine (does not delete the team project)"
+                      >
+                        {cloudLocalCleanupId === p.id ? 'Removing…' : 'Local data'}
+                      </button>
                       {p.ownerId === uid ? (
                         <>
                           <button
@@ -372,9 +506,9 @@ export function ProjectsListView({
                             type="button"
                             onClick={() => void handleDeleteCloud(p)}
                             className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
-                            title="Delete project"
+                            title="Delete team project for everyone (Firestore)"
                           >
-                            Delete
+                            Delete team
                           </button>
                         </>
                       ) : null}
@@ -401,6 +535,22 @@ export function ProjectsListView({
             </button>
           </div>
 
+          {localRemovalError ? (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
+              role="alert"
+            >
+              <p className="min-w-0 flex-1 whitespace-pre-wrap">{localRemovalError}</p>
+              <button
+                type="button"
+                onClick={() => setLocalRemovalError(null)}
+                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+
           {gitError ? (
             <p
               className="mb-4 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95"
@@ -419,16 +569,26 @@ export function ProjectsListView({
             <EmptyLocalState onAdd={() => void handleAddLocal()} busy={adding} />
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {projects.map((p) => (
+              {projects.map((p) => {
+                const removing = localRemovalId === p.id;
+                return (
                 <li key={p.id}>
-                  <div className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04]">
+                  <div
+                    className={`group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] ${removing ? 'border-white/[0.08] bg-white/[0.03]' : ''}`}
+                    aria-busy={removing}
+                  >
                     <button
                       type="button"
+                      disabled={removing}
                       onClick={() => void handleOpenLocal(p.id)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:pointer-events-none disabled:opacity-50"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[13px] font-medium text-zinc-300">
-                        {p.name.slice(0, 1).toUpperCase()}
+                        {removing ? (
+                          <LocalRemovalSpinner aria-label="Removing project from Flux" />
+                        ) : (
+                          p.name.slice(0, 1).toUpperCase()
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-medium text-zinc-100">
@@ -444,15 +604,17 @@ export function ProjectsListView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleRemoveLocal(p.id)}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-300 group-hover:opacity-100"
-                      title="Remove from list"
+                      disabled={removing}
+                      onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
+                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-300'}`}
+                      title="Remove from Flux (deletes ~/.flux workspace; keeps your git clone)"
                     >
-                      Remove
+                      {removing ? 'Removing…' : 'Remove from Flux'}
                     </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>
@@ -484,6 +646,16 @@ export function ProjectsListView({
         />
       ) : null}
     </div>
+  );
+}
+
+function LocalRemovalSpinner({ 'aria-label': ariaLabel }: { 'aria-label'?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label={ariaLabel}
+      className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-200"
+    />
   );
 }
 

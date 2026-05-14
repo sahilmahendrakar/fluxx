@@ -28,6 +28,7 @@ import {
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
 import { DaemonClient } from './main/DaemonClient';
+import { removeFluxOwnedLocalState } from './main/projectFluxRemoval';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
   deleteSessionWorkspaceAndStop,
@@ -756,6 +757,14 @@ app.whenReady().then(async () => {
     await taskStore.reinit('');
     worktreeService.setRootPath('');
     worktreeService.setProjectDir('');
+  }
+
+  function parseActiveProjectKeyPayload(raw: unknown): ActiveProjectKey | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const k = raw as Partial<ActiveProjectKey>;
+    if (k.kind !== 'local' && k.kind !== 'cloud') return null;
+    if (typeof k.id !== 'string' || !k.id.trim()) return null;
+    return { kind: k.kind, id: k.id.trim() };
   }
 
   // ---- Project (legacy single-project API; returns the active LOCAL project) ----
@@ -1583,10 +1592,38 @@ app.whenReady().then(async () => {
     },
   );
   ipcMain.handle('projects:removeLocal', async (_e, id: string) => {
-    const current = projectStore.get();
-    if (current?.id === id) {
-      await clearLocalWorkspaceState();
+    const result = await removeFluxOwnedLocalState({
+      key: { kind: 'local', id },
+      fluxBaseDir,
+      projectStore,
+      daemonClient,
+      appStateStore,
+      bindingStore,
+      clearInMemoryWorkspaceIfActive: clearLocalWorkspaceState,
+    });
+    if (!result.ok) {
+      console.error('[projects:removeLocal] incomplete', result.errors, result.warnings);
     }
+  });
+  ipcMain.handle('projects:removeFluxOwnedLocalState', async (_e, raw: unknown) => {
+    const key = parseActiveProjectKeyPayload(raw);
+    if (!key) {
+      return {
+        ok: false,
+        warnings: [],
+        errors: ['Invalid project key'],
+        deletedMaterializationDirs: [],
+      };
+    }
+    return removeFluxOwnedLocalState({
+      key,
+      fluxBaseDir,
+      projectStore,
+      daemonClient,
+      appStateStore,
+      bindingStore,
+      clearInMemoryWorkspaceIfActive: clearLocalWorkspaceState,
+    });
   });
 
   ipcMain.handle('projects:getActiveKey', (): ActiveProjectKey | null => {

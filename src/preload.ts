@@ -211,6 +211,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
     removeLocal: (id: string) =>
       ipcRenderer.invoke('projects:removeLocal', id) as Promise<void>,
+    removeFluxOwnedLocalState: (key: ActiveProjectKey) =>
+      ipcRenderer.invoke('projects:removeFluxOwnedLocalState', key) as Promise<{
+        ok: boolean;
+        warnings: string[];
+        errors: string[];
+        deletedMaterializationDirs: string[];
+      }>,
     getActiveKey: () =>
       ipcRenderer.invoke('projects:getActiveKey') as Promise<ActiveProjectKey | null>,
     clearActive: () => ipcRenderer.invoke('projects:clearActive') as Promise<void>,
@@ -235,7 +242,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
     clearLocalBinding: (cloudProjectId: string) =>
-      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void      >,
+      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
   },
   repo: {
     getBranchDiscovery: (arg?: string | RepoBranchDiscoveryRequest) =>

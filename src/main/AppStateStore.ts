@@ -32,8 +32,8 @@ export class AppStateStore {
     projectTabs: {},
   };
 
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'app-state.json');
+  constructor(opts?: { filePath?: string }) {
+    this.filePath = opts?.filePath ?? path.join(app.getPath('userData'), 'app-state.json');
   }
 
   async init(): Promise<void> {
@@ -103,6 +103,25 @@ export class AppStateStore {
       [projectStateKey(key)]: tabs,
     };
     await this.set({ projectTabs: next });
+  }
+
+  /**
+   * Removes persisted tab strip state for a project. When `clearActiveNavigation` is true
+   * (removed project was active), also clears `activeProjectKey` and `lastOpenedProjectDir`.
+   */
+  async clearProjectFluxState(
+    key: ActiveProjectKey,
+    options: { clearActiveNavigation: boolean },
+  ): Promise<void> {
+    const sk = projectStateKey(key);
+    const nextTabs = { ...this.state.projectTabs };
+    delete nextTabs[sk];
+    const partial: Partial<AppState> = { projectTabs: nextTabs };
+    if (options.clearActiveNavigation) {
+      partial.activeProjectKey = null;
+      partial.lastOpenedProjectDir = null;
+    }
+    await this.set(partial);
   }
 
   async set(partial: Partial<AppState>): Promise<void> {
