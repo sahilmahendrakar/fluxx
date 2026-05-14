@@ -45,9 +45,11 @@ export function normalizeUtf8Locale(
  * - `TERM_PROGRAM=kitty` — claude-code and similar chat TUIs only parse
  *   kitty CSI-u sequences (e.g. Shift+Enter → `\x1b[13;2u`) when
  *   `TERM_PROGRAM ∈ {ghostty, kitty, iTerm.app, WezTerm, WarpTerminal}`.
- *   xterm.js already emits the right bytes; claiming kitty means they get
- *   parsed instead of submitted as plain Enter. Lifted verbatim from
- *   Superset; their comment on this is the canonical reference.
+ *   The tabbed renderer enables the Kitty keyboard protocol
+ *   (`vtExtensions.kittyKeyboard` + `allowProposedApi` on `@xterm/xterm`, same
+ *   as Superset) so those bytes are actually emitted. Claiming kitty without
+ *   that support breaks Neovim/vim modifier keys. Lifted from Superset's
+ *   terminal env recipe; renderer options match their desktop PR.
  * - `COLORFGBG=15;0` — Flux's window chrome is always dark, so hint white
  *   foreground on black background so TUIs that auto-pick palettes
  *   (vim, fzf) choose dark-mode variants.
