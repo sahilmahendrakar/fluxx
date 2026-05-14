@@ -194,6 +194,12 @@ declare global {
         addLocal: () => Promise<LocalProject | { error: 'NOT_GIT_REPO' } | null>;
         activateLocal: (id: string | null) => Promise<LocalProject | null>;
         removeLocal: (id: string) => Promise<void>;
+        removeFluxOwnedLocalState: (key: ActiveProjectKey) => Promise<{
+          ok: boolean;
+          warnings: string[];
+          errors: string[];
+          deletedMaterializationDirs: string[];
+        }>;
         getActiveKey: () => Promise<ActiveProjectKey | null>;
         clearActive: () => Promise<void>;
         getTabs: (key: ActiveProjectKey) => Promise<ProjectTabState>;

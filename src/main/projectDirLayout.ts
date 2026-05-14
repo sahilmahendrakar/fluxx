@@ -294,3 +294,22 @@ export async function listLegacyCloudProjectDirs(fluxBaseDir: string): Promise<s
   }
   return out;
 }
+
+/**
+ * Refuses deletion of `~/.flux/projects/` when it is the legacy flat layout (direct
+ * `projects/config.json`) but nested `projects/<id>/` directories also exist — `fs.rm`
+ * on the root would destroy unrelated projects.
+ */
+export async function assertSafeToDeleteLegacyFlatProjectsRoot(
+  fluxBaseDir: string,
+  materialDir: string,
+): Promise<void> {
+  const projectsRoot = path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR);
+  if (path.resolve(materialDir) !== path.resolve(projectsRoot)) return;
+  const nested = await listNestedProjectDirsUnderProjects(fluxBaseDir);
+  if (nested.length > 0) {
+    throw new Error(
+      'Refusing to delete ~/.flux/projects/: nested project directories exist alongside the legacy flat config.json.',
+    );
+  }
+}
