@@ -114,7 +114,7 @@ export interface TaskDetailPanelProps {
   /** Present when a teammate (not the current user) is running an agent on this task. */
   remoteRunner?: { uid: string; displayName?: string; photoURL?: string } | null;
   onOpenSessionTab: (session: Session) => void;
-  onArchiveSession: (sessionId: string) => void;
+  onMinimizeSession: (sessionId: string) => void;
   /** When set (and task is not done), "Mark as done" is enabled. Omitted when blocked — use `markAsDoneBlocked`. */
   onMarkAsDone?: () => void;
   /** True when dependencies block finishing; shows a disabled Mark as done control. */
@@ -234,7 +234,7 @@ export default function TaskDetailPanel({
   onDelete,
   remoteRunner,
   onOpenSessionTab,
-  onArchiveSession,
+  onMinimizeSession,
   onMarkAsDone,
   markAsDoneBlocked = false,
   autoStartWhenUnblockedProject = false,
@@ -853,10 +853,9 @@ export default function TaskDetailPanel({
     }
   };
 
-  const handleArchiveFromPanel = () => {
+  const handleMinimizeFromPanel = () => {
     if (!session) return;
-    onArchiveSession(session.id);
-    setSession(null);
+    onMinimizeSession(session.id);
   };
 
   const handleOpenInTab = () => {
@@ -1796,11 +1795,11 @@ export default function TaskDetailPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={handleArchiveFromPanel}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-500 transition hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/30"
-                    title="Archive — kill agent and terminals, keep worktree"
+                    onClick={handleMinimizeFromPanel}
+                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    title="Minimize — hide from sidebar, keep agent running"
                   >
-                    Archive
+                    Minimize
                   </button>
                 </div>
               </div>

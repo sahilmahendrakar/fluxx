@@ -32,7 +32,7 @@ interface AppShellProps {
   onSelectPlanningDoc: (relativePath: string) => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
-  onArchiveSession: (sessionId: string) => void;
+  onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
 }
 
@@ -79,7 +79,7 @@ export function AppShell({
   onSelectPlanningDoc,
   sessions,
   onOpenSession,
-  onArchiveSession,
+  onMinimizeSession,
   onDeleteWorkspace,
 }: AppShellProps) {
   const appUpdates = useAppUpdates();
@@ -107,7 +107,7 @@ export function AppShell({
           onSelectPlanningDoc={onSelectPlanningDoc}
           sessions={sessions}
           onOpenSession={onOpenSession}
-          onArchiveSession={onArchiveSession}
+          onMinimizeSession={onMinimizeSession}
           onDeleteWorkspace={onDeleteWorkspace}
           onClearProject={onClearProject}
           onCollapse={onCollapse}
