@@ -25,6 +25,7 @@ export const CLOUD_BINDING_DEFAULT_TASK_AGENT: Agent = 'claude-code';
 
 /** When absent from `localBindings.json`, cloud bindings inherit these (explicit `true`/`false` wins). */
 export const DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS = true;
+export const DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS = false;
 export const DEFAULT_AUTO_START_WHEN_UNBLOCKED = false;
 export const DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE = false;
 export const DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED = true;
@@ -42,6 +43,7 @@ export interface ResolvedCloudBindingPrefs {
   taskDefaultModels?: AgentSessionModelDefaults;
   defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress: boolean;
+  autoRespondToTrustPrompts: boolean;
   autoStartWhenUnblocked: boolean;
   autoCleanupWorkspaceWhenDone: boolean;
   autoMarkDoneWhenPrMerged: boolean;
@@ -76,6 +78,10 @@ export function resolvedPrefsFromBinding(
     autoStartSessionOnInProgress: automationPref(
       binding?.autoStartSessionOnInProgress,
       DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
+    ),
+    autoRespondToTrustPrompts: automationPref(
+      binding?.autoRespondToTrustPrompts,
+      DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS,
     ),
     autoStartWhenUnblocked: automationPref(
       binding?.autoStartWhenUnblocked,

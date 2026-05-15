@@ -176,6 +176,10 @@ declare global {
         setAutoStartWhenUnblocked: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getAutoRespondToTrustPrompts: () => Promise<boolean>;
+        setAutoRespondToTrustPrompts: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
         getAutoCleanupWorkspaceWhenDone: () => Promise<boolean>;
         setAutoCleanupWorkspaceWhenDone: (
           enabled: boolean,
@@ -315,6 +319,10 @@ declare global {
         ) => () => void;
         onExit: (cb: (session: Session) => void) => () => void;
         onAgentState: (sessionId: string, cb: (state: AgentState) => void) => () => void;
+        onTrustPromptAutoresponded: (
+          sessionId: string,
+          cb: (payload: { ruleId: string; agent: Agent; sessionId: string }) => void,
+        ) => () => void;
         getSilenceStates: () => Promise<
           { id: string; taskId?: string; state: AgentState }[]
         >;
@@ -351,6 +359,10 @@ declare global {
           cb: (data: string, streamSeq?: number) => void,
         ) => () => void;
         onExit: (cb: (session: PlanningSession) => void) => () => void;
+        onTrustPromptAutoresponded: (
+          sessionId: string,
+          cb: (payload: { ruleId: string; agent: Agent; sessionId: string }) => void,
+        ) => () => void;
       };
       cursorAgent: {
         listModels: () => Promise<ListCursorAgentModelsResult>;

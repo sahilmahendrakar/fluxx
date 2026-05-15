@@ -229,6 +229,10 @@ function ProjectConfigPane({
   const [whenUnblockedLoading, setWhenUnblockedLoading] = useState(true);
   const [whenUnblockedSaveState, setWhenUnblockedSaveState] = useState<SaveState>('idle');
   const [whenUnblockedError, setWhenUnblockedError] = useState<string | null>(null);
+  const [trustAutorespondEnabled, setTrustAutorespondEnabled] = useState(false);
+  const [trustAutorespondLoading, setTrustAutorespondLoading] = useState(true);
+  const [trustAutorespondSaveState, setTrustAutorespondSaveState] = useState<SaveState>('idle');
+  const [trustAutorespondError, setTrustAutorespondError] = useState<string | null>(null);
   const [autoCleanupOnDoneEnabled, setAutoCleanupOnDoneEnabled] = useState(false);
   const [autoCleanupOnDoneLoading, setAutoCleanupOnDoneLoading] = useState(true);
   const [autoCleanupOnDoneSaveState, setAutoCleanupOnDoneSaveState] = useState<SaveState>('idle');
@@ -394,6 +398,31 @@ function ProjectConfigPane({
 
   useEffect(() => {
     let cancelled = false;
+    setTrustAutorespondLoading(true);
+    setTrustAutorespondError(null);
+    void window.electronAPI.project
+      .getAutoRespondToTrustPrompts()
+      .then((enabled) => {
+        if (!cancelled) {
+          setTrustAutorespondEnabled(enabled);
+          setTrustAutorespondSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setTrustAutorespondError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTrustAutorespondLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
     setAutoCleanupOnDoneLoading(true);
     setAutoCleanupOnDoneError(null);
     void window.electronAPI.project
@@ -485,6 +514,24 @@ function ProjectConfigPane({
       setWhenUnblockedSaveState((state) => (state === 'saved' ? 'idle' : state));
     }, 1500);
   }, [onAutoStartWhenUnblockedChange]);
+
+  const handleTrustAutorespondChange = useCallback(async (enabled: boolean) => {
+    setTrustAutorespondEnabled(enabled);
+    setTrustAutorespondSaveState('saving');
+    setTrustAutorespondError(null);
+    const result = await window.electronAPI.project.setAutoRespondToTrustPrompts(enabled);
+    if ('error' in result) {
+      setTrustAutorespondSaveState('error');
+      setTrustAutorespondError(result.error);
+      setTrustAutorespondEnabled((prev) => !prev);
+      return;
+    }
+    setTrustAutorespondEnabled(result.enabled);
+    setTrustAutorespondSaveState('saved');
+    window.setTimeout(() => {
+      setTrustAutorespondSaveState((state) => (state === 'saved' ? 'idle' : state));
+    }, 1500);
+  }, []);
 
   const handlePlanningAgentChange = useCallback(
     async (next: Agent) => {
@@ -834,6 +881,26 @@ function ProjectConfigPane({
               loading={whenUnblockedLoading}
               saveState={whenUnblockedSaveState}
               error={whenUnblockedError}
+            />
+            <AutomationSettingRow
+              key={`${project.id}-auto-trust-prompts`}
+              title="Auto-accept agent trust prompts"
+              description={
+                <>
+                  When on, Flux may answer the one-time trust dialog for Claude Code and Cursor only
+                  while the PTY working directory stays under this project’s{' '}
+                  <code className="text-zinc-400">worktrees/</code>,{' '}
+                  <code className="text-zinc-400">planning/</code>, or your{' '}
+                  <code className="text-zinc-400">~/.flux/worktrees</code> tree. Agents you launch
+                  manually outside Flux are never affected.
+                </>
+              }
+              checked={trustAutorespondEnabled}
+              onCheckedChange={(next) => void handleTrustAutorespondChange(next)}
+              switchDisabled={trustAutorespondLoading || trustAutorespondSaveState === 'saving'}
+              loading={trustAutorespondLoading}
+              saveState={trustAutorespondSaveState}
+              error={trustAutorespondError}
             />
             <AutomationSettingRow
               key={`${project.id}-auto-cleanup-on-done`}

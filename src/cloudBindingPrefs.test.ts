@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
   DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+  DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS,
   DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
   resolvedPrefsFromBinding,
 } from './cloudBindingPrefs';
@@ -14,6 +15,7 @@ describe('resolvedPrefsFromBinding', () => {
       primaryRepoId: 'r1',
     });
     expect(prefs.autoStartSessionOnInProgress).toBe(DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS);
+    expect(prefs.autoRespondToTrustPrompts).toBe(DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS);
     expect(prefs.autoStartWhenUnblocked).toBe(false);
     expect(prefs.autoCleanupWorkspaceWhenDone).toBe(false);
     expect(prefs.autoMarkDoneWhenPrMerged).toBe(DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED);

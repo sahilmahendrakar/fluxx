@@ -30,6 +30,7 @@ async function writeLegacyConfig(
     planningAgent: 'claude-code',
     defaultTaskAgent: 'claude-code',
     autoStartSessionOnInProgress: false,
+    autoRespondToTrustPrompts: false,
     autoStartWhenUnblocked: false,
     autoCleanupWorkspaceWhenDone: false,
     autoMarkDoneWhenPrMerged: false,

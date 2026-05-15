@@ -27,6 +27,10 @@ import {
 } from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { WorktreeService } from './main/WorktreeService';
+import {
+  cwdUnderTrustPromptAutorespondRoots,
+  trustPromptAutorespondRootsForProject,
+} from './main/trustPromptAutorespondRoots';
 import { DaemonClient } from './main/DaemonClient';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
@@ -1447,6 +1451,35 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle('project:getAutoRespondToTrustPrompts', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).autoRespondToTrustPrompts;
+    }
+    return projectStore.getAutoRespondToTrustPromptsAt(activeProjectDir());
+  });
+  ipcMain.handle(
+    'project:setAutoRespondToTrustPrompts',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            autoRespondToTrustPrompts: enabled === true,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).autoRespondToTrustPrompts,
+          };
+        }
+        const next = await projectStore.setAutoRespondToTrustPromptsAt(activeProjectDir(), enabled);
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle('project:getAutoCleanupWorkspaceWhenDone', async () => {
     const key = appStateStore.get().activeProjectKey;
     if (key?.kind === 'cloud') {
@@ -2803,6 +2836,16 @@ app.whenReady().then(async () => {
         args,
         resume: Boolean(options?.resume),
       });
+      const projectDirForTrust = activeProjectDir();
+      const trustRoots = projectDirForTrust
+        ? trustPromptAutorespondRootsForProject(projectDirForTrust)
+        : [];
+      const trustAutorespondArg =
+        project.autoRespondToTrustPrompts === true &&
+        cwdUnderTrustPromptAutorespondRoots(worktreePath, trustRoots)
+          ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
+          : {};
+
       const result = await daemonClient.createSession({
         worktreePath,
         branch,
@@ -2814,6 +2857,7 @@ app.whenReady().then(async () => {
         args,
         cols: 80,
         rows: 24,
+        ...trustAutorespondArg,
       });
       if ('error' in result) {
         console.error('[session:start] daemon spawn failed', {
@@ -3423,6 +3467,13 @@ app.whenReady().then(async () => {
         spawnModel,
         spawnYolo,
       );
+      const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
+      const trustAutorespondArg =
+        project.autoRespondToTrustPrompts === true &&
+        cwdUnderTrustPromptAutorespondRoots(planningDir, trustRoots)
+          ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
+          : {};
+
       const result = await daemonClient.startPlanning({
         projectId: project.id,
         agent: planningAgent,
@@ -3431,6 +3482,7 @@ app.whenReady().then(async () => {
         args,
         cols: 220,
         rows: 50,
+        ...trustAutorespondArg,
       });
       if ('error' in result) {
         console.error('[planning:start] daemon spawn failed', {

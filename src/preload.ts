@@ -181,6 +181,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setAutoStartWhenUnblocked', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getAutoRespondToTrustPrompts: () =>
+      ipcRenderer.invoke('project:getAutoRespondToTrustPrompts') as Promise<boolean>,
+    setAutoRespondToTrustPrompts: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setAutoRespondToTrustPrompts', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
     getAutoCleanupWorkspaceWhenDone: () =>
       ipcRenderer.invoke('project:getAutoCleanupWorkspaceWhenDone') as Promise<boolean>,
     setAutoCleanupWorkspaceWhenDone: (enabled: boolean) =>
@@ -400,6 +406,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(channel, handler);
       return () => ipcRenderer.removeListener(channel, handler);
     },
+    onTrustPromptAutoresponded: (
+      sessionId: string,
+      cb: (payload: { ruleId: string; agent: Agent; sessionId: string }) => void,
+    ) => {
+      const channel = `session:auto-responded:${sessionId}`;
+      const handler = (
+        _e: IpcRendererEvent,
+        payload: { ruleId: string; agent: Agent; sessionId: string },
+      ) => cb(payload);
+      return ipcSubscribe(ipcRenderer, channel, handler);
+    },
     getSilenceStates: () =>
       ipcRenderer.invoke('session:getSilenceStates') as Promise<
         { id: string; taskId?: string; state: AgentState }[]
@@ -486,6 +503,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_e: IpcRendererEvent, session: PlanningSession) =>
         cb(session);
       return ipcSubscribe(ipcRenderer, 'planning:exited', handler);
+    },
+    onTrustPromptAutoresponded: (
+      sessionId: string,
+      cb: (payload: { ruleId: string; agent: Agent; sessionId: string }) => void,
+    ) => {
+      const channel = `planning:auto-responded:${sessionId}`;
+      const handler = (
+        _e: IpcRendererEvent,
+        payload: { ruleId: string; agent: Agent; sessionId: string },
+      ) => cb(payload);
+      return ipcSubscribe(ipcRenderer, channel, handler);
     },
   },
   cursorAgent: {

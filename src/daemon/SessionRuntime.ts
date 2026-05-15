@@ -4,6 +4,7 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import type { AttachResult, TerminalSnapshot } from './protocol';
 import { buildPtyEnv, PTY_TERM_NAME } from './terminalEnv';
+import { collapsedBottomScreenText } from './renderedScreenText';
 import { buildRehydrateSequences, captureSerializedSnapshot } from './terminalSnapshot';
 
 const DEFAULT_REPLAY_BYTES = 256 * 1024;
@@ -155,9 +156,22 @@ export class SessionRuntime {
 
   /** Ensures all bytes fed into the headless terminal have been parsed. */
   private flushHeadlessWrites(): Promise<void> {
+    return this.flushHeadlessParser();
+  }
+
+  /** Public flush for consumers that read the parsed buffer (e.g. trust autoresponder). */
+  flushHeadlessParser(): Promise<void> {
     return new Promise((resolve) => {
       this.headless.write('', () => resolve());
     });
+  }
+
+  /**
+   * Rendered screen tail for prompt detection: bottom lines of the active buffer with
+   * whitespace collapsed (matches what users see, modulo theming).
+   */
+  getCollapsedBottomScreenText(maxLines = 40): string {
+    return collapsedBottomScreenText(this.headless, maxLines);
   }
 
   write(data: string): void {

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import type {
@@ -18,11 +19,14 @@ import type {
 } from './protocol';
 import { SessionRuntime } from './SessionRuntime';
 import { SilenceDetector } from './SilenceDetector';
+import { PromptAutoresponder } from './PromptAutoresponder';
+import { buildTrustPromptAutoresponderRules } from './trustPromptAutoresponderRules';
 
 interface SessionEntry {
   runtime: SessionRuntime;
   session: Session;
   detector: SilenceDetector;
+  autoresponder: PromptAutoresponder | null;
 }
 
 interface ShellEntry {
@@ -33,6 +37,7 @@ interface ShellEntry {
 interface PlanningEntry {
   runtime: SessionRuntime;
   session: PlanningSession;
+  autoresponder: PromptAutoresponder | null;
 }
 
 /** Idle-shutdown timer: exit after N ms with zero live PTYs. */
@@ -91,6 +96,17 @@ export class DaemonCore {
       id,
     );
 
+    const trustAutorespondEnabled =
+      params.trustPromptAutorespond === true &&
+      Array.isArray(params.trustPromptAutorespondRoots) &&
+      params.trustPromptAutorespondRoots.length > 0;
+    const trustRoots = trustAutorespondEnabled
+      ? params.trustPromptAutorespondRoots!.map((r) => path.resolve(r))
+      : [];
+    const trustRules = trustAutorespondEnabled ? buildTrustPromptAutoresponderRules(trustRoots) : [];
+
+    let autoresponder: PromptAutoresponder | null = null;
+
     let runtime: SessionRuntime;
     try {
       runtime = new SessionRuntime(
@@ -105,11 +121,13 @@ export class DaemonCore {
           onData: (data, seq) => {
             this.broadcast({ kind: 'data', target: 'session', id, data, seq });
             detector.onData();
+            autoresponder?.notifyPtyData();
           },
           onExit: ({ exitCode }) => {
             const entry = this.sessions.get(id);
             if (!entry) return;
             entry.detector.dispose();
+            entry.autoresponder?.dispose();
             entry.session.status = exitCode === 0 ? 'stopped' : 'error';
             entry.session.stoppedAt = new Date().toISOString();
             this.broadcast({
@@ -127,7 +145,26 @@ export class DaemonCore {
       return { error: 'AGENT_NOT_FOUND', message };
     }
 
-    this.sessions.set(id, { runtime, session, detector });
+    if (trustRules.length > 0) {
+      autoresponder = new PromptAutoresponder(
+        id,
+        params.agent,
+        true,
+        trustRules,
+        runtime,
+        (payload) =>
+          this.broadcast({
+            kind: 'auto-responded',
+            target: 'session',
+            id,
+            sessionId: payload.sessionId,
+            ruleId: payload.ruleId,
+            agent: payload.agent,
+          }),
+      );
+    }
+
+    this.sessions.set(id, { runtime, session, detector, autoresponder });
     this.cancelIdleTimer();
     return session;
   }
@@ -203,6 +240,7 @@ export class DaemonCore {
     const entry = this.sessions.get(id);
     if (!entry) return;
     entry.detector.dispose();
+    entry.autoresponder?.dispose();
     entry.runtime.kill();
     entry.runtime.dispose();
     this.sessions.delete(id);
@@ -309,6 +347,17 @@ export class DaemonCore {
       startedAt: new Date().toISOString(),
     };
 
+    const trustAutorespondEnabled =
+      params.trustPromptAutorespond === true &&
+      Array.isArray(params.trustPromptAutorespondRoots) &&
+      params.trustPromptAutorespondRoots.length > 0;
+    const trustRoots = trustAutorespondEnabled
+      ? params.trustPromptAutorespondRoots!.map((r) => path.resolve(r))
+      : [];
+    const trustRules = trustAutorespondEnabled ? buildTrustPromptAutoresponderRules(trustRoots) : [];
+
+    let autoresponder: PromptAutoresponder | null = null;
+
     let runtime: SessionRuntime;
     try {
       runtime = new SessionRuntime(
@@ -322,10 +371,12 @@ export class DaemonCore {
         {
           onData: (data, seq) => {
             this.broadcast({ kind: 'data', target: 'planning', id, data, seq });
+            autoresponder?.notifyPtyData();
           },
           onExit: ({ exitCode }) => {
             const entry = this.planning.get(id);
             if (!entry) return;
+            entry.autoresponder?.dispose();
             entry.session.status = exitCode === 0 ? 'stopped' : 'error';
             entry.session.stoppedAt = new Date().toISOString();
             this.broadcast({
@@ -344,7 +395,26 @@ export class DaemonCore {
       return { error: 'AGENT_NOT_FOUND', message };
     }
 
-    this.planning.set(id, { runtime, session });
+    if (trustRules.length > 0) {
+      autoresponder = new PromptAutoresponder(
+        id,
+        params.agent,
+        true,
+        trustRules,
+        runtime,
+        (payload) =>
+          this.broadcast({
+            kind: 'auto-responded',
+            target: 'planning',
+            id,
+            sessionId: payload.sessionId,
+            ruleId: payload.ruleId,
+            agent: payload.agent,
+          }),
+      );
+    }
+
+    this.planning.set(id, { runtime, session, autoresponder });
     this.cancelIdleTimer();
     return { ...session };
   }
@@ -357,6 +427,7 @@ export class DaemonCore {
   stopPlanning(id: string): void {
     const entry = this.planning.get(id);
     if (!entry) return;
+    entry.autoresponder?.dispose();
     entry.runtime.kill();
     entry.runtime.dispose();
     this.planning.delete(id);

@@ -135,6 +135,8 @@ export interface LocalProject {
   defaultTaskAgentYolo?: boolean;
   /** Auto-start a task session when status moves from Backlog to in-progress. */
   autoStartSessionOnInProgress: boolean;
+  /** When enabled, Flux may auto-accept Claude/Cursor trust prompts in Flux-owned worktrees and the planning directory only. */
+  autoRespondToTrustPrompts: boolean;
   /** When on, a task in backlog (or in progress without a running session) may auto-start once its last blocker is completed. */
   autoStartWhenUnblocked: boolean;
   /**
@@ -205,6 +207,7 @@ export interface CloudProjectLocalBinding {
   taskDefaultModels?: AgentSessionModelDefaults;
   defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress?: boolean;
+  autoRespondToTrustPrompts?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
   autoMarkDoneWhenPrMerged?: boolean;
@@ -240,6 +243,7 @@ export interface CloudProject {
   taskDefaultModels?: AgentSessionModelDefaults;
   defaultTaskAgentYolo?: boolean;
   autoStartSessionOnInProgress?: boolean;
+  autoRespondToTrustPrompts?: boolean;
   autoStartWhenUnblocked?: boolean;
   autoCleanupWorkspaceWhenDone?: boolean;
   autoMarkDoneWhenPrMerged?: boolean;

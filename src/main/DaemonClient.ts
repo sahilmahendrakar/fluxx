@@ -768,6 +768,23 @@ export class DaemonClient {
     if (frame.kind === 'agent-state') {
       this.onAgentState?.(frame.id, frame.state);
       broadcast(`session:agent-state:${frame.id}`, { state: frame.state });
+      return;
+    }
+    if (frame.kind === 'auto-responded') {
+      if (frame.target === 'session') {
+        broadcast(`session:auto-responded:${frame.id}`, {
+          ruleId: frame.ruleId,
+          agent: frame.agent,
+          sessionId: frame.sessionId,
+        });
+      } else if (frame.target === 'planning') {
+        broadcast(`planning:auto-responded:${frame.id}`, {
+          ruleId: frame.ruleId,
+          agent: frame.agent,
+          sessionId: frame.sessionId,
+        });
+      }
+      return;
     }
   }
 

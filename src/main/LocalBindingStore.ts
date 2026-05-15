@@ -94,6 +94,9 @@ function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): vo
   if (typeof v.autoStartSessionOnInProgress === 'boolean') {
     binding.autoStartSessionOnInProgress = v.autoStartSessionOnInProgress;
   }
+  if (typeof v.autoRespondToTrustPrompts === 'boolean') {
+    binding.autoRespondToTrustPrompts = v.autoRespondToTrustPrompts;
+  }
   if (typeof v.autoStartWhenUnblocked === 'boolean') {
     binding.autoStartWhenUnblocked = v.autoStartWhenUnblocked;
   }
@@ -173,6 +176,7 @@ export class LocalBindingStore {
       taskDefaultModels: Partial<AgentSessionModelDefaults>;
       defaultTaskAgentYolo: boolean;
       autoStartSessionOnInProgress: boolean;
+      autoRespondToTrustPrompts: boolean;
       autoStartWhenUnblocked: boolean;
       autoCleanupWorkspaceWhenDone: boolean;
       autoMarkDoneWhenPrMerged: boolean;
@@ -212,6 +216,9 @@ export class LocalBindingStore {
     }
     if (prefs.autoStartSessionOnInProgress !== undefined) {
       existing.autoStartSessionOnInProgress = prefs.autoStartSessionOnInProgress;
+    }
+    if (prefs.autoRespondToTrustPrompts !== undefined) {
+      existing.autoRespondToTrustPrompts = prefs.autoRespondToTrustPrompts;
     }
     if (prefs.autoStartWhenUnblocked !== undefined) {
       existing.autoStartWhenUnblocked = prefs.autoStartWhenUnblocked;
@@ -266,6 +273,9 @@ export class LocalBindingStore {
       if (prevM.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
       if (prevM.autoStartSessionOnInProgress !== undefined) {
         binding.autoStartSessionOnInProgress = prevM.autoStartSessionOnInProgress;
+      }
+      if (prevM.autoRespondToTrustPrompts !== undefined) {
+        binding.autoRespondToTrustPrompts = prevM.autoRespondToTrustPrompts;
       }
       if (prevM.autoStartWhenUnblocked !== undefined) {
         binding.autoStartWhenUnblocked = prevM.autoStartWhenUnblocked;
@@ -330,6 +340,9 @@ export class LocalBindingStore {
       if (prev.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
       if (prev.autoStartSessionOnInProgress !== undefined) {
         binding.autoStartSessionOnInProgress = prev.autoStartSessionOnInProgress;
+      }
+      if (prev.autoRespondToTrustPrompts !== undefined) {
+        binding.autoRespondToTrustPrompts = prev.autoRespondToTrustPrompts;
       }
       if (prev.autoStartWhenUnblocked !== undefined) {
         binding.autoStartWhenUnblocked = prev.autoStartWhenUnblocked;
