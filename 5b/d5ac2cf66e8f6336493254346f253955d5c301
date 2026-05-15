@@ -1,0 +1,27 @@
+src/types.ts
+  s_db7db455634d14::t_fa340d8bd7968c 28-31,34
+src/App.tsx
+  s_db7db455634d14::t_85bfc6d381fa46 1278-1279,1291-1301,1372-1377,1380-1381,1385-1389,1400,1422
+  s_db7db455634d14::t_ca4b1e485b7d15 99
+  s_db7db455634d14::t_b90b23da9bbf07 313-318
+src/projectTabRestore.ts
+  s_db7db455634d14::t_5a424a5b65b5d6 1-51
+src/projectTabRestore.test.ts
+  s_db7db455634d14::t_ecfbf55cd0115e 1-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "5bd5ac2cf66e8f6336493254346f253955d5c301",
+  "prompts": {},
+  "sessions": {
+    "s_db7db455634d14": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5f6fad4f-7fe5-4654-9ba6-aa9bd918a070",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
