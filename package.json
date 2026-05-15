@@ -16,6 +16,10 @@
     "postinstall": "electron-rebuild -f -w node-pty && node scripts/rebuild-dmg-native-deps.cjs"
   },
   "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sahilmahendrakar/flux-web.git"
+  },
   "author": {
     "name": "Sahil Mahendrakar",
     "email": "sahil.mahendrakar@gmail.com"
@@ -40,6 +44,7 @@
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron-forge/publisher-github": "^7.11.1",
     "@electron/fuses": "^1.0.0",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/react": "^18.3.28",
@@ -69,6 +74,7 @@
     "@xterm/headless": "6.1.0-beta.218",
     "@xterm/xterm": "6.1.0-beta.218",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.8.3",
     "firebase": "^12.12.0",
     "fractional-indexing": "^3.2.0",
     "lucide-react": "^1.8.0",

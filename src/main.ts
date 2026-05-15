@@ -151,6 +151,7 @@ import {
   taskHasBlockingWorkspaceState,
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
+import { registerAppUpdater } from './main/AppUpdater';
 import { expectedFluxWorkBranchForTask } from './main/fluxTaskBranch';
 import {
   buildCreatePrInstructionsMarkdown,
@@ -762,6 +763,8 @@ app.whenReady().then(async () => {
     worktreeService.setRootPath('');
     worktreeService.setProjectDir('');
   }
+
+  registerAppUpdater();
 
   function parseActiveProjectKeyPayload(raw: unknown): ActiveProjectKey | null {
     if (!raw || typeof raw !== 'object') return null;

@@ -54,6 +54,7 @@ import type {
   PlanningDocsListResult,
   PlanningDocsWriteResult,
 } from './planningDocs/types';
+import type { AppUpdateState } from './appUpdateState';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -437,6 +438,16 @@ declare global {
             plan: FirestoreHydrationWritePlan;
           }) => Promise<{ ok: true } | { error: string }>;
         };
+      };
+      /**
+       * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.
+       */
+      updates: {
+        getState: () => Promise<AppUpdateState>;
+        check: () => Promise<void>;
+        startDownload: () => Promise<{ ok: true } | { ok: false; reason: string }>;
+        quitAndInstall: () => Promise<void>;
+        onStateChanged: (cb: (state: AppUpdateState) => void) => () => void;
       };
       mcpBridge: {
         signalReady: () => void;

@@ -1,6 +1,8 @@
 import { ReactNode } from 'react';
 import type { Project } from '../types';
+import { AppUpdateAffordance } from './AppUpdateAffordance';
 import { Sidebar } from './Sidebar';
+import { useAppUpdates } from '../renderer/useAppUpdates';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 import type { SessionTabMeta } from './TabBar';
@@ -80,8 +82,10 @@ export function AppShell({
   onArchiveSession,
   onDeleteWorkspace,
 }: AppShellProps) {
+  const appUpdates = useAppUpdates();
+
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#09090b] text-zinc-100">
       {collapsed ? null : (
         <Sidebar
           project={project}
@@ -107,9 +111,17 @@ export function AppShell({
           onDeleteWorkspace={onDeleteWorkspace}
           onClearProject={onClearProject}
           onCollapse={onCollapse}
+          updateFooter={<AppUpdateAffordance {...appUpdates} />}
         />
       )}
       <main className="relative flex min-h-0 flex-1 flex flex-col overflow-hidden">
+        {collapsed ? (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-40">
+            <div className="pointer-events-auto max-w-[min(220px,calc(100vw-1.5rem))]">
+              <AppUpdateAffordance {...appUpdates} />
+            </div>
+          </div>
+        ) : null}
         {collapsed ? (
           <button
             type="button"

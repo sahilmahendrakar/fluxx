@@ -40,7 +40,7 @@ export function useTrustAutorespondNotice(
         ? window.electronAPI.sessions.onTrustPromptAutoresponded
         : window.electronAPI.planning.onTrustPromptAutoresponded;
     if (!api) {
-      return () => {};
+      return;
     }
     return api(sessionId, (payload) => {
       show(payload.agent);

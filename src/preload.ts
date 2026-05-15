@@ -58,6 +58,7 @@ import type {
   PlanningDocsWriteResult,
 } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
+import type { AppUpdateState } from './appUpdateState';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -629,6 +630,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
           'planningDocs:cloudMigration:applyHydration',
           payload,
         ) as Promise<{ ok: true } | { error: string }>,
+    },
+  },
+  /**
+   * macOS packaged builds — GitHub Releases via `electron-updater`; downloads only after `startDownload`.
+   */
+  updates: {
+    getState: (): Promise<AppUpdateState> =>
+      ipcRenderer.invoke('app:updates:getState'),
+    check: (): Promise<void> => ipcRenderer.invoke('app:updates:check'),
+    startDownload: (): Promise<{ ok: true } | { ok: false; reason: string }> =>
+      ipcRenderer.invoke('app:updates:startDownload'),
+    quitAndInstall: (): Promise<void> =>
+      ipcRenderer.invoke('app:updates:quitAndInstall'),
+    onStateChanged: (cb: (state: AppUpdateState) => void) => {
+      const ch = 'app:updates:stateChanged' as const;
+      const handler = (_e: IpcRendererEvent, s: AppUpdateState) => cb(s);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
     },
   },
   mcpBridge: {
