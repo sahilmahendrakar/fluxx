@@ -217,6 +217,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
     removeLocal: (id: string) =>
       ipcRenderer.invoke('projects:removeLocal', id) as Promise<void>,
+    removeFluxOwnedLocalState: (key: ActiveProjectKey) =>
+      ipcRenderer.invoke('projects:removeFluxOwnedLocalState', key) as Promise<{
+        ok: boolean;
+        warnings: string[];
+        errors: string[];
+        deletedMaterializationDirs: string[];
+      }>,
     getActiveKey: () =>
       ipcRenderer.invoke('projects:getActiveKey') as Promise<ActiveProjectKey | null>,
     clearActive: () => ipcRenderer.invoke('projects:clearActive') as Promise<void>,
@@ -241,7 +248,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
     clearLocalBinding: (cloudProjectId: string) =>
-      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void      >,
+      ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
   },
   repo: {
     getBranchDiscovery: (arg?: string | RepoBranchDiscoveryRequest) =>
@@ -299,6 +306,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'sourceBranch'
           | 'createSourceBranchIfMissing'
           | 'repoId'
+          | 'fluxWorkBranch'
         >
       > & {
         githubPr?: TaskGithubPr | null;
@@ -307,7 +315,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (
       taskId: string,
-      previous: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'> & {
+      previous: Pick<
+        Task,
+        'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxWorkBranch'
+      > & {
         githubPr?: TaskGithubPr;
       },
       patch: Pick<Task, 'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId'>,
@@ -320,7 +331,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) as Promise<{ ok: true } | { ok: false; message: string }>,
     assertRepoIdEditable: (
       taskId: string,
-      previous: Pick<Task, 'repoId'> & { githubPr?: TaskGithubPr },
+      previous: Pick<Task, 'repoId' | 'fluxWorkBranch'> & { githubPr?: TaskGithubPr },
       patch: Pick<Task, 'repoId'>,
     ) =>
       ipcRenderer.invoke(
@@ -337,8 +348,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     refreshPullRequest: (payload: { taskId: string; githubPr?: TaskGithubPr }) =>
       ipcRenderer.invoke('tasks:refreshPullRequest', payload) as Promise<TaskPullRequestIpcResult>,
-    resolveWorktrees: (taskIds: string[]) =>
-      ipcRenderer.invoke('tasks:resolveWorktrees', taskIds) as Promise<Record<string, boolean>>,
+    resolveWorktrees: (
+      taskIdsOrEntries:
+        | string[]
+        | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null }[],
+    ) =>
+      ipcRenderer.invoke('tasks:resolveWorktrees', taskIdsOrEntries) as Promise<
+        Record<string, boolean>
+      >,
     cleanupResources: (id: string) =>
       ipcRenderer.invoke('tasks:cleanupResources', id) as Promise<{ errors: string[] }>,
     onChanged: (cb: () => void) => {
@@ -352,6 +369,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = (_e: unknown, p: { sessionId: string; taskId: string }) => cb(p);
       ipcRenderer.on('task:userInput', handler);
       return () => ipcRenderer.removeListener('task:userInput', handler as Parameters<typeof ipcRenderer.removeListener>[1]);
+    },
+    onPersistFluxWorkBranch: (cb: (p: { taskId: string; fluxWorkBranch: string }) => void) => {
+      const handler = (_e: unknown, p: { taskId: string; fluxWorkBranch: string }) => cb(p);
+      ipcRenderer.on('task:persistFluxWorkBranch', handler);
+      return () =>
+        ipcRenderer.removeListener(
+          'task:persistFluxWorkBranch',
+          handler as Parameters<typeof ipcRenderer.removeListener>[1],
+        );
     },
   },
   sessions: {

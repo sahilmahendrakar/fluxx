@@ -6,6 +6,7 @@ import {
 
 describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
   const taskId = 'abc123';
+  const legacyTask = { id: taskId };
 
   it('requires enabled + open PR + allowed source column', () => {
     expect(
@@ -13,7 +14,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         enabled: false,
         taskStatus: 'in-progress',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(false);
     expect(
@@ -21,7 +22,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         enabled: true,
         taskStatus: 'in-progress',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'merged' },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(false);
     expect(
@@ -29,7 +30,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         enabled: true,
         taskStatus: 'needs-input',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(false);
     expect(
@@ -37,7 +38,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         enabled: true,
         taskStatus: 'in-progress',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(true);
     expect(
@@ -45,7 +46,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         enabled: true,
         taskStatus: 'backlog',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(true);
   });
@@ -60,7 +61,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
           state: 'open',
           headBranch: 'someone-else/branch',
         },
-        taskId,
+        task: legacyTask,
       }),
     ).toBe(false);
   });
@@ -75,7 +76,22 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
           state: 'open',
           headBranch: 'flux/task-abc123',
         },
-        taskId,
+        task: legacyTask,
+      }),
+    ).toBe(true);
+  });
+
+  it('uses persisted fluxWorkBranch when matching head', () => {
+    expect(
+      shouldAutoMoveTaskToReviewForOpenPr({
+        enabled: true,
+        taskStatus: 'in-progress',
+        githubPr: {
+          url: 'https://github.com/o/r/pull/1',
+          state: 'open',
+          headBranch: 'jane/add-auth',
+        },
+        task: { id: taskId, fluxWorkBranch: 'jane/add-auth' },
       }),
     ).toBe(true);
   });

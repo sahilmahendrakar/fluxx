@@ -6,7 +6,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import { WorktreeService } from './WorktreeService';
 import { isWorktreeCreateError } from './worktreeCreateError';
-import { fluxTaskWorkBranchName } from './fluxTaskBranch';
+import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
 
@@ -34,19 +34,18 @@ async function localBranchExists(cwd: string, shortName: string): Promise<boolea
 describe('WorktreeService.create integration', () => {
   const legacyLayout = 'legacy-flat' as const;
 
-  it('creates missing source branch from default then worktree, and remove drops only flux branch', async () => {
+  it('creates missing source branch from default then worktree, and remove drops task branch', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-'));
     const gitRoot = path.join(root, 'repo');
     const projectDir = path.join(root, 'flux-project');
     try {
       await initGitRepo(gitRoot);
       const svc = new WorktreeService(gitRoot, projectDir);
-      const taskId = 'mytaskid';
       const sourceName = 'flux-int-source';
       const primaryRepoId =
         'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
       const { worktreePath, branch } = await svc.create({
-        taskId,
+        task: { id: 'mytaskid', title: 'Source branch integration' },
         repo: {
           repoId: primaryRepoId,
           gitRootPath: gitRoot,
@@ -58,8 +57,10 @@ describe('WorktreeService.create integration', () => {
         },
         layout: legacyLayout,
       });
-      expect(branch).toBe(fluxTaskWorkBranchName(taskId));
-      expect(worktreePath).toBe(path.join(projectDir, 'worktrees', taskId));
+      expect(branch.startsWith('flux/')).toBe(true);
+      expect(worktreePath).toBe(
+        path.join(projectDir, 'worktrees', ...worktreePathSegmentsForFluxBranch(branch)),
+      );
       await expect(fs.stat(worktreePath)).resolves.toBeDefined();
       expect(await localBranchExists(gitRoot, sourceName)).toBe(true);
       expect(await localBranchExists(gitRoot, branch)).toBe(true);
@@ -73,7 +74,7 @@ describe('WorktreeService.create integration', () => {
     }
   });
 
-  it('scopes worktrees under worktrees/<repoId>/<taskId> for two clones with different default branches', async () => {
+  it('scopes worktrees under worktrees/<repoId>/<branch-segments> for two clones with different default branches', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-multi-'));
     const gitRootA = path.join(root, 'repo-a');
     const gitRootB = path.join(root, 'repo-b');
@@ -88,10 +89,9 @@ describe('WorktreeService.create integration', () => {
       const svc = new WorktreeService(gitRootA, projectDir);
       await fs.mkdir(projectDir, { recursive: true });
 
-      const taskA = 'task-on-main-clone';
       const srcA = 'main-a-only';
       const outA = await svc.create({
-        taskId: taskA,
+        task: { id: 'task-a', title: 'Task on main clone' },
         repo: {
           repoId: repoIdA,
           gitRootPath: gitRootA,
@@ -103,14 +103,14 @@ describe('WorktreeService.create integration', () => {
         },
         layout: 'repo-scoped',
       });
+      expect(outA.branch.startsWith('flux/')).toBe(true);
       expect(outA.worktreePath).toBe(
-        path.join(projectDir, 'worktrees', repoIdA, taskA),
+        path.join(projectDir, 'worktrees', repoIdA, ...worktreePathSegmentsForFluxBranch(outA.branch)),
       );
 
-      const taskB = 'task-on-develop-clone';
       const srcB = 'develop';
       const outB = await svc.create({
-        taskId: taskB,
+        task: { id: 'task-b', title: 'Task on develop clone' },
         repo: {
           repoId: repoIdB,
           gitRootPath: gitRootB,
@@ -122,8 +122,9 @@ describe('WorktreeService.create integration', () => {
         },
         layout: 'repo-scoped',
       });
+      expect(outB.branch.startsWith('flux/')).toBe(true);
       expect(outB.worktreePath).toBe(
-        path.join(projectDir, 'worktrees', repoIdB, taskB),
+        path.join(projectDir, 'worktrees', repoIdB, ...worktreePathSegmentsForFluxBranch(outB.branch)),
       );
 
       const headA = await execFile('git', ['rev-parse', 'HEAD'], {
@@ -161,7 +162,7 @@ describe('WorktreeService.create integration', () => {
       await initGitRepo(gitRoot);
       const svc = new WorktreeService(gitRoot, projectDir);
       const { worktreePath } = await svc.create({
-        taskId: 'task-env-setup',
+        task: { id: 'task-env-setup', title: 'Env setup task' },
         repo: {
           repoId:
             '1212121212121212121212121212121212121212121212121212121212121212',
@@ -199,7 +200,7 @@ describe('WorktreeService.create integration', () => {
       const svc = new WorktreeService(gitRoot, projectDir);
       await expect(
         svc.create({
-          taskId: 't2',
+          task: { id: 't2', title: 'Missing branch task' },
           repo: {
             repoId:
               'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
@@ -246,7 +247,7 @@ describe('WorktreeService.create integration', () => {
 
       const svc = new WorktreeService(gitRoot, projectDir);
       const { worktreePath } = await svc.create({
-        taskId: 'task-origin-main',
+        task: { id: 'task-origin-main', title: 'Origin main divergence' },
         repo: {
           repoId:
             'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
@@ -285,7 +286,7 @@ describe('WorktreeService.create integration', () => {
       const svc = new WorktreeService(gitRoot, projectDir);
       const taskId = 'reuseme';
       const { branch } = await svc.create({
-        taskId,
+        task: { id: taskId, title: 'Reuse me test' },
         repo: {
           repoId:
             'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
@@ -307,7 +308,7 @@ describe('WorktreeService.create integration', () => {
       await execFile('git', ['checkout', 'main'], { cwd: gitRoot });
 
       const again = await svc.create({
-        taskId,
+        task: { id: taskId, title: 'Different title', fluxWorkBranch: branch },
         repo: {
           repoId:
             'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',

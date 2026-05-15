@@ -7,7 +7,14 @@ import {
   resolveLocalOrOriginRefWithAmbiguity,
 } from './repoGit';
 import { WorktreeCreateError } from './worktreeCreateError';
-import { fluxTaskWorkBranchName } from './fluxTaskBranch';
+import { resolveLocalBranchShortForWorktreePath, readHeadBranchShortAtPath } from './gitWorktreeBranch';
+import {
+  chooseFluxTaskWorkBranchName,
+  collectTakenFluxWorkBranchNames,
+  resolveFluxAuthorSlugForBranches,
+  worktreePathSegmentsForFluxBranch,
+} from './fluxTaskWorkBranchNaming';
+import { normalizeGitBranchShortName, validateStoredTaskSourceBranchName } from '../taskBranches';
 
 const execFile = promisify(execFileCallback);
 
@@ -21,7 +28,7 @@ function gitErrText(err: unknown): string {
   return String(err);
 }
 
-/** Options for basing a new `flux/task-*` worktree on `Task.sourceBranch`. */
+/** Options for basing a new Flux task worktree on `Task.sourceBranch`. */
 export type WorktreeSourceBranchOptions = {
   /** Normalized short branch name (task source / PR base intent). */
   sourceBranchShort: string;
@@ -31,7 +38,8 @@ export type WorktreeSourceBranchOptions = {
 
 /**
  * Flux layout directory name under `<project>/worktrees/`.
- * Legacy single-repo installs use `{taskId}`; multi-repo2 uses `{repoId}/{taskId}`.
+ * Legacy single-repo installs used `{taskId}`; multi-repo2 used `{repoId}/{taskId}`.
+ * New worktrees nest under `{repoId}/<branch-path-segments>` mirroring the task work branch.
  */
 export type WorktreeLayoutMode = 'legacy-flat' | 'repo-scoped';
 
@@ -68,12 +76,13 @@ export class WorktreeService {
   }
 
   async create(params: {
-    taskId: string;
+    task: { id: string; title: string; fluxWorkBranch?: string };
     repo: WorktreeRepoCreateParams;
     source: WorktreeSourceBranchOptions;
     layout: WorktreeLayoutMode;
   }): Promise<{ worktreePath: string; branch: string }> {
-    const { taskId, repo, source: sourceOpts, layout } = params;
+    const { task, repo, source: sourceOpts, layout } = params;
+    const taskId = task.id;
     if (!this.projectDir) {
       throw new Error('WorktreeService: no project directory set');
     }
@@ -89,15 +98,33 @@ export class WorktreeService {
       );
     }
 
-    const branch = fluxTaskWorkBranchName(taskId);
+    const persisted = normalizeGitBranchShortName(task.fluxWorkBranch ?? '');
+    const persistedOk =
+      persisted.length > 0 && validateStoredTaskSourceBranchName(persisted).ok;
+
+    const taken = await collectTakenFluxWorkBranchNames(gitRootResolved);
+    let branch: string;
+    if (persistedOk) {
+      branch = persisted;
+    } else {
+      const authorSlug = await resolveFluxAuthorSlugForBranches(gitRootResolved);
+      branch = chooseFluxTaskWorkBranchName({
+        authorSlug,
+        taskTitle: task.title,
+        taskId: task.id,
+        takenShortNames: taken,
+      });
+    }
+
     const worktreesRoot = path.join(this.projectDir, 'worktrees');
     await fs.mkdir(worktreesRoot, { recursive: true });
 
+    const branchSegments = worktreePathSegmentsForFluxBranch(branch);
     let worktreePath: string;
     if (layout === 'repo-scoped') {
-      worktreePath = path.join(worktreesRoot, repoIdTrim, taskId);
+      worktreePath = path.join(worktreesRoot, repoIdTrim, ...branchSegments);
     } else {
-      worktreePath = path.join(worktreesRoot, taskId);
+      worktreePath = path.join(worktreesRoot, ...branchSegments);
     }
 
     await this.reclaimStaleWorktree(worktreePath, gitRootResolved);
@@ -296,11 +323,11 @@ export class WorktreeService {
       return;
     }
 
-    const taskId = path.basename(worktreePath);
-    const branch = fluxTaskWorkBranchName(taskId);
-
     if (gitRepoRoot) {
       const cwd = path.resolve(gitRepoRoot);
+      const fromList = await resolveLocalBranchShortForWorktreePath(cwd, worktreePath);
+      const fromHead = await readHeadBranchShortAtPath(worktreePath);
+      const branchToDelete = fromList ?? fromHead;
       try {
         await execFile('git', ['worktree', 'remove', worktreePath, '--force'], {
           cwd,
@@ -323,15 +350,20 @@ export class WorktreeService {
         // best-effort
       }
 
-      try {
-        await execFile('git', ['branch', '-D', branch], { cwd });
-      } catch (err: unknown) {
-        const stderr =
-          err && typeof err === 'object' && 'stderr' in err
-            ? String((err as { stderr?: Buffer | string }).stderr ?? '')
-            : '';
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(`[WorktreeService.remove] git branch -D failed for ${branch}:`, stderr || message);
+      if (branchToDelete) {
+        try {
+          await execFile('git', ['branch', '-D', branchToDelete], { cwd });
+        } catch (err: unknown) {
+          const stderr =
+            err && typeof err === 'object' && 'stderr' in err
+              ? String((err as { stderr?: Buffer | string }).stderr ?? '')
+              : '';
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `[WorktreeService.remove] git branch -D failed for ${branchToDelete}:`,
+            stderr || message,
+          );
+        }
       }
     }
 

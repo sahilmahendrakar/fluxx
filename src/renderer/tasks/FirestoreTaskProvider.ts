@@ -207,6 +207,7 @@ export class FirestoreTaskProvider implements TaskProvider {
           sourceBranch: previous.sourceBranch,
           createSourceBranchIfMissing: previous.createSourceBranchIfMissing,
           githubPr: previous.githubPr,
+          fluxWorkBranch: previous.fluxWorkBranch,
           ...(previous.repoId !== undefined ? { repoId: previous.repoId } : {}),
         },
         {
@@ -231,6 +232,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         {
           repoId: previous.repoId,
           githubPr: previous.githubPr,
+          fluxWorkBranch: previous.fluxWorkBranch,
         },
         {
           ...(patch.repoId !== undefined ? { repoId: patch.repoId } : {}),
@@ -319,6 +321,14 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.repoId = nextRepoId;
       }
     }
+    if (patch.fluxWorkBranch !== undefined) {
+      const b = patch.fluxWorkBranch.trim();
+      if (b.length === 0) {
+        updates.fluxWorkBranch = deleteField();
+      } else {
+        updates.fluxWorkBranch = b;
+      }
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
     return toTask(
@@ -376,7 +386,17 @@ function toTask(
     ...parseSourceBranchField(data.sourceBranch),
     ...parseCreateSourceBranchIfMissingField(data.createSourceBranchIfMissing),
     ...parseRepoIdField(data.repoId, primaryRepoId),
+    ...parseFluxWorkBranchField(data.fluxWorkBranch),
   };
+}
+
+function parseFluxWorkBranchField(
+  val: unknown,
+): { fluxWorkBranch: string } | Record<string, never> {
+  if (typeof val === 'string' && val.trim() !== '') {
+    return { fluxWorkBranch: val.trim() };
+  }
+  return {};
 }
 
 function githubPrToFirestore(pr: TaskGithubPr): Record<string, unknown> {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { shell } from 'electron';
 import type { OpenWorkspaceTarget, Session } from '../types';
+import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
 
@@ -197,15 +198,17 @@ export function pickSessionForTaskWorktree(
 /**
  * Resolves a local filesystem path for a task worktree:
  * 1. Active daemon session worktree (prefer matching {@link Session.repoId} when `repoId` is set),
- * 2. Repo-scoped folder under `worktrees/{repoId}/{taskId}` when `repoId` is set (multi-repo2),
- * 3. Legacy flat folder `worktrees/{taskId}`,
- * 4. First existing nested folder `worktrees/…/{taskId}` when repo id is unset (nested scan).
+ * 2. When `fluxWorkBranch` is set and `repoId` is set: `worktrees/{repoId}/<branch-path-segments>`,
+ * 3. Repo-scoped folder under `worktrees/{repoId}/{taskId}` when `repoId` is set (multi-repo2),
+ * 4. Legacy flat folder `worktrees/{taskId}`,
+ * 5. First existing nested folder `worktrees/…/{taskId}` when repo id is unset (nested scan).
  */
 export async function resolveTaskWorktreePath(
   taskId: string,
   listSessions: () => Promise<Session[]>,
   projectDir: string,
   repoId?: string | null,
+  fluxWorkBranch?: string | null,
 ): Promise<string | null> {
   if (!taskId.trim()) return null;
   try {
@@ -225,6 +228,22 @@ export async function resolveTaskWorktreePath(
   if (!projectDir) return null;
 
   const rid = repoId?.trim();
+  const fw = fluxWorkBranch?.trim();
+  if (rid && fw) {
+    const fluxScoped = path.join(
+      projectDir,
+      'worktrees',
+      rid,
+      ...worktreePathSegmentsForFluxBranch(fw),
+    );
+    try {
+      const st = await fs.stat(fluxScoped);
+      if (st.isDirectory()) return fluxScoped;
+    } catch {
+      /* fall through */
+    }
+  }
+
   if (rid) {
     const repoScoped = path.join(projectDir, 'worktrees', rid, taskId);
     try {
@@ -241,6 +260,29 @@ export async function resolveTaskWorktreePath(
     if (st.isDirectory()) return legacyFlat;
   } catch {
     /* fall through */
+  }
+
+  if (!rid && fw) {
+    const worktreesRootForFlux = path.join(projectDir, 'worktrees');
+    try {
+      const names = await fs.readdir(worktreesRootForFlux);
+      for (const name of names) {
+        if (!name.trim()) continue;
+        const fluxNested = path.join(
+          worktreesRootForFlux,
+          name,
+          ...worktreePathSegmentsForFluxBranch(fw),
+        );
+        try {
+          const st = await fs.stat(fluxNested);
+          if (st.isDirectory()) return fluxNested;
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   if (rid) {

@@ -14,7 +14,8 @@ interface CoreService {
 
 interface XtermCore {
   coreService: CoreService;
-  coreMouseService: CoreMouseService;
+  /** @xterm/headless ≥6.1 renamed from `coreMouseService`. */
+  mouseStateService: CoreMouseService;
 }
 
 function getCore(term: Terminal): XtermCore {
@@ -23,13 +24,13 @@ function getCore(term: Terminal): XtermCore {
 
 /**
  * Maps the live headless xterm into the wire `TerminalModes` contract.
- * Mouse highlight (CSI ?1001) is not surfaced separately by xterm.js v6.
+ * Mouse highlight (CSI ?1001) is not surfaced separately by xterm.js.
  */
 export function readTerminalModes(terminal: Terminal): TerminalModes {
   const m = terminal.modes;
   const core = getCore(terminal);
-  const mouseProto = core.coreMouseService.activeProtocol;
-  const enc = core.coreMouseService.activeEncoding;
+  const mouseProto = core.mouseStateService.activeProtocol;
+  const enc = core.mouseStateService.activeEncoding;
 
   return {
     applicationCursorKeys: m.applicationCursorKeysMode,

@@ -53,7 +53,7 @@ const MCP_JSON = `{
 }
 `;
 
-interface ConfigFile {
+export interface ConfigFile {
   id: string;
   name: string;
   rootPath: string;
@@ -77,6 +77,18 @@ function errnoCode(err: unknown): string | undefined {
   return err && typeof err === 'object' && 'code' in err
     ? (err as NodeJS.ErrnoException).code
     : undefined;
+}
+
+function dedupeResolvedDirs(dirs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const d of dirs) {
+    const key = path.resolve(d);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(d);
+  }
+  return out;
 }
 
 async function assertGitRepoRoot(rootPath: string): Promise<void> {
@@ -969,6 +981,11 @@ export class ProjectStore {
     return { project, projectDir };
   }
 
+  /** Read `config.json` from a materialised Flux project directory (for removal, migration, etc.). */
+  async readStoredProjectConfig(projectDir: string): Promise<ConfigFile | null> {
+    return this.readConfigAt(projectDir);
+  }
+
   private async readConfigAt(projectDir: string): Promise<ConfigFile | null> {
     try {
       const raw = await fs.readFile(path.join(projectDir, 'config.json'), 'utf8');
@@ -1260,6 +1277,61 @@ export class ProjectStore {
     const out = [...projectById.values()];
     out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
+  }
+
+  /**
+   * Every on-disk Flux workspace directory whose `config.json` `id` matches `projectId`
+   * (canonical, legacy cloud, legacy basename, legacy flat `~/.flux/projects/`, etc.),
+   * excluding superseded directories.
+   */
+  async listMaterializationDirsForProjectId(projectId: string): Promise<string[]> {
+    const matches: string[] = [];
+
+    const consider = async (projectDir: string): Promise<void> => {
+      try {
+        const superseded = await readSupersededTarget(projectDir);
+        if (superseded) return;
+      } catch {
+        /* ignore */
+      }
+      let raw: string;
+      try {
+        raw = await fs.readFile(path.join(projectDir, 'config.json'), 'utf8');
+      } catch {
+        return;
+      }
+      const c = parseConfig(raw);
+      if (!c || c.id !== projectId) return;
+      matches.push(projectDir);
+    };
+
+    for (const d of await listNestedProjectDirsUnderProjects(this.fluxBaseDir)) {
+      await consider(d);
+    }
+
+    const flat = await legacyFlatProjectsDirIfPresent(this.fluxBaseDir);
+    if (flat) {
+      await consider(flat);
+    }
+
+    let dirents;
+    try {
+      dirents = await fs.readdir(this.fluxBaseDir, { withFileTypes: true });
+    } catch {
+      return dedupeResolvedDirs(matches);
+    }
+    for (const ent of dirents) {
+      if (!ent.isDirectory()) continue;
+      if (isFluxTopLevelReservedDirName(ent.name)) continue;
+      const projectDir = path.join(this.fluxBaseDir, ent.name);
+      await consider(projectDir);
+    }
+
+    for (const d of await listLegacyCloudProjectDirs(this.fluxBaseDir)) {
+      await consider(d);
+    }
+
+    return dedupeResolvedDirs(matches);
   }
 
   async findProjectDirById(id: string): Promise<string | null> {
