@@ -96,6 +96,7 @@ import {
   replaceProjectWorkspaceRoute,
   useProjectHashRoute,
 } from './projectHashRoute';
+import { normalizeRestoredProjectTabState } from './projectTabRestore';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -309,6 +310,12 @@ export default function App() {
   >(null);
   const [planningDocFileRevision, setPlanningDocFileRevision] = useState(0);
   const planningDocsDirtyRef = useRef(false);
+  /** Bumped when `project` changes so in-flight tab restore cannot unlock persistence for a newer project. */
+  const tabRestoreGenerationRef = useRef(0);
+  /** False until the current project's async tab restore finishes (avoids empty defaults overwriting disk on startup). */
+  const tabsPersistAllowedRef = useRef(false);
+  /** Bumps when restore completes so the persist effect re-evaluates `tabsPersistAllowedRef`. */
+  const [tabPersistNonce, setTabPersistNonce] = useState(0);
   const boardRowRef = useRef<HTMLDivElement>(null);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -1268,6 +1275,8 @@ export default function App() {
 
   useEffect(() => {
     if (!project) {
+      tabRestoreGenerationRef.current += 1;
+      tabsPersistAllowedRef.current = false;
       setSessions([]);
       setSessionStartPendingTaskIds(new Set());
       setOpenTabIds(new Set());
@@ -1279,6 +1288,17 @@ export default function App() {
       setPlanPanelOpen(false);
       return;
     }
+    tabRestoreGenerationRef.current += 1;
+    const restoreGen = tabRestoreGenerationRef.current;
+    tabsPersistAllowedRef.current = false;
+
+    // Clear strip state immediately so we never persist another project's tabs under
+    // this project key while the daemon + disk restore is in flight.
+    setOpenTabIds(new Set());
+    setOpenPlanningMainTabIds(new Set());
+    setPlanningSidebarActiveId(null);
+    setPlanningSidebarOpen(false);
+
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
     setActiveTabId((prev) => {
       if (prev === 'settings') return 'board';
@@ -1349,26 +1369,24 @@ export default function App() {
         const persisted = await window.electronAPI.projects.getTabs(projectKey);
         if (cancelled) return;
         const aliveIds = new Set(projectSessions.map((s) => s.id));
-        const restoredOpen = persisted.openTaskIds.filter((id) =>
-          aliveIds.has(id),
-        );
-        setOpenTabIds(new Set(restoredOpen));
-        setOpenPlanningMainTabIds(new Set(persisted.openPlanningTabIds ?? []));
-        setPlanningSidebarActiveId(persisted.planningSidebarActiveSessionId ?? null);
-        setPlanningSidebarOpen(persisted.planningSidebarOpen === true);
-        if (persisted.activeTaskId === 'settings') {
+        const normalized = normalizeRestoredProjectTabState(persisted, aliveIds);
+        setOpenTabIds(new Set(normalized.openTaskIds));
+        setOpenPlanningMainTabIds(new Set(normalized.openPlanningTabIds));
+        setPlanningSidebarActiveId(normalized.planningSidebarActiveSessionId);
+        setPlanningSidebarOpen(normalized.planningSidebarOpen);
+        if (normalized.openSettingsRoute) {
           setActiveTabId('board');
           pushProjectSettingsRoute();
-        } else if (
-          persisted.activeTaskId &&
-          (STATIC_TAB_IDS.has(persisted.activeTaskId) ||
-            persisted.activeTaskId.startsWith(PLAN_TAB_PREFIX) ||
-            aliveIds.has(persisted.activeTaskId))
-        ) {
-          setActiveTabId(persisted.activeTaskId);
+        } else {
+          setActiveTabId(normalized.activeTabId);
         }
       } catch (err) {
         console.error('[App] restore tabs failed', err);
+      } finally {
+        if (!cancelled && tabRestoreGenerationRef.current === restoreGen) {
+          tabsPersistAllowedRef.current = true;
+          setTabPersistNonce((n) => n + 1);
+        }
       }
     })();
     return () => {
@@ -1379,6 +1397,7 @@ export default function App() {
   // Persist tab strip whenever it changes for the active project.
   useEffect(() => {
     if (!project) return;
+    if (!tabsPersistAllowedRef.current) return;
     const projectKey: ActiveProjectKey = { kind: project.kind, id: project.id };
     const tabs: ProjectTabState = {
       openTaskIds: Array.from(openTabIds),
@@ -1400,6 +1419,7 @@ export default function App() {
     openPlanningMainTabIds,
     planningSidebarActiveId,
     planningSidebarOpen,
+    tabPersistNonce,
   ]);
 
   useEffect(() => {

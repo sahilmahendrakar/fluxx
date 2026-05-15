@@ -25,10 +25,13 @@ export interface ActiveProjectKey {
 }
 
 /**
- * Tab-strip restoration state — per project, remember which task tabs
- * were open and which was active. Planning fields mirror task patterns.
+ * Tab-strip restoration state — per project, remember which workspace
+ * tabs were open and which was active. Planning fields mirror the same pattern.
+ *
+ * `openTaskIds` stores **daemon session ids** (workspace/session tabs), not Flux task ids.
  */
 export interface ProjectTabState {
+  /** Open workspace tabs, keyed by daemon `Session.id` (historical name `openTaskIds`). */
   openTaskIds: string[];
   activeTaskId: string | null;
   /** Planning sessions that have a main-window tab (`plan:<sessionId>`). */
