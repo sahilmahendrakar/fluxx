@@ -20,6 +20,10 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
         ? null
         : undefined;
   const planningSidebarOpen = v.planningSidebarOpen === true ? true : undefined;
+  const minimizedRaw =
+    Array.isArray(v.minimizedTaskWorkspaceIds) && v.minimizedTaskWorkspaceIds.length > 0
+      ? v.minimizedTaskWorkspaceIds.filter((x): x is string => typeof x === 'string')
+      : undefined;
   return {
     openTaskIds: ids,
     activeTaskId: active,
@@ -28,5 +32,8 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
       ? { planningSidebarActiveSessionId: planningSidebarActive }
       : {}),
     ...(planningSidebarOpen ? { planningSidebarOpen: true } : {}),
+    ...(minimizedRaw && minimizedRaw.length > 0
+      ? { minimizedTaskWorkspaceIds: minimizedRaw }
+      : {}),
   };
 }

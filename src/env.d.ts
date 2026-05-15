@@ -319,7 +319,6 @@ declare global {
           requesterUid?: string | null,
           options?: SessionStartOptions,
         ) => Promise<SessionStartResult>;
-        archive: (sessionId: string) => Promise<void>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;
         getAll: () => Promise<Session[]>;

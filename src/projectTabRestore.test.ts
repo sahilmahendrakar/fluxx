@@ -79,5 +79,31 @@ describe('normalizeRestoredProjectTabState', () => {
     expect(out.openPlanningTabIds).toEqual(['p1']);
     expect(out.planningSidebarActiveSessionId).toBe('p1');
     expect(out.planningSidebarOpen).toBe(true);
+    expect(out.minimizedTaskWorkspaceIds).toEqual([]);
+  });
+
+  it('filters minimized workspace ids to alive daemon sessions only', () => {
+    const out = normalizeRestoredProjectTabState(
+      {
+        ...base,
+        minimizedTaskWorkspaceIds: ['s1', 'gone', 's2'],
+      },
+      new Set(['s1', 's2']),
+    );
+    expect(out.minimizedTaskWorkspaceIds).toEqual(['s1', 's2']);
+  });
+
+  it('keeps minimized ids independently of open workspace tabs', () => {
+    const out = normalizeRestoredProjectTabState(
+      {
+        ...base,
+        openTaskIds: [],
+        minimizedTaskWorkspaceIds: ['s1', 'gone'],
+        activeTaskId: 'board',
+      },
+      new Set(['s1']),
+    );
+    expect(out.openTaskIds).toEqual([]);
+    expect(out.minimizedTaskWorkspaceIds).toEqual(['s1']);
   });
 });

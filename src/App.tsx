@@ -270,6 +270,10 @@ export default function App() {
     () => new Set(),
   );
   const [openTabIds, setOpenTabIds] = useState<Set<string>>(() => new Set());
+  /** Daemon session ids hidden from the Task Workspaces sidebar (non-destructive minimize). */
+  const [minimizedWorkspaceIds, setMinimizedWorkspaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('flux.sidebarCollapsed') === '1';
@@ -1210,6 +1214,13 @@ export default function App() {
         if (id !== s.id) invalidateSessionAttachCache(id);
       }
 
+      setMinimizedWorkspaceIds((prev) => {
+        if (replacedIds.length === 0) return prev;
+        const next = new Set(prev);
+        for (const id of replacedIds) next.delete(id);
+        return next;
+      });
+
       setSessions((prev) => {
         const withoutTask = prev.filter((x) => x.taskId !== s.taskId);
         const i = withoutTask.findIndex((x) => x.id === s.id);
@@ -1280,6 +1291,7 @@ export default function App() {
       setSessions([]);
       setSessionStartPendingTaskIds(new Set());
       setOpenTabIds(new Set());
+      setMinimizedWorkspaceIds(new Set());
       setActiveTabId('board');
       setPlanningSessions([]);
       setPlanningSidebarActiveId(null);
@@ -1298,6 +1310,7 @@ export default function App() {
     setOpenPlanningMainTabIds(new Set());
     setPlanningSidebarActiveId(null);
     setPlanningSidebarOpen(false);
+    setMinimizedWorkspaceIds(new Set());
 
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
     setActiveTabId((prev) => {
@@ -1371,6 +1384,7 @@ export default function App() {
         const aliveIds = new Set(projectSessions.map((s) => s.id));
         const normalized = normalizeRestoredProjectTabState(persisted, aliveIds);
         setOpenTabIds(new Set(normalized.openTaskIds));
+        setMinimizedWorkspaceIds(new Set(normalized.minimizedTaskWorkspaceIds));
         setOpenPlanningMainTabIds(new Set(normalized.openPlanningTabIds));
         setPlanningSidebarActiveId(normalized.planningSidebarActiveSessionId);
         setPlanningSidebarOpen(normalized.planningSidebarOpen);
@@ -1405,6 +1419,7 @@ export default function App() {
       openPlanningTabIds: Array.from(openPlanningMainTabIds),
       planningSidebarActiveSessionId: planningSidebarActiveId,
       planningSidebarOpen,
+      minimizedTaskWorkspaceIds: Array.from(minimizedWorkspaceIds),
     };
     void window.electronAPI.projects
       .setTabs(projectKey, tabs)
@@ -1419,6 +1434,7 @@ export default function App() {
     openPlanningMainTabIds,
     planningSidebarActiveId,
     planningSidebarOpen,
+    minimizedWorkspaceIds,
     tabPersistNonce,
   ]);
 
@@ -1462,6 +1478,11 @@ export default function App() {
       .filter((s) => s.taskId === taskId)
       .map((s) => s.id);
     setSessions((prev) => prev.filter((s) => s.taskId !== taskId));
+    setMinimizedWorkspaceIds((prev) => {
+      const next = new Set(prev);
+      for (const sid of ids) next.delete(sid);
+      return next;
+    });
     setOpenTabIds((prev) => {
       const next = new Set(prev);
       for (const sid of ids) next.delete(sid);
@@ -2666,6 +2687,12 @@ export default function App() {
       next.add(session.id);
       return next;
     });
+    setMinimizedWorkspaceIds((prev) => {
+      if (!prev.has(session.id)) return prev;
+      const next = new Set(prev);
+      next.delete(session.id);
+      return next;
+    });
     setActiveTabId(session.id);
     setSelectedTaskId(null);
   }, [confirmLeaveDocsWithUnsavedEdits]);
@@ -2689,6 +2716,12 @@ export default function App() {
         if (prev.has(sessionId)) return prev;
         const next = new Set(prev);
         next.add(sessionId);
+        return next;
+      });
+      setMinimizedWorkspaceIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
         return next;
       });
       setActiveTabId(sessionId);
@@ -2829,21 +2862,13 @@ export default function App() {
   const handleCollapseSidebar = useCallback(() => setSidebarCollapsed(true), []);
   const handleExpandSidebar = useCallback(() => setSidebarCollapsed(false), []);
 
-  const handleArchiveSession = useCallback(async (sessionId: string) => {
-    try {
-      await window.electronAPI.sessions.archive(sessionId);
-    } catch (err) {
-      console.error('[session.archive] failed', err);
-    }
-    invalidateSessionAttachCache(sessionId);
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    setOpenTabIds((prev) => {
-      if (!prev.has(sessionId)) return prev;
+  const handleMinimizeSession = useCallback((sessionId: string) => {
+    setMinimizedWorkspaceIds((prev) => {
+      if (prev.has(sessionId)) return prev;
       const next = new Set(prev);
-      next.delete(sessionId);
+      next.add(sessionId);
       return next;
     });
-    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
   }, []);
 
   const handleDeleteWorkspace = useCallback(async (sessionId: string) => {
@@ -2853,6 +2878,12 @@ export default function App() {
       console.error('[session.deleteWorkspace] failed', err);
     }
     invalidateSessionAttachCache(sessionId);
+    setMinimizedWorkspaceIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const next = new Set(prev);
+      next.delete(sessionId);
+      return next;
+    });
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     setOpenTabIds((prev) => {
       if (!prev.has(sessionId)) return prev;
@@ -2886,6 +2917,11 @@ export default function App() {
   const sessionItems = useMemo(
     () => buildSessionTabs(sessions, tasks),
     [sessions, tasks],
+  );
+
+  const sidebarSessionItems = useMemo(
+    () => sessionItems.filter((item) => !minimizedWorkspaceIds.has(item.session.id)),
+    [sessionItems, minimizedWorkspaceIds],
   );
 
   const openTabItems = useMemo(
@@ -3053,9 +3089,9 @@ export default function App() {
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={handleSelectPlanningDoc}
-          sessions={sessionItems}
+          sessions={sidebarSessionItems}
           onOpenSession={handleOpenSessionFromSidebar}
-          onArchiveSession={(id) => void handleArchiveSession(id)}
+          onMinimizeSession={handleMinimizeSession}
           onDeleteWorkspace={requestDeleteWorkspace}
         >
           <TopBar
@@ -3162,7 +3198,7 @@ export default function App() {
                                   )
                                 : null,
                             onOpenSessionTab: handleOpenSessionTab,
-                            onArchiveSession: (id) => void handleArchiveSession(id),
+                            onMinimizeSession: handleMinimizeSession,
                             onMarkAsDone:
                               tabTask.status !== 'done' && !tabTaskBlocked
                                 ? () =>
@@ -3302,7 +3338,7 @@ export default function App() {
                             : false
                         }
                         onOpenSessionTab={handleOpenSessionTab}
-                        onArchiveSession={(id) => void handleArchiveSession(id)}
+                        onMinimizeSession={handleMinimizeSession}
                         projectMembers={projectMembers}
                         onTaskPrClick={(id) => void handleTaskPrClick(id)}
                         prLoading={

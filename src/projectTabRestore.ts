@@ -11,6 +11,7 @@ export function activeProjectKeyString(key: ActiveProjectKey): string {
 /**
  * Turn persisted per-project tab state into renderer-ready values.
  * `openTaskIds` on disk are **daemon session ids** for workspace tabs (not Flux task ids).
+ * `minimizedTaskWorkspaceIds` are filtered to alive daemon sessions only.
  */
 export function normalizeRestoredProjectTabState(
   persisted: ProjectTabState,
@@ -20,10 +21,13 @@ export function normalizeRestoredProjectTabState(
   openPlanningTabIds: string[];
   planningSidebarActiveSessionId: string | null;
   planningSidebarOpen: boolean;
+  minimizedTaskWorkspaceIds: string[];
   activeTabId: string;
   openSettingsRoute: boolean;
 } {
   const restoredOpen = persisted.openTaskIds.filter((id) => aliveSessionIds.has(id));
+  const rawMinimized = persisted.minimizedTaskWorkspaceIds ?? [];
+  const minimizedTaskWorkspaceIds = rawMinimized.filter((id) => aliveSessionIds.has(id));
   const openPlanning = persisted.openPlanningTabIds ?? [];
 
   let activeTabId = 'board';
@@ -45,6 +49,7 @@ export function normalizeRestoredProjectTabState(
     openPlanningTabIds: [...openPlanning],
     planningSidebarActiveSessionId: persisted.planningSidebarActiveSessionId ?? null,
     planningSidebarOpen: persisted.planningSidebarOpen === true,
+    minimizedTaskWorkspaceIds,
     activeTabId,
     openSettingsRoute,
   };

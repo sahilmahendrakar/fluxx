@@ -54,7 +54,7 @@ interface SidebarProps {
   onSelectPlanningDoc: (relativePath: string) => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
-  onArchiveSession: (sessionId: string) => void;
+  onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
   onClearProject: () => void;
   onCollapse: () => void;
@@ -192,7 +192,7 @@ function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function ArchiveIcon({ className }: { className?: string }) {
+function MinimizeWorkspaceIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -203,9 +203,7 @@ function ArchiveIcon({ className }: { className?: string }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <rect x="1.5" y="3" width="13" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M3 6.5V13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M6.5 9h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -247,7 +245,7 @@ export function Sidebar({
   onSelectPlanningDoc,
   sessions,
   onOpenSession,
-  onArchiveSession,
+  onMinimizeSession,
   onDeleteWorkspace,
   onClearProject,
   onCollapse,
@@ -429,10 +427,8 @@ export function Sidebar({
             </button>
             {workspacesExpanded ? (
               <div className="flex flex-col gap-0.5 overflow-y-auto">
-                {sessions.length === 0 ? (
-                  <p className="px-2 py-1 text-[11px] italic text-zinc-600">No open sessions</p>
-                ) : (
-                  sessions.map(({ session, title }) => {
+                {sessions.length > 0
+                  ? sessions.map(({ session, title }) => {
                     const active = activeTabId === session.id && !settingsRouteActive;
                     const running = session.status === 'running';
                     return (
@@ -465,13 +461,13 @@ export function Sidebar({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onArchiveSession(session.id);
+                              onMinimizeSession(session.id);
                             }}
-                            aria-label={`Archive ${title}`}
-                            title="Archive — kill agent and terminals (keep worktree)"
+                            aria-label={`Minimize ${title}`}
+                            title="Minimize — hide from sidebar, keep agent running"
                             className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
                           >
-                            <ArchiveIcon />
+                            <MinimizeWorkspaceIcon />
                           </button>
                           <button
                             type="button"
@@ -489,7 +485,7 @@ export function Sidebar({
                       </div>
                     );
                   })
-                )}
+                  : null}
               </div>
             ) : null}
           </div>

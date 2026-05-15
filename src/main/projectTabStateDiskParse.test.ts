@@ -38,4 +38,49 @@ describe('parseProjectTabStateDiskValue', () => {
       }),
     ).not.toHaveProperty('planningSidebarOpen');
   });
+
+  it('parses minimizedTaskWorkspaceIds when present with valid strings', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        minimizedTaskWorkspaceIds: ['sess-a', 'sess-b'],
+      }),
+    ).toEqual({
+      openTaskIds: [],
+      activeTaskId: 'board',
+      minimizedTaskWorkspaceIds: ['sess-a', 'sess-b'],
+    });
+  });
+
+  it('drops non-string minimizedTaskWorkspaceIds entries', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        minimizedTaskWorkspaceIds: ['ok', 1, null, 'also'],
+      }),
+    ).toEqual({
+      openTaskIds: [],
+      activeTaskId: 'board',
+      minimizedTaskWorkspaceIds: ['ok', 'also'],
+    });
+  });
+
+  it('omits minimizedTaskWorkspaceIds when empty or only invalid entries', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        minimizedTaskWorkspaceIds: [],
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        minimizedTaskWorkspaceIds: [1, {}, null],
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+  });
 });

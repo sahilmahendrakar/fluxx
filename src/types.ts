@@ -43,6 +43,11 @@ export interface ProjectTabState {
    * task tab; cleared on explicit dismiss). Absent on disk means false.
    */
   planningSidebarOpen?: boolean;
+  /**
+   * Daemon session ids hidden from the Task Workspaces sidebar (minimize). Sessions
+   * stay running; reopen from the board or a tab clears the id from this set.
+   */
+  minimizedTaskWorkspaceIds?: string[];
 }
 
 /**
