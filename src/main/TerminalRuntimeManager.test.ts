@@ -136,6 +136,32 @@ describe('TerminalRuntimeManager', () => {
     expect(ptyState.instances.every((p) => p.kill.mock.calls.length > 0)).toBe(true);
   });
 
+  it('liveMainProcessPtyCount counts only running entries', async () => {
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+
+    expect(mgr.liveMainProcessPtyCount()).toBe(0);
+
+    const sess = mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'p1',
+      agent: 'claude-code',
+      command: 'sleep',
+      args: ['9'],
+      cols: 40,
+      rows: 12,
+    });
+    if (!('id' in sess)) throw new Error('expected session');
+    expect(mgr.liveMainProcessPtyCount()).toBe(1);
+
+    const pty = ptyState.instances[ptyState.instances.length - 1];
+    pty.emitExit(0);
+
+    expect(mgr.liveMainProcessPtyCount()).toBe(0);
+  });
+
   it('emits session-exit with stopped status on zero exit', async () => {
     const frames: StreamFrame[] = [];
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');

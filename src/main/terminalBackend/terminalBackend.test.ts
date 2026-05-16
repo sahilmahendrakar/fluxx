@@ -10,7 +10,7 @@ describe('TerminalBackend', () => {
     });
     await backend.ensureReady();
     await expect(backend.listSessions()).resolves.toEqual([]);
-    backend.onMainProcessBeforeQuit();
+    await backend.teardownForAppQuit();
   });
 
   it('createMainTerminalBackend defaults to local when env unset', () => {

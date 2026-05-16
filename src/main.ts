@@ -414,8 +414,13 @@ let fluxMcpRendererBridge: McpRendererBridge | null = null;
 
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
 
-/** Set during `app.whenReady` so `before-quit` can tear down in-process PTYs. */
+/** Set during `app.whenReady` so quit teardown can stop in-process PTYs. */
 let mainProcessTerminalBackend: TerminalBackend | null = null;
+
+/** When true, `before-quit` skips async terminal teardown and allows exit. */
+let appQuitTeardownComplete = false;
+
+const APP_QUIT_TERMINAL_TEARDOWN_MS = 5000;
 
 const createWindow = () => {
   const windowIcon = resolveWindowIconPath();
@@ -4005,14 +4010,62 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', () => {
-  fluxMcpServer?.stop();
-  planningDocsWatcher?.dispose();
-  planningDocsWatcher = null;
-  mainProcessTerminalBackend?.onMainProcessBeforeQuit();
-  // Detached RPC backends intentionally leave remote PTYs running so the next
-  // launch can warm-reattach; in-process PTYs are torn down in
-  // `onMainProcessBeforeQuit`. See 0001-session-daemon.md.
+app.on('before-quit', (e) => {
+  if (appQuitTeardownComplete) return;
+  e.preventDefault();
+
+  void (async () => {
+    try {
+      const backend = mainProcessTerminalBackend;
+      if (backend) {
+        try {
+          if (await backend.shouldConfirmAppQuit()) {
+            const focused = BrowserWindow.getFocusedWindow();
+            const messageOpts = {
+              type: 'warning' as const,
+              buttons: ['Quit', 'Cancel'],
+              defaultId: 1,
+              cancelId: 1,
+              title: 'Quit Flux?',
+              message: 'Quit Flux and stop local agents?',
+              detail:
+                'Running task agents, terminal panes, and planning sessions in this app will end. ' +
+                'Closing only the Flux window keeps them running until you fully quit the app (for example from the Dock or File menu).',
+            };
+            const { response } =
+              focused && !focused.isDestroyed()
+                ? await dialog.showMessageBox(focused, messageOpts)
+                : await dialog.showMessageBox(messageOpts);
+            if (response === 1) return;
+          }
+        } catch (err) {
+          console.warn('[main] shouldConfirmAppQuit failed', err);
+        }
+      }
+
+      fluxMcpServer?.stop();
+      planningDocsWatcher?.dispose();
+      planningDocsWatcher = null;
+
+      if (backend) {
+        try {
+          await Promise.race([
+            backend.teardownForAppQuit(),
+            new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
+          ]);
+        } catch (err) {
+          console.warn('[main] teardownForAppQuit failed', err);
+        }
+      }
+
+      appQuitTeardownComplete = true;
+      app.quit();
+    } catch (err) {
+      console.error('[main] before-quit handler failed', err);
+      appQuitTeardownComplete = true;
+      app.quit();
+    }
+  })();
 });
 
 // In this file you can include the rest of your app's specific main process

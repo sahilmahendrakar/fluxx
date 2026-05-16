@@ -57,6 +57,17 @@ export class DetachedRpcTerminalBackend implements TerminalBackend {
     this.localShellPlanning.shutdownAllPtys();
   }
 
+  async shouldConfirmAppQuit(): Promise<boolean> {
+    if (this.localShellPlanning.liveMainProcessPtyCount() > 0) return true;
+    const sessions = await this.client.tryListSessionsForQuitConfirmation(800);
+    return sessions != null && sessions.some((s) => s.status === 'running');
+  }
+
+  async teardownForAppQuit(): Promise<void> {
+    this.localShellPlanning.shutdownAllPtys();
+    await this.client.requestDaemonShutdownForAppQuit();
+  }
+
   createSession(params: CreateSessionParams): Promise<CreateSessionResult> {
     return this.client.createSession(params);
   }

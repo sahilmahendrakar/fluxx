@@ -83,6 +83,14 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
     this.mgr.shutdownAllPtys();
   }
 
+  async shouldConfirmAppQuit(): Promise<boolean> {
+    return this.mgr.liveMainProcessPtyCount() > 0;
+  }
+
+  async teardownForAppQuit(): Promise<void> {
+    this.onMainProcessBeforeQuit();
+  }
+
   private restartSilencePollIfNeeded(): void {
     this.clearSilencePoll();
     if (!this.hooks?.onSilenceStatesSnapshot) return;

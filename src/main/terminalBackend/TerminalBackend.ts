@@ -54,8 +54,20 @@ export interface TerminalBackend {
   /**
    * Electron `before-quit`: in-process PTYs should exit with the app; detached backends
    * may intentionally leave remote PTYs running (legacy daemon semantics).
+   *
+   * Prefer {@link teardownForAppQuit} from the main-process quit path so daemon-backed
+   * sessions and the legacy daemon itself are stopped on full app quit.
    */
   onMainProcessBeforeQuit(): void;
+
+  /** True when quitting would stop visible in-flight local work (optional confirmation). */
+  shouldConfirmAppQuit(): Promise<boolean>;
+
+  /**
+   * Full app quit: stop all terminal runtime sessions (bounded by the caller).
+   * Idempotent with respect to local PTYs.
+   */
+  teardownForAppQuit(): Promise<void>;
 
   createSession(params: CreateSessionParams): Promise<CreateSessionResult>;
   listSessions(): Promise<Session[]>;

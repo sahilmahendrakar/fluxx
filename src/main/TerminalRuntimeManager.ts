@@ -247,6 +247,21 @@ export class TerminalRuntimeManager {
     return [...this.sessions.values()].map((e) => ({ ...e.session }));
   }
 
+  /** In-process PTYs only (task sessions, shells, planning). */
+  liveMainProcessPtyCount(): number {
+    let n = 0;
+    for (const e of this.sessions.values()) {
+      if (e.session.status === 'running') n += 1;
+    }
+    for (const e of this.shells.values()) {
+      if (e.shell.status === 'running') n += 1;
+    }
+    for (const e of this.planning.values()) {
+      if (e.session.status === 'running') n += 1;
+    }
+    return n;
+  }
+
   getSessionSilenceStates(): { id: string; taskId?: string; state: SilenceState }[] {
     const result: { id: string; taskId?: string; state: SilenceState }[] = [];
     for (const [sid, entry] of this.sessions) {

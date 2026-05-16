@@ -822,6 +822,41 @@ export class DaemonClient {
     this.tearDownSockets();
   }
 
+  /**
+   * When already connected: list sessions without {@link ensureRunning} (must not spawn
+   * during app teardown / quit confirmation).
+   */
+  async tryListSessionsForQuitConfirmation(timeoutMs: number): Promise<Session[] | null> {
+    const rpc = this.rpc;
+    if (!rpc || rpc.destroyed) return null;
+    try {
+      return await Promise.race<Session[] | null>([
+        this.request<Session[]>('listSessions'),
+        sleep(timeoutMs).then((): null => null),
+      ]);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Tells the legacy daemon to kill all PTYs and exit. Never calls {@link ensureRunning}.
+   */
+  async requestDaemonShutdownForAppQuit(): Promise<void> {
+    const rpc = this.rpc;
+    if (!rpc || rpc.destroyed) {
+      this.disconnect();
+      return;
+    }
+    try {
+      await Promise.race([this.request<null>('shutdown'), sleep(3500)]);
+    } catch {
+      /* daemon may close the socket before the reply lands */
+    } finally {
+      this.disconnect();
+    }
+  }
+
   // ------------------------------------------------------------------ rpc
 
   private request<T>(method: string, params?: unknown): Promise<T> {
