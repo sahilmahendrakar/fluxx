@@ -22,6 +22,7 @@ import type {
   SessionStartResult,
   Shell,
   Task,
+  TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentResult,
@@ -288,7 +289,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agentModel?: string;
       agentYolo?: boolean;
       repoId?: string;
-      attachedPlanningDocPaths?: string[];
+      attachedPlanningDocs?: TaskAttachedPlanningDoc[];
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -309,11 +310,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'createSourceBranchIfMissing'
           | 'repoId'
           | 'fluxWorkBranch'
-          | 'attachedPlanningDocPaths'
         >
       > & {
         githubPr?: TaskGithubPr | null;
         autoStartOnUnblock?: boolean | null;
+        attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
       },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (

@@ -87,6 +87,65 @@ service cloud.firestore {
         || repoAtMatches(repos, 31, rid);
     }
 
+    /** `tasks.attachedPlanningDocs`: bounded list of `{ relativePath }` maps (client validates paths). */
+    function taskAttachedPlanningDocRelValid(rel) {
+      return rel is string
+        && rel.size() > 0
+        && rel.size() <= 1024;
+    }
+
+    function taskAttachedPlanningDocEntryAtValid(list, idx) {
+      return list.size() < idx + 1
+        || (
+          list[idx] is map
+          && list[idx].keys().hasOnly(['relativePath'])
+          && taskAttachedPlanningDocRelValid(list[idx].relativePath)
+        );
+    }
+
+    function taskAttachedPlanningDocsFieldValid(list) {
+      return list is list
+        && list.size() <= 32
+        && taskAttachedPlanningDocEntryAtValid(list, 0)
+        && taskAttachedPlanningDocEntryAtValid(list, 1)
+        && taskAttachedPlanningDocEntryAtValid(list, 2)
+        && taskAttachedPlanningDocEntryAtValid(list, 3)
+        && taskAttachedPlanningDocEntryAtValid(list, 4)
+        && taskAttachedPlanningDocEntryAtValid(list, 5)
+        && taskAttachedPlanningDocEntryAtValid(list, 6)
+        && taskAttachedPlanningDocEntryAtValid(list, 7)
+        && taskAttachedPlanningDocEntryAtValid(list, 8)
+        && taskAttachedPlanningDocEntryAtValid(list, 9)
+        && taskAttachedPlanningDocEntryAtValid(list, 10)
+        && taskAttachedPlanningDocEntryAtValid(list, 11)
+        && taskAttachedPlanningDocEntryAtValid(list, 12)
+        && taskAttachedPlanningDocEntryAtValid(list, 13)
+        && taskAttachedPlanningDocEntryAtValid(list, 14)
+        && taskAttachedPlanningDocEntryAtValid(list, 15)
+        && taskAttachedPlanningDocEntryAtValid(list, 16)
+        && taskAttachedPlanningDocEntryAtValid(list, 17)
+        && taskAttachedPlanningDocEntryAtValid(list, 18)
+        && taskAttachedPlanningDocEntryAtValid(list, 19)
+        && taskAttachedPlanningDocEntryAtValid(list, 20)
+        && taskAttachedPlanningDocEntryAtValid(list, 21)
+        && taskAttachedPlanningDocEntryAtValid(list, 22)
+        && taskAttachedPlanningDocEntryAtValid(list, 23)
+        && taskAttachedPlanningDocEntryAtValid(list, 24)
+        && taskAttachedPlanningDocEntryAtValid(list, 25)
+        && taskAttachedPlanningDocEntryAtValid(list, 26)
+        && taskAttachedPlanningDocEntryAtValid(list, 27)
+        && taskAttachedPlanningDocEntryAtValid(list, 28)
+        && taskAttachedPlanningDocEntryAtValid(list, 29)
+        && taskAttachedPlanningDocEntryAtValid(list, 30)
+        && taskAttachedPlanningDocEntryAtValid(list, 31);
+    }
+
+    function taskAttachedPlanningDocsKeyAbsentOrValid(data) {
+      return !data.keys().hasAny(['attachedPlanningDocs'])
+        || data.attachedPlanningDocs == null
+        || taskAttachedPlanningDocsFieldValid(data.attachedPlanningDocs);
+    }
+
     match /projects/{pid} {
       allow read: if isSignedIn() && request.auth.uid in resource.data.memberIds;
 
@@ -132,10 +191,12 @@ service cloud.firestore {
         allow create: if isMember(pid)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
-          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data);
+          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data)
+          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data);
         allow update: if isMember(pid)
           && request.resource.data.updatedBy == request.auth.uid
-          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data);
+          && taskRepoIdKeyAbsentOrValid(pid, request.resource.data)
+          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data);
         allow delete: if isMember(pid);
 
         match /runners/{uid} {

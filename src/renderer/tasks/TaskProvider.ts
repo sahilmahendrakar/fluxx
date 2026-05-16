@@ -1,4 +1,10 @@
-import type { Agent, Task, TaskGithubPr, TaskStatus } from '../../types';
+import type {
+  Agent,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+  TaskStatus,
+} from '../../types';
 
 export type TaskPatch = Partial<
   Pick<
@@ -18,13 +24,14 @@ export type TaskPatch = Partial<
     | 'createSourceBranchIfMissing'
     | 'repoId'
     | 'fluxWorkBranch'
-    | 'attachedPlanningDocPaths'
   >
 > & {
   workspaceCleanedAt?: string | null;
   githubPr?: TaskGithubPr | null;
   /** True/false persist; `null` clears the field so the task inherits the project default. */
   autoStartOnUnblock?: boolean | null;
+  /** `null` clears all attached planning docs. */
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
 };
 
 export type TaskCreateInput = {
@@ -41,7 +48,7 @@ export type TaskCreateInput = {
   agentYolo?: boolean;
   /** Multi-repo2: must belong to the active project when set; otherwise the primary repo is used. */
   repoId?: string;
-  attachedPlanningDocPaths?: string[];
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 };
 
 /**

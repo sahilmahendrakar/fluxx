@@ -69,10 +69,8 @@ import { GithubPrIconButton } from './GithubPrIconButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 import ConfirmDialog from './ConfirmDialog';
 import type { PlanningDocFileEntry } from '../planningDocs/types';
-import {
-  compactPlanningDocPathLabel,
-  normalizeAttachedPlanningDocPaths,
-} from '../taskPlanningDocAttachments';
+import { compactPlanningDocPathLabel } from '../taskPlanningDocAttachments';
+import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import {
   buildTaskSourceBranchPersistPatch,
   effectiveTaskSourceBranchShort,
@@ -319,10 +317,11 @@ export default function TaskDetailPanel({
     [planningDocFiles],
   );
 
-  const attachedPlanningPaths = useMemo(
-    () => normalizeAttachedPlanningDocPaths(task?.attachedPlanningDocPaths),
-    [task?.attachedPlanningDocPaths],
-  );
+  const attachedPlanningPaths = useMemo(() => {
+    const docs = task?.attachedPlanningDocs;
+    if (!docs?.length) return [];
+    return docs.map((d) => d.relativePath);
+  }, [task?.attachedPlanningDocs]);
 
   const attachablePlanningDocs = useMemo(() => {
     const attached = new Set(attachedPlanningPaths);
@@ -1287,9 +1286,10 @@ export default function TaskDetailPanel({
                             <button
                               type="button"
                               onClick={() => {
-                                const next = attachedPlanningPaths.filter((p) => p !== relPath);
+                                const docs = task.attachedPlanningDocs ?? [];
+                                const next = docs.filter((d) => d.relativePath !== relPath);
                                 onUpdate(task.id, {
-                                  attachedPlanningDocPaths: next.length > 0 ? next : [],
+                                  attachedPlanningDocs: next.length > 0 ? next : [],
                                 });
                               }}
                               className="shrink-0 rounded-r-md border border-l-0 border-white/[0.08] bg-white/[0.04] px-1.5 text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
@@ -1318,11 +1318,12 @@ export default function TaskDetailPanel({
                         onChange={(e) => {
                           const v = e.target.value;
                           if (!v) return;
-                          const next = normalizeAttachedPlanningDocPaths([
-                            ...attachedPlanningPaths,
-                            v,
+                          const docs = task.attachedPlanningDocs ?? [];
+                          const next = sanitizeTaskAttachedPlanningDocsInput([
+                            ...docs,
+                            { relativePath: v },
                           ]);
-                          onUpdate(task.id, { attachedPlanningDocPaths: next });
+                          onUpdate(task.id, { attachedPlanningDocs: next });
                           e.target.selectedIndex = 0;
                         }}
                         className={propertySelectClass}

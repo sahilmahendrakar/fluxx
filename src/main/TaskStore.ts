@@ -2,10 +2,10 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskGithubPr } from '../types';
+import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
+import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
-import { normalizeAttachedPlanningDocPaths } from '../taskPlanningDocAttachments';
 import { normalizeTaskLabels } from '../taskLabels';
 
 type TaskInput = {
@@ -20,7 +20,7 @@ type TaskInput = {
   agentYolo?: boolean;
   /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
   repoId?: string;
-  attachedPlanningDocPaths?: string[];
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -236,9 +236,11 @@ export class TaskStore {
     if (input.repoId != null && input.repoId.length > 0) {
       task.repoId = input.repoId;
     }
-    const attached = normalizeAttachedPlanningDocPaths(input.attachedPlanningDocPaths);
-    if (attached.length > 0) {
-      task.attachedPlanningDocPaths = attached;
+    if (input.attachedPlanningDocs !== undefined) {
+      const s = sanitizeTaskAttachedPlanningDocsInput(input.attachedPlanningDocs);
+      if (s.length > 0) {
+        task.attachedPlanningDocs = s;
+      }
     }
     this.tasks.push(task);
     await this.save();
@@ -264,12 +266,13 @@ export class TaskStore {
         | 'createSourceBranchIfMissing'
         | 'repoId'
         | 'fluxWorkBranch'
-        | 'attachedPlanningDocPaths'
       >
     > & {
       autoStartOnUnblock?: boolean | null;
       assigneeId?: string | null;
       githubPr?: TaskGithubPr | null;
+      /** `null` clears stored attachments. */
+      attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
     },
   ): Promise<Task> {
     if (!this.filePath) {
@@ -284,7 +287,7 @@ export class TaskStore {
       assigneeId: patchAssigneeId,
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
-      attachedPlanningDocPaths: patchAttachedPlanningDocs,
+      attachedPlanningDocs: patchAttachedDocs,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -320,6 +323,18 @@ export class TaskStore {
         updated.githubPr = patchGithubPr;
       }
     }
+    if (patchAttachedDocs !== undefined) {
+      if (patchAttachedDocs === null) {
+        delete updated.attachedPlanningDocs;
+      } else {
+        const s = sanitizeTaskAttachedPlanningDocsInput(patchAttachedDocs);
+        if (s.length > 0) {
+          updated.attachedPlanningDocs = s;
+        } else {
+          delete updated.attachedPlanningDocs;
+        }
+      }
+    }
     if (patch.sourceBranch !== undefined) {
       const b = patch.sourceBranch.trim();
       if (b.length === 0) {
@@ -341,14 +356,6 @@ export class TaskStore {
         delete updated.repoId;
       } else {
         updated.repoId = nextRepo;
-      }
-    }
-    if (patchAttachedPlanningDocs !== undefined) {
-      const n = normalizeAttachedPlanningDocPaths(patchAttachedPlanningDocs);
-      if (n.length > 0) {
-        updated.attachedPlanningDocPaths = n;
-      } else {
-        delete updated.attachedPlanningDocPaths;
       }
     }
     this.tasks[index] = updated;

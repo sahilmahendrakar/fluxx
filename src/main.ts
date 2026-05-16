@@ -44,8 +44,8 @@ import {
   agentSpawnSpec,
   ensurePlanningDirCursorMcp,
   planningSpawnSpec,
-  taskInitialPrompt,
 } from './main/agentSpawn';
+import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
@@ -132,6 +132,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentResult,
@@ -1836,7 +1837,7 @@ app.whenReady().then(async () => {
         agentModel?: string;
         agentYolo?: boolean;
         repoId?: string;
-        attachedPlanningDocPaths?: string[];
+        attachedPlanningDocs?: TaskAttachedPlanningDoc[];
       },
     ) => {
       const project = projectStore.get();
@@ -2915,7 +2916,10 @@ app.whenReady().then(async () => {
 
       const { command, args } = options?.resume
         ? agentSpawnResumeSpec(merged)
-        : agentSpawnSpec(merged, taskInitialPrompt(merged));
+        : agentSpawnSpec(
+            merged,
+            await composeTaskSessionInitialPrompt(merged, path.join(activeProjectDir(), 'planning')),
+          );
       console.log('[session:start] spawn', {
         taskId: task.id,
         command,
@@ -3019,10 +3023,11 @@ app.whenReady().then(async () => {
       | 'createSourceBranchIfMissing'
       | 'repoId'
       | 'fluxWorkBranch'
-      | 'attachedPlanningDocPaths'
     >
   > & {
     githubPr?: TaskGithubPr | null;
+    /** `null` clears stored attachments. */
+    attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
     /** `null` clears stored value (inherit project default for when-unblocked). */
     autoStartOnUnblock?: boolean | null;
   };

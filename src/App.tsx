@@ -68,7 +68,7 @@ import {
 } from './renderer/tasks/useCloudSilenceReconciliation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
-import { normalizeAttachedPlanningDocPaths } from './taskPlanningDocAttachments';
+import { sanitizeTaskAttachedPlanningDocsInput } from './taskAttachedPlanningDocs';
 import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from './taskDependencies';
@@ -134,7 +134,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     createSourceBranchIfMissing,
     autoStartOnUnblock,
     repoId,
-    attachedPlanningDocPaths: patchAttachedDocs,
+    attachedPlanningDocs: patchAttachedPlanningDocs,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -194,13 +194,18 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       next = { ...next, repoId };
     }
   }
-  if (patchAttachedDocs !== undefined) {
-    const n = normalizeAttachedPlanningDocPaths(patchAttachedDocs);
-    if (n.length > 0) {
-      next = { ...next, attachedPlanningDocPaths: n };
-    } else {
+  if (patchAttachedPlanningDocs !== undefined) {
+    if (patchAttachedPlanningDocs === null) {
       next = { ...next };
-      delete next.attachedPlanningDocPaths;
+      delete next.attachedPlanningDocs;
+    } else {
+      const s = sanitizeTaskAttachedPlanningDocsInput(patchAttachedPlanningDocs);
+      if (s.length > 0) {
+        next = { ...next, attachedPlanningDocs: s };
+      } else {
+        next = { ...next };
+        delete next.attachedPlanningDocs;
+      }
     }
   }
   return next;
@@ -1855,7 +1860,7 @@ export default function App() {
         autoStartOnUnblock: patchAsou,
         githubPr: patchGh,
         workspaceCleanedAt: patchWsc,
-        attachedPlanningDocPaths: patchAttachedDocs,
+        attachedPlanningDocs: patchAttachedPlanningDocs,
         ...patchRest
       } = patch;
       setTasks((prev) =>
@@ -1914,13 +1919,18 @@ export default function App() {
               next = { ...next, repoId: rid };
             }
           }
-          if (patchAttachedDocs !== undefined) {
-            const n = normalizeAttachedPlanningDocPaths(patchAttachedDocs);
-            if (n.length > 0) {
-              next = { ...next, attachedPlanningDocPaths: n };
-            } else {
+          if (patchAttachedPlanningDocs !== undefined) {
+            if (patchAttachedPlanningDocs === null) {
               next = { ...next };
-              delete next.attachedPlanningDocPaths;
+              delete next.attachedPlanningDocs;
+            } else {
+              const s = sanitizeTaskAttachedPlanningDocsInput(patchAttachedPlanningDocs);
+              if (s.length > 0) {
+                next = { ...next, attachedPlanningDocs: s };
+              } else {
+                next = { ...next };
+                delete next.attachedPlanningDocs;
+              }
             }
           }
           next = {
@@ -1974,9 +1984,11 @@ export default function App() {
       if (patchGh !== undefined) {
         persistable.githubPr = patchGh;
       }
-      if (patchAttachedDocs !== undefined) {
-        persistable.attachedPlanningDocPaths =
-          normalizeAttachedPlanningDocPaths(patchAttachedDocs);
+      if (patchAttachedPlanningDocs !== undefined) {
+        persistable.attachedPlanningDocs =
+          patchAttachedPlanningDocs === null
+            ? null
+            : sanitizeTaskAttachedPlanningDocsInput(patchAttachedPlanningDocs);
       }
       if (Object.keys(persistable).length === 0) return;
 

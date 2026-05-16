@@ -264,6 +264,11 @@ export type Project = LocalProject | CloudProject;
 
 export type TaskGithubPrState = 'open' | 'closed' | 'merged';
 
+/** One planning markdown doc attached to a task (paths are relative to the project `planning/` root). */
+export interface TaskAttachedPlanningDoc {
+  relativePath: string;
+}
+
 /** GitHub pull request linked to a task (persisted locally and in Firestore). */
 export interface TaskGithubPr {
   url: string;
@@ -387,10 +392,10 @@ export interface Task {
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
   /**
-   * Planning markdown paths (repo-relative under `planning/`, forward slashes, `.md`)
-   * linked from the planning docs list for quick navigation from this task.
+   * Normalized planning markdown paths (under the project `planning/` directory).
+   * Omitted when none; persisted locally and in Firestore for cloud tasks.
    */
-  attachedPlanningDocPaths?: string[];
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';

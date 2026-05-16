@@ -276,7 +276,7 @@ export default function TaskCard({
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const blocked = isTaskBlocked(task, allTasks);
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
-  const attachedDocCount = (task.attachedPlanningDocPaths ?? []).length;
+  const attachedDocCount = (task.attachedPlanningDocs ?? []).length;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
   const effectiveUnblockAutostart = whenUnblockedAutostartBoardChipEffective(task, projectUnblockAuto);
   const prUrl = task.githubPr?.url?.trim() ?? '';
@@ -457,7 +457,7 @@ export default function TaskCard({
                   {attachedDocCount > 0 ? (
                     <span
                       className="inline-flex max-w-[7rem] items-center gap-0.5 truncate rounded border border-indigo-500/25 bg-indigo-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-indigo-200/90"
-                      title={(task.attachedPlanningDocPaths ?? []).join('\n')}
+                      title={(task.attachedPlanningDocs ?? []).map((d) => d.relativePath).join('\n')}
                       role="img"
                       aria-label={`${attachedDocCount} attached planning document${attachedDocCount === 1 ? '' : 's'}`}
                     >
