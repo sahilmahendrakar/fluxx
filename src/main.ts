@@ -44,8 +44,8 @@ import {
   agentSpawnSpec,
   ensurePlanningDirCursorMcp,
   planningSpawnSpec,
-  taskInitialPrompt,
 } from './main/agentSpawn';
+import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
@@ -2916,7 +2916,10 @@ app.whenReady().then(async () => {
 
       const { command, args } = options?.resume
         ? agentSpawnResumeSpec(merged)
-        : agentSpawnSpec(merged, taskInitialPrompt(merged));
+        : agentSpawnSpec(
+            merged,
+            await composeTaskSessionInitialPrompt(merged, path.join(activeProjectDir(), 'planning')),
+          );
       console.log('[session:start] spawn', {
         taskId: task.id,
         command,
