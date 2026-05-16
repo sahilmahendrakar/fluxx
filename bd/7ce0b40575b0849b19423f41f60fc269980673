@@ -1,0 +1,42 @@
+src/taskAttachedPlanningDocs.test.ts
+  s_e0c09d2e4b3d9f::t_6ffb6713a42c45 2-4,9,11
+  s_e0c09d2e4b3d9f::t_c76d8652997b69 55,57-58
+  s_e0c09d2e4b3d9f::t_0dc337d59f37f4 65-138
+src/main/McpServer.ts
+  s_e0c09d2e4b3d9f::t_e682651c58364c 577
+  s_e0c09d2e4b3d9f::t_9464cebbcf0e92 408
+  s_e0c09d2e4b3d9f::t_04568a2b9a130a 498-499
+  s_e0c09d2e4b3d9f::t_120a2307304253 168-204
+  s_e0c09d2e4b3d9f::t_e61f6ad14b5738 42-45
+  s_e0c09d2e4b3d9f::t_9e93250b8e19c0 334
+  s_e0c09d2e4b3d9f::t_d8e1dae32c76ae 518
+  s_e0c09d2e4b3d9f::t_eab3bb008fca7b 634-640
+  s_e0c09d2e4b3d9f::t_ebd7e88cb1bbce 457-458
+  s_e0c09d2e4b3d9f::t_3fe3245fa1d0f4 705-711
+  s_e0c09d2e4b3d9f::t_85f76cf4857490 400-407,409
+  s_e0c09d2e4b3d9f::t_4008c8716f03be 391
+src/taskAttachedPlanningDocs.ts
+  s_e0c09d2e4b3d9f::t_3b98d76fe4d492 1,6
+  s_e0c09d2e4b3d9f::t_be6a48c535d7dc 59-184
+src/main/ProjectStore.ts
+  s_e0c09d2e4b3d9f::t_0ffab38ffd1916 329-330,333-334
+  s_e0c09d2e4b3d9f::t_7f7eb19a9f71cb 372-373
+src/main/agentSpawn.ts
+  s_e0c09d2e4b3d9f::t_f34da2cbf56e51 145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "bd7ce0b40575b0849b19423f41f60fc269980673",
+  "prompts": {},
+  "sessions": {
+    "s_e0c09d2e4b3d9f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "13d4d5b4-f799-470b-838f-676479e2caa1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
