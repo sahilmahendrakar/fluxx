@@ -104,7 +104,7 @@ export class McpServer {
 
   private createSdkServer(): BaseMcpServer {
     const server = new BaseMcpServer(
-      { name: 'flux', version: '0.1.0' },
+      { name: 'flux', version: '0.1.1' },
       { capabilities: { tools: {} } },
     );
     this.registerTools(server);
