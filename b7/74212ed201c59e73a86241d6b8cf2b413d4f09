@@ -1,0 +1,47 @@
+src/planningDocs/path.test.ts
+  s_ef710ec503defb::t_287c25c86a2966 38-50
+src/main/planningAssistantInstructions.ts
+  s_ef710ec503defb::t_0be08633dd69a3 188
+  s_ef710ec503defb::t_24a25416b74ebd 145-146
+src/planningDocs/resolvePlanningDocsDir.ts
+  s_ef710ec503defb::t_18b5fd5997deb0 1-24
+src/main/McpServer.ts
+  s_ef710ec503defb::t_6d43281a36e513 538
+  s_ef710ec503defb::t_a0e251aafc9c72 346
+  s_ef710ec503defb::t_453a9d8907ecdd 90
+  s_ef710ec503defb::t_151ec3f9059992 185
+  s_ef710ec503defb::t_5162784e35c4d2 200-209
+  s_ef710ec503defb::t_5bb9ea8a141a5f 405
+src/taskAttachedPlanningDocs.test.ts
+  s_ef710ec503defb::t_025967047feec7 85-105
+  s_ef710ec503defb::t_9ed39c4af60d96 140-141,147-154
+src/taskAttachedPlanningDocs.ts
+  s_ef710ec503defb::t_2ceeb9b1667ad3 108
+  s_ef710ec503defb::t_0d1cd94fdb05be 116
+src/main/composeTaskSessionInitialPrompt.test.ts
+  s_ef710ec503defb::t_90824273745369 58-72
+src/main/agentSpawn.ts
+  s_ef710ec503defb::t_44419d911405b8 145
+src/main.ts
+  s_ef710ec503defb::t_6647ed7a4635d4 3634-3639,3647
+  s_ef710ec503defb::t_21eb6a863f995e 60
+src/planningDocs/path.ts
+  s_ef710ec503defb::t_2478f19ea440ba 67
+  s_ef710ec503defb::t_4f75babe58525f 73-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "b774212ed201c59e73a86241d6b8cf2b413d4f09",
+  "prompts": {},
+  "sessions": {
+    "s_ef710ec503defb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f3e4f7ce-125c-4dfb-8bf2-d7b67efa569d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
