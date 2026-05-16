@@ -4,10 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_PLANNING_RELATIVE_PATH_UTF8_BYTES,
+  isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite,
   isPlanningMarkdownRelativePathForbiddenForUserWrite,
   normalizePlanningDocRelativePath,
   planningFirestoreDocIdToRelativePath,
+  planningLegacyUserMarkdownAbsPath,
   planningRelativePathToFirestoreDocId,
+  planningUserDocsDir,
   safeResolvePlanningMarkdownAbsPath,
 } from './path';
 
@@ -31,6 +34,11 @@ describe('normalizePlanningDocRelativePath', () => {
     expect(normalizePlanningDocRelativePath('readme.txt')).toBeNull();
   });
 
+  it('rejects a leading docs/ segment (implicit user-docs root)', () => {
+    expect(normalizePlanningDocRelativePath('docs/readme.md')).toBeNull();
+    expect(normalizePlanningDocRelativePath('docs/nested/x.md')).toBeNull();
+  });
+
   it('accepts unicode file names', () => {
     expect(normalizePlanningDocRelativePath('文档/愿景.md')).toBe('文档/愿景.md');
   });
@@ -41,7 +49,8 @@ describe('safeResolvePlanningMarkdownAbsPath', () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-planning-'));
     const planningDir = path.join(root, 'planning');
     await fs.mkdir(planningDir, { recursive: true });
-    await fs.writeFile(path.join(planningDir, 'real.md'), '# ok', 'utf8');
+    await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(planningDir, 'docs', 'real.md'), '# ok', 'utf8');
 
     const outside = path.join(root, 'outside.md');
     await fs.writeFile(outside, '# no', 'utf8');
@@ -51,13 +60,48 @@ describe('safeResolvePlanningMarkdownAbsPath', () => {
     expect(resolved).toBeNull();
   });
 
-  it('resolves a valid nested markdown file', async () => {
+  it('resolves user markdown under planning/docs', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-planning-'));
     const planningDir = path.join(root, 'planning');
-    await fs.mkdir(path.join(planningDir, 'a'), { recursive: true });
-    const target = path.join(planningDir, 'a', 'b.md');
+    await fs.mkdir(path.join(planningDir, 'docs', 'a'), { recursive: true });
+    const target = path.join(planningDir, 'docs', 'a', 'b.md');
     await fs.writeFile(target, 'x', 'utf8');
     expect(safeResolvePlanningMarkdownAbsPath(planningDir, 'a/b.md')).toBe(target);
+  });
+
+  it('resolves instruction seeds at the planning workspace root', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-planning-'));
+    const planningDir = path.join(root, 'planning');
+    await fs.mkdir(planningDir, { recursive: true });
+    const claude = path.join(planningDir, 'CLAUDE.md');
+    await fs.writeFile(claude, 'x', 'utf8');
+    expect(safeResolvePlanningMarkdownAbsPath(planningDir, 'CLAUDE.md')).toBe(claude);
+  });
+});
+
+describe('planningLegacyUserMarkdownAbsPath', () => {
+  it('returns a path outside docs/ for legacy layouts', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-plan-legacy-'));
+    const planningDir = path.join(root, 'planning');
+    await fs.mkdir(planningDir, { recursive: true });
+    const legacy = path.join(planningDir, 'old.md');
+    await fs.writeFile(legacy, 'z', 'utf8');
+    expect(planningLegacyUserMarkdownAbsPath(planningDir, 'old.md')).toBe(legacy);
+  });
+
+  it('still maps top-level relative names to the planning root (outside docs/)', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-plan-legacy-'));
+    const planningDir = path.join(root, 'planning');
+    await fs.mkdir(planningDir, { recursive: true });
+    expect(planningLegacyUserMarkdownAbsPath(planningDir, 'readme.md')).toBe(
+      path.join(planningDir, 'readme.md'),
+    );
+  });
+});
+
+describe('planningUserDocsDir', () => {
+  it('joins planning and docs segment', () => {
+    expect(planningUserDocsDir('/p/planning')).toBe(path.join('/p/planning', 'docs'));
   });
 });
 
@@ -77,6 +121,15 @@ describe('planningRelativePathToFirestoreDocId', () => {
   it('returns null when UTF-8 path exceeds max length', () => {
     const filler = 'a'.repeat(MAX_PLANNING_RELATIVE_PATH_UTF8_BYTES);
     expect(planningRelativePathToFirestoreDocId(`${filler}.md`)).toBeNull();
+  });
+});
+
+describe('isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite', () => {
+  it('blocks CLAUDE.md, AGENTS.md, and .cursor paths', () => {
+    expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('CLAUDE.md')).toBe(true);
+    expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('AGENTS.md')).toBe(true);
+    expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('.cursor/mcp.md')).toBe(true);
+    expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('notes/ok.md')).toBe(false);
   });
 });
 

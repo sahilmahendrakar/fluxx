@@ -4,6 +4,8 @@ import path from 'node:path';
 import { isUnderPlanningUnsyncedPrefix } from '../planningDocs/cloudPlanningDocsMigration';
 import {
   normalizePlanningDocRelativePath,
+  planningUserDocsDir,
+  isPlanningUserDocRelativePathDisallowed,
   safeResolvePlanningMarkdownAbsPath,
 } from '../planningDocs/path';
 import type { PlanningDocsPushCandidate } from '../planningDocs/syncTypes';
@@ -80,12 +82,13 @@ export async function listPlanningDocsPushCandidates(
   }
 
   const state = await readPlanningDocsSyncState(planningDir);
-  const relativePaths = await collectMarkdownRelPaths(planningDir, '');
+  const relativePaths = await collectMarkdownRelPaths(planningUserDocsDir(planningDir), '');
   const out: PlanningDocsPushCandidate[] = [];
 
   for (const rel of relativePaths) {
     const norm = normalizePlanningDocRelativePath(rel);
     if (!norm) continue;
+    if (isPlanningUserDocRelativePathDisallowed(norm)) continue;
     const abs = safeResolvePlanningMarkdownAbsPath(planningDir, norm);
     if (!abs) continue;
     let markdown: string;

@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   normalizePlanningDocRelativePath,
-  safeResolvePlanningMarkdownAbsPath,
+  resolvePlanningUserMarkdownAbsPathForRead,
 } from '../planningDocs/path';
 import type {
   PlanningDocFileEntry,
@@ -107,7 +107,7 @@ export async function enrichPlanningDocsListForCloudWorkspace(
       continue;
     }
 
-    const abs = safeResolvePlanningMarkdownAbsPath(planningDir, norm);
+    const abs = await resolvePlanningUserMarkdownAbsPathForRead(planningDir, norm, (p) => fs.access(p));
     let diskHash: string | null = null;
     if (abs) {
       try {

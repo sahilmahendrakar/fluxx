@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 /**
- * Cloud workspaces mirror Firestore `planningDocs` into the on-disk `planning/` tree
+ * Cloud workspaces mirror Firestore `planningDocs` into `planning/docs/**` on disk
  * (same folder agents use) via `usePlanningDocsFirestoreSync`; first-run conflict
  * backups and seed offers live in `cloudPlanningDocsMigration.ts` /
  * `useCloudPlanningDocsMigration.tsx`.

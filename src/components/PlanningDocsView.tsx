@@ -247,7 +247,7 @@ export function PlanningDocsView({
         <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-zinc-600">
           <p>
             Choose a document from the sidebar, or expand <span className="px-1 font-medium text-zinc-500">Docs</span>{' '}
-            to see what is in <span className="font-mono text-zinc-500">planning/</span>.
+            to see what is in <span className="font-mono text-zinc-500">planning/docs/</span>.
           </p>
           {showCloudChrome && !firebaseConfigured ? (
             <p className="mt-3 max-w-sm text-[12px] leading-relaxed text-zinc-500">
