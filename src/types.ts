@@ -407,7 +407,7 @@ export interface Task {
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 }
 
-export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
+export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error' | 'interrupted';
 
 export type SessionStartErrorCode =
   | 'AGENT_NOT_FOUND'
@@ -476,6 +476,37 @@ export interface Session {
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;
+  /**
+   * When the CLI exposes a resumable id and Flux captured it from PTY output,
+   * main may attach it to the live {@link Session} row for UI hints.
+   */
+  agentConversationId?: string;
+}
+
+/** Persisted metadata for task agent PTY sessions (cold resume, audit). */
+export type TaskAgentSessionEndedReason =
+  | 'agent-exit-ok'
+  | 'agent-exit-error'
+  | 'app-quit'
+  | 'workspace-deleted'
+  | 'replaced-by-new-session'
+  | 'user-archived';
+
+/** One durable row per logical Flux task session (survives app restart). */
+export interface TaskAgentSessionRecord {
+  fluxSessionId: string;
+  taskId: string;
+  projectId: string;
+  repoId?: string;
+  agent: Agent;
+  worktreePath: string;
+  fluxWorkBranch: string;
+  sourceBranchShort?: string;
+  startedAt: string;
+  endedAt?: string;
+  endedReason?: TaskAgentSessionEndedReason;
+  /** Parsed from CLI output when available (Claude / Cursor). */
+  agentConversationId?: string;
 }
 
 /** Where to open a task worktree folder from the main process (`workspace:openPath`). */

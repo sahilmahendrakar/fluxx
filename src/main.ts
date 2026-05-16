@@ -47,6 +47,11 @@ import {
   planningSpawnSpec,
   taskInitialPrompt,
 } from './main/agentSpawn';
+import {
+  appendConversationParseBuffer,
+  parseAgentConversationId,
+} from './main/agentConversationIdParse';
+import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
@@ -133,6 +138,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  TaskAgentSessionRecord,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskPullRequestIpcResult,
@@ -420,6 +426,9 @@ let mainProcessTerminalBackend: TerminalBackend | null = null;
 /** When true, `before-quit` skips async terminal teardown and allows exit. */
 let appQuitTeardownComplete = false;
 
+/** When true, PTY exits during `teardownForAppQuit` are recorded as app-quit (cold resume). */
+let terminalQuitTeardownInProgress = false;
+
 const APP_QUIT_TERMINAL_TEARDOWN_MS = 5000;
 
 const createWindow = () => {
@@ -502,6 +511,22 @@ app.whenReady().then(async () => {
     console.error('[main] failed to start terminal backend', err);
   }
 
+  const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
+    getProjectDir: () => worktreeService.getProjectDir(),
+  });
+  const conversationParseTails = new Map<string, string>();
+  const conversationCaptured = new Set<string>();
+  terminalBackend.setSessionPtyDataHook?.((payload) => {
+    if (conversationCaptured.has(payload.sessionId)) return;
+    const prev = conversationParseTails.get(payload.sessionId) ?? '';
+    const next = appendConversationParseBuffer(prev, payload.data, 96 * 1024);
+    conversationParseTails.set(payload.sessionId, next);
+    const parsed = parseAgentConversationId(payload.agent, next);
+    if (!parsed) return;
+    conversationCaptured.add(payload.sessionId);
+    void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+  });
+
   // Map session ID → task ID for silence-based status transitions.
   // Seeded eagerly here; also re-seeded from getSessionSilenceStates() during
   // startup catchup so a listSessions() failure does not silently break catchup.
@@ -551,7 +576,16 @@ app.whenReady().then(async () => {
     onAgentState: applyAgentState,
     onSilenceStatesSnapshot: reconcileSilenceStatesFromTerminal,
     onSessionExit: (session) => {
-      const taskId = sessionTaskMap.get(session.id);
+      const endReason = terminalQuitTeardownInProgress
+        ? ('app-quit' as const)
+        : session.status === 'stopped'
+          ? ('agent-exit-ok' as const)
+          : ('agent-exit-error' as const);
+      void taskAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      conversationParseTails.delete(session.id);
+      conversationCaptured.delete(session.id);
+
+      const taskId = sessionTaskMap.get(session.id) ?? session.taskId;
       if (!taskId) return;
 
       const project = projectStore.get();
@@ -2919,8 +2953,15 @@ app.whenReady().then(async () => {
 
       await archiveNonRunningSessionsForTask(task.id);
 
+      let resumeConversationId: string | undefined;
+      if (options?.resume) {
+        resumeConversationId = await taskAgentSessionRecordStore.getResumeConversationId(
+          merged.id,
+          merged.agent,
+        );
+      }
       const { command, args } = options?.resume
-        ? agentSpawnResumeSpec(merged)
+        ? agentSpawnResumeSpec(merged, resumeConversationId)
         : agentSpawnSpec(merged, taskInitialPrompt(merged));
       console.log('[session:start] spawn', {
         taskId: task.id,
@@ -2976,6 +3017,20 @@ app.whenReady().then(async () => {
         return finish({ error: 'AGENT_NOT_FOUND', message: result.message });
       }
       sessionTaskMap.set(result.id, task.id);
+      void taskAgentSessionRecordStore.markReplacedSessions(merged.id, result.id);
+      const sourceBranchShort = (merged.sourceBranch ?? '').trim() || undefined;
+      const row: TaskAgentSessionRecord = {
+        fluxSessionId: result.id,
+        taskId: merged.id,
+        projectId: project.id,
+        repoId: sessionRepoCfg.id,
+        agent: merged.agent,
+        worktreePath,
+        fluxWorkBranch: branch,
+        ...(sourceBranchShort ? { sourceBranchShort } : {}),
+        startedAt: result.startedAt,
+      };
+      void taskAgentSessionRecordStore.recordSessionStart(row);
       const priorFw = (merged.fluxWorkBranch ?? '').trim();
       if (priorFw !== branch) {
         if (project.kind === 'local') {
@@ -3384,6 +3439,7 @@ app.whenReady().then(async () => {
       sessionId,
       gitRootForDaemonSession,
     );
+    await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxSession(sessionId);
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
@@ -3392,13 +3448,25 @@ app.whenReady().then(async () => {
     const running = forTask.find((s) => s.status === 'running');
     if (running) return running;
     const terminal = forTask.filter((s) => s.status === 'stopped' || s.status === 'error');
-    if (terminal.length === 0) return null;
-    terminal.sort((a, b) => {
-      const ta = a.stoppedAt ?? a.startedAt ?? '';
-      const tb = b.stoppedAt ?? b.startedAt ?? '';
-      return ta.localeCompare(tb);
+    if (terminal.length > 0) {
+      terminal.sort((a, b) => {
+        const ta = a.stoppedAt ?? a.startedAt ?? '';
+        const tb = b.stoppedAt ?? b.startedAt ?? '';
+        return ta.localeCompare(tb);
+      });
+      return terminal[terminal.length - 1] ?? null;
+    }
+
+    const project = projectStore.get();
+    if (!project) return null;
+    return taskAgentSessionRecordStore.getColdResumeSessionView(taskId, project.id, async (p) => {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        return false;
+      }
     });
-    return terminal[terminal.length - 1] ?? null;
   });
 
   ipcMain.handle('session:getAll', async () => terminalBackend.listSessions());
@@ -4047,12 +4115,15 @@ app.on('before-quit', (e) => {
 
       if (backend) {
         try {
+          terminalQuitTeardownInProgress = true;
           await Promise.race([
             backend.teardownForAppQuit(),
             new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
           ]);
         } catch (err) {
           console.warn('[main] teardownForAppQuit failed', err);
+        } finally {
+          terminalQuitTeardownInProgress = false;
         }
       }
 

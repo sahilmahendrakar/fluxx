@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
-import type { PlanningSession, Session, Shell } from '../types';
+import type { Agent, PlanningSession, Session, Shell } from '../types';
 import type {
   AgentState,
   AttachResult,
@@ -24,6 +24,7 @@ interface SessionEntry {
   session: Session;
   detector: SilenceDetector;
   autoresponder: PromptAutoresponder | null;
+  agent: Agent;
 }
 
 interface ShellEntry {
@@ -112,6 +113,14 @@ export function deliverTerminalStreamFrameToRenderers(frame: StreamFrame): void 
   }
 }
 
+export interface SessionPtyDataPayload {
+  sessionId: string;
+  taskId: string;
+  projectId: string;
+  agent: Agent;
+  data: string;
+}
+
 export interface TerminalRuntimeManagerOptions {
   /**
    * Deliver stream/control frames (tests inject this). Defaults to
@@ -121,6 +130,8 @@ export interface TerminalRuntimeManagerOptions {
   /** Optional hooks for local task-store updates (see main-process terminal backend wiring). */
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
+  /** Raw PTY bytes for task agent sessions (conversation id capture, etc.). */
+  onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
 }
 
 /**
@@ -134,11 +145,13 @@ export class TerminalRuntimeManager {
   private readonly deliverStreamFrame: (frame: StreamFrame) => void;
   private readonly onAgentState?: (sessionId: string, state: AgentState) => void;
   private readonly onSessionExit?: (session: Session) => void;
+  private readonly onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
 
   constructor(opts: TerminalRuntimeManagerOptions = {}) {
     this.deliverStreamFrame = opts.deliverStreamFrame ?? deliverTerminalStreamFrameToRenderers;
     this.onAgentState = opts.onAgentState;
     this.onSessionExit = opts.onSessionExit;
+    this.onSessionPtyData = opts.onSessionPtyData;
   }
 
   private emitFrame(frame: StreamFrame): void {
@@ -199,6 +212,13 @@ export class TerminalRuntimeManager {
             this.emitFrame({ kind: 'data', target: 'session', id, data, seq });
             detector.onData();
             autoresponder?.notifyPtyData();
+            this.onSessionPtyData?.({
+              sessionId: id,
+              taskId: params.taskId,
+              projectId: params.projectId,
+              agent: params.agent,
+              data,
+            });
           },
           onExit: ({ exitCode }) => {
             const entry = this.sessions.get(id);
@@ -239,7 +259,7 @@ export class TerminalRuntimeManager {
       );
     }
 
-    this.sessions.set(id, { runtime, session, detector, autoresponder });
+    this.sessions.set(id, { runtime, session, detector, autoresponder, agent: params.agent });
     return session;
   }
 

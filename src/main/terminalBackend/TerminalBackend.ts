@@ -1,4 +1,5 @@
 import type { PlanningSession, Session, Shell } from '../../types';
+import type { SessionPtyDataPayload } from '../TerminalRuntimeManager';
 import type {
   AgentState,
   AttachResult,
@@ -44,6 +45,12 @@ export interface TerminalBackend {
   ensureReady(): Promise<void>;
 
   setSessionLifecycleHooks(hooks: TerminalSessionLifecycleHooks | null): void;
+
+  /**
+   * Local in-process PTYs only: stream raw task-session PTY bytes (conversation id capture).
+   * Detached / remote backends omit this hook.
+   */
+  setSessionPtyDataHook?(hook: ((payload: SessionPtyDataPayload) => void) | null): void;
 
   /** Low-frequency silence reconciliation when {@link TerminalSessionLifecycleHooks.onSilenceStatesSnapshot} is set. */
   startSilenceSnapshotPolling(): void;

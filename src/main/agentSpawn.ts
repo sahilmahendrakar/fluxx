@@ -52,7 +52,9 @@ export function agentSpawnSpec(
  */
 export function agentSpawnResumeSpec(
   task: AgentSpawnTaskInput,
+  agentConversationId?: string,
 ): { command: string; args: string[] } {
+  const resumeId = agentConversationId?.trim();
   switch (task.agent) {
     case 'claude-code': {
       const args: string[] = [];
@@ -63,7 +65,11 @@ export function agentSpawnResumeSpec(
       if (task.agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
-      args.push('--resume');
+      if (resumeId) {
+        args.push('--resume', resumeId);
+      } else {
+        args.push('--resume');
+      }
       return { command: 'claude', args };
     }
     case 'codex':
@@ -74,7 +80,11 @@ export function agentSpawnResumeSpec(
       if (task.agentYolo === true) {
         args.push('--yolo');
       }
-      args.push('--resume');
+      if (resumeId) {
+        args.push('--resume', resumeId);
+      } else {
+        args.push('--resume');
+      }
       return { command: 'agent', args };
     }
   }

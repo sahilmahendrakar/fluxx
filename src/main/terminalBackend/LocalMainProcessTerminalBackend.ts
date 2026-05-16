@@ -13,6 +13,7 @@ import type {
 import {
   deliverTerminalStreamFrameToRenderers,
   TerminalRuntimeManager,
+  type SessionPtyDataPayload,
   type TerminalRuntimeManagerOptions,
 } from '../TerminalRuntimeManager';
 import type {
@@ -39,6 +40,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
   private readonly mgr: TerminalRuntimeManager;
   private hooks: TerminalSessionLifecycleHooks | null = null;
   private silencePollInterval: ReturnType<typeof setInterval> | null = null;
+  private sessionPtyDataHook: ((payload: SessionPtyDataPayload) => void) | null = null;
   private readonly sessionOutputTextWaiters = new Map<
     string,
     Array<{ needle: string; data: string; seen: string }>
@@ -62,7 +64,15 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
         opts.onSessionExit?.(session);
         this.hooks?.onSessionExit?.(session);
       },
+      onSessionPtyData: (payload) => {
+        opts.onSessionPtyData?.(payload);
+        this.sessionPtyDataHook?.(payload);
+      },
     });
+  }
+
+  setSessionPtyDataHook(hook: ((payload: SessionPtyDataPayload) => void) | null): void {
+    this.sessionPtyDataHook = hook;
   }
 
   ensureReady(): Promise<void> {
