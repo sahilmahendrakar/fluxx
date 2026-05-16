@@ -138,6 +138,10 @@ import type {
   ResolveTaskWorktreeIpcResult,
 } from './types';
 import {
+  mergeTaskRowWithPullRequestAgentPayload,
+  parseTaskRequestPullRequestFromAgentPayload,
+} from './taskRequestPullRequestFromAgentContext';
+import {
   classifyGitBranchPresence,
   effectiveTaskSourceBranchShort,
   nextPersistedSourceBranchShortAfterPatch,
@@ -2199,24 +2203,22 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'tasks:requestPullRequestFromAgent',
     async (_e, raw: unknown): Promise<TaskRequestPullRequestFromAgentResult> => {
-      if (!raw || typeof raw !== 'object') {
-        return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
+      const parsed = parseTaskRequestPullRequestFromAgentPayload(raw);
+      if (!parsed.ok) {
+        return { ok: false, code: 'NO_PROJECT', message: parsed.message };
       }
-      const o = raw as { taskId?: unknown; title?: unknown };
-      const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
-      if (!taskId) {
-        return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
-      }
+      const { taskId, title: payloadTitle } = parsed.payload;
       const rootPath = worktreeService.getRootPath();
       if (!rootPath) {
         return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
       }
       const project = projectStore.get();
       const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
-      let title = typeof o.title === 'string' ? o.title.trim() : '';
+      let title = (payloadTitle ?? '').trim();
       if (taskRow) {
         if (!title) title = taskRow.title.trim();
       }
+      const mergedTaskFields = mergeTaskRowWithPullRequestAgentPayload(taskRow, parsed.payload);
       if (!title) {
         return {
           ok: false,
@@ -2226,7 +2228,11 @@ app.whenReady().then(async () => {
       }
 
       const sessions = await daemonClient.listSessions();
-      const session = pickSessionForTaskWorktree(sessions, taskId, taskRow?.repoId);
+      const session = pickSessionForTaskWorktree(
+        sessions,
+        taskId,
+        mergedTaskFields.repoId?.trim() || undefined,
+      );
       if (!session) {
         return {
           ok: false,
@@ -2287,10 +2293,10 @@ app.whenReady().then(async () => {
         projectStore,
         activeProjectDir,
         rootPath,
-        repoId: taskRow ? effectiveTaskRepoId(taskRow, primaryRepoId) : undefined,
+        repoId: effectiveTaskRepoId(mergedTaskFields, primaryRepoId),
       });
       const { baseBranch, headBranch } = resolveAgentPullRequestBranchContext({
-        task: taskRow ?? {},
+        task: mergedTaskFields,
         projectDefaultBranchShort: repoDefaultBranch,
         sessionBranch: headBranchRaw,
       });
@@ -2317,7 +2323,7 @@ app.whenReady().then(async () => {
             'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
         };
       }
-      const repoCfg = resolveRepoForBranchDiscovery(repos, taskRow?.repoId);
+      const repoCfg = resolveRepoForBranchDiscovery(repos, mergedTaskFields.repoId);
       const payload = buildTaskAgentPullRequestPrompt({
         taskId,
         taskTitle: title,

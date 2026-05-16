@@ -313,6 +313,15 @@ export type TaskRequestPullRequestFromAgentResult =
   | { ok: true; sessionId: string }
   | { ok: false; code: TaskPrErrorCode; message: string };
 
+/** IPC payload for `tasks:requestPullRequestFromAgent` (renderer may supply branch/repo when main has no local task row). */
+export type TaskRequestPullRequestFromAgentPayload = {
+  taskId: string;
+  title?: string;
+  sourceBranch?: string;
+  createSourceBranchIfMissing?: boolean;
+  repoId?: string;
+};
+
 export interface Task {
   id: string;
   title: string;
