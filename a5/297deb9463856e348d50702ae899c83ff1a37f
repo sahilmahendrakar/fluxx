@@ -1,0 +1,77 @@
+src/main/TaskStore.ts
+  s_4fd796bfbfe49f::t_13f24a3b6cd351 290
+  s_4fd796bfbfe49f::t_88cce9e4a2c86d 326-337
+  s_4fd796bfbfe49f::t_99139dc4823282 5,7
+  s_4fd796bfbfe49f::t_ca53cd7f0fbb35 23
+  s_4fd796bfbfe49f::t_23dc5311a00d86 274-275
+  s_4fd796bfbfe49f::t_2e25704a086155 239-244
+src/main.ts
+  s_4fd796bfbfe49f::t_84a27746482073 1840
+  s_4fd796bfbfe49f::t_cfc329f8cc6d6d 3026-3027
+  s_4fd796bfbfe49f::t_bc46f0449a4322 135
+src/preload.ts
+  s_4fd796bfbfe49f::t_b5598b95895d37 25
+  s_4fd796bfbfe49f::t_c9312f3022561d 292
+  s_4fd796bfbfe49f::t_ddefe731c018cd 317
+src/renderer/tasks/FirestoreTaskProvider.ts
+  s_4fd796bfbfe49f::t_b0699f020ef563 23
+  s_4fd796bfbfe49f::t_2ade77e36e2611 15-22
+  s_4fd796bfbfe49f::t_41a257e513a17a 425-427,430-431,433-434
+  s_4fd796bfbfe49f::t_bca31145d84540 428-429,432
+  s_4fd796bfbfe49f::t_37118b0480726f 147-152
+  s_4fd796bfbfe49f::t_78a7c6fa659162 421
+  s_4fd796bfbfe49f::t_15f295f527d4f9 351-362
+  s_4fd796bfbfe49f::t_224003842a71b4 209-213
+src/mcpBridge.ts
+  s_4fd796bfbfe49f::t_28bcea29c80eec 66-67
+  s_4fd796bfbfe49f::t_71a23480628fb1 6
+  s_4fd796bfbfe49f::t_6b7864f063770b 49-50
+src/main/McpServer.ts
+  s_4fd796bfbfe49f::t_f6d4887b239505 582-584
+  s_4fd796bfbfe49f::t_4b368f6d09872b 447-449
+  s_4fd796bfbfe49f::t_1fd81df16cd62e 556-559
+  s_4fd796bfbfe49f::t_1966b2ba406a13 521-527
+  s_4fd796bfbfe49f::t_1c46a138b871e9 619-623
+  s_4fd796bfbfe49f::t_345a42aeeacdbc 647-649
+  s_4fd796bfbfe49f::t_f6bfac0f4c54e6 17
+  s_4fd796bfbfe49f::t_3a47e72251b9ef 94-97
+  s_4fd796bfbfe49f::t_0c47d43adc7120 346-351
+  s_4fd796bfbfe49f::t_c2c47b45556168 406-408
+src/types.ts
+  s_4fd796bfbfe49f::t_d608ff280a0d9c 267-271
+  s_4fd796bfbfe49f::t_4b004e5accdd74 394-398
+firestore.rules
+  s_4fd796bfbfe49f::t_2ed73f5f0a39b0 90-148
+  s_4fd796bfbfe49f::t_44b643cf012f36 194-195,198-199
+src/taskAttachedPlanningDocs.test.ts
+  s_4fd796bfbfe49f::t_fe2eb7aae54208 51-55
+  s_4fd796bfbfe49f::t_6211e3f89cf12e 1-5,7-50,56-57
+  s_4fd796bfbfe49f::t_3c51e1727a73f9 6
+src/taskAttachedPlanningDocs.ts
+  s_4fd796bfbfe49f::t_f129203554f772 1-48
+  s_4fd796bfbfe49f::t_ec424db481aaca 49-56
+src/renderer/tasks/TaskProvider.ts
+  s_4fd796bfbfe49f::t_ef16444b2ff1ff 51
+  s_4fd796bfbfe49f::t_d2d0a4aaed4ed8 1-7
+  s_4fd796bfbfe49f::t_e09c93f145a9c6 33-34
+src/main/TaskStore.test.ts
+  s_4fd796bfbfe49f::t_b6e2ef093e9658 7-60
+src/renderer/tasks/LocalTaskProvider.ts
+  s_4fd796bfbfe49f::t_ab30f2507f9769 67-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "a5297deb9463856e348d50702ae899c83ff1a37f",
+  "prompts": {},
+  "sessions": {
+    "s_4fd796bfbfe49f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8cb0d9ec-ab43-44a5-b60d-ebfff19d3c33",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
