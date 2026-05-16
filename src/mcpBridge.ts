@@ -31,7 +31,7 @@ export interface McpBridgeMember {
 
 export interface McpBridgeTaskCreateInput {
   title: string;
-  agent: Agent;
+  agent: Agent | null;
   status?: TaskStatus;
   description?: string;
   orderKey?: string;
@@ -51,7 +51,7 @@ export interface McpBridgeTaskPatch {
   title?: string;
   description?: string;
   status?: TaskStatus;
-  agent?: Agent;
+  agent?: Agent | null;
   blockedByTaskIds?: string[];
   labels?: string[];
   autoStartOnUnblock?: boolean | null;

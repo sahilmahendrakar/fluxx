@@ -326,7 +326,8 @@ export interface Task {
   id: string;
   title: string;
   status: TaskStatus;
-  agent: Agent;
+  /** `null` = no coding agent assigned yet (no session until a real agent is chosen). */
+  agent: Agent | null;
   /**
    * Model for the session: Cursor Agent (`agent --model`, default `auto` when
    * unset), or Claude Code (`claude --model` — omitted when unset/empty so the
@@ -401,6 +402,7 @@ export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';
 
 export type SessionStartErrorCode =
   | 'AGENT_NOT_FOUND'
+  | 'NO_TASK_AGENT'
   | 'WORKTREE_FAILED'
   /** Source ref missing and {@link Task.createSourceBranchIfMissing} is false (or branch exists only remotely but could not be materialized). */
   | 'WORKTREE_SOURCE_BRANCH_MISSING'
@@ -538,6 +540,12 @@ export const AGENTS: { id: Agent; label: string }[] = [
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'cursor', label: 'Cursor Agent' },
+];
+
+/** Task agent picker: real CLIs plus explicit “not assigned yet”. */
+export const TASK_AGENT_SELECT_OPTIONS: { id: Agent | null; label: string }[] = [
+  ...AGENTS,
+  { id: null, label: 'None' },
 ];
 
 /** Cursor `--model` value when `task.agentModel` is absent or blank. */

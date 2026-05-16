@@ -28,7 +28,7 @@ export type TaskPatch = Partial<
 
 export type TaskCreateInput = {
   title: string;
-  agent: Agent;
+  agent: Agent | null;
   status?: TaskStatus;
   orderKey?: string;
   blockedByTaskIds?: string[];

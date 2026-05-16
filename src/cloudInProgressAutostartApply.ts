@@ -59,6 +59,7 @@ export async function maybeCloudAutoStartSessionOnInProgressTransition(
 
     const fresh = allTasksForSession.find((t) => t.id === updated.id) ?? updated;
     if (fresh.status !== 'in-progress') return;
+    if (fresh.agent == null) return;
     if (!cloudInProgressAutostartAllowedByAssignee(previous, fresh, ctx.actorUid)) {
       return;
     }

@@ -1832,7 +1832,7 @@ app.whenReady().then(async () => {
       _e,
       input: {
         title: string;
-        agent: Agent;
+        agent: Agent | null;
         blockedByTaskIds?: string[];
         labels?: string[];
         sourceBranch?: string;
@@ -1865,12 +1865,10 @@ app.whenReady().then(async () => {
       if (!branchOk.ok) {
         throw new Error(branchOk.message);
       }
-      const extra = mergedTaskCreateAgentFields(
-        project,
-        input.agent,
-        input.agentModel,
-        input.agentYolo,
-      );
+      const extra =
+        input.agent != null
+          ? mergedTaskCreateAgentFields(project, input.agent, input.agentModel, input.agentYolo)
+          : {};
       return taskStore.create({
         ...input,
         ...extra,
@@ -2834,6 +2832,14 @@ app.whenReady().then(async () => {
       }
     }
 
+    if (merged.agent == null) {
+      return {
+        error: 'NO_TASK_AGENT',
+        message:
+          'This task has no coding agent assigned. Choose Claude Code, Codex, or Cursor Agent in task details before starting a session.',
+      };
+    }
+
     // Dedup against the daemon's live registry.
     const existing = (await daemonClient.listSessions()).find(
       (s) => s.taskId === task.id && s.status === 'running',
@@ -2969,7 +2975,7 @@ app.whenReady().then(async () => {
         if (result.error === 'AGENT_NOT_FOUND') {
           return finish({
             error: 'AGENT_NOT_FOUND',
-            message: agentNotFoundMessage(task.agent, command),
+            message: agentNotFoundMessage(merged.agent, command),
           });
         }
         return finish({ error: 'AGENT_NOT_FOUND', message: result.message });
@@ -3059,6 +3065,9 @@ app.whenReady().then(async () => {
 
     const project = projectStore.get();
     if (!project) return;
+    if (updated.agent == null) {
+      return;
+    }
     const columnTasks = taskStore.getAll(project.id);
     if (isTaskBlocked(updated, columnTasks)) {
       console.warn('[task:auto-start] skipped — task has incomplete blockers', {
@@ -3349,6 +3358,11 @@ app.whenReady().then(async () => {
     if (isTaskBlocked(existing, columnTasks)) {
       throw new Error(
         'Task is blocked by incomplete dependencies. Finish blocking tasks first.',
+      );
+    }
+    if (existing.agent == null) {
+      throw new Error(
+        'This task has no coding agent assigned. Set an agent on the task before starting work.',
       );
     }
     const updated = await taskStore.update(id, { status: 'in-progress' });

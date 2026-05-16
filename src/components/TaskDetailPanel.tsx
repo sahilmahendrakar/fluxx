@@ -18,7 +18,7 @@ import {
   Task,
   TaskStatus,
   COLUMNS,
-  AGENTS,
+  TASK_AGENT_SELECT_OPTIONS,
   Agent,
   Session,
   DEFAULT_CURSOR_AGENT_MODEL,
@@ -76,7 +76,7 @@ import {
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
 
-function taskAgentSupportsCliResume(agent: Agent): boolean {
+function taskAgentSupportsCliResume(agent: Agent | null): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
 }
 
@@ -819,6 +819,10 @@ export default function TaskDetailPanel({
 
   const handleStartSession = async (opts?: { resume?: boolean }) => {
     if (!task) return;
+    if (task.agent == null) {
+      setSessionError('Choose an agent for this task before starting a session.');
+      return;
+    }
     if (isTaskBlocked(task, projectTasks)) {
       setSessionError('Finish blocking tasks before starting a session.');
       return;
@@ -835,6 +839,11 @@ export default function TaskDetailPanel({
       if ('error' in result) {
         if (result.error === 'TASK_BLOCKED') {
           setSessionError(result.message ?? 'This task is blocked by incomplete work.');
+        } else if (result.error === 'NO_TASK_AGENT') {
+          setSessionError(
+            result.message ??
+              'Choose Claude Code, Codex, or Cursor Agent for this task before starting a session.',
+          );
         } else {
           setSessionError(result.message ?? result.error);
         }
@@ -958,6 +967,8 @@ export default function TaskDetailPanel({
   const showSessionStarting =
     startInFlight || (sessionRunning && !sessionStreamReady);
   const blocked = isTaskBlocked(task, projectTasks);
+  const noAgentForSession = task.agent == null;
+  const startSessionControlDisabled = startInFlight || blocked || noAgentForSession;
   const blockingTasks = getBlockingTasks(task, projectTasks);
   const taskById = new Map(projectTasks.map((t) => [t.id, t]));
   const staleMissingIds = (task.blockedByTaskIds ?? []).filter((id) => !taskById.has(id));
@@ -1032,6 +1043,8 @@ export default function TaskDetailPanel({
     'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
   const assigneeTriggerClass =
     'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-2 text-left text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
+  const noTaskAgentChip =
+    'border-zinc-600/40 bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]';
 
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
@@ -1108,61 +1121,71 @@ export default function TaskDetailPanel({
                     <button
                       type="button"
                       onClick={() => void handleStartSession({ resume: true })}
-                      disabled={startInFlight || blocked}
+                      disabled={startSessionControlDisabled}
                       title={
                         blocked
                           ? 'Blocked by incomplete dependencies'
-                          : 'Continue the CLI session from disk (--resume)'
+                          : noAgentForSession
+                            ? 'Choose an agent below before starting a session'
+                            : 'Continue the CLI session from disk (--resume)'
                       }
                       className={
                         startInFlight
                           ? startBtnLoading
                           : sessionError
                             ? startBtnError
-                            : blocked
+                            : blocked || noAgentForSession
                               ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
                               : startBtnIdle
                       }
                     >
-                      {blocked ? 'Blocked' : sessionError ? 'Retry' : 'Resume'}
+                      {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : sessionError ? 'Retry' : 'Resume'}
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleStartSession()}
-                      disabled={startInFlight || blocked}
+                      disabled={startSessionControlDisabled}
                       title={
                         blocked
                           ? 'Blocked by incomplete dependencies'
-                          : 'Start a new agent session with the full task prompt'
+                          : noAgentForSession
+                            ? 'Choose an agent below before starting a session'
+                            : 'Start a new agent session with the full task prompt'
                       }
                       className={
                         startInFlight
                           ? startBtnLoading
-                          : blocked
+                          : blocked || noAgentForSession
                             ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
                             : markDoneBtn
                       }
                     >
-                      {blocked ? 'Blocked' : 'New session'}
+                      {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : 'New session'}
                     </button>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={() => void handleStartSession()}
-                    disabled={startInFlight || blocked}
-                    title={blocked ? 'Blocked by incomplete dependencies' : undefined}
+                    disabled={startSessionControlDisabled}
+                    title={
+                      blocked
+                        ? 'Blocked by incomplete dependencies'
+                        : noAgentForSession
+                          ? 'Choose an agent below before starting a session'
+                          : undefined
+                    }
                     className={
                       startInFlight
                         ? startBtnLoading
                         : sessionError
                           ? startBtnError
-                          : blocked
+                          : blocked || noAgentForSession
                             ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
                             : startBtnIdle
                     }
                   >
-                    {blocked ? 'Blocked' : startButtonLabel}
+                    {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : startButtonLabel}
                   </button>
                 )
               ) : null}
@@ -1216,22 +1239,29 @@ export default function TaskDetailPanel({
                   <p className="text-xs text-zinc-500">Agent & model</p>
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <select
-                      value={task.agent}
+                      value={task.agent ?? ''}
                       onChange={(e) => {
-                        const next = e.target.value as Agent;
-                        const patch: Partial<Task> = { agent: next };
+                        const v = e.target.value;
+                        const next: Agent | null = v === '' ? null : (v as Agent);
+                        if (next === null) {
+                          onUpdate(task.id, { agent: null });
+                          return;
+                        }
+                        const patch: TaskPatch = { agent: next };
                         if (next !== task.agent) {
                           patch.agentYolo = false;
                           patch.agentModel = next === 'cursor' ? DEFAULT_CURSOR_AGENT_MODEL : '';
                         }
                         onUpdate(task.id, patch);
                       }}
-                      className={`max-w-full shrink-0 ${propertySelectClass} ${AGENT_CHIP_STYLES[task.agent]}`}
+                      className={`max-w-full shrink-0 ${propertySelectClass} ${
+                        task.agent != null ? AGENT_CHIP_STYLES[task.agent] : noTaskAgentChip
+                      }`}
                       style={{ colorScheme: 'dark' } as CSSProperties}
                       aria-label="Agent provider"
                     >
-                      {AGENTS.map((a) => (
-                        <option key={a.id} value={a.id}>
+                      {TASK_AGENT_SELECT_OPTIONS.map((a) => (
+                        <option key={a.id === null ? 'none' : a.id} value={a.id === null ? '' : a.id}>
                           {a.label}
                         </option>
                       ))}
@@ -1258,76 +1288,78 @@ export default function TaskDetailPanel({
                           aria-label="Claude Code model"
                         />
                       </div>
-                    ) : (
+                    ) : task.agent === 'codex' ? (
                       <span
                         className="text-xs text-zinc-500"
                         title="Model selection is not wired for Codex in this version."
                       >
                         Default model
                       </span>
-                    )}
-                    <div ref={agentSettingsWrapRef} className="relative shrink-0">
-                      <button
-                        type="button"
-                        aria-label="Agent spawn settings"
-                        aria-expanded={agentSettingsOpen}
-                        onClick={() => setAgentSettingsOpen((o) => !o)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                      >
-                        <Settings className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                      </button>
-                      {agentSettingsOpen ? (
-                        <div
-                          className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/[0.08] bg-[#111113] p-3 text-[12px] shadow-xl shadow-black/50"
-                          role="dialog"
-                          aria-label="Agent settings"
+                    ) : null}
+                    {task.agent != null ? (
+                      <div ref={agentSettingsWrapRef} className="relative shrink-0">
+                        <button
+                          type="button"
+                          aria-label="Agent spawn settings"
+                          aria-expanded={agentSettingsOpen}
+                          onClick={() => setAgentSettingsOpen((o) => !o)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                         >
-                          {task.agent === 'cursor' ? (
-                            <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
-                                checked={task.agentYolo === true}
-                                onChange={(e) =>
-                                  onUpdate(task.id, { agentYolo: e.target.checked })
-                                }
-                              />
-                              <span className="leading-snug">
-                                <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
-                                <span className="mt-1 block text-[11px] text-zinc-500">
-                                  Matches Cursor Agent <code className="text-zinc-400">--yolo</code> /{' '}
-                                  <code className="text-zinc-400">--force</code>: fewer confirmation
-                                  prompts; tools and shell commands run more freely unless explicitly
-                                  denied.
+                          <Settings className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+                        </button>
+                        {agentSettingsOpen ? (
+                          <div
+                            className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/[0.08] bg-[#111113] p-3 text-[12px] shadow-xl shadow-black/50"
+                            role="dialog"
+                            aria-label="Agent settings"
+                          >
+                            {task.agent === 'cursor' ? (
+                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                  checked={task.agentYolo === true}
+                                  onChange={(e) =>
+                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  }
+                                />
+                                <span className="leading-snug">
+                                  <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
+                                  <span className="mt-1 block text-[11px] text-zinc-500">
+                                    Matches Cursor Agent <code className="text-zinc-400">--yolo</code> /{' '}
+                                    <code className="text-zinc-400">--force</code>: fewer confirmation
+                                    prompts; tools and shell commands run more freely unless explicitly
+                                    denied.
+                                  </span>
                                 </span>
-                              </span>
-                            </label>
-                          ) : task.agent === 'claude-code' ? (
-                            <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
-                                checked={task.agentYolo === true}
-                                onChange={(e) =>
-                                  onUpdate(task.id, { agentYolo: e.target.checked })
-                                }
-                              />
-                              <span className="leading-snug">
-                                <span className="font-medium text-zinc-100">Skip permission checks</span>
-                                <span className="mt-1 block text-[11px] text-zinc-500">
-                                  Passes <code className="text-zinc-400">--dangerously-skip-permissions</code> to
-                                  Claude Code. Anthropic recommends this only for trusted sandboxes.
+                              </label>
+                            ) : task.agent === 'claude-code' ? (
+                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                  checked={task.agentYolo === true}
+                                  onChange={(e) =>
+                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  }
+                                />
+                                <span className="leading-snug">
+                                  <span className="font-medium text-zinc-100">Skip permission checks</span>
+                                  <span className="mt-1 block text-[11px] text-zinc-500">
+                                    Passes <code className="text-zinc-400">--dangerously-skip-permissions</code> to
+                                    Claude Code. Anthropic recommends this only for trusted sandboxes.
+                                  </span>
                                 </span>
-                              </span>
-                            </label>
-                          ) : (
-                            <p className="leading-relaxed text-zinc-500">
-                              No spawn toggles for Codex in this version.
-                            </p>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
+                              </label>
+                            ) : (
+                              <p className="leading-relaxed text-zinc-500">
+                                No spawn toggles for Codex in this version.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div className="w-full min-w-0 sm:w-44 sm:shrink-0">

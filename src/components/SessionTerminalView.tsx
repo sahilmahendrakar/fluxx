@@ -21,7 +21,7 @@ import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
 
-function taskAgentSupportsCliResume(agent: Agent): boolean {
+function taskAgentSupportsCliResume(agent: Agent | null): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
 }
 

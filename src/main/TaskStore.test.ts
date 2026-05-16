@@ -145,3 +145,41 @@ describe('TaskStore sourceBranch fields', () => {
     expect(row.createSourceBranchIfMissing).toBeUndefined();
   });
 });
+
+describe('TaskStore unassigned agent', () => {
+  let dir: string;
+
+  afterEach(async () => {
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('persists null agent and clears model fields when agent is cleared', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-agent-null-'));
+    const store = new TaskStore(dir);
+    await store.init();
+    const created = await store.create({
+      title: 'Planning only',
+      agent: null,
+      projectId: 'p1',
+    });
+    expect(created.agent).toBeNull();
+    expect(created.agentModel).toBeUndefined();
+    expect(created.agentYolo).toBeUndefined();
+
+    const withAgent = await store.update(created.id, {
+      agent: 'cursor',
+      agentModel: 'auto',
+      agentYolo: true,
+    });
+    expect(withAgent.agent).toBe('cursor');
+    expect(withAgent.agentModel).toBe('auto');
+    expect(withAgent.agentYolo).toBe(true);
+
+    const cleared = await store.update(created.id, { agent: null });
+    expect(cleared.agent).toBeNull();
+    expect(cleared.agentModel).toBeUndefined();
+    expect(cleared.agentYolo).toBeUndefined();
+  });
+});

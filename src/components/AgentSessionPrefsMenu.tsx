@@ -20,18 +20,24 @@ export { AGENT_SESSION_PREFS_SURFACE, isAgentSessionPrefsSurfaceTarget } from '.
 export const AGENT_SPAWN_AGENT_SELECT_CLASS =
   'flex h-8 w-full cursor-pointer items-center rounded-md border border-zinc-800/90 bg-zinc-950/80 px-2 py-0 pr-6 text-[12px] leading-none text-zinc-100 outline-none transition-colors hover:bg-zinc-900/80 focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600/30 disabled:cursor-not-allowed disabled:opacity-50';
 
-export function agentModelUiKindForAgent(agent: Agent): AgentModelUiKind | null {
+export function agentModelUiKindForAgent(agent: Agent | null): AgentModelUiKind | null {
+  if (agent == null) return null;
   return agent === 'cursor' ? 'cursor' : agent === 'claude-code' ? 'claude-code' : null;
 }
 
 export type AgentSessionPrefsMenuContentProps = {
-  selectedAgent: Agent;
+  selectedAgent: Agent | null;
   claudeModelId: string;
   cursorModelId: string;
   agentYolo: boolean;
-  onPickAgent: (agent: Agent) => void;
+  onPickAgent: (agent: Agent | null) => void;
   onPickModel: (kind: AgentModelUiKind, modelId: string) => void;
   onToggleYolo: (next: boolean) => void;
+  /**
+   * Task card spawn menu: include **None** in the agent list and hide model / YOLO
+   * controls until a real agent is selected.
+   */
+  taskSpawnSurface?: boolean;
 };
 
 export function AgentSessionPrefsMenuContent({
@@ -42,6 +48,7 @@ export function AgentSessionPrefsMenuContent({
   onPickAgent,
   onPickModel,
   onToggleYolo,
+  taskSpawnSurface = false,
 }: AgentSessionPrefsMenuContentProps) {
   const uid = useId();
   const agentSelectId = `${uid}-agent`;
@@ -61,13 +68,22 @@ export function AgentSessionPrefsMenuContent({
 
   const darkSelectStyle = { colorScheme: 'dark' } as CSSProperties;
 
+  const showModelAndYolo = !taskSpawnSurface || selectedAgent != null;
+
   return (
     <div className="w-[min(calc(100vw-12px),13rem)] space-y-1.5 p-2">
       <select
         id={agentSelectId}
-        value={selectedAgent}
+        value={selectedAgent ?? ''}
         aria-label="Agent"
-        onChange={(e) => onPickAgent(e.target.value as Agent)}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === '') {
+            if (taskSpawnSurface) onPickAgent(null);
+            return;
+          }
+          onPickAgent(v as Agent);
+        }}
         className={AGENT_SPAWN_AGENT_SELECT_CLASS}
         style={darkSelectStyle}
       >
@@ -76,35 +92,42 @@ export function AgentSessionPrefsMenuContent({
             {a.label}
           </option>
         ))}
+        {taskSpawnSurface ? (
+          <option value="">None</option>
+        ) : null}
       </select>
 
-      {modelPickerKind ? (
-        <AgentModelPicker
-          kind={modelPickerKind}
-          modelId={modelPickerId}
-          onModelIdChange={(id) => onPickModel(modelPickerKind, id)}
-          aria-label="Model"
-        />
-      ) : (
-        <div
-          className="flex h-8 items-center rounded-md border border-dashed border-zinc-800/70 bg-zinc-950/30 px-2 text-[11px] text-zinc-500"
-          title="Model selection is not wired for Codex in this version."
-        >
-          Default model
-        </div>
-      )}
+      {showModelAndYolo ? (
+        <>
+          {modelPickerKind ? (
+            <AgentModelPicker
+              kind={modelPickerKind}
+              modelId={modelPickerId}
+              onModelIdChange={(id) => onPickModel(modelPickerKind, id)}
+              aria-label="Model"
+            />
+          ) : (
+            <div
+              className="flex h-8 items-center rounded-md border border-dashed border-zinc-800/70 bg-zinc-950/30 px-2 text-[11px] text-zinc-500"
+              title="Model selection is not wired for Codex in this version."
+            >
+              Default model
+            </div>
+          )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-zinc-800/60 pt-1.5">
-        <span id={yoloLabelId} className="text-[10px] font-medium text-zinc-500" title={yoloTitle}>
-          YOLO
-        </span>
-        <SettingsSwitch
-          size="sm"
-          checked={agentYolo}
-          onCheckedChange={onToggleYolo}
-          ariaLabelledBy={yoloLabelId}
-        />
-      </div>
+          <div className="flex items-center justify-between gap-2 border-t border-zinc-800/60 pt-1.5">
+            <span id={yoloLabelId} className="text-[10px] font-medium text-zinc-500" title={yoloTitle}>
+              YOLO
+            </span>
+            <SettingsSwitch
+              size="sm"
+              checked={agentYolo}
+              onCheckedChange={onToggleYolo}
+              ariaLabelledBy={yoloLabelId}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

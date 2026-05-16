@@ -19,6 +19,9 @@ export function agentSpawnSpec(
   task: AgentSpawnTaskInput,
   initialPrompt: string,
 ): { command: string; args: string[] } {
+  if (task.agent == null) {
+    throw new Error('agentSpawnSpec requires a task agent');
+  }
   switch (task.agent) {
     case 'claude-code': {
       const args: string[] = [];
@@ -53,6 +56,9 @@ export function agentSpawnSpec(
 export function agentSpawnResumeSpec(
   task: AgentSpawnTaskInput,
 ): { command: string; args: string[] } {
+  if (task.agent == null) {
+    throw new Error('agentSpawnResumeSpec requires a task agent');
+  }
   switch (task.agent) {
     case 'claude-code': {
       const args: string[] = [];

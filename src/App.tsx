@@ -2262,7 +2262,7 @@ export default function App() {
   const handleCreateTask = useCallback(
     async (
       title: string,
-      agent: Agent,
+      agent: Agent | null,
       labelInput?: string[],
       assigneeId?: string,
       branch?: {
@@ -2282,9 +2282,10 @@ export default function App() {
           orderKey = undefined;
         }
         const labels = normalizeTaskLabels(labelInput);
-        const spawnFields = project
-          ? mergedTaskCreateAgentFields(project, agent, undefined, undefined)
-          : {};
+        const spawnFields =
+          project && agent != null
+            ? mergedTaskCreateAgentFields(project, agent, undefined, undefined)
+            : {};
         const task = await provider.create({
           title,
           agent,

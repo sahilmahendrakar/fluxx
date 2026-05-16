@@ -73,6 +73,9 @@ export async function applyUnblockAutostartForCompletedBlocker(
       if (current.status === 'done' || isTaskBlocked(current, columnTasks)) {
         continue;
       }
+      if (current.agent == null) {
+        continue;
+      }
       if (current.status === 'in-progress') {
         const started = await ctx.startSession(current, columnTasks);
         if (started && typeof started === 'object' && 'error' in (started as object)) {
