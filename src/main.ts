@@ -18,7 +18,7 @@ import {
 } from './repoIdentity';
 import { McpServer } from './main/McpServer';
 import { AutomationHttpServer } from './main/AutomationHttpServer';
-import { McpRendererBridge } from './main/McpRendererBridge';
+import { RendererAutomationBridge } from './main/RendererAutomationBridge';
 import {
   fluxAutomationPtyEnv,
   newFluxAutomationToken,
@@ -417,7 +417,7 @@ let mainWindow: BrowserWindow | null = null;
 let fluxMcpServer: McpServer | null = null;
 let fluxAutomationServer: AutomationHttpServer | null = null;
 let fluxAutomationToken: string | null = null;
-let fluxMcpRendererBridge: McpRendererBridge | null = null;
+let fluxAutomationRendererBridge: RendererAutomationBridge | null = null;
 
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
 
@@ -3448,16 +3448,16 @@ app.whenReady().then(async () => {
     }
   });
 
-  const mcpRendererBridge = new McpRendererBridge(() => mainWindow);
-  mcpRendererBridge.install();
-  fluxMcpRendererBridge = mcpRendererBridge;
+  const automationRendererBridge = new RendererAutomationBridge(() => mainWindow);
+  automationRendererBridge.install();
+  fluxAutomationRendererBridge = automationRendererBridge;
 
   fluxMcpServer = new McpServer(
     taskStore,
     projectStore,
     appStateStore,
     bindingStore,
-    mcpRendererBridge,
+    automationRendererBridge,
     () => mainWindow,
     {
       updateTask: (id, patch) =>
@@ -4032,8 +4032,8 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
-  if (mainWindow && fluxMcpRendererBridge) {
-    fluxMcpRendererBridge.attachWindow(mainWindow);
+  if (mainWindow && fluxAutomationRendererBridge) {
+    fluxAutomationRendererBridge.attachWindow(mainWindow);
   }
 });
 
@@ -4051,8 +4051,8 @@ app.on('activate', () => {
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
-    if (mainWindow && fluxMcpRendererBridge) {
-      fluxMcpRendererBridge.attachWindow(mainWindow);
+    if (mainWindow && fluxAutomationRendererBridge) {
+      fluxAutomationRendererBridge.attachWindow(mainWindow);
     }
   }
 });

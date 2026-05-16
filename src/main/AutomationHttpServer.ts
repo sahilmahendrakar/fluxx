@@ -1,9 +1,9 @@
 import http from 'node:http';
 import type { ActiveProjectKey } from '../types';
-import type { McpBridgeErrorCode, McpBridgeOp } from '../mcpBridge';
+import type { AutomationBridgeErrorCode, AutomationBridgeOp } from '../rendererAutomationBridge';
 import { activeProjectKeysEqual } from './activeProjectKey';
 
-export type FluxAutomationHttpOp = McpBridgeOp | 'tasks.start';
+export type FluxAutomationHttpOp = AutomationBridgeOp | 'tasks.start';
 
 export interface FluxAutomationInvokeBody {
   op: FluxAutomationHttpOp;
@@ -13,7 +13,7 @@ export interface FluxAutomationInvokeBody {
 
 export type FluxAutomationInvokeResponse =
   | { ok: true; data: unknown }
-  | { ok: false; error: string; code?: McpBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' };
+  | { ok: false; error: string; code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' };
 
 function readJsonBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

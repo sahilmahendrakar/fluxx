@@ -7,11 +7,11 @@ import type {
   TaskStatus,
 } from './types';
 
-export const MCP_BRIDGE_REQUEST_CHANNEL = 'mcp:rendererBridge:request';
-export const MCP_BRIDGE_RESPONSE_CHANNEL = 'mcp:rendererBridge:response';
-export const MCP_BRIDGE_READY_CHANNEL = 'mcp:rendererBridge:ready';
+export const AUTOMATION_BRIDGE_REQUEST_CHANNEL = 'automation:rendererBridge:request';
+export const AUTOMATION_BRIDGE_RESPONSE_CHANNEL = 'automation:rendererBridge:response';
+export const AUTOMATION_BRIDGE_READY_CHANNEL = 'automation:rendererBridge:ready';
 
-export type McpBridgeOp =
+export type AutomationBridgeOp =
   | 'tasks.list'
   | 'tasks.create'
   | 'tasks.update'
@@ -21,7 +21,7 @@ export type McpBridgeOp =
   | 'members.list';
 
 /** One project member row for `members.list` / `flux__list_members` (cloud). */
-export interface McpBridgeMember {
+export interface AutomationBridgeMember {
   uid: string;
   email: string;
   displayName: string;
@@ -29,7 +29,7 @@ export interface McpBridgeMember {
   photoURL?: string;
 }
 
-export interface McpBridgeTaskCreateInput {
+export interface AutomationBridgeTaskCreateInput {
   title: string;
   agent: Agent | null;
   status?: TaskStatus;
@@ -47,7 +47,7 @@ export interface McpBridgeTaskCreateInput {
   repoId?: string;
 }
 
-export interface McpBridgeTaskPatch {
+export interface AutomationBridgeTaskPatch {
   title?: string;
   description?: string;
   status?: TaskStatus;
@@ -62,22 +62,22 @@ export interface McpBridgeTaskPatch {
   repoId?: string;
 }
 
-export interface McpBridgeTasksCreatePayload {
-  input: McpBridgeTaskCreateInput;
+export interface AutomationBridgeTasksCreatePayload {
+  input: AutomationBridgeTaskCreateInput;
 }
 
-export interface McpBridgeTasksUpdatePayload {
+export interface AutomationBridgeTasksUpdatePayload {
   taskId: string;
-  patch: McpBridgeTaskPatch;
+  patch: AutomationBridgeTaskPatch;
 }
 
-export interface McpBridgeTasksDeletePayload {
+export interface AutomationBridgeTasksDeletePayload {
   taskId: string;
 }
 
-export interface McpBridgeRequest {
+export interface AutomationBridgeRequest {
   id: string;
-  op: McpBridgeOp;
+  op: AutomationBridgeOp;
   /**
    * Snapshot of the active project at the time the main process built this
    * request. The renderer rejects with PROJECT_KIND_MISMATCH if its current
@@ -87,7 +87,7 @@ export interface McpBridgeRequest {
   payload?: unknown;
 }
 
-export type McpBridgeErrorCode =
+export type AutomationBridgeErrorCode =
   | 'NO_ACTIVE_PROJECT'
   | 'AUTH_NOT_READY'
   | 'PROJECT_KIND_MISMATCH'
@@ -98,12 +98,12 @@ export type McpBridgeErrorCode =
   | 'INVALID_PAYLOAD'
   | 'INTERNAL';
 
-export type McpBridgeResponse =
+export type AutomationBridgeResponse =
   | { id: string; ok: true; data: unknown }
-  | { id: string; ok: false; code: McpBridgeErrorCode; message: string };
+  | { id: string; ok: false; code: AutomationBridgeErrorCode; message: string };
 
 /** One repository row for `flux__get_project_info` when multi-repo2 is enabled. */
-export interface McpBridgeProjectInfoRepoSummary {
+export interface AutomationBridgeProjectInfoRepoSummary {
   id: string;
   /** Human-readable name (cloud: Firestore label; local: Flux repo name / folder). */
   label: string;
@@ -121,7 +121,7 @@ export interface McpBridgeProjectInfoRepoSummary {
   binding?: 'bound' | 'missing_binding';
 }
 
-export interface McpBridgeProjectInfoResult {
+export interface AutomationBridgeProjectInfoResult {
   name: string;
   activeKey: ActiveProjectKey;
   uid: string | null;
@@ -141,12 +141,12 @@ export interface McpBridgeProjectInfoResult {
    * Multi-repo2: every configured repository with labels, primary marker, and binding/path hints.
    * Omitted when the feature flag is off (single-repo shape unchanged for agents).
    */
-  repos?: McpBridgeProjectInfoRepoSummary[];
-  /** Multi-repo2: stable id of the primary repo (same as {@link McpBridgeProjectInfoRepoSummary.isPrimary}). */
+  repos?: AutomationBridgeProjectInfoRepoSummary[];
+  /** Multi-repo2: stable id of the primary repo (same as {@link AutomationBridgeProjectInfoRepoSummary.isPrimary}). */
   primaryRepoId?: string;
 }
 
-export interface McpBridgeRepoBranchDiscoveryPayload {
+export interface AutomationBridgeRepoBranchDiscoveryPayload {
   repoId?: string;
   classifyBranch?: string;
 }
@@ -156,9 +156,28 @@ export interface McpBridgeRepoBranchDiscoveryPayload {
  * task so the main process can detect a status transition (e.g. backlog → in-progress)
  * in a single round trip and trigger local-side effects (column auto-start session when enabled).
  */
-export interface McpBridgeTasksUpdateResult {
+export interface AutomationBridgeTasksUpdateResult {
   previous: Task | null;
   updated: Task;
-  /** Cloud + auto workspace cleanup on Done: broom-equivalent ran when the MCP user was assignee. */
+  /** Cloud + auto workspace cleanup on Done: broom-equivalent ran when the automation actor was assignee. */
   workspaceCleanedAfterDone?: boolean;
+}
+
+export function isAutomationBridgeResponse(value: unknown): value is AutomationBridgeResponse {
+  if (!value || typeof value !== 'object') return false;
+  const r = value as Record<string, unknown>;
+  if (typeof r.id !== 'string') return false;
+  if (r.ok === true) return 'data' in r;
+  if (r.ok === false) {
+    return typeof r.code === 'string' && typeof r.message === 'string';
+  }
+  return false;
+}
+
+export function automationBridgeErrorResponse(
+  id: string,
+  code: AutomationBridgeErrorCode,
+  message: string,
+): AutomationBridgeResponse {
+  return { id, ok: false, code, message };
 }

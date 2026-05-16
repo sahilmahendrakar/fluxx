@@ -13,16 +13,17 @@ import type { ProjectStore } from './ProjectStore';
 import type { AppStateStore } from './AppStateStore';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { LocalBindingStore } from './LocalBindingStore';
-import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
+import type { RendererAutomationBridge, AutomationBridgeResult } from './RendererAutomationBridge';
 import type { ActiveProjectKey, RepoConfig, RepoPathStatus, Task, TaskGithubPr } from '../types';
 import { collectRepoBranchDiscovery } from './repoGit';
-import type { McpBridgeProjectInfoRepoSummary } from '../mcpBridge';
+import type { AutomationBridgeProjectInfoRepoSummary } from '../rendererAutomationBridge';
+import { automationBridgeFailureToInvoke } from './automationBridgeFailureMessage';
 import type {
   FluxAutomationInvokeBody,
   FluxAutomationInvokeResponse,
 } from './AutomationHttpServer';
 import { activeProjectKeysEqual } from './activeProjectKey';
-import { runFluxAutomationInvocation, type FluxMcpAutomationHost } from './fluxMcpAutomationRuns';
+import { runFluxAutomationInvocation, type FluxAutomationHost } from './fluxAutomationRuns';
 import { repoDisplayLabel, resolvePrimaryRepoIdFromList } from '../repoIdentity';
 import { FLUX_TASK_STATUS_VALUES } from './mcpListTasksFilter';
 
@@ -67,7 +68,7 @@ export class McpServer {
     private projectStore: ProjectStore,
     private appStateStore: AppStateStore,
     private bindingStore: LocalBindingStore,
-    private bridge: McpRendererBridge,
+    private bridge: RendererAutomationBridge,
     private getMainWindow: () => BrowserWindow | null,
     private taskActions: {
       updateTask: (
@@ -154,25 +155,9 @@ export class McpServer {
   }
 
   private bridgeFailureToInvoke(
-    result: Extract<McpBridgeResult<unknown>, { ok: false }>,
+    result: Extract<AutomationBridgeResult<unknown>, { ok: false }>,
   ): FluxAutomationInvokeResponse {
-    const friendly = (() => {
-      switch (result.code) {
-        case 'AUTH_NOT_READY':
-          return 'Sign in to Flux to use cloud project tools';
-        case 'RENDERER_NOT_READY':
-          return 'Open the Flux app to enable cloud project tools';
-        case 'RENDERER_TIMEOUT':
-          return 'Flux app did not respond in time. Please try again.';
-        case 'PROJECT_KIND_MISMATCH':
-          return 'Active project changed during request. Please retry.';
-        case 'NO_ACTIVE_PROJECT':
-          return 'No project open';
-        default:
-          return result.message;
-      }
-    })();
-    return { ok: false, error: friendly, code: result.code };
+    return automationBridgeFailureToInvoke(result);
   }
 
   private async probeRepoPathStatus(resolvedRoot: string): Promise<RepoPathStatus> {
@@ -191,9 +176,9 @@ export class McpServer {
 
   private async buildLocalProjectInfoRepoSummaries(
     repos: RepoConfig[],
-  ): Promise<McpBridgeProjectInfoRepoSummary[]> {
+  ): Promise<AutomationBridgeProjectInfoRepoSummary[]> {
     const primaryId = resolvePrimaryRepoIdFromList(repos);
-    const out: McpBridgeProjectInfoRepoSummary[] = [];
+    const out: AutomationBridgeProjectInfoRepoSummary[] = [];
     for (const r of repos) {
       const resolvedRoot = path.resolve(r.rootPath);
       const pathStatus = await this.probeRepoPathStatus(resolvedRoot);
@@ -478,7 +463,7 @@ export class McpServer {
     );
   }
 
-  private automationHost(): FluxMcpAutomationHost {
+  private automationHost(): FluxAutomationHost {
     return {
       resolveActive: () => this.resolveActive(),
       getTaskInCurrentProject: (taskId) => this.getTaskInCurrentProject(taskId),

@@ -1,18 +1,18 @@
 /**
- * Planning-agent automation invoked via HTTP (`AutomationHttpServer`) and MCP tools.
+ * Planning-agent automation invoked via HTTP (`AutomationHttpServer`) and CLI, MCP tools.
  * Keep behavior aligned with the `flux__*` MCP tool implementations in `McpServer.ts`.
  */
 import path from 'node:path';
-import type { McpBridgeResult, McpRendererBridge } from './McpRendererBridge';
+import type { AutomationBridgeResult, RendererAutomationBridge } from './RendererAutomationBridge';
 import type {
-  McpBridgeMember,
-  McpBridgeProjectInfoRepoSummary,
-  McpBridgeProjectInfoResult,
-  McpBridgeTasksCreatePayload,
-  McpBridgeTasksDeletePayload,
-  McpBridgeTasksUpdatePayload,
-  McpBridgeTasksUpdateResult,
-} from '../mcpBridge';
+  AutomationBridgeMember,
+  AutomationBridgeProjectInfoRepoSummary,
+  AutomationBridgeProjectInfoResult,
+  AutomationBridgeTasksCreatePayload,
+  AutomationBridgeTasksDeletePayload,
+  AutomationBridgeTasksUpdatePayload,
+  AutomationBridgeTasksUpdateResult,
+} from '../rendererAutomationBridge';
 import type { ActiveProjectKey, Agent, RepoBranchDiscoveryResponse, RepoConfig, Task, TaskGithubPr } from '../types';
 import {
   classifyGitBranchPresence,
@@ -43,11 +43,11 @@ export type FluxAutomationResolvedActive =
     }
   | { kind: 'cloud'; activeKey: ActiveProjectKey; rootPath: string };
 
-export type FluxMcpAutomationHost = {
+export type FluxAutomationHost = {
   resolveActive: () => FluxAutomationResolvedActive;
   getTaskInCurrentProject: (taskId: string) => Task | null;
   notifyTasksChanged: () => void;
-  bridge: McpRendererBridge;
+  bridge: RendererAutomationBridge;
   taskStore: TaskStore;
   projectStore: ProjectStore;
   bindingStore: LocalBindingStore;
@@ -74,19 +74,19 @@ export type FluxMcpAutomationHost = {
     startSessionForExistingTask: (task: Task) => Promise<void>;
     autoStartIfTransitionedToInProgress: (previous: Task, updated: Task) => Promise<void>;
   };
-  bridgeFailureToInvoke: (result: Extract<McpBridgeResult<unknown>, { ok: false }>) => FluxAutomationInvokeResponse;
+  bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) => FluxAutomationInvokeResponse;
   buildLocalProjectInfoRepoSummaries: (
     repos: RepoConfig[],
-  ) => Promise<McpBridgeProjectInfoRepoSummary[]>;
+  ) => Promise<AutomationBridgeProjectInfoRepoSummary[]>;
   probeRepoPathStatus: (resolvedRoot: string) => Promise<import('../types').RepoPathStatus>;
 };
 
 async function resolveEmailToIdOnHost(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   email: string,
   activeKey: ActiveProjectKey,
 ): Promise<string | FluxAutomationInvokeResponse> {
-  const result = await h.bridge.request<McpBridgeMember[]>('members.list', activeKey);
+  const result = await h.bridge.request<AutomationBridgeMember[]>('members.list', activeKey);
   if (!result.ok) return h.bridgeFailureToInvoke(result);
   const normalised = email.toLowerCase();
   const match = result.data.find((m) => m.email.toLowerCase() === normalised);
@@ -97,7 +97,7 @@ async function resolveEmailToIdOnHost(
 }
 
 export async function automationRunListTasks(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: { excludeStatuses?: (typeof FLUX_TASK_STATUS_VALUES)[number][] },
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -128,7 +128,7 @@ type CreateTaskMcpShape = {
 };
 
 export async function automationRunCreateTask(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: CreateTaskMcpShape,
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -194,7 +194,7 @@ export async function automationRunCreateTask(
     if (typeof resolved !== 'string') return resolved;
     assigneeId = resolved;
   }
-  const payload: McpBridgeTasksCreatePayload = {
+  const payload: AutomationBridgeTasksCreatePayload = {
     input: {
       title: input.title,
       agent,
@@ -233,7 +233,7 @@ type UpdateTaskMcpShape = {
 };
 
 export async function automationRunUpdateTask(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: UpdateTaskMcpShape,
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -339,8 +339,8 @@ export async function automationRunUpdateTask(
     patch.repoId = input.repoId;
   }
   if (assigneeId !== undefined) patch.assigneeId = assigneeId;
-  const payload: McpBridgeTasksUpdatePayload = { taskId: input.id, patch };
-  const result = await h.bridge.request<McpBridgeTasksUpdateResult>(
+  const payload: AutomationBridgeTasksUpdatePayload = { taskId: input.id, patch };
+  const result = await h.bridge.request<AutomationBridgeTasksUpdateResult>(
     'tasks.update',
     active.activeKey,
     payload,
@@ -354,7 +354,7 @@ export async function automationRunUpdateTask(
 }
 
 export async function automationRunStartTask(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: { id: string },
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -397,7 +397,7 @@ export async function automationRunStartTask(
         'This task has no coding agent assigned. Use flux__update_task to set agent before starting.',
     };
   }
-  const updateResult = await h.bridge.request<McpBridgeTasksUpdateResult>('tasks.update', active.activeKey, {
+  const updateResult = await h.bridge.request<AutomationBridgeTasksUpdateResult>('tasks.update', active.activeKey, {
     taskId: input.id,
     patch: { status: 'in-progress' },
   });
@@ -408,7 +408,7 @@ export async function automationRunStartTask(
 }
 
 export async function automationRunDeleteTask(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: { id: string; confirm: true },
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -424,13 +424,13 @@ export async function automationRunDeleteTask(
     h.notifyTasksChanged();
     return { ok: true, data: { ok: true, deletedId: input.id } };
   }
-  const payload: McpBridgeTasksDeletePayload = { taskId: input.id };
+  const payload: AutomationBridgeTasksDeletePayload = { taskId: input.id };
   const result = await h.bridge.request<{ deletedId: string }>('tasks.delete', active.activeKey, payload);
   if (!result.ok) return h.bridgeFailureToInvoke(result);
   return { ok: true, data: { ok: true, deletedId: result.data.deletedId } };
 }
 
-export async function automationRunListMembers(h: FluxMcpAutomationHost): Promise<FluxAutomationInvokeResponse> {
+export async function automationRunListMembers(h: FluxAutomationHost): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -439,17 +439,17 @@ export async function automationRunListMembers(h: FluxMcpAutomationHost): Promis
     return {
       ok: true,
       data: {
-        members: [] as McpBridgeMember[],
+        members: [] as AutomationBridgeMember[],
         note: 'Team member listing is only available for cloud projects.',
       },
     };
   }
-  const result = await h.bridge.request<McpBridgeMember[]>('members.list', active.activeKey);
+  const result = await h.bridge.request<AutomationBridgeMember[]>('members.list', active.activeKey);
   if (!result.ok) return h.bridgeFailureToInvoke(result);
   return { ok: true, data: result.data };
 }
 
-export async function automationRunProjectInfo(h: FluxMcpAutomationHost): Promise<FluxAutomationInvokeResponse> {
+export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -502,7 +502,7 @@ export async function automationRunProjectInfo(h: FluxMcpAutomationHost): Promis
       },
     };
   }
-  const result = await h.bridge.request<McpBridgeProjectInfoResult>('projectInfo', active.activeKey);
+  const result = await h.bridge.request<AutomationBridgeProjectInfoResult>('projectInfo', active.activeKey);
   if (!result.ok) return h.bridgeFailureToInvoke(result);
   const data = result.data;
   return {
@@ -520,7 +520,7 @@ export async function automationRunProjectInfo(h: FluxMcpAutomationHost): Promis
 }
 
 export async function automationRunRepoBranches(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   input: { repoId?: string; classifyBranch?: string },
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
@@ -568,7 +568,7 @@ export async function automationRunRepoBranches(
 }
 
 export async function runFluxAutomationInvocation(
-  h: FluxMcpAutomationHost,
+  h: FluxAutomationHost,
   op: FluxAutomationHttpOp,
   payload: unknown,
 ): Promise<FluxAutomationInvokeResponse> {

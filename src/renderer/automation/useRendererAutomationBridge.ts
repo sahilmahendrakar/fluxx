@@ -9,24 +9,24 @@ import type {
 } from '../../types';
 import { resolveCloudPrimaryRepoId } from '../../cloudBindingPrefs';
 import type {
-  McpBridgeMember,
-  McpBridgeProjectInfoRepoSummary,
-  McpBridgeProjectInfoResult,
-  McpBridgeRepoBranchDiscoveryPayload,
-  McpBridgeRequest,
-  McpBridgeResponse,
-  McpBridgeTasksCreatePayload,
-  McpBridgeTasksDeletePayload,
-  McpBridgeTasksUpdatePayload,
-  McpBridgeTasksUpdateResult,
-} from '../../mcpBridge';
+  AutomationBridgeMember,
+  AutomationBridgeProjectInfoRepoSummary,
+  AutomationBridgeProjectInfoResult,
+  AutomationBridgeRepoBranchDiscoveryPayload,
+  AutomationBridgeRequest,
+  AutomationBridgeResponse,
+  AutomationBridgeTasksCreatePayload,
+  AutomationBridgeTasksDeletePayload,
+  AutomationBridgeTasksUpdatePayload,
+  AutomationBridgeTasksUpdateResult,
+} from '../../rendererAutomationBridge';
 import { fetchProjectMembersForBridge } from '../projects/members';
 import type { TaskProvider } from '../tasks/TaskProvider';
 import { assigneePatchForCloudAutoStartOnUnblock } from '../../cloudAutoStartUnblockAssignee';
 
 type ActiveProject = LocalProject | CloudProject;
 
-export interface McpBridgeContext {
+export interface AutomationBridgeContext {
   project: ActiveProject | null;
   provider: TaskProvider | null;
   uid: string | null;
@@ -40,7 +40,7 @@ export interface McpBridgeContext {
 }
 
 /**
- * Mounts the renderer-side IPC handler that responds to MCP bridge requests
+ * Mounts the renderer-side IPC handler for cloud automation bridge requests
  * from the main process. The active TaskProvider, project, uid, and current
  * tasks snapshot are read at request time via a ref so the handler always
  * reflects the latest state without re-subscribing.
@@ -48,19 +48,19 @@ export interface McpBridgeContext {
  * Signals readiness once on first mount so the main bridge can release any
  * waiting requests.
  */
-export function useMcpRendererBridge(ctx: McpBridgeContext): void {
+export function useRendererAutomationBridge(ctx: AutomationBridgeContext): void {
   const ctxRef = useRef(ctx);
   useEffect(() => {
     ctxRef.current = ctx;
   }, [ctx]);
 
   useEffect(() => {
-    const unsub = window.electronAPI.mcpBridge.onRequest((req) => {
+    const unsub = window.electronAPI.automationBridge.onRequest((req) => {
       void handleRequest(req, ctxRef.current).then((resp) => {
-        window.electronAPI.mcpBridge.respond(resp);
+        window.electronAPI.automationBridge.respond(resp);
       });
     });
-    window.electronAPI.mcpBridge.signalReady();
+    window.electronAPI.automationBridge.signalReady();
     return unsub;
   }, []);
 }
@@ -77,9 +77,9 @@ function activeKeyMatches(
 }
 
 async function handleRequest(
-  req: McpBridgeRequest,
-  ctx: McpBridgeContext,
-): Promise<McpBridgeResponse> {
+  req: AutomationBridgeRequest,
+  ctx: AutomationBridgeContext,
+): Promise<AutomationBridgeResponse> {
   const { project, provider, uid, tasksSnapshot } = ctx;
   if (!project) {
     return {
@@ -120,7 +120,7 @@ async function handleRequest(
       case 'tasks.list':
         return { id: req.id, ok: true, data: tasksSnapshot };
       case 'tasks.create': {
-        const payload = req.payload as McpBridgeTasksCreatePayload;
+        const payload = req.payload as AutomationBridgeTasksCreatePayload;
         if (!payload?.input) {
           return {
             id: req.id,
@@ -154,7 +154,7 @@ async function handleRequest(
         return { id: req.id, ok: true, data: created };
       }
       case 'tasks.update': {
-        const payload = req.payload as McpBridgeTasksUpdatePayload;
+        const payload = req.payload as AutomationBridgeTasksUpdatePayload;
         if (!payload?.taskId || !payload?.patch) {
           return {
             id: req.id,
@@ -221,7 +221,7 @@ async function handleRequest(
               updated,
               allTasksForSession,
               {
-                source: 'cloud:mcpBridge',
+                source: 'cloud:automationBridge',
                 inFlight: ctx.cloudAutostartInFlightRef.current,
                 logError: (msg, data) => console.error(msg, data),
                 actorUid: uid,
@@ -255,7 +255,7 @@ async function handleRequest(
               workspaceCleanedAfterDone = true;
             }
           }
-          const result: McpBridgeTasksUpdateResult = {
+          const result: AutomationBridgeTasksUpdateResult = {
             previous,
             updated: outUpdated,
             ...(workspaceCleanedAfterDone ? { workspaceCleanedAfterDone: true } : {}),
@@ -268,7 +268,7 @@ async function handleRequest(
         }
       }
       case 'tasks.delete': {
-        const payload = req.payload as McpBridgeTasksDeletePayload;
+        const payload = req.payload as AutomationBridgeTasksDeletePayload;
         if (!payload?.taskId) {
           return {
             id: req.id,
@@ -282,7 +282,7 @@ async function handleRequest(
       }
       case 'members.list': {
         if (project.kind !== 'cloud') {
-          const empty: McpBridgeMember[] = [];
+          const empty: AutomationBridgeMember[] = [];
           return { id: req.id, ok: true, data: empty };
         }
         const listed = await fetchProjectMembersForBridge(project.id);
@@ -316,7 +316,7 @@ async function handleRequest(
         } catch (err) {
           branchDiscoveryError = err instanceof Error ? err.message : String(err);
         }
-        const result: McpBridgeProjectInfoResult = {
+        const result: AutomationBridgeProjectInfoResult = {
           name: project.name,
           activeKey: currentKey,
           uid: uid ?? null,
@@ -326,10 +326,10 @@ async function handleRequest(
         };
         if (project.kind === 'cloud') {
           const primaryRepoId = resolveCloudPrimaryRepoId(project);
-          const repos: McpBridgeProjectInfoRepoSummary[] = await Promise.all(
+          const repos: AutomationBridgeProjectInfoRepoSummary[] = await Promise.all(
             project.sharedRepos.map(async (sr) => {
               const machine = project.repoMachineBindings[sr.id];
-              const binding: McpBridgeProjectInfoRepoSummary['binding'] = machine
+              const binding: AutomationBridgeProjectInfoRepoSummary['binding'] = machine
                 ? 'bound'
                 : 'missing_binding';
               let repoDefaultShort: string | undefined;
@@ -360,7 +360,7 @@ async function handleRequest(
         return { id: req.id, ok: true, data: result };
       }
       case 'repo.branchDiscovery': {
-        const payload = (req.payload ?? {}) as McpBridgeRepoBranchDiscoveryPayload;
+        const payload = (req.payload ?? {}) as AutomationBridgeRepoBranchDiscoveryPayload;
         const repoIdArg =
           payload.repoId != null &&
           payload.repoId.trim() !== '' &&
