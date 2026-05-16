@@ -57,6 +57,7 @@ import {
 } from './main/agentConversationIdParse';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
+import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
@@ -3630,6 +3631,12 @@ app.whenReady().then(async () => {
   mcpRendererBridge.install();
   fluxMcpRendererBridge = mcpRendererBridge;
 
+  const resolvePlanningDocsDir = (): string | null =>
+    resolvePlanningDocsDirFromSources(
+      projectStore.getProjectDir(),
+      worktreeService.getProjectDir(),
+    );
+
   fluxMcpServer = new McpServer(
     taskStore,
     projectStore,
@@ -3637,6 +3644,7 @@ app.whenReady().then(async () => {
     bindingStore,
     mcpRendererBridge,
     () => mainWindow,
+    resolvePlanningDocsDir,
     {
       updateTask: (id, patch) =>
         updateTaskWithTransitionHandling(id, patch, 'mcp:flux__update_task'),
@@ -3857,19 +3865,6 @@ app.whenReady().then(async () => {
       })();
     },
   );
-
-  function fluxProjectDirOrNull(): string | null {
-    const fromStore = projectStore.getProjectDir();
-    if (fromStore) return fromStore;
-    const fromWorktree = worktreeService.getProjectDir();
-    return fromWorktree || null;
-  }
-
-  function resolvePlanningDocsDir(): string | null {
-    const projectDir = fluxProjectDirOrNull();
-    if (!projectDir) return null;
-    return path.join(projectDir, 'planning');
-  }
 
   const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 

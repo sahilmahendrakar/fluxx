@@ -35,9 +35,19 @@ describe('normalizePlanningDocRelativePath', () => {
     expect(normalizePlanningDocRelativePath('readme.txt')).toBeNull();
   });
 
-  it('rejects a leading docs/ segment (implicit user-docs root)', () => {
-    expect(normalizePlanningDocRelativePath('docs/readme.md')).toBeNull();
-    expect(normalizePlanningDocRelativePath('docs/nested/x.md')).toBeNull();
+  it('strips a leading docs/ segment (planning workspace cwd)', () => {
+    expect(normalizePlanningDocRelativePath('docs/readme.md')).toBe('readme.md');
+    expect(normalizePlanningDocRelativePath('docs/nested/x.md')).toBe('nested/x.md');
+    expect(normalizePlanningDocRelativePath('docs/2026-05-sprint.md')).toBe('2026-05-sprint.md');
+  });
+
+  it('dedupes docs/ prefix with canonical paths', () => {
+    expect(normalizePlanningDocRelativePath('docs/flux-web-redesign-plan.md')).toBe(
+      'flux-web-redesign-plan.md',
+    );
+    expect(normalizePlanningDocRelativePath('flux-web-redesign-plan.md')).toBe(
+      'flux-web-redesign-plan.md',
+    );
   });
 
   it('accepts unicode file names', () => {

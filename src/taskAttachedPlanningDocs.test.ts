@@ -82,6 +82,27 @@ describe('parseTaskAttachedPlanningDocsForMcp', () => {
     });
   });
 
+  it('accepts docs/ subfolder paths and normalizes them', () => {
+    expect(
+      parseTaskAttachedPlanningDocsForMcp(
+        [{ relativePath: 'docs/flux-web-redesign-plan.md' }],
+        'create',
+      ),
+    ).toEqual({
+      ok: true,
+      docs: [{ relativePath: 'flux-web-redesign-plan.md' }],
+    });
+    expect(
+      parseTaskAttachedPlanningDocsForMcp(
+        [{ relativePath: 'docs/task-doc-attachments-plan.md' }, { relativePath: 'notes/plan.md' }],
+        'update',
+      ),
+    ).toEqual({
+      ok: true,
+      docs: [{ relativePath: 'task-doc-attachments-plan.md' }, { relativePath: 'notes/plan.md' }],
+    });
+  });
+
   it('rejects invalid shapes and paths', () => {
     expect(parseTaskAttachedPlanningDocsForMcp('x', 'create').ok).toBe(false);
     expect(parseTaskAttachedPlanningDocsForMcp([{ relativePath: '../x.md' }], 'create').ok).toBe(
@@ -116,9 +137,21 @@ describe('parseTaskAttachedPlanningDocsForMcp', () => {
 describe('assertAttachedPlanningMarkdownFilesExist', () => {
   it('passes when each path is an existing file', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-plan-attach-'));
-    await fs.writeFile(path.join(dir, 'ok.md'), '# x', 'utf8');
+    await fs.mkdir(path.join(dir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'docs', 'ok.md'), '# x', 'utf8');
     await expect(
       assertAttachedPlanningMarkdownFilesExist(dir, [{ relativePath: 'ok.md' }]),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it('resolves docs/ subfolder attachment paths under planning/docs', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-plan-attach-docs-'));
+    await fs.mkdir(path.join(dir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'docs', 'flux-web-redesign-plan.md'), '# plan', 'utf8');
+    await expect(
+      assertAttachedPlanningMarkdownFilesExist(dir, [
+        { relativePath: 'docs/flux-web-redesign-plan.md' },
+      ]),
     ).resolves.toEqual({ ok: true });
   });
 

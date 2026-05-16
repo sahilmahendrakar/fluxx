@@ -64,14 +64,17 @@ export function normalizePlanningDocRelativePath(input: string): string | null {
   if (typeof input !== 'string' || input.includes('\0')) return null;
   const slash = input.replace(/\\/g, '/').replace(/^\/+/, '').trim();
   if (slash.length === 0) return null;
-  const segments = slash.split('/');
+  let segments = slash.split('/');
   if (segments.length === 0) return null;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     if (!isValidPlanningSegment(seg)) return null;
   }
-  /** `docs/` is implicit in IPC paths; allowing it would double-nest under `planning/docs/`. */
-  if (segments[0] === PLANNING_USER_DOCS_REL_SEGMENT) return null;
+  /** Accept `docs/foo.md` (planning workspace cwd); canonical form is relative to `planning/docs/`. */
+  if (segments[0] === PLANNING_USER_DOCS_REL_SEGMENT) {
+    segments = segments.slice(1);
+    if (segments.length === 0) return null;
+  }
   const last = segments[segments.length - 1];
   if (!last.toLowerCase().endsWith(MD_SUFFIX)) return null;
   return segments.join('/');

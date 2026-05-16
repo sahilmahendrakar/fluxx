@@ -87,6 +87,7 @@ export class McpServer {
     private bindingStore: LocalBindingStore,
     private bridge: McpRendererBridge,
     private getMainWindow: () => BrowserWindow | null,
+    private getPlanningDocsDir: () => string | null,
     private taskActions: {
       updateTask: (
         id: string,
@@ -174,13 +175,6 @@ export class McpServer {
     return { kind: 'cloud', activeKey, rootPath };
   }
 
-  private planningDocsDirForActive(
-    active: { kind: 'local'; projectDir: string } | { kind: 'cloud'; rootPath: string },
-  ): string {
-    const root = active.kind === 'local' ? active.projectDir : active.rootPath;
-    return path.join(root, 'planning');
-  }
-
   /**
    * MCP-only: strict path validation + require each file to exist under planning/.
    * UI and renderer stores may still sanitize silently.
@@ -188,7 +182,7 @@ export class McpServer {
   private async coerceAttachedPlanningDocsForMcp(
     raw: unknown,
     mode: 'create' | 'update',
-    active:
+    _active:
       | { kind: 'local'; activeKey: ActiveProjectKey; project: object; projectDir: string }
       | { kind: 'cloud'; activeKey: ActiveProjectKey; rootPath: string },
   ): Promise<
@@ -203,7 +197,16 @@ export class McpServer {
     if (docs === undefined || docs === null || docs.length === 0) {
       return { ok: true, value: docs };
     }
-    const planningDir = this.planningDocsDirForActive(active);
+    const planningDir = this.getPlanningDocsDir();
+    if (!planningDir) {
+      return {
+        ok: false,
+        payload: jsonToolPayload({
+          error:
+            'Planning workspace not found. Open the project in Flux so planning/ is available before attaching planning docs.',
+        }),
+      };
+    }
     const check = await assertAttachedPlanningMarkdownFilesExist(planningDir, docs);
     if (!check.ok) {
       return { ok: false, payload: jsonToolPayload({ error: check.message }) };
@@ -340,7 +343,7 @@ export class McpServer {
 
     server.tool(
       'flux__create_task',
-      'Create a new task on the Flux board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in flux__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository. For implementation tasks carved out of a larger plan, pass attachedPlanningDocs with { relativePath } entries pointing at existing markdown under the project planning/ folder (e.g. the comprehensive plan doc); each path must exist on disk or the tool returns an error. Keep the task description focused on the specific slice of work—the attached doc carries the broader context.',
+      'Create a new task on the Flux board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in flux__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository. For implementation tasks carved out of a larger plan, pass attachedPlanningDocs with { relativePath } entries pointing at existing markdown in the planning docs tree (e.g. docs/feature-plan.md or notes/plan.md under the planning workspace); each path must exist on disk or the tool returns an error. Keep the task description focused on the specific slice of work—the attached doc carries the broader context.',
       {
         title: z.string().describe('Task title'),
         description: z.string().optional().describe('Task description'),
@@ -399,7 +402,7 @@ export class McpServer {
           .array(z.object({ relativePath: z.string() }))
           .optional()
           .describe(
-            'Optional markdown files under planning/ as { relativePath } (e.g. [{ "relativePath": "feature-x-plan.md" }]). Paths are validated; each file must exist. Omit when no attachments.',
+            'Optional markdown in the planning docs tree as { relativePath } (e.g. [{ "relativePath": "docs/feature-x-plan.md" }] or [{ "relativePath": "notes/plan.md" }]). Paths are validated; each file must exist under the active planning workspace. Omit when no attachments.',
           ),
       },
       async (input) => {
@@ -532,7 +535,7 @@ export class McpServer {
 
     server.tool(
       'flux__update_task',
-      'Update an existing task on the Flux board. When multi-repo2 is enabled, repoId may be changed only while the task has no linked PR and no active Flux workspace/session (same rules as the app UI); otherwise the update fails with an error. Optional attachedPlanningDocs replaces the full attachment list; pass null or [] to clear. Non-empty lists are validated and each file must exist under planning/.',
+      'Update an existing task on the Flux board. When multi-repo2 is enabled, repoId may be changed only while the task has no linked PR and no active Flux workspace/session (same rules as the app UI); otherwise the update fails with an error. Optional attachedPlanningDocs replaces the full attachment list; pass null or [] to clear. Non-empty lists are validated and each file must exist in the active planning docs tree (e.g. docs/plan.md).',
       {
         id: z.string().describe('Task id'),
         title: z.string().optional(),

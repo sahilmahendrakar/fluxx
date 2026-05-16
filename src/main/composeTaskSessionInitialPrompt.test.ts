@@ -55,6 +55,21 @@ describe('composeTaskSessionInitialPrompt', () => {
     expect(got).toContain('Use these docs for broader context');
   });
 
+  it('resolves docs/ subfolder attachment paths for the prompt', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'flux-plan-'));
+    const planningDir = path.join(dir, 'planning');
+    const docsDir = path.join(planningDir, 'docs');
+    await mkdir(docsDir, { recursive: true });
+    await writeFile(path.join(docsDir, 'flux-web-redesign-plan.md'), '# Plan\n', 'utf8');
+    const task = baseTask({
+      attachedPlanningDocs: [{ relativePath: 'docs/flux-web-redesign-plan.md' }],
+    });
+    const got = await composeTaskSessionInitialPrompt(task, planningDir);
+    expect(got).toContain('- `flux-web-redesign-plan.md`');
+    expect(got).toContain(`Path: \`${path.join(docsDir, 'flux-web-redesign-plan.md')}\``);
+    expect(got).toContain('URL: `file://');
+  });
+
   it('lists multiple distinct attachments', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'flux-plan-'));
     const planningDir = path.join(dir, 'planning');

@@ -105,7 +105,7 @@ export function parseTaskAttachedPlanningDocsForMcp(
     ) {
       return {
         ok: false,
-        message: `attachedPlanningDocs[${i}] must be an object with a string relativePath (a .md path under the project planning/ folder, forward slashes).`,
+        message: `attachedPlanningDocs[${i}] must be an object with a string relativePath (a .md path under the project planning docs tree, forward slashes).`,
       };
     }
     const rel = (item as { relativePath: string }).relativePath;
@@ -113,7 +113,7 @@ export function parseTaskAttachedPlanningDocsForMcp(
     if (!norm) {
       return {
         ok: false,
-        message: `Invalid planning doc path in attachedPlanningDocs[${i}]: "${rel}". Use paths like "notes/plan.md" (.md only, no ".." segments).`,
+        message: `Invalid planning doc path in attachedPlanningDocs[${i}]: "${rel}". Use paths like "docs/plan.md" or "notes/plan.md" (.md only, no ".." segments).`,
       };
     }
     if (isPlanningMarkdownRelativePathForbiddenForUserWrite(norm)) {
