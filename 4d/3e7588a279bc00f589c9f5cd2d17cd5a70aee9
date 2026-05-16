@@ -1,0 +1,79 @@
+src/renderer/tasks/FirestoreTaskProvider.ts
+  s_eda25c598acd33::t_9ed3b2e779afd7 141
+  s_eda25c598acd33::t_8afeea7eebd837 280-287
+  s_eda25c598acd33::t_271daf75ba1651 402
+  s_eda25c598acd33::t_eac9efa3bf96a6 415-422
+  s_eda25c598acd33::t_f0f020484338e5 19
+  s_eda25c598acd33::t_b813270dd14df7 120
+  s_eda25c598acd33::t_4ff3a34b3d8b44 197
+src/main.ts
+  s_eda25c598acd33::t_a0bc6ad7e95f36 1839
+  s_eda25c598acd33::t_5de9d573e52d24 3022
+src/env.d.ts
+  s_eda25c598acd33::t_00c358279b1ed6 273
+  s_eda25c598acd33::t_28501a80457196 252
+src/preload.ts
+  s_eda25c598acd33::t_1efe0098204b6a 312
+  s_eda25c598acd33::t_324767c8673fa4 291
+src/taskPlanningDocAttachments.ts
+  s_eda25c598acd33::t_30d4ddb029b23a 1-25,27-28
+  s_eda25c598acd33::t_aebcba28ef5a8d 26
+src/components/TaskCard.tsx
+  s_eda25c598acd33::t_8603aed7d59f0a 15
+  s_eda25c598acd33::t_e55378e8e8fd7b 279
+  s_eda25c598acd33::t_755238f0fff294 457-467
+src/main/TaskStore.ts
+  s_eda25c598acd33::t_38a76842182750 8
+  s_eda25c598acd33::t_8f83e72b434382 239-242
+  s_eda25c598acd33::t_6d2580bb8d2553 346-347
+  s_eda25c598acd33::t_642610dd47f4d7 23
+  s_eda25c598acd33::t_8b1971d71f19bc 348-353
+  s_eda25c598acd33::t_c7f1811b38fa0a 267
+  s_eda25c598acd33::t_2758c21f1572c5 287
+src/components/TaskDetailPanel.tsx
+  s_eda25c598acd33::t_9cecdab41483b1 16
+  s_eda25c598acd33::t_96d6bf7811bb1e 156-159
+  s_eda25c598acd33::t_5dc85ea374b263 71-75
+  s_eda25c598acd33::t_66f2942c86a249 259-260
+  s_eda25c598acd33::t_72da76d0e6a0cc 317-331
+  s_eda25c598acd33::t_29a17ddd608688 1239-1343
+src/types.ts
+  s_eda25c598acd33::t_3f9040c1335026 389-393
+src/mcpBridge.ts
+  s_eda25c598acd33::t_08055ab64581fd 48
+  s_eda25c598acd33::t_7c87edbd498ca0 64
+src/App.tsx
+  s_eda25c598acd33::t_a75625c5c8b147 71
+  s_eda25c598acd33::t_399f52a6e541d8 137
+  s_eda25c598acd33::t_42839f91ca9914 3246-3247
+  s_eda25c598acd33::t_20f37435a8ef4e 3381-3382
+  s_eda25c598acd33::t_5ee317bca293cc 1977-1980
+  s_eda25c598acd33::t_bbb79b56d60d22 197-205
+  s_eda25c598acd33::t_198aced00243fb 1858
+  s_eda25c598acd33::t_f0cfb71465a9c2 1917-1925
+src/taskPlanningDocAttachments.test.ts
+  s_eda25c598acd33::t_3af5b7b5290088 1-42
+src/renderer/tasks/LocalTaskProvider.ts
+  s_eda25c598acd33::t_0bc4b7af608a58 67-69
+src/main/TaskStore.test.ts
+  s_eda25c598acd33::t_5071fe62fd8b36 148-178
+src/renderer/tasks/TaskProvider.ts
+  s_eda25c598acd33::t_57c49097bc95bc 44
+  s_eda25c598acd33::t_9fa6c2ef8a96a8 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "4d3e7588a279bc00f589c9f5cd2d17cd5a70aee9",
+  "prompts": {},
+  "sessions": {
+    "s_eda25c598acd33": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "18181d0c-8854-42d0-85c9-791ca46670b5",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
