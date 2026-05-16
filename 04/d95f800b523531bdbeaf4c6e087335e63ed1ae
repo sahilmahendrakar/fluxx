@@ -1,0 +1,30 @@
+src/main/TerminalRuntimeManager.ts
+  s_71eb4856a6c2c8::t_e959dd8f98b3c6 496-499,501-509
+  s_71eb4856a6c2c8::t_2b718c53f49720 269-277
+src/main/terminalBackend/LocalMainProcessTerminalBackend.ts
+  s_71eb4856a6c2c8::t_6b48b2125c67a0 158
+src/main/TerminalRuntimeManager.test.ts
+  s_71eb4856a6c2c8::t_34ee907afe2a32 94-138
+  s_71eb4856a6c2c8::t_1afcc96a14bcbd 86-88
+src/main/terminalBackend/terminalBackend.test.ts
+  s_71eb4856a6c2c8::t_2dd1cd0047b23a 16,19
+src/main/terminalBackend/createMainTerminalBackend.ts
+  s_71eb4856a6c2c8::t_363765336e80f1 10-11
+  s_71eb4856a6c2c8::t_076bd2d4be1f51 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "04d95f800b523531bdbeaf4c6e087335e63ed1ae",
+  "prompts": {},
+  "sessions": {
+    "s_71eb4856a6c2c8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "27e3e201-48e9-46e1-a601-6ff3d22438ba",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
