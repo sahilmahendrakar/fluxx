@@ -111,6 +111,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:patchAgentSpawnDefaults', patch) as Promise<
         { ok: true } | { error: string }
       >,
+    getMcpConfig: () =>
+      ipcRenderer.invoke('project:getMcpConfig') as Promise<
+        { ok: true; path: string; text: string } | { error: string }
+      >,
+    setMcpConfig: (text: string) =>
+      ipcRenderer.invoke('project:setMcpConfig', text) as Promise<
+        { ok: true; path: string; text: string } | { error: string }
+      >,
+    addMcpConfig: (text: string) =>
+      ipcRenderer.invoke('project:addMcpConfig', text) as Promise<
+        { ok: true; path: string; text: string } | { error: string }
+      >,
     getRepos: () =>
       ipcRenderer.invoke('project:getRepos') as Promise<RepoConfig[]>,
     getRepoManagementStates: () =>

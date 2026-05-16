@@ -43,6 +43,106 @@ function isRepoManagementStatesError(
   return typeof (result as { error?: unknown }).error === 'string';
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeMcpServerEntriesForUi(value: unknown): Record<string, unknown> {
+  if (!isJsonObject(value)) {
+    throw new Error('MCP server entries must be a JSON object.');
+  }
+  const out: Record<string, unknown> = {};
+  for (const [name, server] of Object.entries(value)) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('MCP server names cannot be empty.');
+    }
+    if (!isJsonObject(server)) {
+      throw new Error(`MCP server "${trimmed}" must be a JSON object.`);
+    }
+    if (typeof server.type !== 'string' && typeof server.url === 'string') {
+      let pathname = '';
+      try {
+        pathname = new URL(server.url).pathname;
+      } catch {
+        pathname = '';
+      }
+      out[trimmed] = {
+        type: pathname.endsWith('/sse') ? 'sse' : 'http',
+        ...server,
+      };
+    } else {
+      out[trimmed] = server;
+    }
+  }
+  return out;
+}
+
+function parseMcpConfigForUi(raw: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid current mcp.json: ${message}`);
+  }
+  if (!isJsonObject(parsed) || !isJsonObject(parsed.mcpServers)) {
+    throw new Error('Current mcp.json must contain an object field named "mcpServers".');
+  }
+  return normalizeMcpServerEntriesForUi(parsed.mcpServers);
+}
+
+function parseMcpPasteForUi(raw: string): Record<string, unknown> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('Paste an MCP server config first.');
+  }
+  const parse = (text: string): unknown => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Invalid MCP config JSON: ${message}`);
+    }
+  };
+  const normalize = (value: unknown): Record<string, unknown> => {
+    if (!isJsonObject(value)) {
+      throw new Error('MCP paste must be a JSON object.');
+    }
+    if ('mcpServers' in value) {
+      if (!isJsonObject(value.mcpServers)) {
+        throw new Error('MCP config must contain an object field named "mcpServers".');
+      }
+      return normalizeMcpServerEntriesForUi(value.mcpServers);
+    }
+    return normalizeMcpServerEntriesForUi(value);
+  };
+
+  try {
+    return normalize(parse(trimmed));
+  } catch (firstErr) {
+    if (trimmed.startsWith('{')) {
+      throw firstErr;
+    }
+    return normalize(parse(`{${trimmed}}`));
+  }
+}
+
+function mergeMcpPasteIntoConfigTextForUi(configText: string, pasteText: string): string {
+  const currentServers = parseMcpConfigForUi(configText);
+  const addedServers = parseMcpPasteForUi(pasteText);
+  return `${JSON.stringify(
+    {
+      mcpServers: {
+        ...currentServers,
+        ...addedServers,
+      },
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 function AutomationSettingRow({
   title,
   description,
@@ -259,6 +359,14 @@ function ProjectConfigPane({
   const [planSpawnError, setPlanSpawnError] = useState<string | null>(null);
   const [taskSpawnSaveState, setTaskSpawnSaveState] = useState<SaveState>('idle');
   const [taskSpawnError, setTaskSpawnError] = useState<string | null>(null);
+  const [mcpConfigPath, setMcpConfigPath] = useState('');
+  const [mcpConfigText, setMcpConfigText] = useState('');
+  const [mcpConfigExpanded, setMcpConfigExpanded] = useState(false);
+  const [addMcpOpen, setAddMcpOpen] = useState(false);
+  const [addMcpText, setAddMcpText] = useState('');
+  const [mcpConfigLoading, setMcpConfigLoading] = useState(true);
+  const [mcpConfigSaveState, setMcpConfigSaveState] = useState<SaveState>('idle');
+  const [mcpConfigError, setMcpConfigError] = useState<string | null>(null);
 
   const planningAgentValue: Agent =
     project.kind === 'local'
@@ -318,6 +426,11 @@ function ProjectConfigPane({
     setPlanSpawnError(null);
     setTaskSpawnSaveState('idle');
     setTaskSpawnError(null);
+    setMcpConfigSaveState('idle');
+    setMcpConfigError(null);
+    setMcpConfigExpanded(false);
+    setAddMcpOpen(false);
+    setAddMcpText('');
     setAddRepoState('idle');
     setAddRepoError(null);
   }, [project.id]);
@@ -496,6 +609,35 @@ function ProjectConfigPane({
     };
   }, [project.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setMcpConfigLoading(true);
+    setMcpConfigError(null);
+    void window.electronAPI.project
+      .getMcpConfig()
+      .then((result) => {
+        if (cancelled) return;
+        if ('error' in result) {
+          setMcpConfigError(result.error);
+          return;
+        }
+        setMcpConfigPath(result.path);
+        setMcpConfigText(result.text);
+        setMcpConfigSaveState('idle');
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMcpConfigError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMcpConfigLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
   const handleWhenUnblockedChange = useCallback(async (enabled: boolean) => {
     setWhenUnblockedEnabled(enabled);
     setWhenUnblockedSaveState('saving');
@@ -616,6 +758,50 @@ function ProjectConfigPane({
       setTaskSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
     }, 1500);
   }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskYolo]);
+
+  const handleAddMcpConfig = useCallback(async () => {
+    setMcpConfigSaveState('saving');
+    setMcpConfigError(null);
+    let nextConfigText: string;
+    try {
+      nextConfigText = mergeMcpPasteIntoConfigTextForUi(mcpConfigText, addMcpText);
+    } catch (err) {
+      setMcpConfigSaveState('error');
+      setMcpConfigError(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    const result = await window.electronAPI.project.setMcpConfig(nextConfigText);
+    if ('error' in result) {
+      setMcpConfigSaveState('error');
+      setMcpConfigError(result.error);
+      return;
+    }
+    setMcpConfigPath(result.path);
+    setMcpConfigText(result.text);
+    setAddMcpText('');
+    setAddMcpOpen(false);
+    setMcpConfigSaveState('saved');
+    window.setTimeout(() => {
+      setMcpConfigSaveState((s) => (s === 'saved' ? 'idle' : s));
+    }, 1500);
+  }, [addMcpText, mcpConfigText]);
+
+  const handleSaveMcpConfig = useCallback(async () => {
+    setMcpConfigSaveState('saving');
+    setMcpConfigError(null);
+    const result = await window.electronAPI.project.setMcpConfig(mcpConfigText);
+    if ('error' in result) {
+      setMcpConfigSaveState('error');
+      setMcpConfigError(result.error);
+      return;
+    }
+    setMcpConfigPath(result.path);
+    setMcpConfigText(result.text);
+    setMcpConfigSaveState('saved');
+    window.setTimeout(() => {
+      setMcpConfigSaveState((s) => (s === 'saved' ? 'idle' : s));
+    }, 1500);
+  }, [mcpConfigText]);
 
   const handleAutoStartChange = useCallback(async (enabled: boolean) => {
     setAutoStartEnabled(enabled);
@@ -1191,6 +1377,123 @@ function ProjectConfigPane({
                 ) : null}
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-[13px] font-medium text-zinc-200">MCP servers</h2>
+              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                Add provider configs for Flux-launched Claude and Cursor sessions. Paste a full
+                MCP config or a single server entry; <code className="text-zinc-400">flux</code>{' '}
+                is reserved and managed by Flux.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
+              onClick={() => {
+                setAddMcpOpen((open) => !open);
+                setMcpConfigError(null);
+                setMcpConfigSaveState('idle');
+              }}
+              className="h-[30px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addMcpOpen ? 'Cancel' : 'Add MCP'}
+            </button>
+          </div>
+          {mcpConfigPath ? (
+            <p className="mt-2 truncate font-mono text-[10px] text-zinc-600" title={mcpConfigPath}>
+              {mcpConfigPath}
+            </p>
+          ) : null}
+          {addMcpOpen ? (
+            <div className="mt-3 rounded-lg border border-white/[0.08] bg-black/20 p-3">
+              <label className="text-[11px] font-medium text-zinc-300" htmlFor="project-settings-add-mcp">
+                Paste MCP config
+              </label>
+              <textarea
+                id="project-settings-add-mcp"
+                value={addMcpText}
+                onChange={(e) => {
+                  setAddMcpText(e.target.value);
+                  if (mcpConfigSaveState !== 'saving') {
+                    setMcpConfigSaveState('idle');
+                    setMcpConfigError(null);
+                  }
+                }}
+                disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
+                spellCheck={false}
+                className="mt-2 min-h-[150px] w-full resize-y rounded-md border border-white/[0.08] bg-[#09090b]/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder={`{\n  "mcpServers": {\n    "notion": {\n      "url": "https://mcp.notion.com/mcp"\n    }\n  }\n}\n\nor\n\n"notion": {\n  "url": "https://mcp.notion.com/mcp"\n}`}
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    mcpConfigLoading ||
+                    mcpConfigSaveState === 'saving' ||
+                    addMcpText.trim().length === 0
+                  }
+                  onClick={() => void handleAddMcpConfig()}
+                  className="h-[30px] rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {mcpConfigSaveState === 'saving' ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="mt-3 text-left text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+            onClick={() => setMcpConfigExpanded((open) => !open)}
+            aria-expanded={mcpConfigExpanded}
+          >
+            {mcpConfigExpanded ? 'Hide mcp.json' : 'Show mcp.json'}
+          </button>
+          {mcpConfigExpanded ? (
+            <div className="mt-2 rounded-lg border border-white/[0.08] bg-black/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-medium text-zinc-300">Edit mcp.json</span>
+                <button
+                  type="button"
+                  disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
+                  onClick={() => void handleSaveMcpConfig()}
+                  className="h-[28px] rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {mcpConfigSaveState === 'saving' ? 'Saving...' : 'Save file'}
+                </button>
+              </div>
+              <textarea
+                value={mcpConfigText}
+                onChange={(e) => {
+                  setMcpConfigText(e.target.value);
+                  if (mcpConfigSaveState !== 'saving') {
+                    setMcpConfigSaveState('idle');
+                    setMcpConfigError(null);
+                  }
+                }}
+                disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
+                spellCheck={false}
+                className="mt-2 min-h-[220px] w-full resize-y rounded-md border border-white/[0.08] bg-[#09090b]/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-200 outline-none transition focus:border-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+          ) : null}
+          <p className="mt-2 text-[11px] leading-snug text-zinc-600">
+            Stored only on this machine for the active Flux project. Environment variables in MCP
+            server configs are not synced to teammates.
+          </p>
+          <div className="mt-1.5 min-h-4 text-[11px]">
+            {mcpConfigLoading ? (
+              <span className="text-zinc-500">Loading…</span>
+            ) : mcpConfigSaveState === 'saving' ? (
+              <span className="text-zinc-500">Saving…</span>
+            ) : mcpConfigSaveState === 'saved' ? (
+              <span className="text-emerald-400">Saved</span>
+            ) : mcpConfigError ? (
+              <span className="text-red-400">{mcpConfigError}</span>
+            ) : null}
           </div>
         </section>
 

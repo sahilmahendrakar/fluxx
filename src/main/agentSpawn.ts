@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import {
   type Agent,
   type Task,
@@ -18,6 +16,7 @@ export type AgentSpawnTaskInput = Pick<Task, 'agent' | 'agentModel' | 'agentYolo
 export function agentSpawnSpec(
   task: AgentSpawnTaskInput,
   initialPrompt: string,
+  options: { mcpConfigPath?: string } = {},
 ): { command: string; args: string[] } {
   if (task.agent == null) {
     throw new Error('agentSpawnSpec requires a task agent');
@@ -32,6 +31,13 @@ export function agentSpawnSpec(
       if (task.agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
+      if (options.mcpConfigPath) {
+        args.push('--mcp-config', options.mcpConfigPath);
+      }
+      // Claude's --mcp-config is variadic, so separate it from the prompt.
+      if (options.mcpConfigPath) {
+        args.push('--');
+      }
       args.push(initialPrompt);
       return { command: 'claude', args };
     }
@@ -39,7 +45,7 @@ export function agentSpawnSpec(
       return { command: 'codex', args: [] };
     case 'cursor': {
       const model = resolvedCursorAgentModel(task);
-      const args: string[] = ['--model', model];
+      const args: string[] = ['--model', model, '--approve-mcps'];
       if (task.agentYolo === true) {
         args.push('--yolo');
       }
@@ -55,6 +61,7 @@ export function agentSpawnSpec(
  */
 export function agentSpawnResumeSpec(
   task: AgentSpawnTaskInput,
+  options: { mcpConfigPath?: string } = {},
 ): { command: string; args: string[] } {
   if (task.agent == null) {
     throw new Error('agentSpawnResumeSpec requires a task agent');
@@ -69,6 +76,9 @@ export function agentSpawnResumeSpec(
       if (task.agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
+      if (options.mcpConfigPath) {
+        args.push('--mcp-config', options.mcpConfigPath);
+      }
       args.push('--resume');
       return { command: 'claude', args };
     }
@@ -76,7 +86,7 @@ export function agentSpawnResumeSpec(
       return { command: 'codex', args: ['--resume'] };
     case 'cursor': {
       const model = resolvedCursorAgentModel(task);
-      const args: string[] = ['--model', model];
+      const args: string[] = ['--model', model, '--approve-mcps'];
       if (task.agentYolo === true) {
         args.push('--yolo');
       }
@@ -84,41 +94,6 @@ export function agentSpawnResumeSpec(
       return { command: 'agent', args };
     }
   }
-}
-
-const FLUX_SSE_MCP_ENTRY = {
-  type: 'sse' as const,
-  url: 'http://localhost:47432/sse',
-};
-
-/** Cursor CLI loads project MCP from planningDir/.cursor/mcp.json (cwd is planningDir). */
-export async function ensurePlanningDirCursorMcp(planningDir: string): Promise<void> {
-  const cursorDir = path.join(planningDir, '.cursor');
-  await fs.mkdir(cursorDir, { recursive: true });
-  const mcpPath = path.join(cursorDir, 'mcp.json');
-  let merged: { mcpServers: Record<string, unknown> };
-  try {
-    const raw = await fs.readFile(mcpPath, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'mcpServers' in parsed &&
-      typeof (parsed as { mcpServers: unknown }).mcpServers === 'object' &&
-      (parsed as { mcpServers: unknown }).mcpServers !== null
-    ) {
-      const servers = {
-        ...((parsed as { mcpServers: Record<string, unknown> }).mcpServers),
-      };
-      servers.flux = FLUX_SSE_MCP_ENTRY;
-      merged = { mcpServers: servers };
-    } else {
-      merged = { mcpServers: { flux: FLUX_SSE_MCP_ENTRY } };
-    }
-  } catch {
-    merged = { mcpServers: { flux: FLUX_SSE_MCP_ENTRY } };
-  }
-  await fs.writeFile(mcpPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf8');
 }
 
 /**

@@ -111,6 +111,19 @@ declare global {
         patchAgentSpawnDefaults: (
           patch: AgentSpawnDefaultsPatch,
         ) => Promise<{ ok: true } | { error: string }>;
+        getMcpConfig: () => Promise<
+          { ok: true; path: string; text: string } | { error: string }
+        >;
+        setMcpConfig: (
+          text: string,
+        ) => Promise<
+          { ok: true; path: string; text: string } | { error: string }
+        >;
+        addMcpConfig: (
+          text: string,
+        ) => Promise<
+          { ok: true; path: string; text: string } | { error: string }
+        >;
         getRepos: () => Promise<RepoConfig[]>;
         updateRepo: (payload: {
           rootPath: string;

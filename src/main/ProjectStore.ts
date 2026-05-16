@@ -40,19 +40,10 @@ import {
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
 } from '../cloudBindingPrefs';
 import { migrateLegacyPlanningMarkdownIntoUserDocsDir } from '../planningDocs/planningUserDocsLegacyMigration';
+import { ensureProjectMcpConfigExists } from './mcpConfig';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
-
-const MCP_JSON = `{
-  "mcpServers": {
-    "flux": {
-      "type": "sse",
-      "url": "http://localhost:47432/sse"
-    }
-  }
-}
-`;
 
 export interface ConfigFile {
   id: string;
@@ -1179,16 +1170,7 @@ export class ProjectStore {
 
     await atomicWriteFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-    const mcpPath = path.join(projectDir, 'mcp.json');
-    try {
-      await fs.access(mcpPath);
-    } catch (err: unknown) {
-      if (errnoCode(err) === 'ENOENT') {
-        await atomicWriteFile(mcpPath, MCP_JSON);
-      } else {
-        throw err;
-      }
-    }
+    await ensureProjectMcpConfigExists(projectDir);
 
     await ensurePlanningAssistantMarkdownFiles(
       path.join(projectDir, 'planning'),

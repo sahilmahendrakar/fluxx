@@ -42,9 +42,14 @@ import {
   agentNotFoundMessage,
   agentSpawnResumeSpec,
   agentSpawnSpec,
-  ensurePlanningDirCursorMcp,
   planningSpawnSpec,
 } from './main/agentSpawn';
+import {
+  addProjectMcpServersText,
+  ensureProjectMcpConfig,
+  materializeCursorMcpConfig,
+  writeProjectMcpConfigText,
+} from './main/mcpConfig';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
@@ -894,6 +899,66 @@ app.whenReady().then(async () => {
     if (fromWorktree) return fromWorktree;
     throw new Error('No active project');
   }
+
+  ipcMain.handle(
+    'project:getMcpConfig',
+    async (): Promise<
+      | { ok: true; path: string; text: string }
+      | { error: string }
+    > => {
+      try {
+        const payload = await ensureProjectMcpConfig(activeProjectDir());
+        return { ok: true, path: payload.path, text: payload.text };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'project:setMcpConfig',
+    async (
+      _e,
+      raw: unknown,
+    ): Promise<
+      | { ok: true; path: string; text: string }
+      | { error: string }
+    > => {
+      if (typeof raw !== 'string') {
+        return { error: 'MCP config must be a JSON string.' };
+      }
+      try {
+        const payload = await writeProjectMcpConfigText(activeProjectDir(), raw);
+        return { ok: true, path: payload.path, text: payload.text };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'project:addMcpConfig',
+    async (
+      _e,
+      raw: unknown,
+    ): Promise<
+      | { ok: true; path: string; text: string }
+      | { error: string }
+    > => {
+      if (typeof raw !== 'string') {
+        return { error: 'MCP config must be a JSON string.' };
+      }
+      try {
+        const payload = await addProjectMcpServersText(activeProjectDir(), raw);
+        return { ok: true, path: payload.path, text: payload.text };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
 
   async function readAutoMoveToReviewWhenPrOpen(): Promise<boolean> {
     const key = appStateStore.get().activeProjectKey;
@@ -2840,6 +2905,18 @@ app.whenReady().then(async () => {
       };
     }
 
+    const projectDirForSession = activeProjectDir();
+    let projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
+    try {
+      projectMcpConfig = await ensureProjectMcpConfig(projectDirForSession);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        error: 'INTERNAL',
+        message: `Could not load MCP configuration: ${message}`,
+      };
+    }
+
     // Dedup against the daemon's live registry.
     const existing = (await daemonClient.listSessions()).find(
       (s) => s.taskId === task.id && s.status === 'running',
@@ -2922,13 +2999,42 @@ app.whenReady().then(async () => {
         });
       }
 
+      if (merged.agent === 'cursor') {
+        try {
+          await materializeCursorMcpConfig(worktreePath, projectMcpConfig.config);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error('[session:start] cursor MCP materialization failed', {
+            taskId: task.id,
+            projectId: project.id,
+            message,
+          });
+          try {
+            await worktreeService.remove(
+              worktreePath,
+              path.resolve(sessionRepoCfg.rootPath),
+            );
+          } catch (removeErr: unknown) {
+            console.error('[session:start] cleanup worktree after MCP failure', removeErr);
+          }
+          return finish({
+            error: 'INTERNAL',
+            message: `Could not prepare Cursor MCP configuration: ${message}`,
+          });
+        }
+      }
+
       await archiveNonRunningSessionsForTask(task.id);
 
       const { command, args } = options?.resume
-        ? agentSpawnResumeSpec(merged)
+        ? agentSpawnResumeSpec(merged, { mcpConfigPath: projectMcpConfig.path })
         : agentSpawnSpec(
             merged,
-            await composeTaskSessionInitialPrompt(merged, path.join(activeProjectDir(), 'planning')),
+            await composeTaskSessionInitialPrompt(
+              merged,
+              path.join(projectDirForSession, 'planning'),
+            ),
+            { mcpConfigPath: projectMcpConfig.path },
           );
       console.log('[session:start] spawn', {
         taskId: task.id,
@@ -2936,9 +3042,8 @@ app.whenReady().then(async () => {
         args,
         resume: Boolean(options?.resume),
       });
-      const projectDirForTrust = activeProjectDir();
-      const trustRoots = projectDirForTrust
-        ? trustPromptAutorespondRootsForProject(projectDirForTrust)
+      const trustRoots = projectDirForSession
+        ? trustPromptAutorespondRootsForProject(projectDirForSession)
         : [];
       const trustAutorespondArg =
         project.autoRespondToTrustPrompts === true &&
@@ -3558,7 +3663,6 @@ app.whenReady().then(async () => {
       }
 
       const planningDir = path.join(projectDir, 'planning');
-      const mcpConfigPath = path.join(projectDir, 'mcp.json');
       await fs.mkdir(planningDir, { recursive: true });
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
@@ -3568,25 +3672,9 @@ app.whenReady().then(async () => {
         project.name,
         project.rootPath,
       );
-      try {
-        await fs.access(mcpConfigPath);
-      } catch {
-        await fs.writeFile(
-          mcpConfigPath,
-          `${JSON.stringify(
-            {
-              mcpServers: {
-                flux: { type: 'sse', url: 'http://localhost:47432/sse' },
-              },
-            },
-            null,
-            2,
-          )}\n`,
-          'utf8',
-        );
-      }
+      const projectMcpConfig = await ensureProjectMcpConfig(projectDir);
       if (planningAgent === 'cursor') {
-        await ensurePlanningDirCursorMcp(planningDir);
+        await materializeCursorMcpConfig(planningDir, projectMcpConfig.config);
       }
 
       const spawnModel = resolvedPlanningModelForSpawn(
@@ -3597,7 +3685,7 @@ app.whenReady().then(async () => {
       const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
       const { command, args } = planningSpawnSpec(
         planningAgent,
-        mcpConfigPath,
+        projectMcpConfig.path,
         spawnModel,
         spawnYolo,
       );
