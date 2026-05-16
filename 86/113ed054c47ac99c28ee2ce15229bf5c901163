@@ -1,0 +1,25 @@
+src/App.tsx
+  s_1bc3144b9d2b06::t_cc9677678390f9 136
+  s_1bc3144b9d2b06::t_95c4f883308ed7 196-203
+  s_1bc3144b9d2b06::t_0477ecb995473e 1856
+  s_1bc3144b9d2b06::t_e0ab06e696234b 1871-1878
+  s_1bc3144b9d2b06::t_f2621de80bccdb 1974-1976
+vite.main.config.ts
+  s_1bc3144b9d2b06::t_bb4329324a483d 31-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "86113ed054c47ac99c28ee2ce15229bf5c901163",
+  "prompts": {},
+  "sessions": {
+    "s_1bc3144b9d2b06": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "96054e8c-3666-4c1a-b67b-bf128851364f",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
