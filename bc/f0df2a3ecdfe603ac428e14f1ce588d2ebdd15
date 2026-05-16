@@ -1,0 +1,21 @@
+package.json
+  s_450d6eb790175a::t_2797d1d4dd086e 4
+src/main/McpServer.ts
+  s_450d6eb790175a::t_bb2660a3a360a3 107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "bcf0df2a3ecdfe603ac428e14f1ce588d2ebdd15",
+  "prompts": {},
+  "sessions": {
+    "s_450d6eb790175a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "759a2020-2aef-44ab-ace2-193ee523ff65",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
