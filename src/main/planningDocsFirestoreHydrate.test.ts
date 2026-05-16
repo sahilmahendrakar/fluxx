@@ -21,6 +21,10 @@ function sha(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
+function userDocAbs(planningDir: string, rel: string): string {
+  return path.join(planningDir, 'docs', rel);
+}
+
 describe('applyFirestorePlanningDocsSnapshot', () => {
   let planningDir: string;
   const rel = 'notes/shared.md';
@@ -48,7 +52,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     });
     expect(r).toEqual({ ok: true, changed: true });
 
-    const body = await fs.readFile(path.join(planningDir, rel), 'utf8');
+    const body = await fs.readFile(userDocAbs(planningDir, rel), 'utf8');
     expect(body).toBe('# hello');
 
     const state = await readPlanningDocsSyncState(planningDir);
@@ -70,7 +74,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
       removedDocIds: [],
     });
 
-    await fs.writeFile(path.join(planningDir, rel), 'local-edit', 'utf8');
+    await fs.writeFile(userDocAbs(planningDir, rel), 'local-edit', 'utf8');
 
     const r2 = await applyFirestorePlanningDocsSnapshot(planningDir, {
       projectId: 'p1',
@@ -86,7 +90,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     });
     expect(r2).toEqual({ ok: true, changed: false });
 
-    const body = await fs.readFile(path.join(planningDir, rel), 'utf8');
+    const body = await fs.readFile(userDocAbs(planningDir, rel), 'utf8');
     expect(body).toBe('local-edit');
   });
 
@@ -111,7 +115,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     });
     expect(r).toEqual({ ok: true, changed: true });
 
-    await expect(fs.access(path.join(planningDir, rel))).rejects.toMatchObject({
+    await expect(fs.access(userDocAbs(planningDir, rel))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     const state = await readPlanningDocsSyncState(planningDir);
@@ -132,7 +136,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
       removedDocIds: [],
     });
 
-    await fs.writeFile(path.join(planningDir, rel), 'edited', 'utf8');
+    await fs.writeFile(userDocAbs(planningDir, rel), 'edited', 'utf8');
 
     const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
       projectId: 'p1',
@@ -141,7 +145,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     });
     expect(r).toEqual({ ok: true, changed: false });
 
-    const body = await fs.readFile(path.join(planningDir, rel), 'utf8');
+    const body = await fs.readFile(userDocAbs(planningDir, rel), 'utf8');
     expect(body).toBe('edited');
     const state = await readPlanningDocsSyncState(planningDir);
     expect(state.files[rel]?.lastSyncedContentHash).toBe(sha('synced'));
@@ -163,7 +167,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
       removedDocIds: [],
     });
     expect(r).toEqual({ ok: true, changed: false });
-    await expect(fs.access(path.join(planningDir, rel))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(userDocAbs(planningDir, rel))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('is a no-op when markdown and remote revision already match sync state', async () => {
@@ -233,7 +237,7 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     let st = await readPlanningDocsSyncState(planningDir);
     expect(st.pausedPushPaths?.[rel]).toBeDefined();
 
-    await fs.writeFile(path.join(planningDir, rel), 'base', 'utf8');
+    await fs.writeFile(userDocAbs(planningDir, rel), 'base', 'utf8');
 
     const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
       projectId: 'p1',

@@ -1,8 +1,11 @@
 import path from 'node:path';
-import { isUnderPlanningUnsyncedPrefix } from './cloudPlanningDocsMigration';
+import { isPlanningInstructionSeedFile, isUnderPlanningUnsyncedPrefix } from './cloudPlanningDocsMigration';
 
 /** Internal sync metadata under `planning/` — not editable as planning docs in-app. */
 export const PLANNING_DOCS_DISK_SYNC_REL_PREFIX = '.flux-docs-sync';
+
+/** User-facing planning markdown lives under `<planningDir>/docs/` (agents stay at `<planningDir>/`). */
+export const PLANNING_USER_DOCS_REL_SEGMENT = 'docs';
 
 const MD_SUFFIX = '.md';
 const BASE64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -66,14 +69,103 @@ export function normalizePlanningDocRelativePath(input: string): string | null {
     const seg = segments[i];
     if (!isValidPlanningSegment(seg)) return null;
   }
+  /** `docs/` is implicit in IPC paths; allowing it would double-nest under `planning/docs/`. */
+  if (segments[0] === PLANNING_USER_DOCS_REL_SEGMENT) return null;
   const last = segments[segments.length - 1];
   if (!last.toLowerCase().endsWith(MD_SUFFIX)) return null;
   return segments.join('/');
 }
 
+export function planningUserDocsDir(planningDir: string): string {
+  return path.join(planningDir, PLANNING_USER_DOCS_REL_SEGMENT);
+}
+
+function resolveMarkdownUnderBaseDir(baseDir: string, norm: string): string | null {
+  const candidate = path.resolve(baseDir, ...norm.split('/'));
+  const resolvedRoot = path.resolve(baseDir);
+  if (candidate === resolvedRoot) return null;
+  const relCheck = path.relative(resolvedRoot, candidate);
+  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) return null;
+  return candidate;
+}
+
+/** True for `.flux-docs-sync/**` and `_flux_unsynced/**` (same rules as push listing). */
+export function isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath: string): boolean {
+  const norm = normalizePlanningDocRelativePath(relativePath);
+  if (!norm) return false;
+  const sync = PLANNING_DOCS_DISK_SYNC_REL_PREFIX;
+  if (norm === sync || norm.startsWith(`${sync}/`)) return true;
+  return isUnderPlanningUnsyncedPrefix(norm);
+}
+
+/** Reserved agent/runtime markdown or paths that must never be user planning docs. */
+export function isPlanningUserDocRelativePathDisallowed(norm: string): boolean {
+  if (isPlanningMarkdownRelativePathForbiddenForUserWrite(norm)) return true;
+  const segments = norm.split('/');
+  for (const seg of segments) {
+    const lower = seg.toLowerCase();
+    if (lower === 'claude.md' || lower === 'agents.md') return true;
+    if (seg === '.cursor') return true;
+  }
+  return false;
+}
+
 /**
- * Resolve `relativePath` under `planningDir` with traversal protection.
- * Returns absolute filesystem path or null when invalid.
+ * Legacy layout: markdown directly under `planning/` (outside `planning/docs/`).
+ * Used only for read/list compatibility until content is recreated under `docs/`.
+ */
+export function planningLegacyUserMarkdownAbsPath(planningDir: string, norm: string): string | null {
+  if (!norm || isPlanningUserDocRelativePathDisallowed(norm)) return null;
+  if (isPlanningInstructionSeedFile(norm)) return null;
+  const candidate = resolveMarkdownUnderBaseDir(planningDir, norm);
+  if (!candidate) return null;
+  const relCheck = path.relative(path.resolve(planningDir), candidate).split(path.sep).join('/');
+  if (relCheck === PLANNING_USER_DOCS_REL_SEGMENT || relCheck.startsWith(`${PLANNING_USER_DOCS_REL_SEGMENT}/`)) {
+    return null;
+  }
+  return candidate;
+}
+
+/**
+ * Resolve a normalized user planning markdown path for disk reads (canonical `docs/`
+ * first, then legacy `planning/` outside `docs/`).
+ */
+export async function resolvePlanningUserMarkdownAbsPathForRead(
+  planningDir: string,
+  norm: string,
+  fsAccess: (p: string) => Promise<void>,
+): Promise<string | null> {
+  if (!norm || isPlanningUserDocRelativePathDisallowed(norm) || isPlanningInstructionSeedFile(norm)) {
+    return null;
+  }
+  const canonical = resolveMarkdownUnderBaseDir(planningUserDocsDir(planningDir), norm);
+  if (canonical) {
+    try {
+      await fsAccess(canonical);
+      return canonical;
+    } catch {
+      /* try legacy */
+    }
+  }
+  const legacy = planningLegacyUserMarkdownAbsPath(planningDir, norm);
+  if (!legacy) return null;
+  try {
+    await fsAccess(legacy);
+    return legacy;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve `relativePath` for persisted planning markdown.
+ *
+ * - `_flux_unsynced/**` and instruction seeds (`CLAUDE.md`, `AGENTS.md`) stay under
+ *   `planningDir` (agent workspace root).
+ * - All other user docs resolve under `planningDir/docs/`.
+ *
+ * Legacy files outside `docs/` are *not* returned here — use
+ * {@link planningLegacyUserMarkdownAbsPath} or {@link resolvePlanningUserMarkdownAbsPathForRead}.
  */
 export function safeResolvePlanningMarkdownAbsPath(
   planningDir: string,
@@ -81,12 +173,14 @@ export function safeResolvePlanningMarkdownAbsPath(
 ): string | null {
   const norm = normalizePlanningDocRelativePath(relativePath);
   if (!norm) return null;
-  const candidate = path.resolve(planningDir, norm);
-  const resolvedRoot = path.resolve(planningDir);
-  if (candidate === resolvedRoot) return null;
-  const relCheck = path.relative(resolvedRoot, candidate);
-  if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) return null;
-  return candidate;
+  if (isUnderPlanningUnsyncedPrefix(norm)) {
+    return resolveMarkdownUnderBaseDir(planningDir, norm);
+  }
+  if (isPlanningInstructionSeedFile(norm)) {
+    return resolveMarkdownUnderBaseDir(planningDir, norm);
+  }
+  if (isPlanningUserDocRelativePathDisallowed(norm)) return null;
+  return resolveMarkdownUnderBaseDir(planningUserDocsDir(planningDir), norm);
 }
 
 /**
@@ -116,11 +210,12 @@ export function planningFirestoreDocIdToRelativePath(docId: string): string | nu
   }
 }
 
-/** True for `.flux-docs-sync/**` and `_flux_unsynced/**` (same rules as push listing). */
-export function isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath: string): boolean {
+/**
+ * True when a path must not be attached to tasks, listed in Docs, or written via the
+ * planning-docs provider (includes sync internals and agent/runtime paths).
+ */
+export function isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite(relativePath: string): boolean {
   const norm = normalizePlanningDocRelativePath(relativePath);
   if (!norm) return false;
-  const sync = PLANNING_DOCS_DISK_SYNC_REL_PREFIX;
-  if (norm === sync || norm.startsWith(`${sync}/`)) return true;
-  return isUnderPlanningUnsyncedPrefix(norm);
+  return isPlanningUserDocRelativePathDisallowed(norm) || isPlanningInstructionSeedFile(norm);
 }

@@ -38,7 +38,7 @@ export type PlanningDocsFirestoreSyncArgs = {
 
 /**
  * Subscribes to `projects/{projectId}/planningDocs` and mirrors remote markdown
- * into the local `planning/` folder via main-process IPC (canonical when remote
+ * into the local `planning/docs/` tree via main-process IPC (canonical when remote
  * has documents; empty remote does not delete local-only files).
  */
 export function usePlanningDocsFirestoreSync(
