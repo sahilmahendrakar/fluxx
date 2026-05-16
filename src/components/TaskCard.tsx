@@ -12,6 +12,7 @@ import {
   GitPullRequestCreate,
   Icon,
   Loader2,
+  FileText,
   Terminal,
   UserCircle2,
 } from 'lucide-react';
@@ -275,6 +276,7 @@ export default function TaskCard({
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const blocked = isTaskBlocked(task, allTasks);
   const blocksCount = getBlockedTasks(task.id, allTasks).length;
+  const attachedDocCount = (task.attachedPlanningDocPaths ?? []).length;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
   const effectiveUnblockAutostart = whenUnblockedAutostartBoardChipEffective(task, projectUnblockAuto);
   const prUrl = task.githubPr?.url?.trim() ?? '';
@@ -450,6 +452,17 @@ export default function TaskCard({
                       <span className="truncate font-mono" aria-hidden>
                         {branchChipLabel}
                       </span>
+                    </span>
+                  ) : null}
+                  {attachedDocCount > 0 ? (
+                    <span
+                      className="inline-flex max-w-[7rem] items-center gap-0.5 truncate rounded border border-indigo-500/25 bg-indigo-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-indigo-200/90"
+                      title={(task.attachedPlanningDocPaths ?? []).join('\n')}
+                      role="img"
+                      aria-label={`${attachedDocCount} attached planning document${attachedDocCount === 1 ? '' : 's'}`}
+                    >
+                      <FileText className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      {attachedDocCount > 1 ? <span aria-hidden>{attachedDocCount}</span> : null}
                     </span>
                   ) : null}
                 </div>

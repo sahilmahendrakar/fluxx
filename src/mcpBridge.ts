@@ -45,6 +45,7 @@ export interface McpBridgeTaskCreateInput {
   agentYolo?: boolean;
   /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
   repoId?: string;
+  attachedPlanningDocPaths?: string[];
 }
 
 export interface McpBridgeTaskPatch {
@@ -60,6 +61,7 @@ export interface McpBridgeTaskPatch {
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
+  attachedPlanningDocPaths?: string[];
 }
 
 export interface McpBridgeTasksCreatePayload {

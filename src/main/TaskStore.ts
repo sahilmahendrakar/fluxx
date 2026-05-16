@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Agent, Task, TaskGithubPr } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
+import { normalizeAttachedPlanningDocPaths } from '../taskPlanningDocAttachments';
 import { normalizeTaskLabels } from '../taskLabels';
 
 type TaskInput = {
@@ -19,6 +20,7 @@ type TaskInput = {
   agentYolo?: boolean;
   /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
   repoId?: string;
+  attachedPlanningDocPaths?: string[];
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -234,6 +236,10 @@ export class TaskStore {
     if (input.repoId != null && input.repoId.length > 0) {
       task.repoId = input.repoId;
     }
+    const attached = normalizeAttachedPlanningDocPaths(input.attachedPlanningDocPaths);
+    if (attached.length > 0) {
+      task.attachedPlanningDocPaths = attached;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -258,6 +264,7 @@ export class TaskStore {
         | 'createSourceBranchIfMissing'
         | 'repoId'
         | 'fluxWorkBranch'
+        | 'attachedPlanningDocPaths'
       >
     > & {
       autoStartOnUnblock?: boolean | null;
@@ -277,6 +284,7 @@ export class TaskStore {
       assigneeId: patchAssigneeId,
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
+      attachedPlanningDocPaths: patchAttachedPlanningDocs,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -333,6 +341,14 @@ export class TaskStore {
         delete updated.repoId;
       } else {
         updated.repoId = nextRepo;
+      }
+    }
+    if (patchAttachedPlanningDocs !== undefined) {
+      const n = normalizeAttachedPlanningDocPaths(patchAttachedPlanningDocs);
+      if (n.length > 0) {
+        updated.attachedPlanningDocPaths = n;
+      } else {
+        delete updated.attachedPlanningDocPaths;
       }
     }
     this.tasks[index] = updated;

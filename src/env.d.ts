@@ -249,6 +249,7 @@ declare global {
           agentModel?: string;
           agentYolo?: boolean;
           repoId?: string;
+          attachedPlanningDocPaths?: string[];
         }) => Promise<Task>;
         update: (
           id: string,
@@ -269,6 +270,7 @@ declare global {
               | 'createSourceBranchIfMissing'
               | 'repoId'
               | 'fluxWorkBranch'
+              | 'attachedPlanningDocPaths'
             >
           > & {
             githubPr?: TaskGithubPr | null;

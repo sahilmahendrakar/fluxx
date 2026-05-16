@@ -288,6 +288,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agentModel?: string;
       agentYolo?: boolean;
       repoId?: string;
+      attachedPlanningDocPaths?: string[];
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
     update: (
       id: string,
@@ -308,6 +309,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'createSourceBranchIfMissing'
           | 'repoId'
           | 'fluxWorkBranch'
+          | 'attachedPlanningDocPaths'
         >
       > & {
         githubPr?: TaskGithubPr | null;

@@ -16,6 +16,7 @@ import { COLUMNS, type Agent, type Task, type TaskGithubPr, type TaskStatus } fr
 import { parseGithubPrField } from '../../githubPrMetadata';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { normalizeTaskLabels } from '../../taskLabels';
+import { normalizeAttachedPlanningDocPaths } from '../../taskPlanningDocAttachments';
 import {
   planTaskSourceBranchFieldsForCreate,
   validateStoredTaskSourceBranchName,
@@ -116,6 +117,7 @@ export class FirestoreTaskProvider implements TaskProvider {
     if (!repoResolved.ok) {
       throw new Error(repoResolved.message);
     }
+    const initialAttached = normalizeAttachedPlanningDocPaths(input.attachedPlanningDocPaths);
     const data = {
       title: input.title,
       status: input.status ?? ('backlog' as TaskStatus),
@@ -136,6 +138,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         ? { agentModel: input.agentModel.trim() }
         : {}),
       ...(input.agentYolo === true ? { agentYolo: true } : {}),
+      ...(initialAttached.length > 0 ? { attachedPlanningDocPaths: initialAttached } : {}),
     };
     const ref = await addDoc(col, data);
     let normalizedDeps: string[] | undefined;
@@ -191,6 +194,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         ? { agentModel: input.agentModel.trim() }
         : {}),
       ...(input.agentYolo === true ? { agentYolo: true } : {}),
+      ...(initialAttached.length > 0 ? { attachedPlanningDocPaths: initialAttached } : {}),
       repoId: repoResolved.repoId,
     };
   }
@@ -271,6 +275,14 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.labels = n;
       } else {
         updates.labels = deleteField();
+      }
+    }
+    if (patch.attachedPlanningDocPaths !== undefined) {
+      const n = normalizeAttachedPlanningDocPaths(patch.attachedPlanningDocPaths);
+      if (n.length > 0) {
+        updates.attachedPlanningDocPaths = n;
+      } else {
+        updates.attachedPlanningDocPaths = deleteField();
       }
     }
     if (patch.autoStartOnUnblock !== undefined) {
@@ -387,6 +399,7 @@ function toTask(
     ...parseCreateSourceBranchIfMissingField(data.createSourceBranchIfMissing),
     ...parseRepoIdField(data.repoId, primaryRepoId),
     ...parseFluxWorkBranchField(data.fluxWorkBranch),
+    ...parseAttachedPlanningDocPathsField(data.attachedPlanningDocPaths),
   };
 }
 
@@ -397,6 +410,14 @@ function parseFluxWorkBranchField(
     return { fluxWorkBranch: val.trim() };
   }
   return {};
+}
+
+function parseAttachedPlanningDocPathsField(
+  val: unknown,
+): { attachedPlanningDocPaths: string[] } | Record<string, never> {
+  const n = normalizeAttachedPlanningDocPaths(val);
+  if (n.length === 0) return {};
+  return { attachedPlanningDocPaths: n };
 }
 
 function githubPrToFirestore(pr: TaskGithubPr): Record<string, unknown> {

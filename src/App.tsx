@@ -68,6 +68,7 @@ import {
 } from './renderer/tasks/useCloudSilenceReconciliation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { normalizeTaskLabels } from './taskLabels';
+import { normalizeAttachedPlanningDocPaths } from './taskPlanningDocAttachments';
 import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from './taskDependencies';
@@ -133,6 +134,7 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
     createSourceBranchIfMissing,
     autoStartOnUnblock,
     repoId,
+    attachedPlanningDocPaths: patchAttachedDocs,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -190,6 +192,15 @@ function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | undefine
       delete next.repoId;
     } else {
       next = { ...next, repoId };
+    }
+  }
+  if (patchAttachedDocs !== undefined) {
+    const n = normalizeAttachedPlanningDocPaths(patchAttachedDocs);
+    if (n.length > 0) {
+      next = { ...next, attachedPlanningDocPaths: n };
+    } else {
+      next = { ...next };
+      delete next.attachedPlanningDocPaths;
     }
   }
   return next;
@@ -1844,6 +1855,7 @@ export default function App() {
         autoStartOnUnblock: patchAsou,
         githubPr: patchGh,
         workspaceCleanedAt: patchWsc,
+        attachedPlanningDocPaths: patchAttachedDocs,
         ...patchRest
       } = patch;
       setTasks((prev) =>
@@ -1902,6 +1914,15 @@ export default function App() {
               next = { ...next, repoId: rid };
             }
           }
+          if (patchAttachedDocs !== undefined) {
+            const n = normalizeAttachedPlanningDocPaths(patchAttachedDocs);
+            if (n.length > 0) {
+              next = { ...next, attachedPlanningDocPaths: n };
+            } else {
+              next = { ...next };
+              delete next.attachedPlanningDocPaths;
+            }
+          }
           next = {
             ...next,
             ...assigneePatchForCloudAutoStartOnUnblock({
@@ -1952,6 +1973,10 @@ export default function App() {
       }
       if (patchGh !== undefined) {
         persistable.githubPr = patchGh;
+      }
+      if (patchAttachedDocs !== undefined) {
+        persistable.attachedPlanningDocPaths =
+          normalizeAttachedPlanningDocPaths(patchAttachedDocs);
       }
       if (Object.keys(persistable).length === 0) return;
 
@@ -3218,6 +3243,8 @@ export default function App() {
                             prAgentAwaiting: Boolean(prAgentAwaitingByTaskId[item.session.taskId]),
                             projectRepos: projectRepos ?? undefined,
                             multiRepo2Enabled: true,
+                            planningDocFiles,
+                            onOpenPlanningDoc: handleSelectPlanningDoc,
                           }
                         : undefined
                     }
@@ -3351,6 +3378,8 @@ export default function App() {
                         }
                         projectRepos={projectRepos ?? undefined}
                         multiRepo2Enabled
+                        planningDocFiles={planningDocFiles}
+                        onOpenPlanningDoc={handleSelectPlanningDoc}
                       />
                     </div>
                     <div

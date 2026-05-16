@@ -18,6 +18,7 @@ export type TaskPatch = Partial<
     | 'createSourceBranchIfMissing'
     | 'repoId'
     | 'fluxWorkBranch'
+    | 'attachedPlanningDocPaths'
   >
 > & {
   workspaceCleanedAt?: string | null;
@@ -40,6 +41,7 @@ export type TaskCreateInput = {
   agentYolo?: boolean;
   /** Multi-repo2: must belong to the active project when set; otherwise the primary repo is used. */
   repoId?: string;
+  attachedPlanningDocPaths?: string[];
 };
 
 /**

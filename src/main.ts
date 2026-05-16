@@ -1836,6 +1836,7 @@ app.whenReady().then(async () => {
         agentModel?: string;
         agentYolo?: boolean;
         repoId?: string;
+        attachedPlanningDocPaths?: string[];
       },
     ) => {
       const project = projectStore.get();
@@ -3018,6 +3019,7 @@ app.whenReady().then(async () => {
       | 'createSourceBranchIfMissing'
       | 'repoId'
       | 'fluxWorkBranch'
+      | 'attachedPlanningDocPaths'
     >
   > & {
     githubPr?: TaskGithubPr | null;

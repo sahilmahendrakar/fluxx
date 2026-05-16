@@ -386,6 +386,11 @@ export interface Task {
   fluxWorkBranch?: string;
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
+  /**
+   * Planning markdown paths (repo-relative under `planning/`, forward slashes, `.md`)
+   * linked from the planning docs list for quick navigation from this task.
+   */
+  attachedPlanningDocPaths?: string[];
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error';

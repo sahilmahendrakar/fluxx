@@ -145,3 +145,34 @@ describe('TaskStore sourceBranch fields', () => {
     expect(row.createSourceBranchIfMissing).toBeUndefined();
   });
 });
+
+describe('TaskStore attachedPlanningDocPaths', () => {
+  let dir: string;
+
+  afterEach(async () => {
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('normalizes and persists on create and update', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-attached-docs-'));
+    const store = new TaskStore(dir);
+    await store.init();
+    const created = await store.create({
+      title: 't',
+      agent: 'cursor',
+      projectId: 'p1',
+      attachedPlanningDocPaths: ['notes/a.md', 'bad.txt', 'notes/a.md'],
+    });
+    expect(created.attachedPlanningDocPaths).toEqual(['notes/a.md']);
+
+    const cleared = await store.update(created.id, { attachedPlanningDocPaths: [] });
+    expect(cleared.attachedPlanningDocPaths).toBeUndefined();
+
+    const repatched = await store.update(created.id, {
+      attachedPlanningDocPaths: ['x/plan.md', 'x/plan.md'],
+    });
+    expect(repatched.attachedPlanningDocPaths).toEqual(['x/plan.md']);
+  });
+});
