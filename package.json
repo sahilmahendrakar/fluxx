@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "description": "Task-driven AI agent orchestration for developers",
   "main": ".vite/build/main.js",
+  "packageManager": "pnpm@10.29.3",
   "private": true,
   "scripts": {
     "start": "electron-forge start",
