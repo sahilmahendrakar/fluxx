@@ -2,12 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFirestoreFirstHydrationPlan,
   classifyPlanningDocsMigrationScenario,
+  extractPlanningInstructionManagedBodyForEquivalence,
   isUnderPlanningUnsyncedPrefix,
   localOnlyPlanningPaths,
   planningDocBodiesEquivalent,
   planningMarkdownEquivalentForSeededInstructions,
   PLANNING_CLOUD_UNSYNCED_PREFIX,
 } from './cloudPlanningDocsMigration';
+import {
+  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
+  FLUX_PLANNING_INSTRUCTIONS_END,
+} from './planningInstructionMarkers';
 
 describe('classifyPlanningDocsMigrationScenario', () => {
   it('detects quadrants', () => {
@@ -47,6 +52,19 @@ describe('planningMarkdownEquivalentForSeededInstructions', () => {
     const a = '# Planning workspace — foo\n\nBody `/p1`';
     const b = '# Planning workspace — bar\n\nBody `/p2`';
     expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', a, b)).toBe(true);
+  });
+
+  it('strips flux template version comments before comparing', () => {
+    const a = '<!-- flux-planning-template 1 -->\n\n# Planning workspace — x\n`/a`';
+    const b = '<!-- flux-planning-template 2 -->\n\n# Planning workspace — y\n`/b`';
+    expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', a, b)).toBe(true);
+  });
+
+  it('treats marker-wrapped bodies as equivalent to plain managed inner', () => {
+    const inner = '# Planning workspace — team\n\nSame `/repo/tools`';
+    const wrapped = `${FLUX_PLANNING_INSTRUCTIONS_BEGIN}\n${inner}\n${FLUX_PLANNING_INSTRUCTIONS_END}`;
+    expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', wrapped, inner)).toBe(true);
+    expect(extractPlanningInstructionManagedBodyForEquivalence(wrapped)).toBe(inner);
   });
 });
 

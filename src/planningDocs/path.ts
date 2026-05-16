@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { isPlanningInstructionSeedFile, isUnderPlanningUnsyncedPrefix } from './cloudPlanningDocsMigration';
+import { PLANNING_INSTRUCTIONS_STATE_BASENAME } from './planningInstructionMarkers';
 
 /** Internal sync metadata under `planning/` — not editable as planning docs in-app. */
 export const PLANNING_DOCS_DISK_SYNC_REL_PREFIX = '.flux-docs-sync';
@@ -101,6 +102,7 @@ export function isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath
 /** Reserved agent/runtime markdown or paths that must never be user planning docs. */
 export function isPlanningUserDocRelativePathDisallowed(norm: string): boolean {
   if (isPlanningMarkdownRelativePathForbiddenForUserWrite(norm)) return true;
+  if (norm === PLANNING_INSTRUCTIONS_STATE_BASENAME) return true;
   const segments = norm.split('/');
   for (const seg of segments) {
     const lower = seg.toLowerCase();

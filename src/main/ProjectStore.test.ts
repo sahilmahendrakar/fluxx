@@ -7,6 +7,12 @@ import {
   ensurePlanningAssistantMarkdownFiles,
   ProjectStore,
 } from './ProjectStore';
+import { planningAssistantMarkdown, wrapPlanningInstructionsManagedBlock } from './planningAssistantInstructions';
+import { stripFluxPlanningTemplateVersionComment } from '../planningDocs/cloudPlanningDocsMigration';
+import {
+  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
+  PLANNING_INSTRUCTIONS_STATE_BASENAME,
+} from '../planningDocs/planningInstructionMarkers';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
 import { stableLocalProjectIdForRoot, legacyCloudProjectDir, assertSafeToDeleteLegacyFlatProjectsRoot } from './projectDirLayout';
 import { PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME } from '../planningDocs/planningUserDocsLegacyMigration';
@@ -581,5 +587,69 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     expect(claude).toContain('flux__get_project_info');
     expect(claude).not.toContain('repos[]');
     expect(claude).not.toContain('repoId');
+  });
+
+  it('wraps new seeds with Flux markers and persists instruction state', async () => {
+    await ensurePlanningAssistantMarkdownFiles(dir, 'N', '/tmp/root', { multiRepoGuide: true });
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(claude).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(claude).toContain('<!-- flux-planning-template');
+    const st = JSON.parse(
+      await fs.readFile(path.join(dir, PLANNING_INSTRUCTIONS_STATE_BASENAME), 'utf8'),
+    ) as { schemaVersion: number; files: Record<string, unknown> };
+    expect(st.schemaVersion).toBe(1);
+    expect(st.files['CLAUDE.md']).toBeDefined();
+    expect(st.files['AGENTS.md']).toBeDefined();
+  });
+
+  it('is idempotent when files already match the current template', async () => {
+    await ensurePlanningAssistantMarkdownFiles(dir, 'N', '/tmp/root', { multiRepoGuide: true });
+    const first = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'N', '/tmp/root', { multiRepoGuide: true });
+    const second = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(second).toBe(first);
+  });
+
+  it('upgrades legacy unwrapped templates to wrapped managed blocks', async () => {
+    const legacy = stripFluxPlanningTemplateVersionComment(
+      planningAssistantMarkdown('Legacy', '/other/root', true),
+    );
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), legacy, 'utf8');
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), legacy, 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Legacy', '/other/root', { multiRepoGuide: true });
+    const upgraded = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(upgraded).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(upgraded).toContain('flux__get_project_info');
+  });
+
+  it('preserves manual instruction files that are not Flux templates', async () => {
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), '# Custom only\n\nhello', 'utf8');
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), '# Custom only\n\nhello', 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'N', '/tmp/r', { multiRepoGuide: true });
+    expect(await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8')).toContain('Custom only');
+  });
+
+  it('preserves user prefix outside managed marker blocks when upgrading managed inner', async () => {
+    const innerOld = '<!-- flux-planning-template 0 -->\n\n# Planning workspace — X\n\nold `/p`';
+    const wrappedOld = `# My notes\n\n${wrapPlanningInstructionsManagedBlock(innerOld).trimEnd()}\n`;
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), wrappedOld, 'utf8');
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), wrappedOld, 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Up', '/tmp/u', { multiRepoGuide: true });
+    const next = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(next).toContain('# My notes');
+    expect(next).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(next).toContain('flux-planning-template 1');
+  });
+
+  it('upgrades only the Flux template file when CLAUDE is manual and AGENTS is legacy', async () => {
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), 'manual-only', 'utf8');
+    const legacyAgents = stripFluxPlanningTemplateVersionComment(
+      planningAssistantMarkdown('Split', '/tmp/s', true),
+    );
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), legacyAgents, 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Split', '/tmp/s', { multiRepoGuide: true });
+    expect(await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe('manual-only');
+    const agents = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
   });
 });

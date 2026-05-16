@@ -39,7 +39,9 @@ import {
   DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
 } from '../cloudBindingPrefs';
-import { migrateLegacyPlanningMarkdownIntoUserDocsDir } from '../planningDocs/planningUserDocsLegacyMigration';
+import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
+
+export { ensurePlanningAssistantMarkdownFiles };
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
@@ -302,121 +304,6 @@ async function atomicWriteFile(filePath: string, payload: string): Promise<void>
     }
   }
   await fs.rename(tmpPath, filePath);
-}
-
-/** Shared body for \`planning/CLAUDE.md\` and \`planning/AGENTS.md\` (same text, two filenames). */
-function planningAssistantMarkdown(
-  projectName: string,
-  rootPath: string,
-  multiRepoGuide: boolean,
-): string {
-  const workspaceIntro = multiRepoGuide
-    ? `This directory is the Flux **planning** workspace for \`${projectName}\`. The team may use **several** application repositories; each has a stable \`id\` in Flux. Call \`flux__get_project_info\` before repo-specific work: it returns \`repos[]\` (with \`id\`, \`label\`, \`isPrimary\`, \`configuredDefaultBranch\`, optional \`defaultBranchShort\`, clone \`rootPath\` when known, plus \`pathStatus\` locally or \`binding\` in the cloud), \`primaryRepoId\`, and a backwards-compatible top-level \`rootPath\` pointing at the **primary** repository clone. Planning sessions still use **this** directory as the process working directory — open code under each repo's \`rootPath\` from the tool response, not only the path embedded below.
-
-When user intent spans more than one repository and is ambiguous, **ask once** which repo (or \`repoId\`) they mean before creating tasks.`
-    : `This directory is the Flux **planning** workspace for \`${projectName}\`. Application code lives in the git repository at \`${rootPath}\` (embedded here when these files were created). The **canonical** path for reading code is the \`rootPath\` field returned by \`flux__get_project_info\` — prefer that after you call the tool. Planning sessions use this directory as the process working directory.`;
-
-  const contextSteps = multiRepoGuide
-    ? `  1. Call \`flux__get_project_info\` once (unless you already have current \`repos\`, \`primaryRepoId\`, and primary \`rootPath\` from this turn). Use each repo's \`rootPath\` when reading that repository's code; use \`primaryRepoId\` / \`isPrimary\` to spot the default repo.
-  2. Read team planning documents under \`docs/\` relative to this directory (for example \`docs/vision.md\`, \`docs/architecture.md\`, sprint notes, ADRs). Older projects may still have markdown at the planning root outside \`docs/\` until migrated — prefer \`docs/\` for new material.
-  3. Explore each relevant repository under the \`rootPath\` values from the tool as needed.
-  4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks. For **new** tasks, pass \`repoId\` (a string matching \`repos[].id\`) when work belongs to a non-primary repository; omit \`repoId\` to target the primary repo.`
-    : `  1. Call \`flux__get_project_info\` once (unless you already have the current \`rootPath\` and project name from a call in this turn). Use the returned \`rootPath\` as the application codebase location.
-  2. Read team planning documents under \`docs/\` relative to this directory (for example \`docs/vision.md\`, \`docs/architecture.md\`). Older projects may still have markdown at the planning root outside \`docs/\` until migrated — prefer \`docs/\` for new material.
-  3. Explore the repository under that \`rootPath\` as needed for the user\u2019s question.
-  4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.`;
-
-  const createTaskLine = multiRepoGuide
-    ? `- \`flux__create_task\` — create a new task with title, description, and agent; optional \`blockedByTaskIds\`, optional \`labels\` (feature tags; normalized: trim, empty dropped, case-insensitive dedupe), optional \`assigneeEmail\` (cloud projects only; use \`flux__list_members\` to find member emails), optional \`repoId\` (must match \`flux__get_project_info.repos[].id\`; omit for the primary repository), optional \`sourceBranch\` (git short branch name; defaults like the app UI when omitted), and optional \`createSourceBranchIfMissing\` (when \`true\`, Flux may create a missing \`sourceBranch\` from the project default on first session start)`
-    : `- \`flux__create_task\` — create a new task with title, description, and agent; optional \`blockedByTaskIds\`, optional \`labels\` (feature tags; normalized: trim, empty dropped, case-insensitive dedupe), optional \`assigneeEmail\` (cloud projects only; use \`flux__list_members\` to find member emails), optional \`sourceBranch\` (git short branch name; defaults like the app UI when omitted), and optional \`createSourceBranchIfMissing\` (when \`true\`, Flux may create a missing \`sourceBranch\` from the project default on first session start)`;
-
-  const updateTaskLine = multiRepoGuide
-    ? `- \`flux__update_task\` — update an existing task's title, description, status, agent, \`blockedByTaskIds\`, \`labels\`, \`assigneeEmail\`, \`unassignAssignee\`, optional \`repoId\` (only while the task has no Flux workspace/session or linked PR — same rules as the UI), and/or source-branch fields (any column transition; passing \`blockedByTaskIds: []\` clears dependencies; \`labels: []\` clears tags). Use \`assigneeEmail\` to assign/reassign by member email, or \`unassignAssignee: true\` to remove the assignee. Branch edits fail safely if a session or worktree already exists`
-    : `- \`flux__update_task\` — update an existing task's title, description, status, agent, \`blockedByTaskIds\`, \`labels\`, \`assigneeEmail\`, \`unassignAssignee\`, and/or source-branch fields (any column transition; passing \`blockedByTaskIds: []\` clears dependencies; \`labels: []\` clears tags). Use \`assigneeEmail\` to assign/reassign by member email, or \`unassignAssignee: true\` to remove the assignee. Branch edits fail safely if a session or worktree already exists`;
-
-  const projectInfoLine = multiRepoGuide
-    ? `- \`flux__get_project_info\` — returns project \`name\`, top-level \`rootPath\` (primary clone), \`repos\` / \`primaryRepoId\` when multi-repo is active, \`taskCounts\`, and \`defaultBranchShort\` for the primary repo when git discovery succeeds (see \`branchDiscoveryError\` if not)`
-    : `- \`flux__get_project_info\` — returns project \`name\`, canonical \`rootPath\` (read application code here), \`taskCounts\`, and \`defaultBranchShort\` when git discovery succeeds (see \`branchDiscoveryError\` if not)`;
-
-  const listBranchesLine = multiRepoGuide
-    ? `- \`flux__list_repo_branches\` — full local + origin remote branch lists, default branch, and optional \`classifyBranch\`; pass \`repoId\` to scope discovery to a specific repository (see \`flux__get_project_info\`)`
-    : `- \`flux__list_repo_branches\` — full local + origin remote branch lists, default branch, and optional \`classifyBranch\` to see whether a name exists or is missing-but-creatable before batch-creating tasks`;
-
-  return `# Planning workspace — ${projectName}
-
-${workspaceIntro}
-
-## Your role
-
-You are a planning assistant. Help the developer think through features, maintain documentation under \`docs/\` in this workspace, and manage tasks on the Flux board.
-
-## Turn-taking
-
-- Do **not** start a substantive planning pass, repository exploration, or tool use until the user has asked a question or given a concrete task.
-- **After they do**, gather context **before** you give substantive answers, update planning docs, or call Flux task tools, unless the request is purely meta and needs no repository or board context. Follow this order:
-${contextSteps}
-
-## Available tools
-
-You have access to the following Flux tools for task management:
-- \`flux__list_tasks\` — list tasks on the board (each task includes \`sourceBranch\` / \`createSourceBranchIfMissing\` when set). Optional \`excludeStatuses\`: array of column ids (\`backlog\`, \`in-progress\`, \`needs-input\`, \`done\`) to omit—e.g. \`["done"]\` returns only non-completed tasks; omit the field for the full board
-${createTaskLine}
-- \`flux__start_task\` — move a task to the **In progress** column (\`status: "in-progress"\`); use when the user wants to pull work from backlog into active development on the board
-${updateTaskLine}
-- \`flux__delete_task\` — permanently remove a task from the board for this project; **only** after the user clearly asked to delete it, then call with \`confirm: true\`. If intent is ambiguous, ask once before deleting
-${projectInfoLine}
-${listBranchesLine}
-- \`flux__list_members\` — cloud projects only: team roster (\`email\`, \`displayName\`, \`role\`) for assignee lookup; local projects return an empty list with a note
-
-Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the usual way to mark work as actively in flight (\`in-progress\`). Use \`flux__update_task\` for other status changes (e.g. **Needs input**, **Review**, **Done**) or edits to title/description/agent.
-
-**Task branches:** When the user names a base branch (e.g. “do this on \`feature/auth\`”), pass that as \`sourceBranch\` on **each** subtask you create so work stays on their branch. Use \`createSourceBranchIfMissing: true\` only when they want a new branch created on first start. If they did not specify a branch, omit \`sourceBranch\` so Flux uses the project default.
-
-**Task dependencies:** \`blockedByTaskIds\` means “this task is blocked until these prerequisite tasks are addressed.” Use \`flux__list_tasks\` to get ids. Only reference tasks in the current project; invalid or cyclic graphs are rejected (local and cloud).
-
-**Team (cloud) projects:** the Flux task tools route through the running Flux app for cloud projects. The app must be **open and signed in** for tools to work; if you see \`Sign in to Flux to use cloud project tools\` or \`Open the Flux app to enable cloud project tools\`, ask the user to bring Flux to the foreground and try again.
-
-## Files in this workspace
-
-Maintain team planning markdown under \`docs/\` (relative to this directory) as living documents:
-- \`docs/vision.md\` — long-term project goals and direction
-- \`docs/architecture.md\` — technical decisions and system design
-- \`docs/YYYY-MM-sprint.md\` — time-boxed planning (create as needed)
-- \`CLAUDE.md\` and \`AGENTS.md\` **in this directory** (not under \`docs/\`) — agent instructions for this workspace (keep them aligned if you edit one)
-
-## Guidelines
-
-- Do not create, update, start, or delete tasks until the context pass above is done (when the question touches the codebase or board).
-- Update planning documents under \`docs/\` when decisions are made
-- Create tasks for concrete, actionable work items
-- Keep \`docs/vision.md\` and \`docs/architecture.md\` up to date as the project evolves
-`;
-}
-
-/** Creates \`CLAUDE.md\` and/or \`AGENTS.md\` only when missing (does not overwrite user edits). */
-export async function ensurePlanningAssistantMarkdownFiles(
-  planningDir: string,
-  projectName: string,
-  rootPath: string,
-  options?: { multiRepoGuide?: boolean },
-): Promise<void> {
-  await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
-  await migrateLegacyPlanningMarkdownIntoUserDocsDir(planningDir);
-  const resolvedRoot = path.resolve(rootPath);
-  const multiRepoGuide = options?.multiRepoGuide ?? true;
-  const md = planningAssistantMarkdown(projectName, resolvedRoot, multiRepoGuide);
-  for (const fileName of ['CLAUDE.md', 'AGENTS.md'] as const) {
-    const filePath = path.join(planningDir, fileName);
-    try {
-      await fs.access(filePath);
-    } catch (err: unknown) {
-      if (errnoCode(err) === 'ENOENT') {
-        await fs.writeFile(filePath, md, 'utf8');
-      } else {
-        throw err;
-      }
-    }
-  }
 }
 
 export class ProjectStore {

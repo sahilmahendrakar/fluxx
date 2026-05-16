@@ -6,6 +6,7 @@ import {
   MAX_PLANNING_RELATIVE_PATH_UTF8_BYTES,
   isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite,
   isPlanningMarkdownRelativePathForbiddenForUserWrite,
+  isPlanningUserDocRelativePathDisallowed,
   normalizePlanningDocRelativePath,
   planningFirestoreDocIdToRelativePath,
   planningLegacyUserMarkdownAbsPath,
@@ -130,6 +131,12 @@ describe('isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite', () => {
     expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('AGENTS.md')).toBe(true);
     expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('.cursor/mcp.md')).toBe(true);
     expect(isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite('notes/ok.md')).toBe(false);
+  });
+});
+
+describe('isPlanningUserDocRelativePathDisallowed', () => {
+  it('blocks the Flux instruction state sidecar', () => {
+    expect(isPlanningUserDocRelativePathDisallowed('.flux-instructions.json')).toBe(true);
   });
 });
 

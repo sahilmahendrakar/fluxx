@@ -19,14 +19,23 @@
  *   `~/.flux/projects/<cloudProjectId>/` and may seed `CLAUDE.md` / `AGENTS.md` with
  *   machine-specific paths. Shared planning markdown is written under `planning/docs/`.
  *   Those instruction bodies often differ only by embedded workspace paths — see
- *   {@link planningMarkdownEquivalentForSeededInstructions}. Treating them as equivalent
+ *   {@link planningMarkdownEquivalentForSeededInstructions}. Marker-wrapped local bodies
+ *   compare against unwrapped remote seeds using the same normalization. Treating them as equivalent
  *   avoids noisy conflict copies while still replacing with shared content when Firestore
  *   has the team version.
+ *
+ *   Flux-managed instruction upgrades persist `planning/.flux-instructions.json` (local metadata only;
+ *   not a planning doc and not cloud-synced).
  *
  * Persisted completion flags: `planning/.flux-cloud-docs-migration.json`
  * (`planningDocsMigrationDisk.ts`). Renderer orchestration: `useCloudPlanningDocsMigration.tsx`.
  * Firestore IO: `renderer/planningDocs/firestorePlanningDocs.ts`.
  */
+
+import {
+  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
+  FLUX_PLANNING_INSTRUCTIONS_END,
+} from './planningInstructionMarkers';
 
 /** Local-only tree for divergent copies preserved during Firestore-first hydration. */
 export const PLANNING_CLOUD_UNSYNCED_PREFIX = '_flux_unsynced';
@@ -64,6 +73,40 @@ export function normalizePlanningInstructionHeading(markdown: string): string {
   return markdown.replace(/^#\s+Planning workspace — .*$/m, '# Planning workspace — __FLUX_NAME__');
 }
 
+const FLUX_PLANNING_TEMPLATE_VERSION_COMMENT = /^<!--\s*flux-planning-template\s+(\d+)\s*-->\s*\n?/im;
+
+/** Strips the optional Flux template version tag emitted at the top of managed instruction bodies. */
+export function stripFluxPlanningTemplateVersionComment(markdown: string): string {
+  return markdown.replace(/\r\n/g, '\n').replace(FLUX_PLANNING_TEMPLATE_VERSION_COMMENT, '');
+}
+
+/** Reads the numeric template version from the first line of a managed instruction body, or `0` if absent. */
+export function readFluxPlanningTemplateVersionFromManagedBody(managedBody: string): number {
+  const unified = managedBody.replace(/\r\n/g, '\n');
+  const m = unified.match(FLUX_PLANNING_TEMPLATE_VERSION_COMMENT);
+  if (!m) return 0;
+  const n = Number.parseInt(m[1] ?? '', 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * When instruction files use Flux marker blocks, compare only the managed inner region.
+ * Otherwise use the full document (legacy unwrapped seeds).
+ */
+export function extractPlanningInstructionManagedBodyForEquivalence(markdown: string): string {
+  const unified = markdown.replace(/\r\n/g, '\n');
+  const beginIdx = unified.indexOf(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
+  const endIdx = unified.indexOf(FLUX_PLANNING_INSTRUCTIONS_END);
+  if (beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) {
+    return unified;
+  }
+  const afterBegin = beginIdx + FLUX_PLANNING_INSTRUCTIONS_BEGIN.length;
+  return unified
+    .slice(afterBegin, endIdx)
+    .replace(/^\n+/, '')
+    .replace(/\n+$/, '');
+}
+
 export function normalizePlanningMarkdownEmbeddedPaths(markdown: string): string {
   const unified = markdown.replace(/\r\n/g, '\n');
   return unified.replace(/`([^`\n]*)`/g, (_m, inner: string) => {
@@ -86,8 +129,12 @@ export function planningMarkdownEquivalentForSeededInstructions(
   b: string,
 ): boolean {
   if (!isPlanningInstructionSeedFile(relativePath)) return false;
-  const na = normalizePlanningMarkdownEmbeddedPaths(normalizePlanningInstructionHeading(a));
-  const nb = normalizePlanningMarkdownEmbeddedPaths(normalizePlanningInstructionHeading(b));
+  const aBody = extractPlanningInstructionManagedBodyForEquivalence(a);
+  const bBody = extractPlanningInstructionManagedBodyForEquivalence(b);
+  const aStripped = stripFluxPlanningTemplateVersionComment(aBody);
+  const bStripped = stripFluxPlanningTemplateVersionComment(bBody);
+  const na = normalizePlanningMarkdownEmbeddedPaths(normalizePlanningInstructionHeading(aStripped));
+  const nb = normalizePlanningMarkdownEmbeddedPaths(normalizePlanningInstructionHeading(bStripped));
   return na === nb;
 }
 
