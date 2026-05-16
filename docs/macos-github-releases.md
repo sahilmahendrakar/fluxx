@@ -26,7 +26,7 @@ pnpm run publish
 
 `pnpm run publish` invokes the package script (`electron-forge publish`). Do not use bare `pnpm publish` in CI or locally for releases, because that is pnpm's npm-registry publish command rather than the package script.
 
-The workflow grants `contents: write` so the default `GITHUB_TOKEN` can create or update the GitHub Release and upload assets. No personal access token is needed when the workflow runs in `sahilmahendrakar/flux-web`.
+The workflow runs from `sahilmahendrakar/flux`, but Forge publishes releases to `sahilmahendrakar/flux-web`. GitHub's default Actions token is scoped to the workflow repo, so release publishing uses a `RELEASE_GITHUB_TOKEN` secret with `contents: write` access to `flux-web`.
 
 ## Release assets
 
@@ -42,8 +42,11 @@ The DMG is for first install. The updater downloads and installs the zip describ
 
 ## Required GitHub secrets
 
+Add these repository secrets in **`sahilmahendrakar/flux`** under **Settings > Secrets and variables > Actions > Repository secrets**. The workflow reads secrets from `flux` because that is where the GitHub Action runs.
+
 | Secret | Required for | Notes |
 |--------|--------------|-------|
+| `RELEASE_GITHUB_TOKEN` | Publishing GitHub Releases to `flux-web` | Fine-grained PAT or GitHub App token with `contents: read/write` on `sahilmahendrakar/flux-web`. Forge receives this as `GITHUB_TOKEN` when running `electron-forge publish`. |
 | `APPLE_ID` | Notarization | Apple Developer account email. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Notarization | Preferred app-specific password secret. |
 | `APPLE_PASSWORD` | Notarization | Legacy alias. The workflow maps `APPLE_APP_SPECIFIC_PASSWORD` or `APPLE_PASSWORD` into the `APPLE_PASSWORD` env var Forge has historically used, and `forge.config.ts` accepts either env var. |
@@ -53,6 +56,15 @@ The DMG is for first install. The updater downloads and installs the zip describ
 | `APPLE_KEYCHAIN_PASSWORD` | Signing on GitHub-hosted macOS | Temporary CI keychain password. Required when `APPLE_CERTIFICATE_BASE64` is set. |
 
 Do not configure `CSC_LINK` or `CSC_KEY_PASSWORD` for this workflow. Those are electron-builder-style secrets, and this Forge/electron-packager signing path does not read them. The workflow imports the Developer ID certificate into a temporary macOS keychain so `osxSign: {}` can discover it normally.
+
+## Manual GitHub setup
+
+1. In GitHub, create a fine-grained personal access token or GitHub App token that can write releases in **`sahilmahendrakar/flux-web`**. For a fine-grained PAT, select only the `sahilmahendrakar/flux-web` repository and grant **Repository permissions > Contents: Read and write**.
+2. In **`sahilmahendrakar/flux`**, open **Settings > Secrets and variables > Actions > Repository secrets** and add `RELEASE_GITHUB_TOKEN` with that token value.
+3. In the same `flux` repository secrets page, add `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (or legacy `APPLE_PASSWORD`), `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and `APPLE_KEYCHAIN_PASSWORD`.
+4. Make sure GitHub Actions are enabled for `sahilmahendrakar/flux`. The workflow only needs default token **Contents: read** permission for checkout; release writes use `RELEASE_GITHUB_TOKEN`.
+5. After this PR is merged, create the first release by running `pnpm version patch` (or `minor` / `major`) and `git push --follow-tags`.
+6. Confirm the tag workflow succeeds and the matching `sahilmahendrakar/flux-web` GitHub Release contains the DMG, zip, and `latest-mac.yml` assets.
 
 ## App runtime
 
