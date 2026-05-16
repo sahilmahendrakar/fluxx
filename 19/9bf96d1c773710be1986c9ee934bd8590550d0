@@ -1,0 +1,33 @@
+src/planningDocs/path.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 3,105
+src/main/planningAssistantInstructions.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 1-309
+src/planningDocs/path.test.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 9,137-139
+src/planningDocs/cloudPlanningDocsMigration.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 22-23,27-29,35-39,76-109,132-137
+src/planningDocs/cloudPlanningDocsMigration.test.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 5,12-15,56-67
+src/main/ProjectStore.test.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 10-15,591-653
+src/planningDocs/planningInstructionMarkers.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 1-6
+src/main/ProjectStore.ts
+  s_4f6a3cbc5a4463::t_7ce15da8fc74ad 42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "199bf96d1c773710be1986c9ee934bd8590550d0",
+  "prompts": {},
+  "sessions": {
+    "s_4f6a3cbc5a4463": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "95f81b5a-b570-4a83-a932-8175f54dbfc2",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
