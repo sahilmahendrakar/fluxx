@@ -49,7 +49,6 @@ import {
   agentNotFoundMessage,
   agentSpawnResumeSpec,
   agentSpawnSpec,
-  ensurePlanningDirCursorMcp,
   planningSpawnSpec,
 } from './main/agentSpawn';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
@@ -3575,7 +3574,6 @@ app.whenReady().then(async () => {
       }
 
       const planningDir = path.join(projectDir, 'planning');
-      const mcpConfigPath = path.join(projectDir, 'mcp.json');
       await fs.mkdir(planningDir, { recursive: true });
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
@@ -3585,26 +3583,6 @@ app.whenReady().then(async () => {
         project.name,
         project.rootPath,
       );
-      try {
-        await fs.access(mcpConfigPath);
-      } catch {
-        await fs.writeFile(
-          mcpConfigPath,
-          `${JSON.stringify(
-            {
-              mcpServers: {
-                flux: { type: 'sse', url: 'http://localhost:47432/sse' },
-              },
-            },
-            null,
-            2,
-          )}\n`,
-          'utf8',
-        );
-      }
-      if (planningAgent === 'cursor') {
-        await ensurePlanningDirCursorMcp(planningDir);
-      }
 
       const spawnModel = resolvedPlanningModelForSpawn(
         project,
@@ -3614,7 +3592,6 @@ app.whenReady().then(async () => {
       const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
       const { command, args } = planningSpawnSpec(
         planningAgent,
-        mcpConfigPath,
         spawnModel,
         spawnYolo,
       );

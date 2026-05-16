@@ -79,11 +79,13 @@ pnpm start
 
 Sign-in is optional. Without the env vars set, Flux runs fully local (open local projects, run agents). To enable Google sign-in, create a Firebase project + a Google OAuth "Desktop app" client and fill in the `.env` values documented in `.env.example`.
 
-### Planning assistant and MCP
+### Planning assistant and Flux CLI
 
-When Flux is running, the main process exposes an MCP server at `http://localhost:47432/sse` (fixed port). The planning assistant is configured to use it via `mcp.json` in the project directory (written on first planning session) and, for Cursor, merged into `planning/.cursor/mcp.json`. No extra environment variables are required for MCP.
+When you start a planning session, Flux injects automation bridge env vars, writes `.flux/cli-bridge.json` under the project directory, and prepends the packaged `flux` shim to the PTY `PATH` (dev builds use `.vite/build`). Planning agents run board commands in the shell, for example `flux project info --json` and `flux tasks list --json`.
 
-Task tools are named `flux__list_tasks`, `flux__create_task`, `flux__start_task`, `flux__update_task`, `flux__delete_task`, and `flux__get_project_info`. They operate on the **currently open** local project’s board in the app. `flux__list_tasks` accepts optional `excludeStatuses` (array of `backlog` \| `in-progress` \| `needs-input` \| `done`) to drop those columns from the JSON response; omit it to list every task. `flux__create_task` and `flux__update_task` accept an optional `labels` array for feature tags; values are normalized (trimmed, no empties, case-insensitive unique). `flux__create_task` also accepts optional `agentModel` and `agentYolo`; when omitted, the project’s saved defaults apply (same as new tasks in the UI). `flux__delete_task` requires `confirm: true` in the tool arguments after the user explicitly asked to remove that task.
+Seeded `planning/CLAUDE.md` and `planning/AGENTS.md` document the CLI surface for all planning agents. Always pass `--json` on board commands. When the user names a git branch for work, pass `--source-branch` on each related `flux tasks create`. `flux tasks delete` requires `--confirm` after explicit user intent.
+
+Legacy `mcp.json` / `planning/.cursor/mcp.json` files are left untouched if already present; new planning sessions no longer create them.
 
 ---
 

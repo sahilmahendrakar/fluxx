@@ -555,15 +555,16 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('writes repo-aware MCP guidance when multiRepoGuide is true', async () => {
+  it('writes repo-aware CLI guidance when multiRepoGuide is true', async () => {
     await ensurePlanningAssistantMarkdownFiles(dir, 'MyApp', '/tmp/primary', {
       multiRepoGuide: true,
     });
     expect((await fs.stat(path.join(dir, 'docs'))).isDirectory()).toBe(true);
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('flux project info --json');
     expect(claude).toContain('repos[]');
-    expect(claude).toContain('repoId');
+    expect(claude).toContain('--repo-id');
+    expect(claude).not.toContain('flux__');
   });
 
   it('migrates legacy top-level markdown into docs/ when present', async () => {
@@ -573,13 +574,14 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await expect(fs.access(path.join(dir, PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME))).resolves.toBeUndefined();
   });
 
-  it('uses single-repo tool copy when multiRepoGuide is false', async () => {
+  it('uses single-repo CLI copy when multiRepoGuide is false', async () => {
     await ensurePlanningAssistantMarkdownFiles(dir, 'Solo', '/tmp/one', {
       multiRepoGuide: false,
     });
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('flux project info --json');
     expect(claude).not.toContain('repos[]');
-    expect(claude).not.toContain('repoId');
+    expect(claude).not.toContain('--repo-id');
+    expect(claude).not.toContain('flux__');
   });
 });
