@@ -367,7 +367,11 @@ export class DaemonCore {
           cwd: params.planningDir,
           cols: params.cols,
           rows: params.rows,
-          ...(params.ptyEnv !== undefined ? { env: params.ptyEnv } : {}),
+          env: {
+            ...process.env,
+            HOME: process.env.HOME ?? os.homedir(),
+            ...(params.ptyEnv ?? {}),
+          },
         },
         {
           onData: (data, seq) => {

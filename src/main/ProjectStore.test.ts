@@ -564,6 +564,7 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     expect(claude).toContain('flux project info --json');
     expect(claude).toContain('repos[]');
     expect(claude).toContain('--repo-id');
+    expect(claude).toContain('do **not** create a `FLUX_BIN` variable');
     expect(claude).not.toContain('flux__');
   });
 
@@ -583,5 +584,38 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     expect(claude).not.toContain('repos[]');
     expect(claude).not.toContain('--repo-id');
     expect(claude).not.toContain('flux__');
+  });
+
+  it('migrates generated MCP-era assistant files to CLI guidance', async () => {
+    const legacy = `# Planning workspace — Old
+
+You have access to the following Flux tools for task management:
+- \`flux__get_project_info\`
+- \`flux__create_task\`
+`;
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), legacy, 'utf8');
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), legacy, 'utf8');
+
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Migrated', '/tmp/repo', {
+      multiRepoGuide: false,
+    });
+
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    const agents = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(claude).toContain('flux project info --json');
+    expect(agents).toContain('flux tasks create --json');
+    expect(claude).not.toContain('flux__');
+    expect(agents).not.toContain('flux__');
+  });
+
+  it('preserves non-generated assistant files', async () => {
+    const custom = '# Custom project instructions\n\nKeep this hand-written note.\n';
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), custom, 'utf8');
+
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Custom', '/tmp/repo', {
+      multiRepoGuide: false,
+    });
+
+    await expect(fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8')).resolves.toBe(custom);
   });
 });

@@ -295,7 +295,18 @@ async function atomicWriteFile(filePath: string, payload: string): Promise<void>
   await fs.rename(tmpPath, filePath);
 }
 
-/** Creates \`CLAUDE.md\` and/or \`AGENTS.md\` only when missing (does not overwrite user edits). */
+function isLegacyMcpPlanningAssistantMarkdown(body: string): boolean {
+  return (
+    body.includes('# Planning workspace') &&
+    body.includes('You have access to the following Flux tools for task management') &&
+    body.includes('flux__get_project_info')
+  );
+}
+
+/**
+ * Creates `CLAUDE.md` and/or `AGENTS.md` when missing. Existing generated MCP-era
+ * assistant instructions are migrated to CLI instructions; other user edits are left alone.
+ */
 export async function ensurePlanningAssistantMarkdownFiles(
   planningDir: string,
   projectName: string,
@@ -310,7 +321,10 @@ export async function ensurePlanningAssistantMarkdownFiles(
   for (const fileName of ['CLAUDE.md', 'AGENTS.md'] as const) {
     const filePath = path.join(planningDir, fileName);
     try {
-      await fs.access(filePath);
+      const existing = await fs.readFile(filePath, 'utf8');
+      if (isLegacyMcpPlanningAssistantMarkdown(existing)) {
+        await fs.writeFile(filePath, md, 'utf8');
+      }
     } catch (err: unknown) {
       if (errnoCode(err) === 'ENOENT') {
         await fs.writeFile(filePath, md, 'utf8');

@@ -104,6 +104,14 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+async function daemonBuildIdForScript(scriptPath: string): Promise<string> {
+  if (app.isPackaged) {
+    return `packaged:${app.getVersion()}`;
+  }
+  const stat = await fsp.stat(scriptPath);
+  return `dev:${path.resolve(scriptPath)}:${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+}
+
 /**
  * Main-process client for the Flux daemon. Handles spawning / reconnecting
  * to the detached daemon process, correlation-id RPC, and fanning stream
@@ -488,6 +496,21 @@ export class DaemonClient {
           this.tearDownSockets();
           return false;
         }
+        const expectedBuildId = await daemonBuildIdForScript(resolveDaemonScriptPath());
+        if (caps.buildId !== expectedBuildId) {
+          console.warn('[DaemonClient] existing daemon build id mismatch, respawning', {
+            theirs: caps.buildId,
+            ours: expectedBuildId,
+          });
+          try {
+            await this.request<null>('shutdown');
+          } catch {
+            // Best effort: if the stale daemon does not exit cleanly, socket
+            // teardown + spawn-time socket unlinking still gives us a fresh daemon.
+          }
+          this.tearDownSockets();
+          return false;
+        }
       } catch {
         // Daemon does not even support the `capabilities` method — definitely stale.
         console.warn('[DaemonClient] existing daemon lacks capabilities RPC, respawning');
@@ -523,6 +546,7 @@ export class DaemonClient {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       FLUX_DAEMON_USER_DATA: this.userData,
+      FLUX_BUILD_ID: await daemonBuildIdForScript(daemonScript),
     };
     // These Electron-specific vars must NOT leak into a RunAsNode child
     // process, which would otherwise try to reinitialize Chromium state.

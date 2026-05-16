@@ -40,7 +40,7 @@ ${workspaceIntro}
 
 ## Flux CLI
 
-Planning sessions inject bridge env and prepend the packaged \`flux\` shim to \`PATH\` when Flux starts a session. **Always pass \`--json\`** on board commands so you can parse stdout. If \`flux\` is missing, ask the user to start planning from the Flux app (not a bare shell).
+Planning sessions inject bridge env and prepend the packaged \`flux\` shim to \`PATH\` when Flux starts a session. Use the command as \`flux ...\`; do **not** create a \`FLUX_BIN\` variable, paste the absolute shim path, or run \`which flux\` except when troubleshooting a missing command. **Always pass \`--json\`** on board commands so you can parse stdout. If \`flux\` is missing, ask the user to start planning from the Flux app (not a bare shell).
 
 ## Your role
 
