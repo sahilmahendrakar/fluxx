@@ -1,0 +1,24 @@
+src/main/composeTaskSessionInitialPrompt.test.ts
+  s_2bd760d7e6301d::t_655b0e79ffc942 1-122
+src/main.ts
+  s_2bd760d7e6301d::t_c425a4652e3f05 48
+  s_2bd760d7e6301d::t_764cf382101183 2919-2922
+src/main/composeTaskSessionInitialPrompt.ts
+  s_2bd760d7e6301d::t_cad46bd6b06b05 1-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "7b5ecaeba199d1d7ea9a71eb3c6abb94d69657bf",
+  "prompts": {},
+  "sessions": {
+    "s_2bd760d7e6301d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "82973225-e9e5-4ec4-ac88-39497c901170",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
