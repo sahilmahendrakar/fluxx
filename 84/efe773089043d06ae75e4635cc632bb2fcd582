@@ -1,0 +1,69 @@
+src/types.ts
+  s_063d4b085d9158::t_88841db548da9c 410
+  s_063d4b085d9158::t_06527278bdf93f 479-509
+src/components/TaskDetailPanel.tsx
+  s_063d4b085d9158::t_9121cf42682a2b 1110-1112
+  s_063d4b085d9158::t_a5c29989773d16 706-707
+  s_063d4b085d9158::t_32de520631f7be 734
+src/main/agentConversationIdParse.ts
+  s_063d4b085d9158::t_636932cd731b0a 1-75
+src/main/agentSpawn.ts
+  s_063d4b085d9158::t_97a12ea1e66e74 55,57,68-72,83-86
+src/main.ts
+  s_063d4b085d9158::t_8b0cbd949e7906 429-430
+  s_063d4b085d9158::t_da436c09ab461f 3023-3025,3027-3035
+  s_063d4b085d9158::t_c77c85a8f5049e 3444
+  s_063d4b085d9158::t_18ab148ad71ede 580-589
+  s_063d4b085d9158::t_b25a782172459c 50-54
+  s_063d4b085d9158::t_b83bcaefa617b3 141
+  s_063d4b085d9158::t_7ba79ac3537f1b 520
+  s_063d4b085d9158::t_abac5cdee112d5 515-519,521-530
+  s_063d4b085d9158::t_a5a8c8054df5b0 3022
+  s_063d4b085d9158::t_fac3bbe1ccfa21 3026
+  s_063d4b085d9158::t_d2f459c0d4b549 3453-3470
+  s_063d4b085d9158::t_38d163943f252f 4120,4127-4128
+  s_063d4b085d9158::t_2f9bb2cde3b8bd 2958-2964,2966
+src/main/agentSpawn.test.ts
+  s_063d4b085d9158::t_edbe601a3ba438 1-46
+src/main/terminalBackend/TerminalBackend.ts
+  s_063d4b085d9158::t_db6f64a2cc19c4 52-57
+  s_063d4b085d9158::t_240fdc51d8a2ea 2
+src/main/terminalBackend/LocalMainProcessTerminalBackend.ts
+  s_063d4b085d9158::t_218f99ccf7ed3c 67-70,74-75
+  s_063d4b085d9158::t_d59cd1bcf9c575 16
+  s_063d4b085d9158::t_160f7a5c2221aa 43
+src/main/taskAgentSessionRecords.test.ts
+  s_063d4b085d9158::t_9d352e1677251a 6,37-38,44,48-49,52-53
+  s_063d4b085d9158::t_1c866edd1808e4 1-5,7-36,39-43,45-47,50-51,54-55
+src/main/TerminalRuntimeManager.ts
+  s_063d4b085d9158::t_6195b507833d01 116-123,133-134
+  s_063d4b085d9158::t_be22583d7860d0 27
+  s_063d4b085d9158::t_631977f8b380e4 148,154
+  s_063d4b085d9158::t_fac1d3606aab0e 215-221
+  s_063d4b085d9158::t_e26321a92e3f5d 262
+  s_063d4b085d9158::t_47becea81f1f07 4
+src/main/taskAgentSessionRecords.ts
+  s_063d4b085d9158::t_796f938151514c 35,49,51,54-56
+  s_063d4b085d9158::t_aee5ac0e4ea8dd 1-34,36-48,50,52-53,57-135,144,146-177,184-245,247-248
+  s_063d4b085d9158::t_7933e764a7105a 136-143,145
+  s_063d4b085d9158::t_a260ca92f5d9e6 178-183
+  s_063d4b085d9158::t_847dd6653d7610 246
+src/main/agentConversationIdParse.test.ts
+  s_063d4b085d9158::t_bb0e044bea3012 1-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "84efe773089043d06ae75e4635cc632bb2fcd582",
+  "prompts": {},
+  "sessions": {
+    "s_063d4b085d9158": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "293866e3-b03b-43ae-8c7d-90c9b6b7cf60",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
