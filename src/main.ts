@@ -1700,8 +1700,17 @@ app.whenReady().then(async () => {
     });
   });
 
-  ipcMain.handle('projects:getActiveKey', (): ActiveProjectKey | null => {
-    return appStateStore.get().activeProjectKey;
+  ipcMain.handle('projects:getActiveKey', async (): Promise<ActiveProjectKey | null> => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'local') {
+      const project = projectStore.get();
+      if (project && project.id !== key.id) {
+        const canonicalKey: ActiveProjectKey = { kind: 'local', id: project.id };
+        await appStateStore.set({ activeProjectKey: canonicalKey });
+        return canonicalKey;
+      }
+    }
+    return key;
   });
 
   // ---- Tab strip restoration (per project open task tabs + active tab) ----
