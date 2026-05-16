@@ -61,6 +61,62 @@ function collectRepeatedFlag(argv: string[], name: string): { values: string[]; 
   return { values, rest };
 }
 
+function collectRepeatedFlags(argv: string[], names: string[]): { values: string[]; rest: string[] } {
+  const nameSet = new Set(names);
+  const values: string[] = [];
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (nameSet.has(a)) {
+      const next = argv[i + 1];
+      if (next != null && !next.startsWith('-')) {
+        values.push(next);
+        i += 1;
+      }
+      continue;
+    }
+    const eq = a.indexOf('=');
+    if (eq > 0 && nameSet.has(a.slice(0, eq))) {
+      values.push(a.slice(eq + 1));
+      continue;
+    }
+    rest.push(a);
+  }
+  return { values, rest };
+}
+
+function takeFlagAliases(argv: string[], names: string[]): { value?: string; rest: string[] } {
+  const nameSet = new Set(names);
+  let value: string | undefined;
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (nameSet.has(a)) {
+      const next = argv[i + 1];
+      if (next == null || next.startsWith('-')) {
+        return { rest: [] };
+      }
+      value = next;
+      i += 1;
+      continue;
+    }
+    const eq = a.indexOf('=');
+    if (eq > 0 && nameSet.has(a.slice(0, eq))) {
+      value = a.slice(eq + 1);
+      continue;
+    }
+    rest.push(a);
+  }
+  return { value, rest };
+}
+
+function splitListValues(values: string[]): string[] {
+  return values
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 function parseKeyValuePayload(argv: string[]): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -93,6 +149,65 @@ function coerceScalar(raw: string): unknown {
   if (raw === 'null') return null;
   if (/^-?\d+$/.test(raw)) return Number(raw);
   return raw;
+}
+
+type TaskPayloadParseResult =
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; message: string };
+
+function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
+  const { values: labelsRaw, rest: withoutLabels } = collectRepeatedFlags(argv, [
+    '--label',
+    '--labels',
+    '--feature-label',
+    '--feature-labels',
+  ]);
+  const { values: blockedByRaw, rest: withoutBlockedBy } = collectRepeatedFlags(withoutLabels, [
+    '--blocked-by-task-id',
+    '--blocked-by-task-ids',
+    '--blocked-by',
+    '--depends-on-task-id',
+    '--depends-on-task-ids',
+    '--depends-on',
+  ]);
+  const { value: repoId, rest: withoutRepo } = takeFlagAliases(withoutBlockedBy, [
+    '--repo-id',
+    '--repo',
+  ]);
+  const { value: sourceBranch, rest: withoutSourceBranch } = takeFlagAliases(withoutRepo, [
+    '--source-branch',
+    '--feature-branch',
+    '--branch',
+  ]);
+
+  const payload = parseKeyValuePayload(withoutSourceBranch);
+  const labels = splitListValues(labelsRaw);
+  const blockedByTaskIds = splitListValues(blockedByRaw);
+  const clearLabels = payload.clearLabels === true;
+  const clearBlockedBy =
+    payload.clearBlockedBy === true ||
+    payload.clearBlockedByTaskIds === true ||
+    payload.clearDependencies === true;
+
+  if (clearLabels && labels.length > 0) {
+    return { ok: false, message: 'Pass either --label/--labels or --clear-labels, not both' };
+  }
+  if (clearBlockedBy && blockedByTaskIds.length > 0) {
+    return {
+      ok: false,
+      message: 'Pass either dependency flags or --clear-dependencies, not both',
+    };
+  }
+
+  delete payload.clearLabels;
+  delete payload.clearBlockedBy;
+  delete payload.clearBlockedByTaskIds;
+  delete payload.clearDependencies;
+  if (labels.length > 0 || clearLabels) payload.labels = labels;
+  if (blockedByTaskIds.length > 0 || clearBlockedBy) payload.blockedByTaskIds = blockedByTaskIds;
+  if (repoId !== undefined) payload.repoId = repoId;
+  if (sourceBranch !== undefined) payload.sourceBranch = sourceBranch;
+  return { ok: true, payload };
 }
 
 export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
@@ -152,14 +267,18 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
       };
     }
     if (action === 'create') {
-      const payload = parseKeyValuePayload(rest);
+      const parsedPayload = parseTaskPayload(rest);
+      if (!parsedPayload.ok) return parsedPayload;
+      const { payload } = parsedPayload;
       if (typeof payload.title !== 'string' || payload.title.trim() === '') {
         return { ok: false, message: 'tasks create requires --title' };
       }
       return { ok: true, command: { kind: 'tasks', action: 'create', json, payload } };
     }
     if (action === 'update') {
-      const payload = parseKeyValuePayload(rest);
+      const parsedPayload = parseTaskPayload(rest);
+      if (!parsedPayload.ok) return parsedPayload;
+      const { payload } = parsedPayload;
       const id = payload.id ?? payload.taskId;
       if (typeof id !== 'string') {
         return { ok: false, message: 'tasks update requires --id' };

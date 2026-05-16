@@ -21,12 +21,12 @@ When user intent spans more than one repository and is ambiguous, **ask once** w
   4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.`;
 
   const createTaskLine = multiRepoGuide
-    ? `- \`flux tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional \`--labels\`, \`--assignee-email\` (cloud; use \`flux members list --json\`), \`--repo-id\` (must match \`repos[].id\`; omit for primary), \`--source-branch\` (git short branch name), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
-    : `- \`flux tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional \`--labels\`, \`--assignee-email\` (cloud; use \`flux members list --json\`), \`--source-branch\`, \`--create-source-branch-if-missing=true\``;
+    ? `- \`flux tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, \`--assignee-email\` (cloud; use \`flux members list --json\`), \`--repo-id <repos[].id>\` (omit for primary), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
+    : `- \`flux tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, \`--assignee-email\` (cloud; use \`flux members list --json\`), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\``;
 
   const updateTaskLine = multiRepoGuide
-    ? `- \`flux tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, \`--labels\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id\` (only while no session/worktree/PR — same as UI), \`--source-branch\`, \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
-    : `- \`flux tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, \`--labels\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch\`, \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
+    ? `- \`flux tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id <repos[].id>\` (only while no session/worktree/PR — same as UI), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
+    : `- \`flux tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
 
   const projectInfoLine = `- \`flux project info --json\` — project \`name\`, \`rootPath\` (primary clone), ${multiRepoGuide ? '`repos` / `primaryRepoId` when multi-repo is active, ' : ''}\`taskCounts\`, and \`defaultBranchShort\` when git discovery succeeds (see \`branchDiscoveryError\` if not)`;
 
@@ -69,7 +69,7 @@ Board relationship: new tasks land in **Backlog**. \`flux tasks start\` is the u
 
 **Task branches:** When the user names a base branch (e.g. “do this on \`feature/auth\`”), pass \`--source-branch feature/auth\` on **each** subtask you create. Use \`--create-source-branch-if-missing=true\` only when they want a new branch created on first start. If they did not specify a branch, omit \`--source-branch\` so Flux uses the project default.
 
-**Task dependencies:** Use \`flux tasks list --json\` for ids. Reference only tasks in the current project.
+**Task labels and dependencies:** Use repeated flags instead of JSON blobs: \`--label mcp-to-cli --label backend\`, \`--depends-on-task-id <taskId>\` for each prerequisite, \`--clear-labels\`, and \`--clear-dependencies\`. Use \`flux tasks list --json\` for ids. Reference only tasks in the current project.
 
 **Team (cloud) projects:** CLI commands route through the running Flux app. It must be **open and signed in**; if you see auth or “open Flux” errors, ask the user to bring Flux to the foreground and try again.
 
