@@ -39,6 +39,7 @@ import {
   DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
 } from '../cloudBindingPrefs';
+import { migrateLegacyPlanningMarkdownIntoUserDocsDir } from '../planningDocs/planningUserDocsLegacyMigration';
 
 const DEFAULT_AGENT: Agent = 'claude-code';
 const DEFAULT_BASE_BRANCH = 'main';
@@ -317,11 +318,11 @@ When user intent spans more than one repository and is ambiguous, **ask once** w
 
   const contextSteps = multiRepoGuide
     ? `  1. Call \`flux__get_project_info\` once (unless you already have current \`repos\`, \`primaryRepoId\`, and primary \`rootPath\` from this turn). Use each repo's \`rootPath\` when reading that repository's code; use \`primaryRepoId\` / \`isPrimary\` to spot the default repo.
-  2. Read planning documents in **this** directory (\`vision.md\`, \`architecture.md\`, sprint files, etc.).
+  2. Read team planning documents under \`docs/\` relative to this directory (for example \`docs/vision.md\`, \`docs/architecture.md\`, sprint notes, ADRs). Older projects may still have markdown at the planning root outside \`docs/\` until migrated — prefer \`docs/\` for new material.
   3. Explore each relevant repository under the \`rootPath\` values from the tool as needed.
   4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks. For **new** tasks, pass \`repoId\` (a string matching \`repos[].id\`) when work belongs to a non-primary repository; omit \`repoId\` to target the primary repo.`
     : `  1. Call \`flux__get_project_info\` once (unless you already have the current \`rootPath\` and project name from a call in this turn). Use the returned \`rootPath\` as the application codebase location.
-  2. Read planning documents in **this** directory (\`vision.md\`, \`architecture.md\`, sprint files, etc.).
+  2. Read team planning documents under \`docs/\` relative to this directory (for example \`docs/vision.md\`, \`docs/architecture.md\`). Older projects may still have markdown at the planning root outside \`docs/\` until migrated — prefer \`docs/\` for new material.
   3. Explore the repository under that \`rootPath\` as needed for the user\u2019s question.
   4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.`;
 
@@ -347,7 +348,7 @@ ${workspaceIntro}
 
 ## Your role
 
-You are a planning assistant. Help the developer think through features, maintain documentation in this directory, and manage tasks on the Flux board.
+You are a planning assistant. Help the developer think through features, maintain documentation under \`docs/\` in this workspace, and manage tasks on the Flux board.
 
 ## Turn-taking
 
@@ -375,20 +376,20 @@ Board relationship: new tasks land in **Backlog**. \`flux__start_task\` is the u
 
 **Team (cloud) projects:** the Flux task tools route through the running Flux app for cloud projects. The app must be **open and signed in** for tools to work; if you see \`Sign in to Flux to use cloud project tools\` or \`Open the Flux app to enable cloud project tools\`, ask the user to bring Flux to the foreground and try again.
 
-## Files in this directory
+## Files in this workspace
 
-Maintain these files as living documents:
-- \`vision.md\` — long-term project goals and direction
-- \`architecture.md\` — technical decisions and system design
-- \`YYYY-MM-sprint.md\` — time-boxed planning (create as needed)
-- \`CLAUDE.md\` and \`AGENTS.md\` — agent instructions for this workspace (keep them aligned if you edit one)
+Maintain team planning markdown under \`docs/\` (relative to this directory) as living documents:
+- \`docs/vision.md\` — long-term project goals and direction
+- \`docs/architecture.md\` — technical decisions and system design
+- \`docs/YYYY-MM-sprint.md\` — time-boxed planning (create as needed)
+- \`CLAUDE.md\` and \`AGENTS.md\` **in this directory** (not under \`docs/\`) — agent instructions for this workspace (keep them aligned if you edit one)
 
 ## Guidelines
 
 - Do not create, update, start, or delete tasks until the context pass above is done (when the question touches the codebase or board).
-- Update planning documents when decisions are made
+- Update planning documents under \`docs/\` when decisions are made
 - Create tasks for concrete, actionable work items
-- Keep vision.md and architecture.md up to date as the project evolves
+- Keep \`docs/vision.md\` and \`docs/architecture.md\` up to date as the project evolves
 `;
 }
 
@@ -399,6 +400,8 @@ export async function ensurePlanningAssistantMarkdownFiles(
   rootPath: string,
   options?: { multiRepoGuide?: boolean },
 ): Promise<void> {
+  await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
+  await migrateLegacyPlanningMarkdownIntoUserDocsDir(planningDir);
   const resolvedRoot = path.resolve(rootPath);
   const multiRepoGuide = options?.multiRepoGuide ?? true;
   const md = planningAssistantMarkdown(projectName, resolvedRoot, multiRepoGuide);

@@ -3,7 +3,8 @@
  * ====================================================
  *
  * When a cloud Firestore project gains a `projects/{id}/planningDocs/*` mirror of the
- * local `planning/` markdown tree, we must avoid silent data loss:
+ * local planning markdown tree (canonical under `planning/docs/**`, with legacy
+ * top-level files still readable until migrated), we must avoid silent data loss:
  *
  * - **Firestore already has docs:** Treat Firestore as canonical on first hydration.
  *   Local files that differ are copied under `_flux_unsynced/<same-relative-path>`
@@ -16,10 +17,11 @@
  *
  * - **New teammates:** Cloud activation materialises `planning/` under
  *   `~/.flux/projects/<cloudProjectId>/` and may seed `CLAUDE.md` / `AGENTS.md` with
- *   `CLAUDE.md` / `AGENTS.md` with machine-specific paths. Those bodies often differ
- *   only by embedded workspace paths — see {@link planningMarkdownEquivalentForSeededInstructions}.
- *   Treating them as equivalent avoids noisy conflict copies while still replacing with
- *   shared content when Firestore has the team version.
+ *   machine-specific paths. Shared planning markdown is written under `planning/docs/`.
+ *   Those instruction bodies often differ only by embedded workspace paths — see
+ *   {@link planningMarkdownEquivalentForSeededInstructions}. Treating them as equivalent
+ *   avoids noisy conflict copies while still replacing with shared content when Firestore
+ *   has the team version.
  *
  * Persisted completion flags: `planning/.flux-cloud-docs-migration.json`
  * (`planningDocsMigrationDisk.ts`). Renderer orchestration: `useCloudPlanningDocsMigration.tsx`.

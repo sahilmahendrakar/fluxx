@@ -9,6 +9,7 @@ import {
 } from './ProjectStore';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
 import { stableLocalProjectIdForRoot, legacyCloudProjectDir, assertSafeToDeleteLegacyFlatProjectsRoot } from './projectDirLayout';
+import { PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME } from '../planningDocs/planningUserDocsLegacyMigration';
 
 const TEST_PROJECT_ID = 'p1';
 
@@ -558,10 +559,18 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await ensurePlanningAssistantMarkdownFiles(dir, 'MyApp', '/tmp/primary', {
       multiRepoGuide: true,
     });
+    expect((await fs.stat(path.join(dir, 'docs'))).isDirectory()).toBe(true);
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
     expect(claude).toContain('flux__get_project_info');
     expect(claude).toContain('repos[]');
     expect(claude).toContain('repoId');
+  });
+
+  it('migrates legacy top-level markdown into docs/ when present', async () => {
+    await fs.writeFile(path.join(dir, 'preseed.md'), 'body', 'utf8');
+    await ensurePlanningAssistantMarkdownFiles(dir, 'M', '/tmp/p', { multiRepoGuide: true });
+    await expect(fs.readFile(path.join(dir, 'docs', 'preseed.md'), 'utf8')).resolves.toBe('body');
+    await expect(fs.access(path.join(dir, PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME))).resolves.toBeUndefined();
   });
 
   it('uses single-repo tool copy when multiRepoGuide is false', async () => {

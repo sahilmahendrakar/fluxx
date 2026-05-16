@@ -39,7 +39,7 @@ describe('listPlanningDocsPushCandidates', () => {
     const rel = 'notes/a.md';
     const docId = planningRelativePathToFirestoreDocId(rel);
     if (!docId) throw new Error('id');
-    await fs.mkdir(path.join(planningDir, 'notes'), { recursive: true });
+    await fs.mkdir(path.join(planningDir, 'docs', 'notes'), { recursive: true });
 
     await applyFirestorePlanningDocsSnapshot(planningDir, {
       projectId: 'p1',
@@ -54,7 +54,7 @@ describe('listPlanningDocsPushCandidates', () => {
       removedDocIds: [],
     });
 
-    await fs.writeFile(path.join(planningDir, rel), 'edited', 'utf8');
+    await fs.writeFile(path.join(planningDir, 'docs', rel), 'edited', 'utf8');
 
     const candidates = await listPlanningDocsPushCandidates(planningDir, TEST_CLOUD_PROJECT_ID);
     expect(candidates).toHaveLength(1);
@@ -74,7 +74,8 @@ describe('listPlanningDocsPushCandidates', () => {
     await fs.mkdir(path.join(planningDir, '_flux_unsynced'), { recursive: true });
     await fs.writeFile(path.join(planningDir, '_flux_unsynced', 'y.md'), 'backup', 'utf8');
 
-    await fs.writeFile(path.join(planningDir, 'ok.md'), 'body', 'utf8');
+    await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(planningDir, 'docs', 'ok.md'), 'body', 'utf8');
 
     const candidates = await listPlanningDocsPushCandidates(planningDir, TEST_CLOUD_PROJECT_ID);
     expect(candidates.map((c) => c.relativePath)).toEqual(['ok.md']);
@@ -82,8 +83,8 @@ describe('listPlanningDocsPushCandidates', () => {
 
   it('skips paths paused after a conflict', async () => {
     const rel = 'notes/a.md';
-    await fs.mkdir(path.join(planningDir, 'notes'), { recursive: true });
-    await fs.writeFile(path.join(planningDir, rel), 'local', 'utf8');
+    await fs.mkdir(path.join(planningDir, 'docs', 'notes'), { recursive: true });
+    await fs.writeFile(path.join(planningDir, 'docs', rel), 'local', 'utf8');
 
     await persistPlanningDocsConflictLocal(planningDir, {
       schemaVersion: 1,
@@ -114,7 +115,8 @@ describe('listPlanningDocsPushCandidates', () => {
       docs: [{ docId, relativePath: rel, markdown: 'remote', remoteRevision: '9_0' }],
       removedDocIds: [],
     });
-    await fs.writeFile(path.join(freshDir, rel), 'local', 'utf8');
+    await fs.mkdir(path.join(freshDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(freshDir, 'docs', rel), 'local', 'utf8');
     const candidates = await listPlanningDocsPushCandidates(freshDir, TEST_CLOUD_PROJECT_ID);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.markdown).toBe('local');
@@ -122,7 +124,8 @@ describe('listPlanningDocsPushCandidates', () => {
 
   it('returns no candidates until migration unlocks push', async () => {
     const freshDir = await mkPlanningDir();
-    await fs.writeFile(path.join(freshDir, 'only.md'), 'x', 'utf8');
+    await fs.mkdir(path.join(freshDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(freshDir, 'docs', 'only.md'), 'x', 'utf8');
 
     const blocked = await listPlanningDocsPushCandidates(freshDir, 'other-cloud-id');
     expect(blocked).toHaveLength(0);

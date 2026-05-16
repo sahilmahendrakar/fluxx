@@ -55,7 +55,8 @@ describe('enrichPlanningDocsListForCloudWorkspace', () => {
 
   it('marks conflict when push is paused after persistConflict', async () => {
     const rel = 'b.md';
-    await fs.writeFile(path.join(planningDir, rel), 'local', 'utf8');
+    await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(planningDir, 'docs', rel), 'local', 'utf8');
     await persistPlanningDocsConflictLocal(planningDir, {
       schemaVersion: 1,
       relativePath: rel,
