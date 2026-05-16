@@ -31,8 +31,9 @@ import {
   cwdUnderTrustPromptAutorespondRoots,
   trustPromptAutorespondRootsForProject,
 } from './main/trustPromptAutorespondRoots';
-import { DaemonClient } from './main/DaemonClient';
 import { removeFluxOwnedLocalState } from './main/projectFluxRemoval';
+import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
+import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
   deleteSessionWorkspaceAndStop,
@@ -408,6 +409,9 @@ let fluxMcpRendererBridge: McpRendererBridge | null = null;
 
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
 
+/** Set during `app.whenReady` so `before-quit` can tear down in-process PTYs. */
+let mainProcessTerminalBackend: TerminalBackend | null = null;
+
 const createWindow = () => {
   const windowIcon = resolveWindowIconPath();
   mainWindow = new BrowserWindow({
@@ -476,22 +480,17 @@ app.whenReady().then(async () => {
   await taskStore.init();
 
   const worktreeService = new WorktreeService('', '');
-  // Resolve the user's interactive-login-shell env BEFORE the daemon
-  // spawns. In packaged macOS GUI launches the parent inherits launchd's
-  // minimal PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), which makes `agent`,
-  // `claude`, `codex`, `gh`, etc. unreachable from PTY children — node-pty
-  // surfaces ENOENT as an immediate PTY exit, and the renderer renders
-  // "This planning session has ended" the moment the user starts one.
-  // Side-effecting `process.env` here means the daemon (and every PTY
-  // it ever spawns) inherits the corrected env without per-call wiring.
-  // See `docs/daemon-packaging.md` and `src/main/userShellEnv.ts`.
+  // Side-effecting `process.env` here means every PTY child inherits the
+  // corrected env without per-call wiring. See `docs/daemon-packaging.md` and
+  // `src/main/userShellEnv.ts`.
   await applyShellEnvToProcess();
 
-  const daemonClient = new DaemonClient();
+  const terminalBackend = createMainTerminalBackend();
+  mainProcessTerminalBackend = terminalBackend;
   try {
-    await daemonClient.ensureRunning();
+    await terminalBackend.ensureReady();
   } catch (err) {
-    console.error('[main] failed to start flux-daemon', err);
+    console.error('[main] failed to start terminal backend', err);
   }
 
   // Map session ID → task ID for silence-based status transitions.
@@ -499,7 +498,7 @@ app.whenReady().then(async () => {
   // startup catchup so a listSessions() failure does not silently break catchup.
   const sessionTaskMap = new Map<string, string>();
   try {
-    const existing = await daemonClient.listSessions();
+    const existing = await terminalBackend.listSessions();
     for (const s of existing) {
       if (s.taskId) sessionTaskMap.set(s.id, s.taskId);
     }
@@ -528,9 +527,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  daemonClient.onAgentState = applyAgentState;
-
-  async function reconcileSilenceStatesFromDaemon(
+  async function reconcileSilenceStatesFromTerminal(
     states: { id: string; taskId?: string; state: AgentState }[],
     meta?: unknown,
   ): Promise<void> {
@@ -541,35 +538,34 @@ app.whenReady().then(async () => {
     }
   }
 
-  daemonClient.onSilenceStatesSnapshot = reconcileSilenceStatesFromDaemon;
-  daemonClient.startSilencePolling();
+  terminalBackend.setSessionLifecycleHooks({
+    onAgentState: applyAgentState,
+    onSilenceStatesSnapshot: reconcileSilenceStatesFromTerminal,
+    onSessionExit: (session) => {
+      const taskId = sessionTaskMap.get(session.id);
+      if (!taskId) return;
 
-  // Session-exit → needs-input transition for local projects.
-  // When an agent exits cleanly (code 0 → status 'stopped'), move the task
-  // to needs-input so the user knows it finished or is waiting for review.
-  daemonClient.onSessionExit = (session) => {
-    const taskId = sessionTaskMap.get(session.id);
-    if (!taskId) return;
+      const project = projectStore.get();
+      // Cloud projects handled in renderer.
+      if (!project) return;
 
-    const project = projectStore.get();
-    // Cloud projects handled in renderer.
-    if (!project) return;
-
-    if (session.status === 'stopped') {
-      const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-      if (task && task.status === 'in-progress') {
-        console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', { taskId });
-        void taskStore.update(taskId, { status: 'needs-input' }).then(() => {
-          broadcastLocalTasksChanged();
+      if (session.status === 'stopped') {
+        const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+        if (task && task.status === 'in-progress') {
+          console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', { taskId });
+          void taskStore.update(taskId, { status: 'needs-input' }).then(() => {
+            broadcastLocalTasksChanged();
+          });
+        }
+      } else if (session.status === 'error') {
+        console.warn('[task:status] agent exited with error, not transitioning task', {
+          taskId,
+          sessionId: session.id,
         });
       }
-    } else if (session.status === 'error') {
-      console.warn('[task:status] agent exited with error, not transitioning task', {
-        taskId,
-        sessionId: session.id,
-      });
-    }
-  };
+    },
+  });
+  terminalBackend.startSilenceSnapshotPolling();
 
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
@@ -692,7 +688,7 @@ app.whenReady().then(async () => {
   // stream reconnect so a brief disconnect doesn't permanently miss events.
   async function runSilenceCatchup(): Promise<void> {
     try {
-      const silenceStates = await daemonClient.getSessionSilenceStates();
+      const silenceStates = await terminalBackend.getSessionSilenceStates();
       for (const { id, taskId, state } of silenceStates) {
         // Re-seed the map in case listSessions() failed earlier.
         if (taskId && !sessionTaskMap.has(id)) sessionTaskMap.set(id, taskId);
@@ -1005,7 +1001,7 @@ app.whenReady().then(async () => {
       (t) => effectiveTaskRepoId(t, primaryRepoId) === params.repoId,
     ).length;
 
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     let workspaceCount = 0;
     for (const s of sessions) {
       if (s.projectId !== params.configProjectId) continue;
@@ -1632,7 +1628,7 @@ app.whenReady().then(async () => {
       key: { kind: 'local', id },
       fluxBaseDir,
       projectStore,
-      daemonClient,
+      terminalBackend,
       appStateStore,
       bindingStore,
       clearInMemoryWorkspaceIfActive: clearLocalWorkspaceState,
@@ -1655,7 +1651,7 @@ app.whenReady().then(async () => {
       key,
       fluxBaseDir,
       projectStore,
-      daemonClient,
+      terminalBackend,
       appStateStore,
       bindingStore,
       clearInMemoryWorkspaceIfActive: clearLocalWorkspaceState,
@@ -1781,7 +1777,7 @@ app.whenReady().then(async () => {
       const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const resolved = await resolveTaskWorktreePath(
         taskId,
-        () => daemonClient.listSessions(),
+        () => terminalBackend.listSessions(),
         projectDir ?? '',
         parsed.repoId,
         parsed.fluxWorkBranch ?? row?.fluxWorkBranch,
@@ -1956,7 +1952,7 @@ app.whenReady().then(async () => {
           taskId: tid,
           fluxWorkBranch: localRow?.fluxWorkBranch,
           repoId: prev.repoId,
-          listSessions: () => daemonClient.listSessions(),
+          listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsForGuard,
         });
@@ -2036,7 +2032,7 @@ app.whenReady().then(async () => {
           taskId: tid,
           fluxWorkBranch: localRow?.fluxWorkBranch,
           repoId: prev.repoId,
-          listSessions: () => daemonClient.listSessions(),
+          listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsForRepoPatch,
         });
@@ -2069,7 +2065,7 @@ app.whenReady().then(async () => {
       const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const taskRepoId = taskRow?.repoId?.trim() || null;
       const errors = await teardownEphemeralResourcesForTask(
-        daemonClient,
+        terminalBackend,
         worktreeService,
         taskId,
         repos,
@@ -2134,7 +2130,7 @@ app.whenReady().then(async () => {
       const fw = fluxWorkBranch ?? byId?.get(taskId)?.fluxWorkBranch ?? null;
       const p = await resolveTaskWorktreePath(
         taskId,
-        () => daemonClient.listSessions(),
+        () => terminalBackend.listSessions(),
         projectDir,
         repoId,
         fw,
@@ -2189,7 +2185,7 @@ app.whenReady().then(async () => {
       });
     }
 
-    daemonClient.writeSession(sessionId, data);
+    terminalBackend.writeSession(sessionId, data);
 
     const submitted = data.includes('\r') || data.includes('\n');
     if (!submitted) return;
@@ -2225,7 +2221,7 @@ app.whenReady().then(async () => {
         };
       }
 
-      const sessions = await daemonClient.listSessions();
+      const sessions = await terminalBackend.listSessions();
       const session = pickSessionForTaskWorktree(sessions, taskId, taskRow?.repoId);
       if (!session) {
         return {
@@ -2330,7 +2326,7 @@ app.whenReady().then(async () => {
       // Bracketed paste + submit must be **two awaited daemon writes**. Reasons:
       // - One chunk ending in `\x1b[201~\r` often leaves multiline text in the
       //   agent input without submitting (Cursor agent CLI; others).
-      // - `daemonClient.writeSession` is fire-and-forget; a lone `\r` after paste
+      // - `terminalBackend.writeSession` is fire-and-forget; a lone `\r` after paste
       //   can be dropped or reordered relative to PTY consumption without await.
       // - Paste must not go through `sendTaskSessionTerminalInput` alone: the
       //   prompt body contains `\n`, which would trigger false "submit" side effects.
@@ -2351,8 +2347,8 @@ app.whenReady().then(async () => {
           repr: describeSessionInputForLog(submitInput),
         });
       }
-      await daemonClient.writeSessionAwait(session.id, pasteInput);
-      await daemonClient.writeSessionAwait(session.id, submitInput);
+      await terminalBackend.writeSessionAwait(session.id, pasteInput);
+      await terminalBackend.writeSessionAwait(session.id, submitInput);
       applyTaskSessionSubmitSideEffects(session.id);
       return { ok: true, sessionId: session.id };
     },
@@ -2378,7 +2374,7 @@ app.whenReady().then(async () => {
       const row = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
       const worktreePath = await resolveTaskWorktreePath(
         taskId,
-        () => daemonClient.listSessions(),
+        () => terminalBackend.listSessions(),
         projectDir,
         row?.repoId,
         row?.fluxWorkBranch,
@@ -2743,14 +2739,14 @@ app.whenReady().then(async () => {
 
   /** Remove stopped/error daemon rows for this task so `session:get` and tabs stay unambiguous. */
   async function archiveNonRunningSessionsForTask(taskId: string): Promise<void> {
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     const stale = sessions.filter(
       (s) => s.taskId === taskId && s.status !== 'running',
     );
     for (const s of stale) {
       sessionTaskMap.delete(s.id);
-      await daemonClient.closeShellsForSession(s.id);
-      await daemonClient.stopSession(s.id);
+      await terminalBackend.closeShellsForSession(s.id);
+      await terminalBackend.stopSession(s.id);
     }
   }
 
@@ -2829,7 +2825,7 @@ app.whenReady().then(async () => {
     }
 
     // Dedup against the daemon's live registry.
-    const existing = (await daemonClient.listSessions()).find(
+    const existing = (await terminalBackend.listSessions()).find(
       (s) => s.taskId === task.id && s.status === 'running',
     );
     if (existing) {
@@ -2931,7 +2927,7 @@ app.whenReady().then(async () => {
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
 
-      const result = await daemonClient.createSession({
+      const result = await terminalBackend.createSession({
         worktreePath,
         branch,
         taskId: task.id,
@@ -3211,7 +3207,7 @@ app.whenReady().then(async () => {
           taskId: id,
           fluxWorkBranch: previous.fluxWorkBranch,
           repoId: previous.repoId,
-          listSessions: () => daemonClient.listSessions(),
+          listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsSourcePatch,
         });
@@ -3250,7 +3246,7 @@ app.whenReady().then(async () => {
           taskId: id,
           fluxWorkBranch: previous.fluxWorkBranch,
           repoId: previous.repoId,
-          listSessions: () => daemonClient.listSessions(),
+          listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsPersistPatch,
         });
@@ -3282,7 +3278,7 @@ app.whenReady().then(async () => {
       if (autoCleanup) {
         const cleanupRepos = await projectStore.getReposAt(activeProjectDir());
         const errors = await teardownEphemeralResourcesForTask(
-          daemonClient,
+          terminalBackend,
           worktreeService,
           id,
           cleanupRepos,
@@ -3363,14 +3359,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
-    await daemonClient.closeShellsForSession(sessionId);
-    await daemonClient.stopSession(sessionId);
+    await terminalBackend.closeShellsForSession(sessionId);
+    await terminalBackend.stopSession(sessionId);
   });
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
     await deleteSessionWorkspaceAndStop(
-      daemonClient,
+      terminalBackend,
       worktreeService,
       sessionId,
       gitRootForDaemonSession,
@@ -3378,7 +3374,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     const forTask = sessions.filter((s) => s.taskId === taskId);
     const running = forTask.find((s) => s.status === 'running');
     if (running) return running;
@@ -3392,12 +3388,12 @@ app.whenReady().then(async () => {
     return terminal[terminal.length - 1] ?? null;
   });
 
-  ipcMain.handle('session:getAll', async () => daemonClient.listSessions());
+  ipcMain.handle('session:getAll', async () => terminalBackend.listSessions());
 
   ipcMain.handle(
     'session:attach',
     async (_e, sessionId: string): Promise<AttachResult | null> =>
-      daemonClient.attachSession(sessionId),
+      terminalBackend.attachSession(sessionId),
   );
 
   ipcMain.on('session:write', (_e, sessionId: string, data: string) => {
@@ -3405,12 +3401,12 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on('session:resize', (_e, sessionId: string, cols: number, rows: number) => {
-    daemonClient.resizeSession(sessionId, cols, rows);
+    terminalBackend.resizeSession(sessionId, cols, rows);
   });
 
   ipcMain.handle('session:getSilenceStates', async () => {
     try {
-      return await daemonClient.getSessionSilenceStates();
+      return await terminalBackend.getSessionSilenceStates();
     } catch {
       return [];
     }
@@ -3455,7 +3451,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('planning:list', async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return [];
-    const all = await daemonClient.listPlanning();
+    const all = await terminalBackend.listPlanning();
     return all.filter((s) => s.projectId === pid);
   });
 
@@ -3585,7 +3581,7 @@ app.whenReady().then(async () => {
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
 
-      const result = await daemonClient.startPlanning({
+      const result = await terminalBackend.startPlanning({
         projectId: project.id,
         agent: planningAgent,
         planningDir,
@@ -3618,15 +3614,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('planning:stop', async (_e, sessionId: string) => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return;
-    const s = await daemonClient.getPlanning(sessionId);
+    const s = await terminalBackend.getPlanning(sessionId);
     if (!s || s.projectId !== pid) return;
-    await daemonClient.stopPlanning(sessionId);
+    await terminalBackend.stopPlanning(sessionId);
   });
 
   ipcMain.handle('planning:get', async (_e, sessionId: string) => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return null;
-    const s = await daemonClient.getPlanning(sessionId);
+    const s = await terminalBackend.getPlanning(sessionId);
     if (!s || s.projectId !== pid) return null;
     return s;
   });
@@ -3636,9 +3632,9 @@ app.whenReady().then(async () => {
     async (_e, sessionId: string): Promise<PlanningAttachResult | null> => {
       const pid = await activeProjectIdForPlanning();
       if (!pid) return null;
-      const s = await daemonClient.getPlanning(sessionId);
+      const s = await terminalBackend.getPlanning(sessionId);
       if (!s || s.projectId !== pid) return null;
-      return daemonClient.attachPlanning(sessionId);
+      return terminalBackend.attachPlanning(sessionId);
     },
   );
 
@@ -3646,9 +3642,9 @@ app.whenReady().then(async () => {
     void (async () => {
       const pid = await activeProjectIdForPlanning();
       if (!pid) return;
-      const s = await daemonClient.getPlanning(sessionId);
+      const s = await terminalBackend.getPlanning(sessionId);
       if (!s || s.projectId !== pid) return;
-      daemonClient.writePlanning(sessionId, data);
+      terminalBackend.writePlanning(sessionId, data);
     })();
   });
 
@@ -3658,9 +3654,9 @@ app.whenReady().then(async () => {
       void (async () => {
         const pid = await activeProjectIdForPlanning();
         if (!pid) return;
-        const s = await daemonClient.getPlanning(sessionId);
+        const s = await terminalBackend.getPlanning(sessionId);
         if (!s || s.projectId !== pid) return;
-        daemonClient.resizePlanning(sessionId, cols, rows);
+        terminalBackend.resizePlanning(sessionId, cols, rows);
       })();
     },
   );
@@ -3938,12 +3934,12 @@ app.whenReady().then(async () => {
 
   // ---- Shells: plain terminals spawned inside a session's worktree ----
   ipcMain.handle('shell:open', async (_e, sessionId: string) => {
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) {
       throw new Error(`No session for id: ${sessionId}`);
     }
-    return daemonClient.createShell({
+    return terminalBackend.createShell({
       sessionId: session.id,
       worktreePath: session.worktreePath,
       cols: 80,
@@ -3952,25 +3948,25 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('shell:close', async (_e, shellId: string) => {
-    await daemonClient.closeShell(shellId);
+    await terminalBackend.closeShell(shellId);
   });
 
   ipcMain.handle('shell:list', async (_e, sessionId: string) =>
-    daemonClient.listShells(sessionId),
+    terminalBackend.listShells(sessionId),
   );
 
   ipcMain.handle(
     'shell:attach',
     async (_e, shellId: string): Promise<AttachResult | null> =>
-      daemonClient.attachShell(shellId),
+      terminalBackend.attachShell(shellId),
   );
 
   ipcMain.on('shell:write', (_e, shellId: string, data: string) => {
-    daemonClient.writeShell(shellId, data);
+    terminalBackend.writeShell(shellId, data);
   });
 
   ipcMain.on('shell:resize', (_e, shellId: string, cols: number, rows: number) => {
-    daemonClient.resizeShell(shellId, cols, rows);
+    terminalBackend.resizeShell(shellId, cols, rows);
   });
 
   createWindow();
@@ -4003,9 +3999,10 @@ app.on('before-quit', () => {
   fluxMcpServer?.stop();
   planningDocsWatcher?.dispose();
   planningDocsWatcher = null;
-  // Intentionally do NOT shut down the flux-daemon here; that's the whole
-  // point of the daemon architecture. Quitting Flux must leave live PTYs
-  // running so the next launch can warm-reattach. See 0001-session-daemon.md.
+  mainProcessTerminalBackend?.onMainProcessBeforeQuit();
+  // Detached RPC backends intentionally leave remote PTYs running so the next
+  // launch can warm-reattach; in-process PTYs are torn down in
+  // `onMainProcessBeforeQuit`. See 0001-session-daemon.md.
 });
 
 // In this file you can include the rest of your app's specific main process

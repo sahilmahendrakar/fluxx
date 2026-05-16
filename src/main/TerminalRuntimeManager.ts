@@ -64,8 +64,8 @@ function broadcastToAllWindows(channel: string, payload?: unknown): void {
 }
 
 /**
- * Fan-out for live PTY stream control frames — matches {@link DaemonClient}
- * `dispatchStreamFrame` channel names and payloads so renderer code stays unchanged.
+ * Fan-out for live PTY stream control frames to renderer `webContents.send` channels
+ * (`session:data:<id>`, …).
  */
 export function deliverTerminalStreamFrameToRenderers(frame: StreamFrame): void {
   if (frame.kind === 'data') {
@@ -118,14 +118,14 @@ export interface TerminalRuntimeManagerOptions {
    * {@link deliverTerminalStreamFrameToRenderers}.
    */
   deliverStreamFrame?: (frame: StreamFrame) => void;
-  /** Optional hooks mirroring {@link DaemonClient} for local task-store updates. */
+  /** Optional hooks for local task-store updates (see main-process terminal backend wiring). */
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
 }
 
 /**
- * Main-process owner of local PTYs (task sessions, shells, planning). Same registry
- * semantics as {@link DaemonCore}; replaces the detached daemon in later IPC wiring.
+ * Main-process owner of local PTYs (task sessions, shells, planning). Registry
+ * semantics mirror the former detached daemon's `DaemonCore` implementation.
  */
 export class TerminalRuntimeManager {
   private sessions = new Map<string, SessionEntry>();
