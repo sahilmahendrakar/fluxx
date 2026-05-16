@@ -1,0 +1,71 @@
+src/preload.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 25,292,317
+src/renderer/tasks/LocalTaskProvider.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 67-68
+src/renderer/tasks/TaskProvider.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 1-7,33-34,51
+src/taskAttachedPlanningDocs.ts
+  s_eda25c598acd33::t_69e15042dd90e3 1-184
+src/components/TaskDetailPanel.tsx
+  s_eda25c598acd33::t_a344bbe611862c 1289-1290,1292
+  s_eda25c598acd33::t_71b5e11cb0e67d 1321-1324,1326
+  s_eda25c598acd33::t_8d5a0283b679cc 72-73
+  s_eda25c598acd33::t_bc571519f8384b 320-324
+src/main/composeTaskSessionInitialPrompt.ts
+  s_eda25c598acd33::t_69e15042dd90e3 1-153
+src/main/McpServer.ts
+  s_eda25c598acd33::t_69e15042dd90e3 17,42-45,98-101,168-204,334,387-392,400-409,457-459,498-500,518,572-578,607-610,633-641,676-680,704-711
+src/main/TaskStore.test.ts
+  s_eda25c598acd33::t_69e15042dd90e3 7-60
+src/taskAttachedPlanningDocs.test.ts
+  s_eda25c598acd33::t_69e15042dd90e3 1-138
+src/main.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 48,135,1840,2919-2922,3029-3030
+firestore.rules
+  s_eda25c598acd33::t_69e15042dd90e3 90-148,194-195,198-199
+src/main/ProjectStore.ts
+  s_eda25c598acd33::t_69e15042dd90e3 329-330,333-334,372
+src/renderer/tasks/FirestoreTaskProvider.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 15-23,147-152,209-213,351-362,421,425-432
+src/taskPlanningDocAttachments.test.ts
+  s_eda25c598acd33::t_6ddce8ca467343 2
+src/components/TaskCard.tsx
+  s_eda25c598acd33::t_3ac16260cf12d7 460
+  s_eda25c598acd33::t_b108193dd06323 279
+src/main/TaskStore.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 5,7,23,239-243,274-275,290,326-335
+src/main/agentSpawn.ts
+  s_eda25c598acd33::t_69e15042dd90e3 145
+src/types.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 267-271,395-396,398
+src/App.tsx
+  s_eda25c598acd33::t_f4d31501f4bb45 197-198,200-208
+  s_eda25c598acd33::t_add89056984a71 1987-1991
+  s_eda25c598acd33::t_8763c27d7eb817 1863
+  s_eda25c598acd33::t_469eb9bb875368 71
+  s_eda25c598acd33::t_e160ee73347457 1922-1923,1925-1933
+  s_eda25c598acd33::t_2a2fc9a1401d44 137
+src/env.d.ts
+  s_eda25c598acd33::t_f7c1c68554f7ca 253,278
+  s_eda25c598acd33::t_f270d438cc65e4 29
+src/mcpBridge.ts
+  s_eda25c598acd33::t_ac8bfa0060f48c 6,49-50,66-67
+src/main/composeTaskSessionInitialPrompt.test.ts
+  s_eda25c598acd33::t_69e15042dd90e3 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "8e2e0d02b43116806de44ce3c0235e21fd56424f",
+  "prompts": {},
+  "sessions": {
+    "s_eda25c598acd33": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "18181d0c-8854-42d0-85c9-791ca46670b5",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
