@@ -80,7 +80,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
 
   onMainProcessBeforeQuit(): void {
     this.clearSilencePoll();
-    this.mgr.killAll();
+    this.mgr.shutdownAllPtys();
   }
 
   private restartSilencePollIfNeeded(): void {

@@ -484,10 +484,28 @@ export class TerminalRuntimeManager {
     this.planning.get(id)?.runtime.resize(cols, rows);
   }
 
-  /** Kill every local PTY (e.g. app before-quit). */
-  killAll(): void {
-    for (const { runtime } of this.sessions.values()) runtime.kill();
-    for (const { runtime } of this.shells.values()) runtime.kill();
-    for (const { runtime } of this.planning.values()) runtime.kill();
+  /**
+   * Kill and dispose every registered PTY (shells, planning, and any in-process
+   * task sessions). Used on full app quit so no child processes remain.
+   */
+  shutdownAllPtys(): void {
+    for (const entry of [...this.sessions.values()]) {
+      entry.detector.dispose();
+      entry.autoresponder?.dispose();
+      entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.sessions.clear();
+    for (const entry of [...this.shells.values()]) {
+      entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.shells.clear();
+    for (const entry of [...this.planning.values()]) {
+      entry.autoresponder?.dispose();
+      entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.planning.clear();
   }
 }

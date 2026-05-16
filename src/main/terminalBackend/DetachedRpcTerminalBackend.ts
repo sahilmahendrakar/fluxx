@@ -10,17 +10,28 @@ import type {
   StartPlanningResult,
 } from '../../daemon/protocol';
 import { DaemonClient } from '../DaemonClient';
+import {
+  deliverTerminalStreamFrameToRenderers,
+  TerminalRuntimeManager,
+} from '../TerminalRuntimeManager';
 import type {
   TerminalBackend,
   TerminalSessionLifecycleHooks,
 } from './TerminalBackend';
 
 /**
- * Terminal backend backed by the legacy detached child process (NDJSON RPC + stream).
- * Keeps warm-reattach semantics on app quit — see {@link DaemonClient.disconnect}.
+ * Task agent sessions use the legacy detached child (NDJSON RPC + stream).
+ * Shell panes and planning PTYs run in the Electron main process so they do not
+ * depend on the daemon (see {@link TerminalRuntimeManager}).
  */
 export class DetachedRpcTerminalBackend implements TerminalBackend {
-  constructor(private readonly client: DaemonClient) {}
+  private readonly localShellPlanning: TerminalRuntimeManager;
+
+  constructor(private readonly client: DaemonClient) {
+    this.localShellPlanning = new TerminalRuntimeManager({
+      deliverStreamFrame: deliverTerminalStreamFrameToRenderers,
+    });
+  }
 
   ensureReady(): Promise<void> {
     return this.client.ensureRunning();
@@ -43,7 +54,7 @@ export class DetachedRpcTerminalBackend implements TerminalBackend {
   }
 
   onMainProcessBeforeQuit(): void {
-    /* Detached PTYs intentionally survive Flux quit. */
+    this.localShellPlanning.shutdownAllPtys();
   }
 
   createSession(params: CreateSessionParams): Promise<CreateSessionResult> {
@@ -83,58 +94,58 @@ export class DetachedRpcTerminalBackend implements TerminalBackend {
   }
 
   createShell(params: CreateShellParams): Promise<Shell> {
-    return this.client.createShell(params);
+    return Promise.resolve(this.localShellPlanning.createShell(params));
   }
 
   listShells(sessionId: string): Promise<Shell[]> {
-    return this.client.listShells(sessionId);
+    return Promise.resolve(this.localShellPlanning.listShells(sessionId));
   }
 
   attachShell(id: string): Promise<AttachResult | null> {
-    return this.client.attachShell(id);
+    return this.localShellPlanning.attachShell(id);
   }
 
   writeShell(id: string, data: string): void {
-    this.client.writeShell(id, data);
+    this.localShellPlanning.writeShell(id, data);
   }
 
   resizeShell(id: string, cols: number, rows: number): void {
-    this.client.resizeShell(id, cols, rows);
+    this.localShellPlanning.resizeShell(id, cols, rows);
   }
 
-  closeShell(id: string): Promise<void> {
-    return this.client.closeShell(id);
+  async closeShell(id: string): Promise<void> {
+    this.localShellPlanning.closeShell(id);
   }
 
-  closeShellsForSession(sessionId: string): Promise<void> {
-    return this.client.closeShellsForSession(sessionId);
+  async closeShellsForSession(sessionId: string): Promise<void> {
+    this.localShellPlanning.closeShellsForSession(sessionId);
   }
 
   startPlanning(params: StartPlanningParams): Promise<StartPlanningResult> {
-    return this.client.startPlanning(params);
+    return Promise.resolve(this.localShellPlanning.startPlanning(params));
   }
 
   listPlanning(): Promise<PlanningSession[]> {
-    return this.client.listPlanning();
+    return Promise.resolve(this.localShellPlanning.listPlanning());
   }
 
   getPlanning(id: string): Promise<PlanningSession | null> {
-    return this.client.getPlanning(id);
+    return Promise.resolve(this.localShellPlanning.getPlanning(id));
   }
 
   attachPlanning(id: string): Promise<PlanningAttachResult | null> {
-    return this.client.attachPlanning(id);
+    return this.localShellPlanning.attachPlanning(id);
   }
 
   writePlanning(id: string, data: string): void {
-    this.client.writePlanning(id, data);
+    this.localShellPlanning.writePlanning(id, data);
   }
 
   resizePlanning(id: string, cols: number, rows: number): void {
-    this.client.resizePlanning(id, cols, rows);
+    this.localShellPlanning.resizePlanning(id, cols, rows);
   }
 
-  stopPlanning(id: string): Promise<void> {
-    return this.client.stopPlanning(id);
+  async stopPlanning(id: string): Promise<void> {
+    this.localShellPlanning.stopPlanning(id);
   }
 }
