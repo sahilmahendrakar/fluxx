@@ -83,9 +83,57 @@ describe('TerminalRuntimeManager', () => {
     mgr.resizeSession(id, 80, 24);
     expect(pty.resize).toHaveBeenCalledWith(80, 24);
 
+    await mgr.writeSessionAwait(id, 'paste');
+    expect(pty.write).toHaveBeenCalledWith('paste');
+
     mgr.stopSession(id);
     expect(pty.kill).toHaveBeenCalled();
     expect(mgr.listSessions()).toEqual([]);
+  });
+
+  it('shutdownAllPtys stops sessions, shells, and planning', async () => {
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+
+    const sess = mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'p1',
+      agent: 'claude-code',
+      command: 'sleep',
+      args: ['9'],
+      cols: 40,
+      rows: 12,
+    });
+    if (!('id' in sess)) throw new Error('expected session');
+    const shell = mgr.createShell({
+      sessionId: sess.id,
+      worktreePath: '/tmp/wt',
+      cols: 30,
+      rows: 8,
+    });
+    const plan = mgr.startPlanning({
+      projectId: 'p1',
+      agent: 'cursor',
+      planningDir: '/tmp/plan',
+      command: 'sleep',
+      args: ['9'],
+      cols: 50,
+      rows: 10,
+    });
+    if ('error' in plan) throw new Error(plan.message);
+
+    expect(mgr.listSessions().length).toBe(1);
+    expect(mgr.listShells().length).toBe(1);
+    expect(mgr.listPlanning().length).toBe(1);
+
+    mgr.shutdownAllPtys();
+
+    expect(mgr.listSessions()).toEqual([]);
+    expect(mgr.listShells()).toEqual([]);
+    expect(mgr.listPlanning()).toEqual([]);
+    expect(ptyState.instances.every((p) => p.kill.mock.calls.length > 0)).toBe(true);
   });
 
   it('emits session-exit with stopped status on zero exit', async () => {

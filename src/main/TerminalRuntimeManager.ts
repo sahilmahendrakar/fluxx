@@ -266,6 +266,15 @@ export class TerminalRuntimeManager {
     this.sessions.get(id)?.runtime.write(data);
   }
 
+  /**
+   * Ensures this write is applied before follow-up writes (e.g. bracketed paste
+   * then a lone `\r` for {@link tasks:requestPullRequestFromAgent}).
+   */
+  async writeSessionAwait(id: string, data: string): Promise<void> {
+    this.writeSession(id, data);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
   resizeSession(id: string, cols: number, rows: number): void {
     const entry = this.sessions.get(id);
     if (!entry) return;

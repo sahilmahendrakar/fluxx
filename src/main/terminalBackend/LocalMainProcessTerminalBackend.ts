@@ -155,8 +155,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
   }
 
   async writeSessionAwait(id: string, data: string): Promise<void> {
-    this.mgr.writeSession(id, data);
-    await Promise.resolve();
+    await this.mgr.writeSessionAwait(id, data);
   }
 
   writeSessionAfterOutputText(id: string, needle: string, data: string): void {

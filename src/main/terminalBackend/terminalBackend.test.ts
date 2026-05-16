@@ -13,10 +13,10 @@ describe('TerminalBackend', () => {
     backend.onMainProcessBeforeQuit();
   });
 
-  it('createMainTerminalBackend uses local when FLUX_TERMINAL_BACKEND=local', () => {
+  it('createMainTerminalBackend defaults to local when env unset', () => {
     const prev = process.env.FLUX_TERMINAL_BACKEND;
     try {
-      process.env.FLUX_TERMINAL_BACKEND = 'local';
+      delete process.env.FLUX_TERMINAL_BACKEND;
       expect(createMainTerminalBackend()).toBeInstanceOf(LocalMainProcessTerminalBackend);
     } finally {
       if (prev === undefined) delete process.env.FLUX_TERMINAL_BACKEND;
