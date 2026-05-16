@@ -254,6 +254,8 @@ export interface StartPlanningParams {
   rows: number;
   trustPromptAutorespond?: boolean;
   trustPromptAutorespondRoots?: string[];
+  /** Extra env merged into the planning PTY (e.g. Flux CLI bridge URL/token). */
+  ptyEnv?: Record<string, string>;
 }
 
 export type StartPlanningResult =

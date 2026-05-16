@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${FLUX_ELECTRON_EXE:-}" ] && [ -x "${FLUX_ELECTRON_EXE}" ]; then
+  export ELECTRON_RUN_AS_NODE=1
+  exec "${FLUX_ELECTRON_EXE}" "$DIR/flux-cli.js" "$@"
+fi
+exec node "$DIR/flux-cli.js" "$@"

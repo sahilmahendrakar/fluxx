@@ -187,6 +187,33 @@ async function stageDaemonResources(buildPath: string): Promise<void> {
   }
 }
 
+/** Stage `flux-cli.js` + `flux` shim for planning PTYs in packaged builds. */
+async function stageFluxCliResources(buildPath: string): Promise<void> {
+  const resourcesDir = path.resolve(buildPath, '..');
+  const cliDir = path.join(resourcesDir, 'flux-cli');
+  await fsp.mkdir(cliDir, { recursive: true });
+
+  const cliSrc = path.join(__dirname, '.vite', 'build', 'flux-cli.js');
+  if (!fs.existsSync(cliSrc)) {
+    throw new Error(
+      `[forge.config] expected flux-cli bundle at ${cliSrc}; Vite must build it before packageAfterCopy runs`,
+    );
+  }
+  await fsp.cp(cliSrc, path.join(cliDir, 'flux-cli.js'));
+  const cliMapSrc = `${cliSrc}.map`;
+  if (fs.existsSync(cliMapSrc)) {
+    await fsp.cp(cliMapSrc, path.join(cliDir, 'flux-cli.js.map'));
+  }
+
+  const shimSrc = path.resolve(__dirname, 'scripts', 'flux-shim');
+  if (!fs.existsSync(shimSrc)) {
+    throw new Error(`[forge.config] expected flux shim at ${shimSrc}`);
+  }
+  const shimDst = path.join(cliDir, 'flux');
+  await fsp.cp(shimSrc, shimDst);
+  await fsp.chmod(shimDst, 0o755);
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -227,6 +254,7 @@ const config: ForgeConfig = {
       // We need to place files at its sibling `Resources/daemon/`, which is outside the
       // soon-to-be-built `app.asar`.
       await stageDaemonResources(buildPath);
+      await stageFluxCliResources(buildPath);
     },
     postMake: async (_forgeConfig, makeResults) =>
       postMakeWriteLatestMacYml(makeResults),
@@ -269,6 +297,11 @@ const config: ForgeConfig = {
           // docs/daemon-packaging.md.
           entry: 'src/daemon/daemon.ts',
           config: 'vite.daemon.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/flux-cli/main.ts',
+          config: 'vite.flux-cli.config.ts',
           target: 'main',
         },
         {

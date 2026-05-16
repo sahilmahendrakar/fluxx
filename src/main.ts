@@ -17,7 +17,14 @@ import {
   validateTaskRepoIdPatchValue,
 } from './repoIdentity';
 import { McpServer } from './main/McpServer';
+import { AutomationHttpServer } from './main/AutomationHttpServer';
 import { McpRendererBridge } from './main/McpRendererBridge';
+import {
+  fluxAutomationPtyEnv,
+  newFluxAutomationToken,
+  resolveFluxCliBinDir,
+  writeFluxCliBridgeConfig,
+} from './main/fluxAutomationBridge';
 import { AppStateStore } from './main/AppStateStore';
 import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
 import { hydrateCloudProject } from './cloudBindingPrefs';
@@ -408,6 +415,8 @@ function resolveWindowIconPath(): string | undefined {
 let mainWindow: BrowserWindow | null = null;
 
 let fluxMcpServer: McpServer | null = null;
+let fluxAutomationServer: AutomationHttpServer | null = null;
+let fluxAutomationToken: string | null = null;
 let fluxMcpRendererBridge: McpRendererBridge | null = null;
 
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
@@ -3466,6 +3475,14 @@ app.whenReady().then(async () => {
   );
   fluxMcpServer.start();
 
+  fluxAutomationToken = newFluxAutomationToken();
+  fluxAutomationServer = new AutomationHttpServer(
+    fluxAutomationToken,
+    () => appStateStore.get().activeProjectKey,
+    (body) => fluxMcpServer!.invokeAutomationRequest(body),
+  );
+  fluxAutomationServer.start();
+
   async function activeProjectIdForPlanning(): Promise<string | null> {
     const activeKey = appStateStore.get().activeProjectKey;
     if (!activeKey) return null;
@@ -3608,6 +3625,23 @@ app.whenReady().then(async () => {
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
 
+      let ptyEnv: Record<string, string> | undefined;
+      if (fluxAutomationServer && fluxAutomationToken) {
+        await fluxAutomationServer.whenReady();
+        const baseUrl = fluxAutomationServer.baseUrl;
+        await writeFluxCliBridgeConfig(projectDir, {
+          url: baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+        });
+        ptyEnv = fluxAutomationPtyEnv({
+          baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+          fluxCliBinDir: resolveFluxCliBinDir(),
+        });
+      }
+
       const result = await daemonClient.startPlanning({
         projectId: project.id,
         agent: planningAgent,
@@ -3617,6 +3651,7 @@ app.whenReady().then(async () => {
         cols: 220,
         rows: 50,
         ...trustAutorespondArg,
+        ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
       if ('error' in result) {
         console.error('[planning:start] daemon spawn failed', {
@@ -4023,6 +4058,9 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  fluxAutomationServer?.stop();
+  fluxAutomationServer = null;
+  fluxAutomationToken = null;
   fluxMcpServer?.stop();
   planningDocsWatcher?.dispose();
   planningDocsWatcher = null;
