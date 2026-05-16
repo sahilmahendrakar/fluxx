@@ -130,7 +130,6 @@ function PlanningTerminalPane({
       return planningApi.onData(id, cb);
     },
     onDataChunk: visible ? onDataChunk : undefined,
-    invalidateAttachCache: () => invalidatePlanningAttachCache(session.id),
   });
 
   useEffect(() => {

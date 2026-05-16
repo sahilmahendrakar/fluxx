@@ -339,7 +339,8 @@ declare global {
         getSilenceStates: () => Promise<
           { id: string; taskId?: string; state: AgentState }[]
         >;
-        onDaemonStreamCatchup: (
+        /** @deprecated Optional — legacy detached-daemon stream reconnect; not used for terminal attach. */
+        onDaemonStreamCatchup?: (
           cb: (payload: DaemonStreamCatchupPayload) => void,
         ) => () => void;
         onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => () => void;
