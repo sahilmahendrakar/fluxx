@@ -20,6 +20,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
 const githubUpdatesRepo = 'flux-web';
+const appleAppSpecificPassword =
+  process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
+const shouldSignAndNotarize = Boolean(
+  process.env.APPLE_ID && appleAppSpecificPassword && process.env.APPLE_TEAM_ID,
+);
 
 /** Zips produced by `@electron-forge/maker-zip` for Darwin (electron-updater needs these + `latest-mac.yml`). */
 function isDarwinMakerZipArtifact(artifactPath: string): boolean {
@@ -135,12 +140,12 @@ const config: ForgeConfig = {
     ignore: packagerIgnore,
     // Base path without extension; electron-packager picks .icns / .ico / .png per OS.
     icon: path.resolve(__dirname, 'assets', 'app-icon'),
-    ...(process.env.APPLE_ID
+    ...(shouldSignAndNotarize
       ? {
           osxSign: {},
           osxNotarize: {
             appleId: process.env.APPLE_ID,
-            appleIdPassword: process.env.APPLE_PASSWORD,
+            appleIdPassword: appleAppSpecificPassword,
             teamId: process.env.APPLE_TEAM_ID,
           },
         }
@@ -209,6 +214,8 @@ const config: ForgeConfig = {
   publishers: [
     new PublisherGithub({
       repository: { owner: githubUpdatesOwner, name: githubUpdatesRepo },
+      draft: false,
+      prerelease: false,
     }),
   ],
 };
