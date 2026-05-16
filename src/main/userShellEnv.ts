@@ -4,17 +4,16 @@
  *
  * macOS GUI apps launched from Finder / Spotlight / Dock inherit the minimal
  * launchd PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), not the user's shell PATH
- * from `~/.zshrc`. The daemon spawned by main inherits the same minimal env,
- * so any `pty.spawn('agent', ...)` from a packaged build fails with ENOENT
- * — the PTY child exits immediately and the UI surfaces "session has ended".
+ * from `~/.zshrc`. Electron main inherits the same minimal env, so any
+ * `pty.spawn('agent', ...)` from a packaged build fails with ENOENT — the PTY
+ * child exits immediately and the UI surfaces "session has ended".
  *
- * We probe the user's shell once at main-process startup, before the daemon
- * spawns, and merge the result into `process.env` so the daemon (and all its
- * PTY children) inherit the corrected env automatically.
+ * We probe the user's shell once at main-process startup and merge the result
+ * into `process.env` so PTY spawns inherit the corrected env automatically.
  *
  * Pattern is lifted from Superset's `packages/host-service/src/terminal/clean-shell-env.ts`
  * (the v2 strict probe — sentinel delimiter, locked spawn env, $HOME cwd,
- * timeout kill). See `docs/daemon-packaging.md` for the broader context.
+ * timeout kill).
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
@@ -287,15 +286,15 @@ export function clearUserShellEnvCacheForTests(): void {
  * Merge the user's shell env into `process.env`, preferring existing values
  * so Electron- and Flux-managed vars stay intact. PATH is treated specially:
  * the shell-derived PATH replaces the inherited launchd minimal PATH so that
- * later `child_process.spawn` (and the daemon, and node-pty children) can
+ * later `child_process.spawn` (and node-pty children) can
  * find `agent`, `claude`, `codex`, `gh`, `brew`, etc.
  *
  * On any failure: augment `process.env.PATH` with the well-known macOS
  * toolchain dirs and return. The app still boots; the user just may need
  * binaries installed under Homebrew's standard prefixes to be reachable.
  *
- * Call this once at startup, **synchronously awaited**, before spawning the
- * daemon. Idempotent — subsequent calls hit the cache.
+ * Call this once at startup, **synchronously awaited**, before spawning any
+ * PTYs. Idempotent — subsequent calls hit the cache.
  */
 export async function applyShellEnvToProcess(): Promise<void> {
   try {

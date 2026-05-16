@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ActiveProjectKey, RepoConfig } from '../types';
 import type { AppStateStore } from './AppStateStore';
-import type { DaemonClient } from './DaemonClient';
+import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { ProjectStore } from './ProjectStore';
 import { assertSafeToDeleteLegacyFlatProjectsRoot } from './projectDirLayout';
@@ -12,22 +12,22 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function stopDaemonResourcesForProject(
-  daemonClient: DaemonClient,
+export async function stopTerminalSessionsForProject(
+  terminalBackend: TerminalBackend,
   projectId: string,
 ): Promise<string[]> {
   const warnings: string[] = [];
   try {
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     for (const s of sessions) {
       if (s.projectId !== projectId) continue;
       try {
-        await daemonClient.closeShellsForSession(s.id);
+        await terminalBackend.closeShellsForSession(s.id);
       } catch (err) {
         warnings.push(`closeShellsForSession(${s.id}): ${errText(err)}`);
       }
       try {
-        await daemonClient.stopSession(s.id);
+        await terminalBackend.stopSession(s.id);
       } catch (err) {
         warnings.push(`stopSession(${s.id}): ${errText(err)}`);
       }
@@ -37,11 +37,11 @@ export async function stopDaemonResourcesForProject(
   }
 
   try {
-    const planning = await daemonClient.listPlanning();
+    const planning = await terminalBackend.listPlanning();
     for (const p of planning) {
       if (p.projectId !== projectId) continue;
       try {
-        await daemonClient.stopPlanning(p.id);
+        await terminalBackend.stopPlanning(p.id);
       } catch (err) {
         warnings.push(`stopPlanning(${p.id}): ${errText(err)}`);
       }
@@ -147,14 +147,14 @@ export type RemoveFluxOwnedLocalStateDeps = {
   key: ActiveProjectKey;
   fluxBaseDir: string;
   projectStore: ProjectStore;
-  daemonClient: DaemonClient;
+  terminalBackend: TerminalBackend;
   appStateStore: AppStateStore;
   bindingStore: LocalBindingStore;
   clearInMemoryWorkspaceIfActive: () => Promise<void>;
 };
 
 /**
- * Deletes Flux-owned workspace directories for `key.id`, stops matching daemon sessions,
+ * Deletes Flux-owned workspace directories for `key.id`, stops matching terminal sessions,
  * clears persisted tab state, optionally clears cloud local bindings, and resets the
  * active workspace when that project is open. Does not delete user repository clones
  * (`RepoConfig.rootPath`).
@@ -165,10 +165,10 @@ export async function removeFluxOwnedLocalState(
   const warnings: string[] = [];
   const errors: string[] = [];
   const deletedMaterializationDirs: string[] = [];
-  const { key, fluxBaseDir, projectStore, daemonClient, appStateStore, bindingStore } =
+  const { key, fluxBaseDir, projectStore, terminalBackend, appStateStore, bindingStore } =
     deps;
 
-  warnings.push(...(await stopDaemonResourcesForProject(daemonClient, key.id)));
+  warnings.push(...(await stopTerminalSessionsForProject(terminalBackend, key.id)));
 
   const dirs = await projectStore.listMaterializationDirsForProjectId(key.id);
   const sorted = [...dirs].sort((a, b) => b.length - a.length);

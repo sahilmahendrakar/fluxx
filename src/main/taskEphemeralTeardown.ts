@@ -1,24 +1,24 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import type { RepoConfig, Session } from '../types';
-import type { DaemonClient } from './DaemonClient';
+import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
 
 /**
- * Stop a daemon session, close its shells, and remove its git worktree — same
+ * Stop a task session, close its shells, and remove its git worktree — same
  * side effects as the `session:delete` IPC handler (workspace delete).
  */
 export async function deleteSessionWorkspaceAndStop(
-  daemonClient: DaemonClient,
+  terminalBackend: TerminalBackend,
   worktreeService: WorktreeService,
   sessionId: string,
   resolveGitRepoRoot: (session: Session) => Promise<string | null>,
 ): Promise<void> {
-  const sessions = await daemonClient.listSessions();
+  const sessions = await terminalBackend.listSessions();
   const target = sessions.find((s) => s.id === sessionId);
-  await daemonClient.closeShellsForSession(sessionId);
-  await daemonClient.stopSession(sessionId);
+  await terminalBackend.closeShellsForSession(sessionId);
+  await terminalBackend.stopSession(sessionId);
   if (target?.worktreePath) {
     try {
       const gitRoot = await resolveGitRepoRoot(target);
@@ -33,12 +33,12 @@ export async function deleteSessionWorkspaceAndStop(
 }
 
 /**
- * Tear down every daemon session and worktree tied to `taskId`, then remove a
+ * Tear down every task session and worktree tied to `taskId`, then remove a
  * possible orphan worktree directory (e.g. after archive left the folder).
  * Does not touch the task record.
  */
 export async function teardownEphemeralResourcesForTask(
-  daemonClient: DaemonClient,
+  terminalBackend: TerminalBackend,
   worktreeService: WorktreeService,
   taskId: string,
   repos: readonly RepoConfig[],
@@ -50,7 +50,7 @@ export async function teardownEphemeralResourcesForTask(
   const errors: string[] = [];
   let sessionIds: string[] = [];
   try {
-    const sessions = await daemonClient.listSessions();
+    const sessions = await terminalBackend.listSessions();
     sessionIds = sessions.filter((s) => s.taskId === taskId).map((s) => s.id);
   } catch (err) {
     errors.push(
@@ -75,7 +75,7 @@ export async function teardownEphemeralResourcesForTask(
   for (const id of sessionIds) {
     try {
       await deleteSessionWorkspaceAndStop(
-        daemonClient,
+        terminalBackend,
         worktreeService,
         id,
         resolveStored,

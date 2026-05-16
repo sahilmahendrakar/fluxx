@@ -40,11 +40,10 @@ export interface SessionRuntimeCallbacks {
  * One node-pty child + a headless xterm emulator + a bounded circular
  * buffer of recent raw output. The same shape is used for agent sessions,
  * free-form shells, and the planning PTY — the only difference between
- * them lives in the registry at the Daemon layer.
+ * them lives in the main-process terminal runtime registry.
  *
- * Attach RPC returns `AttachResult`: legacy `replay` plus optional
- * `snapshot` (serialized headless state) once the daemon implements it.
- * Live bytes continue on the stream socket after the RPC response.
+ * Warm attach returns `AttachResult`: legacy `replay` plus optional
+ * `snapshot` (serialized headless state). Live bytes continue on IPC after attach.
  */
 export class SessionRuntime {
   readonly pty: IPty;
@@ -76,8 +75,7 @@ export class SessionRuntime {
     // Force a curated terminal env (TERM=xterm-256color, COLORTERM=truecolor,
     // LANG=<utf-8>, TERM_PROGRAM=kitty for CSI-u Shift+Enter, COLORFGBG=15;0).
     // Without this, packaged GUI launches inherit launchd's bare env and TUIs
-    // like claude-code fall back to ANSI-16 + stripped banners. See
-    // `terminalEnv.ts` and `docs/daemon-packaging.md`.
+    // like claude-code fall back to ANSI-16 + stripped banners. See `terminalEnv.ts`.
     this.pty = pty.spawn(spec.command, spec.args, {
       name: PTY_TERM_NAME,
       cols: spec.cols,

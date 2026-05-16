@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AttachResult, TerminalModes } from '../daemon/protocol';
+import type { AttachResult, TerminalModes } from '../terminal-runtime/protocol';
 import {
   applyAttachResultToTerminal,
   getPlanningAttachShared,

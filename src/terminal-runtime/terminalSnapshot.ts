@@ -28,8 +28,11 @@ function getCore(term: Terminal): XtermCore {
 export function readTerminalModes(terminal: Terminal): TerminalModes {
   const m = terminal.modes;
   const core = getCore(terminal);
-  const mouseProto = core.coreMouseService.activeProtocol;
-  const enc = core.coreMouseService.activeEncoding;
+  // @xterm/headless 6+ may omit `coreMouseService` on the private `_core` shim
+  // used in Vitest; treat as “no mouse tracking” instead of crashing snapshots.
+  const mouse = core.coreMouseService;
+  const mouseProto = mouse?.activeProtocol ?? '';
+  const enc = mouse?.activeEncoding ?? '';
 
   return {
     applicationCursorKeys: m.applicationCursorKeysMode,

@@ -1,4 +1,4 @@
-import type { AttachResult } from '../daemon/protocol';
+import type { AttachResult } from '../terminal-runtime/protocol';
 import type { TerminalHandle } from '../components/Terminal';
 
 /** In-flight `onData` chunk before the attach snapshot is applied. */
@@ -36,7 +36,7 @@ export function writeBufferedStreamAfterSnapshot(
  * In-flight attach promise maps. Module-scoped so React 18 dev StrictMode
  * double mounts coalesce to one `attach` RPC and do not double-apply a
  * payload. Entries are evicted in `finally` when the promise settles, so
- * a later remount (after the daemon has advanced) always issues a new attach
+ * a later remount (after the PTY has advanced) always issues a new attach
  * and gets a fresh snapshot.
  */
 const sessionAttachInflight = new Map<string, Promise<AttachResult | null>>();
@@ -103,7 +103,7 @@ export interface ApplyAttachOptions {
 
 /**
  * Restores a warm-attach payload into a fresh xterm.
- * When `result.snapshot` is set (daemon v3+), use serialized state only; do
+ * When `result.snapshot` is set, use serialized state only; do
  * not also write `replay` or transient PTY history would duplicate
  * scrollback. Order follows Superset's terminal-host restore helper: apply
  * `rehydrateSequences` before `snapshotAnsi` so DECSET/DECRST mode restores

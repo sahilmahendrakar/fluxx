@@ -22,7 +22,7 @@ const allOffModes = (): TerminalModes => ({
 const agent: Agent = 'claude-code';
 
 /**
- * Simulates how attach results cross NDJSON and Electron IPC: structured-clone
+ * Simulates how attach results cross Electron IPC: structured-clone
  * and JSON only preserve plain data, so the contract must be plain objects.
  */
 function jsonRoundTrip<T>(value: T): T {
@@ -30,7 +30,7 @@ function jsonRoundTrip<T>(value: T): T {
 }
 
 describe('attach wire shape', () => {
-  it('AttachResult with snapshot round-trips like daemon RPC / IPC', () => {
+  it('AttachResult with snapshot round-trips like IPC / structured clone', () => {
     const modes = allOffModes();
     const snapshot: TerminalSnapshot = {
       snapshotAnsi: '\x1b[2J',

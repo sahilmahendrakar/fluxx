@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
-import type { AttachResult } from '../daemon/protocol';
+import { useEffect, useRef, type RefObject } from 'react';
+import type { AttachResult } from '../terminal-runtime/protocol';
 import type { TerminalHandle } from '../components/Terminal';
 import {
   applyAttachResultToTerminal,
@@ -43,14 +43,16 @@ export interface UseTerminalPtyStreamOptions {
   onDataChunk?: (data: string) => void;
   /** Optional: after warm-attach snapshot is applied and stream is unblocked. */
   onAttachComplete?: () => void;
-  /** Clear shared attach dedupe before refetch (e.g. after daemon stream reconnect). */
-  invalidateAttachCache?: () => void;
 }
 
 /**
  * Buffers output until the warm-attach payload is applied, then flushes
  * post-`streamSeq` chunks. Centralizes owner vs mirror attach policy and
  * post-attach `fit()` for container-fit owner views.
+ *
+ * Re-runs when `enabled`, `id`, or `viewPolicy` change (e.g. new PTY id after
+ * restart). A full renderer reload (macOS window close → reopen) naturally
+ * remounts and re-subscribes to the main-process PTY stream.
  */
 export function useTerminalPtyStream({
   terminalRef,
@@ -61,7 +63,6 @@ export function useTerminalPtyStream({
   onStreamData,
   onDataChunk,
   onAttachComplete,
-  invalidateAttachCache,
 }: UseTerminalPtyStreamOptions): void {
   const getAttachRef = useRef(getAttach);
   getAttachRef.current = getAttach;
@@ -71,19 +72,6 @@ export function useTerminalPtyStream({
   onDataChunkRef.current = onDataChunk;
   const onAttachCompleteRef = useRef(onAttachComplete);
   onAttachCompleteRef.current = onAttachComplete;
-  const invalidateAttachCacheRef = useRef(invalidateAttachCache);
-  invalidateAttachCacheRef.current = invalidateAttachCache;
-
-  const [catchupGeneration, setCatchupGeneration] = useState(0);
-
-  useEffect(() => {
-    const api = window.electronAPI.sessions.onDaemonStreamCatchup;
-    if (!api) return () => undefined;
-    return api(() => {
-      invalidateAttachCacheRef.current?.();
-      setCatchupGeneration((g) => g + 1);
-    });
-  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -126,5 +114,5 @@ export function useTerminalPtyStream({
       cancelled = true;
       unsub();
     };
-  }, [enabled, id, viewPolicy, terminalRef, catchupGeneration]);
+  }, [enabled, id, viewPolicy, terminalRef]);
 }

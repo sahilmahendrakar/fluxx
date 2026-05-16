@@ -18,7 +18,7 @@ The rule is simple and deterministic:
 
 ## 1. Where Detection Lives
 
-**New `SilenceDetector` class in `src/daemon/SilenceDetector.ts`**
+**`SilenceDetector` in `src/terminal-runtime/SilenceDetector.ts`**
 
 DaemonCore creates one detector per agent session. It's a tiny class: a timer
 that resets on every PTY chunk.
@@ -29,7 +29,7 @@ byte with zero IPC latency.
 ## 2. SilenceDetector Class
 
 ```typescript
-// src/daemon/SilenceDetector.ts
+// src/terminal-runtime/SilenceDetector.ts
 
 export type SilenceState = 'active' | 'silent';
 
@@ -111,7 +111,7 @@ Timer fires
 
 ### Main-process side
 
-`DaemonClient.dispatchStreamFrame()` gains a new case:
+Main-process stream delivery (e.g. `deliverTerminalStreamFrameToRenderers`) gains a new case:
 
 ```typescript
 if (frame.kind === 'agent-state') {
@@ -129,7 +129,7 @@ if (frame.kind === 'agent-state') {
 ```
 
 The `taskId` is resolved from the `Session` object already tracked by
-DaemonClient (sessions carry `taskId`).
+`TerminalRuntimeManager` (sessions carry `taskId`).
 
 ### Protocol additions
 
@@ -216,7 +216,7 @@ The silence timer is agent-agnostic. It works identically for `claude-code`,
 - **Unit tests** for `SilenceDetector`: use fake timers to verify state
   transitions (`active` -> feed nothing -> `silent`; `silent` -> feed chunk ->
   `active`; rapid chunks keep resetting timer)
-- **Integration test**: `DaemonCore` with a mock PTY that writes then stops;
+- **Integration test**: `TerminalRuntimeManager` with a mock PTY that writes then stops;
   verify `agent-state` frame is broadcast after silence period
 - **Timer disposal**: verify no leaked timers after `dispose()`
 
@@ -224,7 +224,6 @@ The silence timer is agent-agnostic. It works identically for `claude-code`,
 
 | File | Change |
 |---|---|
-| `src/daemon/SilenceDetector.ts` | **New** -- ~40 lines |
-| `src/daemon/protocol.ts` | Add `agent-state` to `StreamFrame` union |
-| `src/daemon/DaemonCore.ts` | Create detector per session, wire `onData`, dispose on stop |
-| `src/main/DaemonClient.ts` | Handle `agent-state` frame in `dispatchStreamFrame()` |
+| `src/terminal-runtime/SilenceDetector.ts` | Detector implementation |
+| `src/terminal-runtime/protocol.ts` | `agent-state` in `StreamFrame` union |
+| `src/main/TerminalRuntimeManager.ts` | Create detector per session, wire `onData`, dispose on stop; fan-out `agent-state` to renderers |

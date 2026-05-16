@@ -7,7 +7,7 @@ function agentLabel(agent: Agent): string {
 }
 
 /**
- * Subscribes to daemon `auto-responded` IPC for one session and returns a short
+ * Subscribes to main-process `auto-responded` IPC for one session and returns a short
  * transient message for inline UI (clears after a few seconds).
  */
 export function useTrustAutorespondNotice(

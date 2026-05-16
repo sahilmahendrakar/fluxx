@@ -1,14 +1,10 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import type { Agent, PlanningSession, Session, Shell } from '../types';
 import type {
-  PlanningSession,
-  Session,
-  Shell,
-} from '../types';
-import type {
+  AgentState,
   AttachResult,
-  CapabilitiesResult,
   CreateSessionParams,
   CreateSessionResult,
   CreateShellParams,
@@ -16,17 +12,19 @@ import type {
   StartPlanningParams,
   StartPlanningResult,
   StreamFrame,
-} from './protocol';
-import { SessionRuntime } from './SessionRuntime';
-import { SilenceDetector } from './SilenceDetector';
-import { PromptAutoresponder } from './PromptAutoresponder';
-import { buildTrustPromptAutoresponderRules } from './trustPromptAutoresponderRules';
+} from '../terminal-runtime/protocol';
+import { SessionRuntime } from '../terminal-runtime/SessionRuntime';
+import { SilenceDetector } from '../terminal-runtime/SilenceDetector';
+import { PromptAutoresponder } from '../terminal-runtime/PromptAutoresponder';
+import { buildTrustPromptAutoresponderRules } from '../terminal-runtime/trustPromptAutoresponderRules';
+import type { SilenceState } from '../terminal-runtime/SilenceDetector';
 
 interface SessionEntry {
   runtime: SessionRuntime;
   session: Session;
   detector: SilenceDetector;
   autoresponder: PromptAutoresponder | null;
+  agent: Agent;
 }
 
 interface ShellEntry {
@@ -40,37 +38,130 @@ interface PlanningEntry {
   autoresponder: PromptAutoresponder | null;
 }
 
-/** Idle-shutdown timer: exit after N ms with zero live PTYs. */
-const DEFAULT_IDLE_MS = 24 * 60 * 60 * 1000;
-
 function defaultShellCommand(): { command: string; args: string[] } {
   if (process.platform === 'win32') {
     return { command: process.env.COMSPEC ?? 'cmd.exe', args: [] };
   }
   const sh = process.env.SHELL ?? '/bin/bash';
-  // Login shell gives users their normal PATH / aliases.
   return { command: sh, args: ['-l'] };
 }
 
+function broadcastToAllWindows(channel: string, payload?: unknown): void {
+  let BrowserWindowCtor: { getAllWindows: () => Array<{ isDestroyed: () => boolean; webContents: { send: (c: string, p?: unknown) => void } }> };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    BrowserWindowCtor = require('electron').BrowserWindow;
+  } catch {
+    return;
+  }
+  for (const win of BrowserWindowCtor.getAllWindows()) {
+    if (win.isDestroyed()) continue;
+    if (payload === undefined) {
+      win.webContents.send(channel);
+    } else {
+      win.webContents.send(channel, payload);
+    }
+  }
+}
+
 /**
- * In-daemon registry for every PTY the daemon currently owns. Pure
- * business logic — socket I/O lives in the daemon entry point. The
- * daemon broadcasts PTY output by handing a `broadcast` callback to
- * each `SessionRuntime`.
+ * Fan-out for live PTY stream control frames to renderer `webContents.send` channels
+ * (`session:data:<id>`, …).
  */
-export class DaemonCore {
+export function deliverTerminalStreamFrameToRenderers(frame: StreamFrame): void {
+  if (frame.kind === 'data') {
+    const payload = { data: frame.data, seq: frame.seq };
+    if (frame.target === 'session') {
+      broadcastToAllWindows(`session:data:${frame.id}`, payload);
+    } else if (frame.target === 'shell') {
+      broadcastToAllWindows(`shell:data:${frame.id}`, payload);
+    } else if (frame.target === 'planning') {
+      broadcastToAllWindows(`planning:data:${frame.id}`, payload);
+    }
+    return;
+  }
+  if (frame.kind === 'session-exit') {
+    broadcastToAllWindows('session:exited', frame.session);
+    return;
+  }
+  if (frame.kind === 'shell-exit') {
+    broadcastToAllWindows('shell:exited', frame.shell);
+    return;
+  }
+  if (frame.kind === 'planning-exit') {
+    broadcastToAllWindows('planning:exited', frame.session);
+    return;
+  }
+  if (frame.kind === 'agent-state') {
+    broadcastToAllWindows(`session:agent-state:${frame.id}`, { state: frame.state });
+    return;
+  }
+  if (frame.kind === 'auto-responded') {
+    if (frame.target === 'session') {
+      broadcastToAllWindows(`session:auto-responded:${frame.id}`, {
+        ruleId: frame.ruleId,
+        agent: frame.agent,
+        sessionId: frame.sessionId,
+      });
+    } else if (frame.target === 'planning') {
+      broadcastToAllWindows(`planning:auto-responded:${frame.id}`, {
+        ruleId: frame.ruleId,
+        agent: frame.agent,
+        sessionId: frame.sessionId,
+      });
+    }
+  }
+}
+
+export interface SessionPtyDataPayload {
+  sessionId: string;
+  taskId: string;
+  projectId: string;
+  agent: Agent;
+  data: string;
+}
+
+export interface TerminalRuntimeManagerOptions {
+  /**
+   * Deliver stream/control frames (tests inject this). Defaults to
+   * {@link deliverTerminalStreamFrameToRenderers}.
+   */
+  deliverStreamFrame?: (frame: StreamFrame) => void;
+  /** Optional hooks for local task-store updates (see main-process terminal backend wiring). */
+  onAgentState?: (sessionId: string, state: AgentState) => void;
+  onSessionExit?: (session: Session) => void;
+  /** Raw PTY bytes for task agent sessions (conversation id capture, etc.). */
+  onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
+}
+
+/**
+ * Main-process owner of local PTYs (task sessions, shells, planning). Registry
+ * semantics match the historical detached-daemon core, without a separate process.
+ */
+export class TerminalRuntimeManager {
   private sessions = new Map<string, SessionEntry>();
   private shells = new Map<string, ShellEntry>();
   private planning = new Map<string, PlanningEntry>();
-  private idleTimer: NodeJS.Timeout | null = null;
-  private readonly idleMs: number;
+  private readonly deliverStreamFrame: (frame: StreamFrame) => void;
+  private readonly onAgentState?: (sessionId: string, state: AgentState) => void;
+  private readonly onSessionExit?: (session: Session) => void;
+  private readonly onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
 
-  constructor(
-    private readonly broadcast: (frame: StreamFrame) => void,
-    opts: { idleMs?: number } = {},
-  ) {
-    this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
-    this.armIdleTimer();
+  constructor(opts: TerminalRuntimeManagerOptions = {}) {
+    this.deliverStreamFrame = opts.deliverStreamFrame ?? deliverTerminalStreamFrameToRenderers;
+    this.onAgentState = opts.onAgentState;
+    this.onSessionExit = opts.onSessionExit;
+    this.onSessionPtyData = opts.onSessionPtyData;
+  }
+
+  private emitFrame(frame: StreamFrame): void {
+    if (frame.kind === 'agent-state') {
+      this.onAgentState?.(frame.id, frame.state);
+    }
+    if (frame.kind === 'session-exit') {
+      this.onSessionExit?.(frame.session);
+    }
+    this.deliverStreamFrame(frame);
   }
 
   // ------------------------------------------------------------------- sessions
@@ -81,9 +172,7 @@ export class DaemonCore {
       id,
       taskId: params.taskId,
       projectId: params.projectId,
-      ...(params.repoId != null && params.repoId.length > 0
-        ? { repoId: params.repoId }
-        : {}),
+      ...(params.repoId != null && params.repoId.length > 0 ? { repoId: params.repoId } : {}),
       worktreePath: params.worktreePath,
       branch: params.branch,
       status: 'running',
@@ -91,7 +180,7 @@ export class DaemonCore {
     };
 
     const detector = new SilenceDetector(
-      (state) => this.broadcast({ kind: 'agent-state', id, state }),
+      (state) => this.emitFrame({ kind: 'agent-state', id, state }),
       undefined,
       id,
     );
@@ -100,8 +189,9 @@ export class DaemonCore {
       params.trustPromptAutorespond === true &&
       Array.isArray(params.trustPromptAutorespondRoots) &&
       params.trustPromptAutorespondRoots.length > 0;
+    const trustRootsRaw = params.trustPromptAutorespondRoots ?? [];
     const trustRoots = trustAutorespondEnabled
-      ? params.trustPromptAutorespondRoots!.map((r) => path.resolve(r))
+      ? trustRootsRaw.map((r) => path.resolve(r))
       : [];
     const trustRules = trustAutorespondEnabled ? buildTrustPromptAutoresponderRules(trustRoots) : [];
 
@@ -119,9 +209,16 @@ export class DaemonCore {
         },
         {
           onData: (data, seq) => {
-            this.broadcast({ kind: 'data', target: 'session', id, data, seq });
+            this.emitFrame({ kind: 'data', target: 'session', id, data, seq });
             detector.onData();
             autoresponder?.notifyPtyData();
+            this.onSessionPtyData?.({
+              sessionId: id,
+              taskId: params.taskId,
+              projectId: params.projectId,
+              agent: params.agent,
+              data,
+            });
           },
           onExit: ({ exitCode }) => {
             const entry = this.sessions.get(id);
@@ -130,13 +227,11 @@ export class DaemonCore {
             entry.autoresponder?.dispose();
             entry.session.status = exitCode === 0 ? 'stopped' : 'error';
             entry.session.stoppedAt = new Date().toISOString();
-            this.broadcast({
+            this.emitFrame({
               kind: 'session-exit',
               id,
               session: { ...entry.session },
             });
-            // Intentionally leave the entry in the map so list/get can still
-            // surface the stopped session to main until it's archived.
           },
         },
       );
@@ -153,7 +248,7 @@ export class DaemonCore {
         trustRules,
         runtime,
         (payload) =>
-          this.broadcast({
+          this.emitFrame({
             kind: 'auto-responded',
             target: 'session',
             id,
@@ -164,8 +259,7 @@ export class DaemonCore {
       );
     }
 
-    this.sessions.set(id, { runtime, session, detector, autoresponder });
-    this.cancelIdleTimer();
+    this.sessions.set(id, { runtime, session, detector, autoresponder, agent: params.agent });
     return session;
   }
 
@@ -173,47 +267,28 @@ export class DaemonCore {
     return [...this.sessions.values()].map((e) => ({ ...e.session }));
   }
 
-  /** Returns the current silence state for every running session. Used for catchup on reconnect. */
-  getSessionSilenceStates(): { id: string; taskId?: string; state: import('./SilenceDetector').SilenceState }[] {
-    const result: { id: string; taskId?: string; state: import('./SilenceDetector').SilenceState }[] = [];
-    for (const [id, entry] of this.sessions) {
-      if (entry.session.status !== 'running') continue;
-      result.push({ id, taskId: entry.session.taskId, state: entry.detector.getCurrentState() });
+  /** In-process PTYs only (task sessions, shells, planning). */
+  liveMainProcessPtyCount(): number {
+    let n = 0;
+    for (const e of this.sessions.values()) {
+      if (e.session.status === 'running') n += 1;
     }
-    return result;
+    for (const e of this.shells.values()) {
+      if (e.shell.status === 'running') n += 1;
+    }
+    for (const e of this.planning.values()) {
+      if (e.session.status === 'running') n += 1;
+    }
+    return n;
   }
 
-  /** Returns the set of RPC methods this daemon supports, for capability negotiation. */
-  getCapabilities(): CapabilitiesResult {
-    return {
-      methods: [
-        'ping',
-        'createSession',
-        'listSessions',
-        'getSessionSilenceStates',
-        'attachSession',
-        'writeSession',
-        'resizeSession',
-        'stopSession',
-        'createShell',
-        'listShells',
-        'attachShell',
-        'writeShell',
-        'resizeShell',
-        'closeShell',
-        'closeShellsForSession',
-        'startPlanning',
-        'listPlanning',
-        'stopPlanning',
-        'getPlanning',
-        'attachPlanning',
-        'writePlanning',
-        'resizePlanning',
-        'capabilities',
-        'shutdown',
-      ],
-      buildId: process.env.FLUX_BUILD_ID ?? 'dev',
-    };
+  getSessionSilenceStates(): { id: string; taskId?: string; state: SilenceState }[] {
+    const result: { id: string; taskId?: string; state: SilenceState }[] = [];
+    for (const [sid, entry] of this.sessions) {
+      if (entry.session.status !== 'running') continue;
+      result.push({ id: sid, taskId: entry.session.taskId, state: entry.detector.getCurrentState() });
+    }
+    return result;
   }
 
   async attachSession(id: string): Promise<AttachResult | null> {
@@ -226,16 +301,22 @@ export class DaemonCore {
     this.sessions.get(id)?.runtime.write(data);
   }
 
+  /**
+   * Ensures this write is applied before follow-up writes (e.g. bracketed paste
+   * then a lone `\r` for {@link tasks:requestPullRequestFromAgent}).
+   */
+  async writeSessionAwait(id: string, data: string): Promise<void> {
+    this.writeSession(id, data);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
   resizeSession(id: string, cols: number, rows: number): void {
     const entry = this.sessions.get(id);
     if (!entry) return;
-    // Notify the detector before the resize so the SIGWINCH-triggered redraw
-    // is suppressed and does not falsely transition the task to in-progress.
     entry.detector.notifyResize();
     entry.runtime.resize(cols, rows);
   }
 
-  /** Kill + forget. Worktree removal is main's job. */
   stopSession(id: string): void {
     const entry = this.sessions.get(id);
     if (!entry) return;
@@ -244,7 +325,6 @@ export class DaemonCore {
     entry.runtime.kill();
     entry.runtime.dispose();
     this.sessions.delete(id);
-    this.armIdleTimer();
   }
 
   // --------------------------------------------------------------------- shells
@@ -271,27 +351,25 @@ export class DaemonCore {
       },
       {
         onData: (data, seq) => {
-          this.broadcast({ kind: 'data', target: 'shell', id, data, seq });
+          this.emitFrame({ kind: 'data', target: 'shell', id, data, seq });
         },
         onExit: ({ exitCode }) => {
           const entry = this.shells.get(id);
           if (!entry) return;
           entry.shell.status = exitCode === 0 ? 'stopped' : 'error';
           entry.shell.stoppedAt = new Date().toISOString();
-          this.broadcast({
+          this.emitFrame({
             kind: 'shell-exit',
             id,
             shell: { ...entry.shell },
           });
           entry.runtime.dispose();
           this.shells.delete(id);
-          this.armIdleTimer();
         },
       },
     );
 
     this.shells.set(id, { runtime, shell });
-    this.cancelIdleTimer();
     return shell;
   }
 
@@ -320,7 +398,6 @@ export class DaemonCore {
     entry.runtime.kill();
     entry.runtime.dispose();
     this.shells.delete(id);
-    this.armIdleTimer();
   }
 
   closeShellsForSession(sessionId: string): void {
@@ -331,7 +408,6 @@ export class DaemonCore {
         this.shells.delete(id);
       }
     }
-    this.armIdleTimer();
   }
 
   // ------------------------------------------------------------------- planning
@@ -351,8 +427,9 @@ export class DaemonCore {
       params.trustPromptAutorespond === true &&
       Array.isArray(params.trustPromptAutorespondRoots) &&
       params.trustPromptAutorespondRoots.length > 0;
+    const trustRootsRaw = params.trustPromptAutorespondRoots ?? [];
     const trustRoots = trustAutorespondEnabled
-      ? params.trustPromptAutorespondRoots!.map((r) => path.resolve(r))
+      ? trustRootsRaw.map((r) => path.resolve(r))
       : [];
     const trustRules = trustAutorespondEnabled ? buildTrustPromptAutoresponderRules(trustRoots) : [];
 
@@ -370,7 +447,7 @@ export class DaemonCore {
         },
         {
           onData: (data, seq) => {
-            this.broadcast({ kind: 'data', target: 'planning', id, data, seq });
+            this.emitFrame({ kind: 'data', target: 'planning', id, data, seq });
             autoresponder?.notifyPtyData();
           },
           onExit: ({ exitCode }) => {
@@ -379,14 +456,11 @@ export class DaemonCore {
             entry.autoresponder?.dispose();
             entry.session.status = exitCode === 0 ? 'stopped' : 'error';
             entry.session.stoppedAt = new Date().toISOString();
-            this.broadcast({
+            this.emitFrame({
               kind: 'planning-exit',
               id,
               session: { ...entry.session },
             });
-            // Match task sessions: keep the entry (and replay buffer) until
-            // `stopPlanning` archives it so attach/list stay coherent.
-            this.armIdleTimer();
           },
         },
       );
@@ -403,7 +477,7 @@ export class DaemonCore {
         trustRules,
         runtime,
         (payload) =>
-          this.broadcast({
+          this.emitFrame({
             kind: 'auto-responded',
             target: 'planning',
             id,
@@ -415,7 +489,6 @@ export class DaemonCore {
     }
 
     this.planning.set(id, { runtime, session, autoresponder });
-    this.cancelIdleTimer();
     return { ...session };
   }
 
@@ -423,7 +496,6 @@ export class DaemonCore {
     return [...this.planning.values()].map((e) => ({ ...e.session }));
   }
 
-  /** Kill + forget. */
   stopPlanning(id: string): void {
     const entry = this.planning.get(id);
     if (!entry) return;
@@ -431,7 +503,6 @@ export class DaemonCore {
     entry.runtime.kill();
     entry.runtime.dispose();
     this.planning.delete(id);
-    this.armIdleTimer();
   }
 
   getPlanning(id: string): PlanningSession | null {
@@ -457,44 +528,28 @@ export class DaemonCore {
     this.planning.get(id)?.runtime.resize(cols, rows);
   }
 
-  // -------------------------------------------------------------- lifecycle
-
-  /** Kill every PTY this daemon owns. Called from signal handlers. */
-  killAll(): void {
-    for (const { runtime } of this.sessions.values()) runtime.kill();
-    for (const { runtime } of this.shells.values()) runtime.kill();
-    for (const { runtime } of this.planning.values()) runtime.kill();
-  }
-
-  private isIdle(): boolean {
-    for (const entry of this.planning.values()) {
-      if (!entry.runtime.isExited) return false;
+  /**
+   * Kill and dispose every registered PTY (shells, planning, and any in-process
+   * task sessions). Used on full app quit so no child processes remain.
+   */
+  shutdownAllPtys(): void {
+    for (const entry of [...this.sessions.values()]) {
+      entry.detector.dispose();
+      entry.autoresponder?.dispose();
+      entry.runtime.kill();
+      entry.runtime.dispose();
     }
-    for (const entry of this.sessions.values()) {
-      if (!entry.runtime.isExited) return false;
+    this.sessions.clear();
+    for (const entry of [...this.shells.values()]) {
+      entry.runtime.kill();
+      entry.runtime.dispose();
     }
-    for (const entry of this.shells.values()) {
-      if (!entry.runtime.isExited) return false;
+    this.shells.clear();
+    for (const entry of [...this.planning.values()]) {
+      entry.autoresponder?.dispose();
+      entry.runtime.kill();
+      entry.runtime.dispose();
     }
-    return true;
-  }
-
-  private armIdleTimer(): void {
-    if (this.idleTimer) return;
-    if (!this.isIdle()) return;
-    this.idleTimer = setTimeout(() => {
-      this.idleTimer = null;
-      if (this.isIdle()) {
-        process.exit(0);
-      }
-    }, this.idleMs);
-    this.idleTimer.unref?.();
-  }
-
-  private cancelIdleTimer(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer);
-      this.idleTimer = null;
-    }
+    this.planning.clear();
   }
 }

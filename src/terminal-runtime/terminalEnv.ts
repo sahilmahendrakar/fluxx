@@ -1,11 +1,11 @@
 /**
- * Curated environment variables for every PTY the daemon spawns.
+ * Curated environment variables for every PTY the main process spawns.
  *
  * PTYs ultimately host TUIs (claude-code, cursor agent, codex, plain shells)
  * that decide their rendering richness based on terminal env vars. In dev
- * the daemon inherits these from the launching terminal (`pnpm start` from
+ * the app inherits these from the launching terminal (`pnpm start` from
  * iTerm/Terminal.app), so things look fine by accident. In packaged GUI
- * launches the daemon inherits launchd's bare env — no `TERM`, no
+ * launches Electron inherits launchd's bare env — no `TERM`, no
  * `COLORTERM`, etc. — and TUIs fall back to ANSI-16 colors and stripped
  * banners.
  *

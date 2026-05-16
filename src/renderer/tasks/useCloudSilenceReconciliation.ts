@@ -1,14 +1,14 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { useEffect, useRef } from 'react';
-import type { AgentState } from '../../daemon/protocol';
+import type { AgentState } from '../../terminal-runtime/protocol';
 import type { Session, Task } from '../../types';
 import type { TaskProvider } from './TaskProvider';
 
 const CLOUD_SILENCE_POLL_MS = 30_000;
 
 /**
- * Applies daemon silence snapshots to cloud tasks (assignee-gated). Shared by
- * startup catchup, periodic polling, stream reconnect, and visibility resume.
+ * Applies main-process silence snapshots to cloud tasks (assignee-gated). Shared by
+ * startup catchup, periodic polling, optional legacy stream catchup, and visibility resume.
  */
 export async function reconcileCloudSilenceFromDaemon(p: {
   projectId: string;
@@ -86,7 +86,7 @@ export async function reconcileCloudSilenceFromDaemon(p: {
   }
 }
 
-/** Polls daemon silence state for cloud projects independent of terminal mounts. */
+/** Polls session silence state for cloud projects independent of terminal mounts. */
 export function useCloudSilenceReconciliation(opts: {
   enabled: boolean;
   projectId: string | undefined;
@@ -119,9 +119,6 @@ export function useCloudSilenceReconciliation(opts: {
     run('hook:initial');
 
     const pollTimer = window.setInterval(() => run('poll'), CLOUD_SILENCE_POLL_MS);
-    const unsubCatchup = window.electronAPI.sessions.onDaemonStreamCatchup(() =>
-      run('daemon-stream-catchup'),
-    );
     const onVisibility = () => {
       if (document.visibilityState === 'visible') run('visibility');
     };
@@ -129,7 +126,6 @@ export function useCloudSilenceReconciliation(opts: {
 
     return () => {
       window.clearInterval(pollTimer);
-      unsubCatchup();
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [opts.enabled, opts.projectId, opts.setTasks]);

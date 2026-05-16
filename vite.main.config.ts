@@ -28,6 +28,15 @@ export default defineConfig(({ mode }) => {
   ];
   return {
     plugins: [copyAppIconPngToMainOut()],
+    resolve: {
+      conditions: ['node'],
+      mainFields: ['module', 'main'],
+      alias: {
+        // Some @xterm/headless releases pointed `module` at a missing `lib/xterm.mjs`;
+        // force the known-good CJS headless build for the main bundle.
+        '@xterm/headless': '@xterm/headless/lib-headless/xterm-headless.js',
+      },
+    },
     build: {
       rollupOptions: {
         external: ['electron', 'node-pty'],
