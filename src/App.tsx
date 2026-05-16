@@ -2396,6 +2396,11 @@ export default function App() {
         const result = await window.electronAPI.tasks.requestPullRequestFromAgent({
           taskId,
           ...(title ? { title } : {}),
+          ...(task.sourceBranch?.trim() ? { sourceBranch: task.sourceBranch } : {}),
+          ...(task.createSourceBranchIfMissing !== undefined
+            ? { createSourceBranchIfMissing: task.createSourceBranchIfMissing }
+            : {}),
+          ...(task.repoId?.trim() ? { repoId: task.repoId } : {}),
         });
         if (!result.ok) {
           setTaskPrError(formatTaskPullRequestError(result));

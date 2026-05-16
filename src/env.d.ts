@@ -24,6 +24,7 @@ import type {
   ProjectTabState,
   TaskGithubPr,
   TaskPullRequestIpcResult,
+  TaskRequestPullRequestFromAgentPayload,
   TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
 } from './types';
@@ -291,10 +292,9 @@ declare global {
           patch: Pick<Task, 'repoId'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
-        requestPullRequestFromAgent: (payload: {
-          taskId: string;
-          title?: string;
-        }) => Promise<TaskRequestPullRequestFromAgentResult>;
+        requestPullRequestFromAgent: (
+          payload: TaskRequestPullRequestFromAgentPayload,
+        ) => Promise<TaskRequestPullRequestFromAgentResult>;
         refreshPullRequest: (payload: {
           taskId: string;
           githubPr?: TaskGithubPr;
