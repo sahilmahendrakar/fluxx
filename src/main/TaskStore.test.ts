@@ -4,60 +4,6 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TaskStore } from './TaskStore';
 
-describe('TaskStore attachedPlanningDocs', () => {
-  let dir: string;
-
-  afterEach(async () => {
-    if (dir) {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('persists attachedPlanningDocs on create and round-trips from tasks.json', async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-attached-'));
-    const store = new TaskStore(dir);
-    await store.init();
-    const created = await store.create({
-      title: 't',
-      agent: 'cursor',
-      projectId: 'p1',
-      attachedPlanningDocs: [
-        { relativePath: 'plans/a.md' },
-        { relativePath: 'bad/../x.md' },
-        { relativePath: 'plans/b.md' },
-      ],
-    });
-    expect(created.attachedPlanningDocs).toEqual([
-      { relativePath: 'plans/a.md' },
-      { relativePath: 'plans/b.md' },
-    ]);
-
-    const store2 = new TaskStore(dir);
-    await store2.init();
-    const reloaded = store2.getAll('p1').find((t) => t.id === created.id);
-    expect(reloaded?.attachedPlanningDocs).toEqual(created.attachedPlanningDocs);
-  });
-
-  it('patch replaces attachments; null clears', async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-taskstore-attached-patch-'));
-    const store = new TaskStore(dir);
-    await store.init();
-    const created = await store.create({
-      title: 't',
-      agent: 'cursor',
-      projectId: 'p1',
-      attachedPlanningDocs: [{ relativePath: 'a.md' }],
-    });
-    const replaced = await store.update(created.id, {
-      attachedPlanningDocs: [{ relativePath: 'b.md' }, { relativePath: 'c.md' }],
-    });
-    expect(replaced.attachedPlanningDocs).toEqual([{ relativePath: 'b.md' }, { relativePath: 'c.md' }]);
-
-    const cleared = await store.update(created.id, { attachedPlanningDocs: null });
-    expect(cleared.attachedPlanningDocs).toBeUndefined();
-  });
-});
-
 describe('TaskStore multi-repo2 repoId migration', () => {
   let dir: string;
 

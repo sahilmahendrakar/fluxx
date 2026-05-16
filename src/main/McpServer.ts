@@ -14,7 +14,7 @@ import type { AppStateStore } from './AppStateStore';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
-import type { ActiveProjectKey, RepoBranchDiscoveryResponse, RepoConfig, RepoPathStatus, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type { ActiveProjectKey, RepoBranchDiscoveryResponse, RepoConfig, RepoPathStatus, Task, TaskGithubPr } from '../types';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
@@ -91,10 +91,7 @@ export class McpServer {
             | 'createSourceBranchIfMissing'
             | 'repoId'
           >
-        > & {
-          githubPr?: TaskGithubPr | null;
-          attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
-        },
+        > & { githubPr?: TaskGithubPr | null },
       ) => Promise<Task>;
       startTask: (id: string) => Promise<Task>;
       startSessionForExistingTask: (task: Task) => Promise<void>;
@@ -343,12 +340,6 @@ export class McpServer {
           .describe(
             'Only when multi-repo2 is enabled: stable repo id from flux__get_project_info.repos[].id. Must match a configured repository; omit to use primaryRepoId.',
           ),
-        attachedPlanningDocs: z
-          .array(z.object({ relativePath: z.string() }))
-          .optional()
-          .describe(
-            'Planning markdown paths relative to the project planning/ root (forward slashes, .md only). Invalid or forbidden paths are dropped.',
-          ),
       },
       async (input) => {
         try {
@@ -403,9 +394,6 @@ export class McpServer {
                 ? { blockedByTaskIds: input.blockedByTaskIds }
                 : {}),
               ...(input.labels !== undefined ? { labels: input.labels } : {}),
-              ...(input.attachedPlanningDocs !== undefined
-                ? { attachedPlanningDocs: input.attachedPlanningDocs as TaskAttachedPlanningDoc[] }
-                : {}),
             });
             if (input.description != null && input.description !== '') {
               task = await this.taskStore.update(task.id, {
@@ -443,9 +431,6 @@ export class McpServer {
                 : {}),
               ...(input.repoId !== undefined
                 ? { repoId: input.repoId }
-                : {}),
-              ...(input.attachedPlanningDocs !== undefined
-                ? { attachedPlanningDocs: input.attachedPlanningDocs as TaskAttachedPlanningDoc[] }
                 : {}),
             },
           };
@@ -518,13 +503,6 @@ export class McpServer {
           .describe(
             'Only when multi-repo2 is enabled: change task.repoId using an id from flux__get_project_info.repos[]. Rejected when a session, worktree, or PR blocks repo moves (same as the UI).',
           ),
-        attachedPlanningDocs: z
-          .array(z.object({ relativePath: z.string() }))
-          .nullable()
-          .optional()
-          .describe(
-            'Replace attached planning markdown paths; null or [] clears. Invalid paths are dropped.',
-          ),
       },
       async (input) => {
         try {
@@ -553,10 +531,7 @@ export class McpServer {
                 | 'createSourceBranchIfMissing'
                 | 'repoId'
               >
-            > & {
-              githubPr?: TaskGithubPr | null;
-              attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
-            } = {};
+            > & { githubPr?: TaskGithubPr | null } = {};
             if (input.title !== undefined) patch.title = input.title;
             if (input.description !== undefined) patch.description = input.description;
             if (input.status !== undefined) patch.status = input.status;
@@ -578,9 +553,6 @@ export class McpServer {
             }
             if (input.repoId !== undefined) {
               patch.repoId = input.repoId;
-            }
-            if (input.attachedPlanningDocs !== undefined) {
-              patch.attachedPlanningDocs = input.attachedPlanningDocs;
             }
             const updated = await this.taskActions.updateTask(input.id, patch);
             this.notifyTasksChanged();
@@ -616,11 +588,7 @@ export class McpServer {
               | 'createSourceBranchIfMissing'
               | 'repoId'
             >
-          > & {
-            assigneeId?: string | null;
-            githubPr?: TaskGithubPr | null;
-            attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
-          } = {};
+          > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null } = {};
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
@@ -643,9 +611,6 @@ export class McpServer {
           }
           if (input.repoId !== undefined) {
             patch.repoId = input.repoId;
-          }
-          if (input.attachedPlanningDocs !== undefined) {
-            patch.attachedPlanningDocs = input.attachedPlanningDocs;
           }
           if (assigneeId !== undefined) patch.assigneeId = assigneeId;
           const payload: McpBridgeTasksUpdatePayload = { taskId: input.id, patch };

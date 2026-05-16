@@ -2,9 +2,8 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type { Agent, Task, TaskGithubPr } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
-import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
 import { normalizeTaskLabels } from '../taskLabels';
 
@@ -20,7 +19,6 @@ type TaskInput = {
   agentYolo?: boolean;
   /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
   repoId?: string;
-  attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -236,12 +234,6 @@ export class TaskStore {
     if (input.repoId != null && input.repoId.length > 0) {
       task.repoId = input.repoId;
     }
-    if (input.attachedPlanningDocs !== undefined) {
-      const s = sanitizeTaskAttachedPlanningDocsInput(input.attachedPlanningDocs);
-      if (s.length > 0) {
-        task.attachedPlanningDocs = s;
-      }
-    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -271,8 +263,6 @@ export class TaskStore {
       autoStartOnUnblock?: boolean | null;
       assigneeId?: string | null;
       githubPr?: TaskGithubPr | null;
-      /** `null` clears stored attachments. */
-      attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
     },
   ): Promise<Task> {
     if (!this.filePath) {
@@ -287,7 +277,6 @@ export class TaskStore {
       assigneeId: patchAssigneeId,
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
-      attachedPlanningDocs: patchAttachedDocs,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -321,18 +310,6 @@ export class TaskStore {
         delete updated.githubPr;
       } else {
         updated.githubPr = patchGithubPr;
-      }
-    }
-    if (patchAttachedDocs !== undefined) {
-      if (patchAttachedDocs === null) {
-        delete updated.attachedPlanningDocs;
-      } else {
-        const s = sanitizeTaskAttachedPlanningDocsInput(patchAttachedDocs);
-        if (s.length > 0) {
-          updated.attachedPlanningDocs = s;
-        } else {
-          delete updated.attachedPlanningDocs;
-        }
       }
     }
     if (patch.sourceBranch !== undefined) {
