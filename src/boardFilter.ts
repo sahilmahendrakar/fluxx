@@ -11,12 +11,17 @@ export type BoardLabelFilter = typeof UNLABELED_VALUE | string | null;
 
 export const UNASSIGNED_ASSIGNEE_VALUE = '__unassigned__' as const;
 
+/** Board filter: tasks with no coding agent (`task.agent === null`). */
+export const UNASSIGNED_TASK_AGENT_VALUE = '__unassigned_task_agent__' as const;
+
 export type BoardAssigneeFilter = typeof UNASSIGNED_ASSIGNEE_VALUE | string | null;
+
+export type BoardAgentFilter = Agent | typeof UNASSIGNED_TASK_AGENT_VALUE | 'all';
 
 export type BoardFilterState = {
   search: string;
   includeDescription: boolean;
-  agent: Agent | 'all';
+  agent: BoardAgentFilter;
   status: BoardStatusFilter;
   label: BoardLabelFilter;
   assignee: BoardAssigneeFilter;
@@ -72,8 +77,12 @@ export function applyBoardFilters(
         return false;
       }
     }
-    if (filters.agent !== 'all' && t.agent !== filters.agent) {
-      return false;
+    if (filters.agent !== 'all') {
+      if (filters.agent === UNASSIGNED_TASK_AGENT_VALUE) {
+        if (t.agent != null) return false;
+      } else if (t.agent !== filters.agent) {
+        return false;
+      }
     }
     if (filters.status !== 'all' && t.status !== filters.status) {
       return false;

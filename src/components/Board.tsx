@@ -30,7 +30,7 @@ interface Props {
   onDragEnd: (result: DropResult) => void;
   onCreateTask: (
     title: string,
-    agent: Agent,
+    agent: Agent | null,
     labels?: string[],
     assigneeId?: string,
     branch?: {

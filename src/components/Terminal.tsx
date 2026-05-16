@@ -8,7 +8,6 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
-import { interactiveXtermCompatibilityOptions } from '../terminal/interactiveXtermOptions';
 
 export interface TerminalProps {
   sessionId: string | null;
@@ -119,7 +118,6 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     }
 
     const term = new XTerm({
-      ...interactiveXtermCompatibilityOptions,
       theme: {
         background: '#09090b',
         foreground: '#d4d4d8',

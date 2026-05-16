@@ -4,6 +4,7 @@ import {
   boardFiltersAreActive,
   type ApplyBoardFiltersRepoContext,
   UNASSIGNED_ASSIGNEE_VALUE,
+  UNASSIGNED_TASK_AGENT_VALUE,
   type BoardFilterState,
   UNLABELED_VALUE,
 } from './boardFilter';
@@ -87,6 +88,18 @@ describe('applyBoardFilters', () => {
         (x) => x.id,
       ),
     ).toEqual(['2']);
+  });
+
+  it('filters to tasks with no coding agent', () => {
+    const withNull: Task[] = [
+      ...list,
+      task('6', { title: 'Triage', status: 'backlog', agent: null }),
+    ];
+    expect(
+      applyBoardFilters(withNull, { ...base, agent: UNASSIGNED_TASK_AGENT_VALUE }).map(
+        (x) => x.id,
+      ),
+    ).toEqual(['6']);
   });
 
   it('filters by label (case-insensitive match)', () => {

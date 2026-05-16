@@ -10,7 +10,7 @@ import { normalizeTaskLabels } from '../taskLabels';
 
 type TaskInput = {
   title: string;
-  agent: Agent;
+  agent: Agent | null;
   projectId: string;
   blockedByTaskIds?: string[];
   labels?: string[];
@@ -230,7 +230,7 @@ export class TaskStore {
     } else if (input.agent === 'claude-code' && (input.agentModel ?? '').trim()) {
       task.agentModel = (input.agentModel ?? '').trim();
     }
-    if (input.agentYolo === true) {
+    if (input.agent != null && input.agentYolo === true) {
       task.agentYolo = true;
     }
     if (input.repoId != null && input.repoId.length > 0) {
@@ -358,6 +358,11 @@ export class TaskStore {
         updated.repoId = nextRepo;
       }
     }
+    if (updated.agent == null) {
+      delete updated.agentModel;
+      delete updated.agentYolo;
+    }
+
     this.tasks[index] = updated;
     await this.save();
     return updated;

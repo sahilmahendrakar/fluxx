@@ -8,8 +8,8 @@
  *     Mach-O binary that posix_spawnp must be able to execute — neither
  *     survives bundling.
  *   - `@xterm/headless` has internal dynamic resolution we don't want to
- *     re-implement; some releases' `module` field pointed to a missing
- *     `lib/xterm.mjs`, so bundling it has historically broken silently.
+ *     re-implement and its 6.0.0 `module` field points to a non-existent
+ *     `lib/xterm.mjs`; bundling it has historically broken silently.
  *   - `@xterm/addon-serialize` is a peer of `@xterm/headless` and stays
  *     paired with it.
  *

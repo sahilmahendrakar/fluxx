@@ -16,6 +16,7 @@ import {
   boardFiltersAreActive,
   DEFAULT_BOARD_FILTER,
   UNASSIGNED_ASSIGNEE_VALUE,
+  UNASSIGNED_TASK_AGENT_VALUE,
   UNLABELED_VALUE,
 } from '../boardFilter';
 import {
@@ -33,7 +34,15 @@ import { repoDisplayLabel } from '../repoIdentity';
 const FILTER_PICKER_UNLABELED_LABEL = 'Unlabeled';
 const FILTER_PICKER_UNASSIGNED_LABEL = 'Unassigned';
 
-const agentLabel = (id: Agent) => AGENTS.find((a) => a.id === id)?.label ?? id;
+const AGENT_FILTER_ROWS: { id: Agent | typeof UNASSIGNED_TASK_AGENT_VALUE; label: string }[] = [
+  ...AGENTS,
+  { id: UNASSIGNED_TASK_AGENT_VALUE, label: 'None' },
+];
+
+function agentFilterLabel(id: Exclude<BoardFilterState['agent'], 'all'>): string {
+  if (id === UNASSIGNED_TASK_AGENT_VALUE) return 'None';
+  return AGENTS.find((a) => a.id === id)?.label ?? id;
+}
 
 const statusLabel = (id: TaskStatus) => COLUMNS.find((c) => c.id === id)?.label ?? id;
 
@@ -224,7 +233,7 @@ export function BoardFilterBar({
   }, [menuOpen]);
 
   // Picker: Unlabeled / Unassigned — always when query empty; with text, only if it matches that fixed label (case-insensitive), pinned above filtered rows.
-  const filteredAgents = filterByBoardFilterPickerQuery(pickerSearchQuery, AGENTS, (a) => a.label);
+  const filteredAgents = filterByBoardFilterPickerQuery(pickerSearchQuery, AGENT_FILTER_ROWS, (a) => a.label);
   const filteredColumns = filterByBoardFilterPickerQuery(pickerSearchQuery, COLUMNS, (c) => c.label);
   const showUnlabeledRow =
     pickerSearchQuery.trim() === '' ||
@@ -293,7 +302,7 @@ export function BoardFilterBar({
         {filter.agent !== 'all' ? (
           <FilterToken
             k="agent"
-            v={agentLabel(filter.agent)}
+            v={agentFilterLabel(filter.agent)}
             onRemove={() => set({ agent: 'all' })}
           />
         ) : null}

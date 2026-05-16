@@ -14,7 +14,16 @@ import type { AppStateStore } from './AppStateStore';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { McpRendererBridge, McpBridgeResult } from './McpRendererBridge';
-import type { ActiveProjectKey, RepoBranchDiscoveryResponse, RepoConfig, RepoPathStatus, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type {
+  ActiveProjectKey,
+  Agent,
+  RepoBranchDiscoveryResponse,
+  RepoConfig,
+  RepoPathStatus,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+} from '../types';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
@@ -111,7 +120,7 @@ export class McpServer {
 
   private createSdkServer(): BaseMcpServer {
     const server = new BaseMcpServer(
-      { name: 'flux', version: '0.1.0' },
+      { name: 'flux', version: '0.1.1' },
       { capabilities: { tools: {} } },
     );
     this.registerTools(server);
@@ -336,9 +345,11 @@ export class McpServer {
         title: z.string().describe('Task title'),
         description: z.string().optional().describe('Task description'),
         agent: z
-          .enum(['claude-code', 'codex', 'cursor'])
+          .enum(['claude-code', 'codex', 'cursor', 'none'])
           .optional()
-          .describe('Agent to use. Defaults to claude-code'),
+          .describe(
+            'Agent to use. Use none for an unassigned task. When omitted, the project default task agent applies.',
+          ),
         blockedByTaskIds: z
           .array(z.string())
           .optional()
@@ -405,23 +416,29 @@ export class McpServer {
               active,
             );
             if (!coerced.ok) return coerced.payload;
-            coercedAttachedForCreate = coerced.value;
+            coercedAttachedForCreate = coerced.value ?? undefined;
           }
-          const agent =
-            input.agent ??
-            (active.kind === 'local'
-              ? active.project.defaultTaskAgent
-              : this.bindingStore.getPrefs(active.activeKey.id).defaultTaskAgent);
+          const agent: Agent | null =
+            input.agent === 'none'
+              ? null
+              : input.agent != null
+                ? input.agent
+                : active.kind === 'local'
+                  ? active.project.defaultTaskAgent
+                  : this.bindingStore.getPrefs(active.activeKey.id).defaultTaskAgent;
           const spawnDefaultsSrc =
             active.kind === 'local'
               ? active.project
               : this.bindingStore.getPrefs(active.activeKey.id);
-          const modelYolo = mergedTaskCreateAgentFields(
-            spawnDefaultsSrc,
-            agent,
-            input.agentModel,
-            input.agentYolo,
-          );
+          const modelYolo =
+            agent != null
+              ? mergedTaskCreateAgentFields(
+                  spawnDefaultsSrc,
+                  agent,
+                  input.agentModel,
+                  input.agentYolo,
+                )
+              : {};
           if (active.kind === 'local') {
             const repos = await this.projectStore.getReposAt(active.projectDir);
             const requestedRepoId = input.repoId;
@@ -523,7 +540,10 @@ export class McpServer {
         status: z
           .enum(['backlog', 'in-progress', 'needs-input', 'review', 'done'])
           .optional(),
-        agent: z.enum(['claude-code', 'codex', 'cursor']).optional(),
+        agent: z
+          .enum(['claude-code', 'codex', 'cursor', 'none'])
+          .optional()
+          .describe('Set to none to clear the task coding agent'),
         blockedByTaskIds: z
           .array(z.string())
           .optional()
@@ -604,14 +624,14 @@ export class McpServer {
                 | 'createSourceBranchIfMissing'
                 | 'repoId'
               >
-            > & {
-              githubPr?: TaskGithubPr | null;
-              attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
-            } = {};
+            > & { githubPr?: TaskGithubPr | null; attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null } =
+              {};
             if (input.title !== undefined) patch.title = input.title;
             if (input.description !== undefined) patch.description = input.description;
             if (input.status !== undefined) patch.status = input.status;
-            if (input.agent !== undefined) patch.agent = input.agent;
+            if (input.agent !== undefined) {
+              patch.agent = input.agent === 'none' ? null : input.agent;
+            }
             if (input.blockedByTaskIds !== undefined)
               patch.blockedByTaskIds = input.blockedByTaskIds;
             if (input.labels !== undefined) patch.labels = input.labels;
@@ -681,7 +701,9 @@ export class McpServer {
           if (input.title !== undefined) patch.title = input.title;
           if (input.description !== undefined) patch.description = input.description;
           if (input.status !== undefined) patch.status = input.status;
-          if (input.agent !== undefined) patch.agent = input.agent;
+          if (input.agent !== undefined) {
+            patch.agent = input.agent === 'none' ? null : input.agent;
+          }
           if (input.blockedByTaskIds !== undefined) {
             patch.blockedByTaskIds = input.blockedByTaskIds;
           }
@@ -748,6 +770,12 @@ export class McpServer {
                 error: 'Task not found or not part of the current project',
               });
             }
+            if (existing.agent == null) {
+              return jsonToolPayload({
+                error:
+                  'This task has no coding agent assigned. Use flux__update_task to set agent before starting.',
+              });
+            }
             const updated = await this.taskActions.startTask(input.id);
             this.notifyTasksChanged();
             return jsonToolPayload(updated);
@@ -769,6 +797,12 @@ export class McpServer {
             return jsonToolPayload({
               error:
                 'Task is blocked by incomplete dependencies. Finish blocking tasks first.',
+            });
+          }
+          if (existing.agent == null) {
+            return jsonToolPayload({
+              error:
+                'This task has no coding agent assigned. Use flux__update_task to set agent before starting.',
             });
           }
           const updateResult = await this.bridge.request<McpBridgeTasksUpdateResult>(

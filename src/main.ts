@@ -139,6 +139,10 @@ import type {
   ResolveTaskWorktreeIpcResult,
 } from './types';
 import {
+  mergeTaskRowWithPullRequestAgentPayload,
+  parseTaskRequestPullRequestFromAgentPayload,
+} from './taskRequestPullRequestFromAgentContext';
+import {
   classifyGitBranchPresence,
   effectiveTaskSourceBranchShort,
   nextPersistedSourceBranchShortAfterPatch,
@@ -1829,7 +1833,7 @@ app.whenReady().then(async () => {
       _e,
       input: {
         title: string;
-        agent: Agent;
+        agent: Agent | null;
         blockedByTaskIds?: string[];
         labels?: string[];
         sourceBranch?: string;
@@ -1837,7 +1841,6 @@ app.whenReady().then(async () => {
         agentModel?: string;
         agentYolo?: boolean;
         repoId?: string;
-        attachedPlanningDocs?: TaskAttachedPlanningDoc[];
       },
     ) => {
       const project = projectStore.get();
@@ -1863,12 +1866,10 @@ app.whenReady().then(async () => {
       if (!branchOk.ok) {
         throw new Error(branchOk.message);
       }
-      const extra = mergedTaskCreateAgentFields(
-        project,
-        input.agent,
-        input.agentModel,
-        input.agentYolo,
-      );
+      const extra =
+        input.agent != null
+          ? mergedTaskCreateAgentFields(project, input.agent, input.agentModel, input.agentYolo)
+          : {};
       return taskStore.create({
         ...input,
         ...extra,
@@ -2201,24 +2202,22 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'tasks:requestPullRequestFromAgent',
     async (_e, raw: unknown): Promise<TaskRequestPullRequestFromAgentResult> => {
-      if (!raw || typeof raw !== 'object') {
-        return { ok: false, code: 'NO_PROJECT', message: 'Invalid payload' };
+      const parsed = parseTaskRequestPullRequestFromAgentPayload(raw);
+      if (!parsed.ok) {
+        return { ok: false, code: 'NO_PROJECT', message: parsed.message };
       }
-      const o = raw as { taskId?: unknown; title?: unknown };
-      const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
-      if (!taskId) {
-        return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
-      }
+      const { taskId, title: payloadTitle } = parsed.payload;
       const rootPath = worktreeService.getRootPath();
       if (!rootPath) {
         return { ok: false, code: 'NO_PROJECT', message: 'No git project open' };
       }
       const project = projectStore.get();
       const taskRow = project ? taskStore.getAll(project.id).find((t) => t.id === taskId) : undefined;
-      let title = typeof o.title === 'string' ? o.title.trim() : '';
+      let title = (payloadTitle ?? '').trim();
       if (taskRow) {
         if (!title) title = taskRow.title.trim();
       }
+      const mergedTaskFields = mergeTaskRowWithPullRequestAgentPayload(taskRow, parsed.payload);
       if (!title) {
         return {
           ok: false,
@@ -2228,7 +2227,11 @@ app.whenReady().then(async () => {
       }
 
       const sessions = await daemonClient.listSessions();
-      const session = pickSessionForTaskWorktree(sessions, taskId, taskRow?.repoId);
+      const session = pickSessionForTaskWorktree(
+        sessions,
+        taskId,
+        mergedTaskFields.repoId?.trim() || undefined,
+      );
       if (!session) {
         return {
           ok: false,
@@ -2289,10 +2292,10 @@ app.whenReady().then(async () => {
         projectStore,
         activeProjectDir,
         rootPath,
-        repoId: taskRow ? effectiveTaskRepoId(taskRow, primaryRepoId) : undefined,
+        repoId: effectiveTaskRepoId(mergedTaskFields, primaryRepoId),
       });
       const { baseBranch, headBranch } = resolveAgentPullRequestBranchContext({
-        task: taskRow ?? {},
+        task: mergedTaskFields,
         projectDefaultBranchShort: repoDefaultBranch,
         sessionBranch: headBranchRaw,
       });
@@ -2319,7 +2322,7 @@ app.whenReady().then(async () => {
             'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
         };
       }
-      const repoCfg = resolveRepoForBranchDiscovery(repos, taskRow?.repoId);
+      const repoCfg = resolveRepoForBranchDiscovery(repos, mergedTaskFields.repoId);
       const payload = buildTaskAgentPullRequestPrompt({
         taskId,
         taskTitle: title,
@@ -2830,6 +2833,14 @@ app.whenReady().then(async () => {
       }
     }
 
+    if (merged.agent == null) {
+      return {
+        error: 'NO_TASK_AGENT',
+        message:
+          'This task has no coding agent assigned. Choose Claude Code, Codex, or Cursor Agent in task details before starting a session.',
+      };
+    }
+
     // Dedup against the daemon's live registry.
     const existing = (await daemonClient.listSessions()).find(
       (s) => s.taskId === task.id && s.status === 'running',
@@ -2971,7 +2982,7 @@ app.whenReady().then(async () => {
         if (result.error === 'AGENT_NOT_FOUND') {
           return finish({
             error: 'AGENT_NOT_FOUND',
-            message: agentNotFoundMessage(task.agent, command),
+            message: agentNotFoundMessage(merged.agent, command),
           });
         }
         return finish({ error: 'AGENT_NOT_FOUND', message: result.message });
@@ -3029,10 +3040,10 @@ app.whenReady().then(async () => {
     >
   > & {
     githubPr?: TaskGithubPr | null;
-    /** `null` clears stored attachments. */
-    attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
     /** `null` clears stored value (inherit project default for when-unblocked). */
     autoStartOnUnblock?: boolean | null;
+    /** `null` clears all attached planning docs. */
+    attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
   };
 
   const unblockAutostartInFlight = new Set<string>();
@@ -3063,6 +3074,9 @@ app.whenReady().then(async () => {
 
     const project = projectStore.get();
     if (!project) return;
+    if (updated.agent == null) {
+      return;
+    }
     const columnTasks = taskStore.getAll(project.id);
     if (isTaskBlocked(updated, columnTasks)) {
       console.warn('[task:auto-start] skipped — task has incomplete blockers', {
@@ -3353,6 +3367,11 @@ app.whenReady().then(async () => {
     if (isTaskBlocked(existing, columnTasks)) {
       throw new Error(
         'Task is blocked by incomplete dependencies. Finish blocking tasks first.',
+      );
+    }
+    if (existing.agent == null) {
+      throw new Error(
+        'This task has no coding agent assigned. Set an agent on the task before starting work.',
       );
     }
     const updated = await taskStore.update(id, { status: 'in-progress' });

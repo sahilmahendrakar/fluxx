@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { BotOff } from 'lucide-react';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { modelSummaryForTask } from '../agentModelUi';
 import {
@@ -16,6 +17,10 @@ import {
 } from './AgentSessionPrefsMenu';
 
 export type TaskAgentSpawnPatch = Partial<Pick<Task, 'agent' | 'agentModel' | 'agentYolo'>>;
+
+/** Chip when no coding agent is assigned (matches task detail “None” styling). */
+const UNASSIGNED_AGENT_CHIP =
+  'border-zinc-600/40 bg-white/[0.04] text-zinc-400/90 ring-1 ring-inset ring-white/[0.06]';
 
 export function TaskCardAgentSpawnMenu({
   task,
@@ -38,11 +43,18 @@ export function TaskCardAgentSpawnMenu({
   const claudeModelId = task.agent === 'claude-code' ? (task.agentModel ?? '').trim() : '';
 
   const summaryLine = modelSummaryForTask(task);
-  const agentLabel = AGENTS.find((a) => a.id === task.agent)?.label ?? task.agent;
+  const agentLabel =
+    selectedAgent == null
+      ? 'None'
+      : (AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent);
   const triggerLabel = [agentLabel, summaryLine].filter(Boolean).join(' · ');
 
-  const handleAgentPick = (next: Agent) => {
+  const handleAgentPick = (next: Agent | null) => {
     if (next === selectedAgent) return;
+    if (next === null) {
+      onPatch({ agent: null });
+      return;
+    }
     const patch: TaskAgentSpawnPatch = {
       agent: next,
       agentYolo: false,
@@ -59,7 +71,7 @@ export function TaskCardAgentSpawnMenu({
     }
   };
 
-  const chip = AGENT_CHIP_STYLES[task.agent];
+  const chip = selectedAgent != null ? AGENT_CHIP_STYLES[selectedAgent] : UNASSIGNED_AGENT_CHIP;
 
   return (
     <>
@@ -71,13 +83,21 @@ export function TaskCardAgentSpawnMenu({
           e.stopPropagation();
           setPrefsOpen((wasOpen) => !wasOpen);
         }}
-        aria-label={`Choose agent and model for this task (${triggerLabel})`}
+        aria-label={
+          selectedAgent == null
+            ? `Choose agent for this task (${triggerLabel || 'no agent'})`
+            : `Choose agent and model for this task (${triggerLabel})`
+        }
         aria-expanded={prefsOpen}
         aria-haspopup="dialog"
-        title={triggerLabel}
+        title={triggerLabel || 'No agent — click to choose'}
         className={`-m-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${chip} outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-white/20`}
       >
-        <AgentProviderIcon agent={task.agent} className="h-3.5 w-3.5" aria-hidden />
+        {selectedAgent != null ? (
+          <AgentProviderIcon agent={selectedAgent} className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <BotOff className="h-3.5 w-3.5 text-zinc-500/90" strokeWidth={2} aria-hidden />
+        )}
       </button>
       <AgentSessionPrefsMenuPortal
         open={prefsOpen}
@@ -94,6 +114,7 @@ export function TaskCardAgentSpawnMenu({
           onPickAgent={handleAgentPick}
           onPickModel={handleModelPick}
           onToggleYolo={(next) => onPatch({ agentYolo: next })}
+          taskSpawnSurface
         />
       </AgentSessionPrefsMenuPortal>
     </>

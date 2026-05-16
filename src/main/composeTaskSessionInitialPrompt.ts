@@ -71,10 +71,11 @@ export async function collectAttachedPlanningDocPromptLines(
       fs.access(p, fsConstants.R_OK),
     );
     if (!absPath) {
+      const fallbackAbs = safeResolvePlanningMarkdownAbsPath(planningDir, norm);
       lines.push({
         kind: 'missing',
         relativePath: norm,
-        absPath: safeResolvePlanningMarkdownAbsPath(planningDir, norm),
+        ...(fallbackAbs !== null && fallbackAbs !== undefined ? { absPath: fallbackAbs } : {}),
         note:
           'File missing or not readable locally (for cloud projects the planning mirror may still be syncing).',
       });

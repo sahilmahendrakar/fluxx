@@ -133,6 +133,7 @@ export function labelForModelId(kind: AgentModelUiKind, modelId: string): string
 
 /** Tooltip / card subtitle for the active model. */
 export function modelSummaryForTask(task: Pick<Task, 'agent' | 'agentModel' | 'agentYolo'>): string | undefined {
+  if (task.agent == null) return undefined;
   if (task.agent === 'cursor') {
     const id = resolvedCursorAgentModel(task);
     return `Model: ${labelForModelId('cursor', id)}${task.agentYolo ? ' · YOLO' : ''}`;

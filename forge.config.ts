@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 import { daemonRuntimeModules } from './runtime-dependencies';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const githubUpdatesOwner = 'sahilmahendrakar';
+const githubUpdatesRepo = 'flux-web';
 
 /** Zips produced by `@electron-forge/maker-zip` for Darwin (electron-updater needs these + `latest-mac.yml`). */
 function isDarwinMakerZipArtifact(artifactPath: string): boolean {
@@ -107,6 +109,16 @@ async function postMakeWriteLatestMacYml(
 const dmgBackground = path.resolve(__dirname, 'assets', 'dmg_background3.png');
 const dmgIcon = path.resolve(__dirname, 'assets', 'app-icon.icns');
 
+function githubAppUpdateYml(): string {
+  return [
+    'provider: github',
+    `owner: ${githubUpdatesOwner}`,
+    `repo: ${githubUpdatesRepo}`,
+    'updaterCacheDirName: flux-updater',
+    '',
+  ].join('\n');
+}
+
 /** DMG window matches background size (658×498). Icon coords are Finder layout units (tweak x/y after each build). */
 const dmgContents = (opts: { appPath: string }) => [
   { x: 420, y: 260, type: 'link' as const, path: '/Applications' },
@@ -141,6 +153,11 @@ async function stageDaemonResources(buildPath: string): Promise<void> {
   const resourcesDir = path.resolve(buildPath, '..');
   const daemonDir = path.join(resourcesDir, 'daemon');
   await fsp.mkdir(daemonDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(resourcesDir, 'app-update.yml'),
+    githubAppUpdateYml(),
+    'utf8',
+  );
 
   const daemonSrc = path.join(__dirname, '.vite', 'build', 'daemon.js');
   if (!fs.existsSync(daemonSrc)) {
@@ -285,7 +302,7 @@ const config: ForgeConfig = {
   ],
   publishers: [
     new PublisherGithub({
-      repository: { owner: 'sahilmahendrakar', name: 'flux-web' },
+      repository: { owner: githubUpdatesOwner, name: githubUpdatesRepo },
     }),
   ],
 };

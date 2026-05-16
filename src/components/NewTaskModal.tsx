@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { UserCircle2 } from 'lucide-react';
-import { Agent, AGENTS, type RepoBranchDiscovery, type RepoConfig } from '../types';
+import {
+  type Agent,
+  type RepoBranchDiscovery,
+  type RepoConfig,
+  TASK_AGENT_SELECT_OPTIONS,
+} from '../types';
 import { repoDisplayLabel, resolvePrimaryRepoId } from '../repoIdentity';
 import { buildCreateTaskBranchPayload, gitBranchShortNameLooksValid } from '../taskBranches';
 import { TaskLabelsField } from './TaskLabelsField';
@@ -12,7 +17,7 @@ interface Props {
   onClose: () => void;
   onCreate: (
     title: string,
-    agent: Agent,
+    agent: Agent | null,
     labels: string[],
     assigneeId?: string,
     branch?: {
@@ -42,7 +47,7 @@ export default function NewTaskModal({
   multiRepo2Enabled = false,
 }: Props) {
   const [title, setTitle] = useState('');
-  const [agent, setAgent] = useState<Agent>(defaultAgent);
+  const [agent, setAgent] = useState<Agent | null>(defaultAgent);
   const [labels, setLabels] = useState<string[]>([]);
   const [assigneeId, setAssigneeId] = useState<string | undefined>(undefined);
   const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
@@ -214,11 +219,11 @@ export default function NewTaskModal({
           Agent
         </label>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {AGENTS.map((a) => {
+          {TASK_AGENT_SELECT_OPTIONS.map((a) => {
             const active = a.id === agent;
             return (
               <button
-                key={a.id}
+                key={a.id === null ? 'none' : a.id}
                 type="button"
                 onClick={() => setAgent(a.id)}
                 className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${

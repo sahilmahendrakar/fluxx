@@ -32,7 +32,7 @@ export interface McpBridgeMember {
 
 export interface McpBridgeTaskCreateInput {
   title: string;
-  agent: Agent;
+  agent: Agent | null;
   status?: TaskStatus;
   description?: string;
   orderKey?: string;
@@ -46,7 +46,6 @@ export interface McpBridgeTaskCreateInput {
   agentYolo?: boolean;
   /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
   repoId?: string;
-  /** Normalized planning markdown paths relative to the project `planning/` directory. */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 }
 
@@ -54,7 +53,7 @@ export interface McpBridgeTaskPatch {
   title?: string;
   description?: string;
   status?: TaskStatus;
-  agent?: Agent;
+  agent?: Agent | null;
   blockedByTaskIds?: string[];
   labels?: string[];
   autoStartOnUnblock?: boolean | null;
@@ -63,7 +62,6 @@ export interface McpBridgeTaskPatch {
   sourceBranch?: string;
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
-  /** Replace attachments; use [] or null to clear (same semantics as task patch). */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
 }
 
