@@ -1,0 +1,33 @@
+src/terminal/useTerminalPtyStream.ts
+  s_3be9e0da5a7b38::t_0d1cfee9170210 1,52-56,118
+src/terminal/warmAttach.ts
+  s_3be9e0da5a7b38::t_e1968c56f43730 106
+  s_3be9e0da5a7b38::t_6510a9871afdb4 39
+src/terminal/terminalGeometryPolicy.ts
+  s_3be9e0da5a7b38::t_2af46f91a09bc1 49
+src/components/TaskDetailPanel.tsx
+  s_3be9e0da5a7b38::t_187567e5b12303 54
+src/renderer/tasks/useCloudSilenceReconciliation.ts
+  s_3be9e0da5a7b38::t_84aac36bf34a9f 132
+  s_3be9e0da5a7b38::t_dd0f6ddc7a3e2d 122
+  s_3be9e0da5a7b38::t_8ae0369a27e076 10-11
+  s_3be9e0da5a7b38::t_75afb5a8fc9f59 89
+src/env.d.ts
+  s_3be9e0da5a7b38::t_5bfdf9ef5ad789 342-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "461f7e2f37fe943c505eb9decac08d428cd92476",
+  "prompts": {},
+  "sessions": {
+    "s_3be9e0da5a7b38": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8ae4d288-fc2c-4179-b745-ccc1069ccc80",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
