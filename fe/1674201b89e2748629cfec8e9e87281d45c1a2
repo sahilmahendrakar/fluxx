@@ -1,0 +1,19 @@
+src/main/TerminalRuntimeManager.ts
+  s_35f9ce4d463dc7::t_10b43b5278bf15 487-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "fe1674201b89e2748629cfec8e9e87281d45c1a2",
+  "prompts": {},
+  "sessions": {
+    "s_35f9ce4d463dc7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "bb079db3-035a-4901-8cd9-3c69961ddf53",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
