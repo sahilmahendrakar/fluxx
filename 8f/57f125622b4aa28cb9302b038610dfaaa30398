@@ -1,0 +1,86 @@
+src/main/TerminalRuntimeManager.ts
+  s_c7fb81df1b26aa::t_4d0cee78a0117c 15-20
+  s_c7fb81df1b26aa::t_c0ea29639001de 128
+src/preload.ts
+  s_c7fb81df1b26aa::t_40c694c7451191 406
+  s_c7fb81df1b26aa::t_9fe8ecfb58662c 36
+src/terminal-runtime/terminalEnv.ts
+  s_c7fb81df1b26aa::t_80265d856efbea 2,6,8
+src/terminal-runtime/SessionRuntime.ts
+  s_c7fb81df1b26aa::t_838fc4f37b4aaa 78
+  s_c7fb81df1b26aa::t_ba803c81bbbebd 45-46
+  s_c7fb81df1b26aa::t_a203a3d1ddf220 43
+src/renderer/tasks/useCloudSilenceReconciliation.ts
+  s_c7fb81df1b26aa::t_51c0005adc34a3 3
+src/terminal/warmAttach.ts
+  s_c7fb81df1b26aa::t_94815fa6eb7f22 1
+src/main/userShellEnv.ts
+  s_c7fb81df1b26aa::t_8f238f4a2804db 289,296-297
+  s_c7fb81df1b26aa::t_c3d53dce33af8f 7-9,11-12,16
+src/hooks/useTrustAutorespondNotice.ts
+  s_c7fb81df1b26aa::t_da4fb51736f1e7 10
+docs/agent-prompt-detection.md
+  s_c7fb81df1b26aa::t_ef2deccc0f1332 132
+  s_c7fb81df1b26aa::t_9d22df5f7fe623 219
+  s_c7fb81df1b26aa::t_4daab6b1206d84 227-228
+  s_c7fb81df1b26aa::t_32265cb0362ac8 21
+  s_c7fb81df1b26aa::t_55ccb871442795 114
+  s_c7fb81df1b26aa::t_ebc14e4c730c37 229
+  s_c7fb81df1b26aa::t_cfa6029bb1e841 32
+src/main/TerminalRuntimeManager.test.ts
+  s_c7fb81df1b26aa::t_d8ae5730beca85 3
+src/terminal-runtime/sessionExitTransition.test.ts
+  s_c7fb81df1b26aa::t_daadbe2d65de70 2
+src/terminal-runtime/attachWire.test.ts
+  s_c7fb81df1b26aa::t_c6199a9319d3cc 25
+  s_c7fb81df1b26aa::t_7de536ec391677 33
+src/terminal-runtime/protocol.ts
+  s_c7fb81df1b26aa::t_02782d531a804a 2-4,7,9,19,31,46,83,121,130,164
+src/main.ts
+  s_c7fb81df1b26aa::t_4504df9eaafdb4 179
+  s_c7fb81df1b26aa::t_cd05109005d086 494
+  s_c7fb81df1b26aa::t_da67a6d7a55bab 696
+  s_c7fb81df1b26aa::t_02f545ff51a69d 709-710
+src/terminal/warmAttach.test.ts
+  s_c7fb81df1b26aa::t_a652f982556553 2
+vite.main.config.ts
+  s_c7fb81df1b26aa::t_515b580dd1f807 31-39
+src/main/terminalBackend/LocalMainProcessTerminalBackend.ts
+  s_c7fb81df1b26aa::t_a79769d7fbe600 12
+src/env.d.ts
+  s_c7fb81df1b26aa::t_f71fe3352ace1c 35
+src/terminal/useTerminalPtyStream.ts
+  s_c7fb81df1b26aa::t_41106e4a922aba 55
+  s_c7fb81df1b26aa::t_f4ac799a549f8f 2
+src/terminal-runtime/trustPromptAutoresponderRules.ts
+  s_c7fb81df1b26aa::t_342c8325431655 2
+src/main/terminalBackend/TerminalBackend.ts
+  s_c7fb81df1b26aa::t_1c7f21a367363c 11,13-14
+  s_c7fb81df1b26aa::t_d96aa09bec4d47 30-32,36-37,52,54-55
+src/main/terminalBackend/createMainTerminalBackend.ts
+  s_c7fb81df1b26aa::t_c940366160f2f0 6-7
+forge.config.ts
+  s_c7fb81df1b26aa::t_63178552e7e323 114-115
+  s_c7fb81df1b26aa::t_96dd06460f5936 127-128,130-131
+  s_c7fb81df1b26aa::t_6a4ab294e95ca8 200
+src/terminal-runtime/PromptAutoresponder.ts
+  s_c7fb81df1b26aa::t_58eafe594f7a4c 1
+src/main/terminalBackend/terminalBackend.test.ts
+  s_c7fb81df1b26aa::t_2400d9a1705f63 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "8f57f125622b4aa28cb9302b038610dfaaa30398",
+  "prompts": {},
+  "sessions": {
+    "s_c7fb81df1b26aa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4e57a333-dc0a-4bda-b6aa-399bede7f5fb",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
