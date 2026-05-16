@@ -51,6 +51,9 @@ describe('buildCreatePrInstructionsMarkdown', () => {
     expect(text).toContain('gh pr create');
     expect(text).toContain('force-push');
     expect(text).toContain('secrets');
+    expect(text).toContain('origin');
+    expect(text).toContain('PR base branch');
+    expect(text).toContain('Never force-push the base branch');
   });
 });
 
