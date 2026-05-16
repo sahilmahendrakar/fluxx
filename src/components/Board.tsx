@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import { DragDropContext, DropResult } from '@hello-pangea/dnd';
-import { LayoutGrid, List } from 'lucide-react';
 import {
   Session,
   Task,
@@ -25,8 +24,6 @@ import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
-
-export type ProjectViewMode = 'board' | 'list';
 
 interface Props {
   allTasks: Task[];
@@ -76,8 +73,6 @@ interface Props {
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
-  viewMode: ProjectViewMode;
-  onViewModeChange: (mode: ProjectViewMode) => void;
 }
 
 export default function Board({
@@ -107,8 +102,6 @@ export default function Board({
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
   onOpenTaskWorkspaceTab,
-  viewMode,
-  onViewModeChange,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -196,34 +189,6 @@ export default function Board({
             projectRepos={projectRepos}
           />
           <div className="flex shrink-0 items-center justify-end gap-2 self-end sm:self-center">
-            <div className="flex rounded-md border border-gray-700 p-0.5">
-              <button
-                type="button"
-                onClick={() => onViewModeChange('board')}
-                aria-label="Board view"
-                aria-pressed={viewMode === 'board'}
-                className={`rounded p-1.5 transition-colors ${
-                  viewMode === 'board'
-                    ? 'bg-gray-800 text-gray-200'
-                    : 'text-gray-500 hover:bg-gray-800/50 hover:text-gray-300'
-                }`}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => onViewModeChange('list')}
-                aria-label="List view"
-                aria-pressed={viewMode === 'list'}
-                className={`rounded p-1.5 transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-gray-800 text-gray-200'
-                    : 'text-gray-500 hover:bg-gray-800/50 hover:text-gray-300'
-                }`}
-              >
-                <List className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
             <button
               type="button"
               onClick={onTogglePlanPanel}
@@ -261,7 +226,6 @@ export default function Board({
             to see the full board.
           </div>
         ) : null}
-        {viewMode === 'board' ? (
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-4">
           {COLUMNS.map((col) => (
             <Column
@@ -305,7 +269,6 @@ export default function Board({
             />
           ))}
         </div>
-        ) : null}
       </div>
       {modalOpen ? (
         <NewTaskModal

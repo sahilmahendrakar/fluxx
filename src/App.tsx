@@ -27,7 +27,7 @@ import {
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
 } from './types';
-import Board, { type ProjectViewMode } from './components/Board';
+import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
@@ -272,27 +272,6 @@ function readStoredPlanningWidth(): number | null {
   }
 }
 
-function projectViewModeStorageKey(projectId: string): string {
-  return `flux:projectViewMode:${projectId}`;
-}
-
-function readStoredProjectViewMode(projectId: string): ProjectViewMode {
-  try {
-    const raw = localStorage.getItem(projectViewModeStorageKey(projectId));
-    return raw === 'list' ? 'list' : 'board';
-  } catch {
-    return 'board';
-  }
-}
-
-function persistProjectViewMode(projectId: string, mode: ProjectViewMode): void {
-  try {
-    localStorage.setItem(projectViewModeStorageKey(projectId), mode);
-  } catch {
-    /* quota / private mode */
-  }
-}
-
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
   const [project, setProject] = useState<ActiveProject | null>(null);
@@ -328,7 +307,6 @@ export default function App() {
   /** Per-task: Flux task worktree exists on disk or is tied to a session worktree path. */
   const [taskHasWorktreeById, setTaskHasWorktreeById] = useState<Record<string, boolean>>({});
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
-  const [projectViewMode, setProjectViewMode] = useState<ProjectViewMode>('board');
   /** Persisted: user wants the board planning strip open (see {@link ProjectTabState.planningSidebarOpen}). */
   const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
@@ -1475,21 +1453,6 @@ export default function App() {
     minimizedWorkspaceIds,
     tabPersistNonce,
   ]);
-
-  useEffect(() => {
-    if (!project) return;
-    setProjectViewMode(readStoredProjectViewMode(project.id));
-  }, [project?.id]);
-
-  const handleProjectViewModeChange = useCallback(
-    (mode: ProjectViewMode) => {
-      setProjectViewMode(mode);
-      if (project) {
-        persistProjectViewMode(project.id, mode);
-      }
-    },
-    [project?.id],
-  );
 
   useEffect(() => {
     const onBoardWorkspace = activeTabId === 'board' && !settingsRouteActive;
@@ -3390,8 +3353,6 @@ export default function App() {
                           void handleUpdateTask(id, patch)
                         }
                         onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
-                        viewMode={projectViewMode}
-                        onViewModeChange={handleProjectViewModeChange}
                       />
                       <TaskDetailPanel
                         task={selectedTask}
