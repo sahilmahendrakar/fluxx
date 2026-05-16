@@ -141,7 +141,6 @@ function AgentPane({
       }),
     onStreamData: (sid, cb) => window.electronAPI.sessions.onData(sid, cb),
     onAttachComplete: () => setAttachReady(true),
-    invalidateAttachCache: () => invalidateSessionAttachCache(id),
   });
 
   const handleData = (data: string) => {
@@ -314,7 +313,6 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
         }
       }),
     onStreamData: (sid, cb) => window.electronAPI.shells.onData(sid, cb),
-    invalidateAttachCache: () => invalidateShellAttachCache(id),
   });
 
   const handleData = (data: string) => {

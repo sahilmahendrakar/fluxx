@@ -46,7 +46,7 @@ export function getApplyAttachOptionsForViewPolicy(
 
 /**
  * Container-fit owners refit after attach so `onResize` can update the PTY.
- * Fixed-snapshot mirrors keep the daemon-owned grid and must not refit.
+ * Fixed-snapshot mirrors keep the PTY-owned grid and must not refit.
  */
 export function shouldPostAttachFit(policy: TerminalViewPolicy): boolean {
   return policy.geometryOwnership === 'owner' && policy.fitMode === 'container';
