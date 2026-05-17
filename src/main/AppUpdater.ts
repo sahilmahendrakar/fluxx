@@ -3,7 +3,7 @@ import { autoUpdater } from 'electron-updater';
 import type { AppUpdateState } from '../appUpdateState';
 
 const GH_UPDATES_OWNER = 'sahilmahendrakar';
-const GH_UPDATES_REPO = 'flux-web';
+const GH_UPDATES_REPO = 'fluxx-web';
 
 /** Background metadata checks (no download) — 4 hours */
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;

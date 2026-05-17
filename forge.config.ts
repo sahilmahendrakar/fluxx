@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
-const githubUpdatesRepo = 'flux-web';
+const githubUpdatesRepo = 'fluxx-web';
 const appleAppSpecificPassword =
   process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
 const shouldSignAndNotarize = Boolean(

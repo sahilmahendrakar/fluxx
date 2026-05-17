@@ -102,3 +102,15 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm run publish
+
+      - name: Apply Fluxx release title and notes
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          RELEASE_REPO="sahilmahendrakar/fluxx-web"
+          NOTES="$(sed "s/{{VERSION}}/${VERSION}/g" docs/github-release-notes-template.md)"
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$RELEASE_REPO" \
+            --title "Fluxx ${VERSION}" \
+            --notes "$NOTES"
