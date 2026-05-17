@@ -10,7 +10,7 @@ import {
 } from './cloudLocalBindingMigration';
 
 /**
- * Builds `repos[]` + primary root for `~/.flux/.../config.json` from Firestore
+ * Builds `repos[]` + primary root for `~/.fluxx/.../config.json` from Firestore
  * shared repo rows and the local machine binding map (multi-repo2 cloud).
  */
 export function repoConfigsFromCloudSharedAndBinding(

@@ -12,10 +12,15 @@ import {
   safeResolvePlanningMarkdownAbsPath,
 } from '../planningDocs/path';
 
-/** Dot-directory next to mirrored markdown — sync state and conflict artifacts. */
-export const PLANNING_DOCS_DISK_SYNC_DIR = '.flux-docs-sync';
+import {
+  FLUXX_PLANNING_DOCS_DISK_SYNC_PREFIX,
+  planningDiskSyncDirAbsForWrite,
+  resolvePlanningDiskSyncDirAbs,
+} from '../planningDocs/fluxxPlanningPaths';
 
-const SYNC_DIR = PLANNING_DOCS_DISK_SYNC_DIR;
+/** Dot-directory next to mirrored markdown — sync state and conflict artifacts. */
+export const PLANNING_DOCS_DISK_SYNC_DIR = FLUXX_PLANNING_DOCS_DISK_SYNC_PREFIX;
+
 const STATE_FILENAME = 'state.json';
 const CONFLICTS_SUBDIR = 'conflicts';
 
@@ -42,13 +47,22 @@ function sha256Utf8(content: string): string {
 }
 
 export function syncStatePath(planningDir: string): string {
-  return path.join(planningDir, SYNC_DIR, STATE_FILENAME);
+  return path.join(planningDiskSyncDirAbsForWrite(planningDir), STATE_FILENAME);
+}
+
+async function syncStatePathForRead(planningDir: string): Promise<string | null> {
+  const syncDir = await resolvePlanningDiskSyncDirAbs(planningDir);
+  if (!syncDir) return null;
+  return path.join(syncDir, STATE_FILENAME);
 }
 
 export async function readPlanningDocsSyncState(
   planningDir: string,
 ): Promise<PlanningDocsDiskSyncStateV1> {
-  const p = syncStatePath(planningDir);
+  const p = await syncStatePathForRead(planningDir);
+  if (!p) {
+    return { schemaVersion: 1, files: {} };
+  }
   try {
     const raw = await fs.readFile(p, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
@@ -78,7 +92,7 @@ export async function writePlanningDocsSyncState(
   planningDir: string,
   state: PlanningDocsDiskSyncStateV1,
 ): Promise<void> {
-  const dir = path.join(planningDir, SYNC_DIR);
+  const dir = planningDiskSyncDirAbsForWrite(planningDir);
   await fs.mkdir(dir, { recursive: true });
   const p = syncStatePath(planningDir);
   await fs.writeFile(p, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
@@ -256,7 +270,7 @@ export async function persistPlanningDocsConflictLocal(
   planningDir: string,
   record: PlanningDocsConflictRecordV1,
 ): Promise<string> {
-  const dir = path.join(planningDir, SYNC_DIR, CONFLICTS_SUBDIR);
+  const dir = path.join(planningDiskSyncDirAbsForWrite(planningDir), CONFLICTS_SUBDIR);
   await fs.mkdir(dir, { recursive: true });
   const safePath = Buffer.from(record.relativePath, 'utf8').toString('base64url').slice(0, 200);
   const basename = `${record.createdAt.replace(/[:.]/g, '-')}_${safePath}.json`;

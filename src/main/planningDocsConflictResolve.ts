@@ -7,10 +7,10 @@ import {
 } from '../planningDocs/path';
 import type { PlanningDocsConflictRecordV1 } from '../planningDocs/syncTypes';
 import {
-  PLANNING_DOCS_DISK_SYNC_DIR,
-  readPlanningDocsSyncState,
-  writePlanningDocsSyncState,
-} from './planningDocsFirestoreHydrate';
+  listPlanningDiskSyncDirsAbs,
+  planningDiskSyncDirAbsForWrite,
+} from '../planningDocs/fluxxPlanningPaths';
+import { readPlanningDocsSyncState, writePlanningDocsSyncState } from './planningDocsFirestoreHydrate';
 
 function sha256Utf8(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
@@ -18,28 +18,34 @@ function sha256Utf8(content: string): string {
 
 const CONFLICTS_SUBDIR = 'conflicts';
 
-function conflictsDir(planningDir: string): string {
-  return path.join(planningDir, PLANNING_DOCS_DISK_SYNC_DIR, CONFLICTS_SUBDIR);
+async function conflictsDirsForRead(planningDir: string): Promise<string[]> {
+  const syncDirs = await listPlanningDiskSyncDirsAbs(planningDir);
+  if (syncDirs.length === 0) {
+    return [path.join(planningDiskSyncDirAbsForWrite(planningDir), CONFLICTS_SUBDIR)];
+  }
+  return syncDirs.map((d) => path.join(d, CONFLICTS_SUBDIR));
 }
 
 async function readConflictRecord(
   planningDir: string,
   basename: string,
 ): Promise<PlanningDocsConflictRecordV1 | null> {
-  const abs = path.join(conflictsDir(planningDir), basename);
-  try {
-    const raw = await fs.readFile(abs, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      (parsed as PlanningDocsConflictRecordV1).schemaVersion === 1 &&
-      typeof (parsed as PlanningDocsConflictRecordV1).relativePath === 'string'
-    ) {
-      return parsed as PlanningDocsConflictRecordV1;
+  for (const dir of await conflictsDirsForRead(planningDir)) {
+    const abs = path.join(dir, basename);
+    try {
+      const raw = await fs.readFile(abs, 'utf8');
+      const parsed = JSON.parse(raw) as unknown;
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        (parsed as PlanningDocsConflictRecordV1).schemaVersion === 1 &&
+        typeof (parsed as PlanningDocsConflictRecordV1).relativePath === 'string'
+      ) {
+        return parsed as PlanningDocsConflictRecordV1;
+      }
+    } catch {
+      /* try next dir */
     }
-  } catch {
-    /* ignore */
   }
   return null;
 }
@@ -49,18 +55,23 @@ export async function listConflictBasenamesForPath(
   planningDir: string,
   normPath: string,
 ): Promise<string[]> {
-  let names: string[];
-  try {
-    names = await fs.readdir(conflictsDir(planningDir));
-  } catch {
-    return [];
-  }
   const matches: { basename: string; createdAt: string }[] = [];
-  for (const basename of names) {
-    if (!basename.endsWith('.json')) continue;
-    const rec = await readConflictRecord(planningDir, basename);
-    if (rec && normalizePlanningDocRelativePath(rec.relativePath) === normPath) {
-      matches.push({ basename, createdAt: rec.createdAt });
+  const seen = new Set<string>();
+  for (const dir of await conflictsDirsForRead(planningDir)) {
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const basename of names) {
+      if (seen.has(basename)) continue;
+      seen.add(basename);
+      if (!basename.endsWith('.json')) continue;
+      const rec = await readConflictRecord(planningDir, basename);
+      if (rec && normalizePlanningDocRelativePath(rec.relativePath) === normPath) {
+        matches.push({ basename, createdAt: rec.createdAt });
+      }
     }
   }
   matches.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
@@ -68,10 +79,12 @@ export async function listConflictBasenamesForPath(
 }
 
 async function unlinkConflictArtifact(planningDir: string, basename: string): Promise<void> {
-  try {
-    await fs.unlink(path.join(conflictsDir(planningDir), basename));
-  } catch {
-    /* ignore */
+  for (const dir of await conflictsDirsForRead(planningDir)) {
+    try {
+      await fs.unlink(path.join(dir, basename));
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -181,5 +194,5 @@ export async function resolvePlanningDocConflictMarkMerged(
 }
 
 export function planningDocsSyncFolderAbs(planningDir: string): string {
-  return path.join(planningDir, PLANNING_DOCS_DISK_SYNC_DIR);
+  return planningDiskSyncDirAbsForWrite(planningDir);
 }

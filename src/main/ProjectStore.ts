@@ -807,8 +807,8 @@ export class ProjectStore {
   }
 
   /**
-   * Ensures `~/.flux/projects/<localProjectId>/` layout and config exist for a repo root.
-   * Migrates legacy `~/.flux/<repo-basename>/` (and the rare `~/.flux/projects/config.json`
+   * Ensures `~/.fluxx/projects/<localProjectId>/` layout and config exist for a repo root.
+   * Migrates legacy `~/.fluxx/<repo-basename>/` (and the rare `~/.fluxx/projects/config.json`
    * flat layout) on demand. Does not update the store's active project — use for cloud
    * worktrees after resolving the cloud project directory.
    */
@@ -817,8 +817,8 @@ export class ProjectStore {
   }
 
   /**
-   * Cloud projects use `~/.flux/projects/<cloudProjectId>/` (sanitized segment), never the
-   * local basename directory. Migrates from `~/.flux/cloud-projects/<id>/` when present.
+   * Cloud projects use `~/.fluxx/projects/<cloudProjectId>/` (sanitized segment), never the
+   * local basename directory. Migrates from `~/.fluxx/cloud-projects/<id>/` when present.
    */
   async ensureCloudLayoutForRoot(
     cloudProjectId: string,
@@ -1068,7 +1068,7 @@ export class ProjectStore {
     return { projectDir, project: configToLocalProject(config) };
   }
 
-  /** Discovered local + materialized-on-disk cloud workspaces under `~/.flux/`. */
+  /** Discovered local + materialized-on-disk cloud workspaces under `~/.fluxx/`. */
   async listDiscovered(): Promise<LocalProject[]> {
     const pathById = new Map<string, string>();
     const projectById = new Map<string, LocalProject>();
@@ -1153,7 +1153,7 @@ export class ProjectStore {
 
   /**
    * Every on-disk Flux workspace directory whose `config.json` `id` matches `projectId`
-   * (canonical, legacy cloud, legacy basename, legacy flat `~/.flux/projects/`, etc.),
+   * (canonical, legacy cloud, legacy basename, legacy flat `~/.fluxx/projects/`, etc.),
    * excluding superseded directories.
    */
   async listMaterializationDirsForProjectId(projectId: string): Promise<string[]> {

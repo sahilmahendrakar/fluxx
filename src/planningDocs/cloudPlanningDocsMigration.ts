@@ -16,7 +16,7 @@
  *   we do not nag; nothing is uploaded automatically.
  *
  * - **New teammates:** Cloud activation materialises `planning/` under
- *   `~/.flux/projects/<cloudProjectId>/` and may seed `CLAUDE.md` / `AGENTS.md` with
+ *   `~/.fluxx/projects/<cloudProjectId>/` and may seed `CLAUDE.md` / `AGENTS.md` with
  *   machine-specific paths. Shared planning markdown is written under `planning/docs/`.
  *   Those instruction bodies often differ only by embedded workspace paths — see
  *   {@link planningMarkdownEquivalentForSeededInstructions}. Marker-wrapped local bodies
@@ -24,10 +24,10 @@
  *   avoids noisy conflict copies while still replacing with shared content when Firestore
  *   has the team version.
  *
- *   Fluxx-managed instruction upgrades persist `planning/.flux-instructions.json` (local metadata only;
- *   not a planning doc and not cloud-synced).
+ *   Fluxx-managed instruction upgrades persist `planning/.fluxx-instructions.json` (local metadata only;
+ *   legacy `.flux-instructions.json` still read; not a planning doc and not cloud-synced).
  *
- * Persisted completion flags: `planning/.flux-cloud-docs-migration.json`
+ * Persisted completion flags: `planning/.fluxx-cloud-docs-migration.json` (legacy `.flux-cloud-docs-migration.json` still read)
  * (`planningDocsMigrationDisk.ts`). Renderer orchestration: `useCloudPlanningDocsMigration.tsx`.
  * Firestore IO: `renderer/planningDocs/firestorePlanningDocs.ts`.
  */

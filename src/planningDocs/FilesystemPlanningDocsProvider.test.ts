@@ -82,7 +82,8 @@ describe('FilesystemPlanningDocsProvider', () => {
     expect(onDisk).toBe('updated body');
   });
 
-  it('write returns FORBIDDEN_PATH under .flux-docs-sync', async () => {
+  it('write returns FORBIDDEN_PATH under .fluxx-docs-sync and legacy .flux-docs-sync', async () => {
+    expect((await provider.write('.fluxx-docs-sync/nope.md', 'x')).error).toBe('FORBIDDEN_PATH');
     const w = await provider.write('.flux-docs-sync/nope.md', 'x');
     expect(w).toEqual({ error: 'FORBIDDEN_PATH' });
   });

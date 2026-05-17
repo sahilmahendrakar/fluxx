@@ -93,6 +93,7 @@ typings/
 
 # Secondary Flux dev instance (`pnpm run start:aux`) — isolated daemon + profile
 .flux-test-userdata/
+.fluxx-test-userdata/
 
 # Electron-Forge
 out/

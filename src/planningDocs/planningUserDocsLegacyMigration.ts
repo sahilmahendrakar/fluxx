@@ -7,9 +7,15 @@ import {
   planningUserDocsDir,
 } from './path';
 
+import {
+  FLUXX_PLANNING_USER_DOCS_LEGACY_MIGRATION_BASENAME,
+  LEGACY_PLANNING_USER_DOCS_LEGACY_MIGRATION_BASENAME,
+  resolvePlanningMetadataFileAbs,
+} from './fluxxPlanningPaths';
+
 /** One-time marker next to `planning/` agent files (not a planning doc). */
 export const PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME =
-  '.flux-planning-user-docs-root-migration-v1.json';
+  FLUXX_PLANNING_USER_DOCS_LEGACY_MIGRATION_BASENAME;
 
 export interface PlanningUserDocsRootMigrationStateV1 {
   schemaVersion: 1;
@@ -20,7 +26,7 @@ export interface PlanningUserDocsRootMigrationStateV1 {
   errors: string[];
 }
 
-function migrationStatePath(planningDir: string): string {
+function migrationStatePathForWrite(planningDir: string): string {
   return path.join(planningDir, PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME);
 }
 
@@ -78,8 +84,14 @@ async function collectLegacyMarkdownRelPathsForMigration(planningDir: string): P
 async function readCompletedMigrationState(
   planningDir: string,
 ): Promise<PlanningUserDocsRootMigrationStateV1 | null> {
+  const statePath = await resolvePlanningMetadataFileAbs(
+    planningDir,
+    FLUXX_PLANNING_USER_DOCS_LEGACY_MIGRATION_BASENAME,
+    LEGACY_PLANNING_USER_DOCS_LEGACY_MIGRATION_BASENAME,
+  );
+  if (!statePath) return null;
   try {
-    const raw = await fs.readFile(migrationStatePath(planningDir), 'utf8');
+    const raw = await fs.readFile(statePath, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
     if (
       parsed &&
@@ -189,7 +201,7 @@ export async function migrateLegacyPlanningMarkdownIntoUserDocsDir(planningDir: 
   };
 
   try {
-    await fs.writeFile(migrationStatePath(planningDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    await fs.writeFile(migrationStatePathForWrite(planningDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
   } catch (err) {
     console.error('[planningUserDocsMigration] write state failed', err);
     return;

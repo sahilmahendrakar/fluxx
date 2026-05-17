@@ -6,7 +6,7 @@
 /** How list/read are backed today (Firestore reads plug in under cloud later). */
 export type PlanningDocsBackendKind =
   | 'local-disk'
-  /** Local `.flux/.../planning/` mirror while sync catches up; not authoritative. */
+  /** Local `.fluxx/.../planning/` mirror while sync catches up; not authoritative. */
   | 'cloud-workspace-mirror-disk';
 
 /** Optional UI/agent metadata for a planning markdown file. */
@@ -32,7 +32,7 @@ export interface PlanningDocSyncInfo {
   lastSyncedAt?: string;
   /** When a push conflict pause is active for this path. */
   conflictPausedAt?: string;
-  /** Newest local conflict artifact under `.flux-docs-sync/conflicts/`. */
+  /** Newest local conflict artifact under `.fluxx-docs-sync/conflicts/` (legacy dir honored on read). */
   conflictArtifactBasename?: string;
 }
 

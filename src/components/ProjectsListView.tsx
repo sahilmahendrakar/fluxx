@@ -104,7 +104,7 @@ export function ProjectsListView({
   const handleRemoveLocalFlux = async (id: string, name: string) => {
     if (
       !window.confirm(
-        `Remove "${name}" from Fluxx?\n\nThis deletes Fluxx-owned data under ~/.flux for this project (tasks, planning docs, MCP config, and Fluxx-managed git worktrees), stops any running task or planning sessions for it, and clears saved tabs. Your original repository clone is not deleted.`,
+        `Remove "${name}" from Fluxx?\n\nThis deletes Fluxx-owned data under ~/.fluxx for this project (tasks, planning docs, MCP config, and Fluxx-managed git worktrees), stops any running task or planning sessions for it, and clears saved tabs. Your original repository clone is not deleted.`,
       )
     ) {
       return;
@@ -137,7 +137,7 @@ export function ProjectsListView({
   const handleRemoveCloudLocalData = async (summary: CloudProjectSummary) => {
     if (
       !window.confirm(
-        `Remove local Fluxx data for "${summary.name}"?\n\nThis machine will forget the local folder binding, delete Fluxx materialized files under ~/.flux for this team project, stop related sessions, and clear saved tabs. The team project in the cloud is unchanged. Your git clone is not deleted.`,
+        `Remove local Fluxx data for "${summary.name}"?\n\nThis machine will forget the local folder binding, delete Fluxx materialized files under ~/.fluxx for this team project, stop related sessions, and clear saved tabs. The team project in the cloud is unchanged. Your git clone is not deleted.`,
       )
     ) {
       return;
@@ -607,8 +607,8 @@ export function ProjectsListView({
                       disabled={removing}
                       onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
                       className={`rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-300'}`}
-                      title="Remove from Fluxx (deletes ~/.flux workspace; keeps your git clone)"
-                      >
+                      title="Remove from Fluxx (deletes ~/.fluxx workspace; keeps your git clone)"
+                    >
                       {removing ? 'Removing…' : 'Remove from Fluxx'}
                     </button>
                   </div>

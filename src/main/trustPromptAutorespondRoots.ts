@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import { fluxBaseDirPath, legacyFluxBaseDirPath } from './fluxBaseDir';
 
 /**
  * Absolute path prefixes for PTY cwd checks when auto-responding to trust prompts
@@ -10,7 +11,8 @@ export function trustPromptAutorespondRootsForProject(projectDir: string): strin
   return [
     path.join(resolvedProject, 'worktrees'),
     path.join(resolvedProject, 'planning'),
-    path.join(path.resolve(os.homedir()), '.flux', 'worktrees'),
+    path.join(fluxBaseDirPath(), 'worktrees'),
+    path.join(legacyFluxBaseDirPath(), 'worktrees'),
   ].map((p) => path.resolve(p));
 }
 

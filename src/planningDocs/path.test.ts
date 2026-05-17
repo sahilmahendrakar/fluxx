@@ -146,12 +146,14 @@ describe('isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite', () => {
 
 describe('isPlanningUserDocRelativePathDisallowed', () => {
   it('blocks the Flux instruction state sidecar', () => {
+    expect(isPlanningUserDocRelativePathDisallowed('.fluxx-instructions.json')).toBe(true);
     expect(isPlanningUserDocRelativePathDisallowed('.flux-instructions.json')).toBe(true);
   });
 });
 
 describe('isPlanningMarkdownRelativePathForbiddenForUserWrite', () => {
-  it('blocks .flux-docs-sync tree', () => {
+  it('blocks .fluxx-docs-sync and legacy .flux-docs-sync trees', () => {
+    expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('.fluxx-docs-sync/state.md')).toBe(true);
     expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('.flux-docs-sync/state.md')).toBe(true);
     expect(isPlanningMarkdownRelativePathForbiddenForUserWrite('notes/ok.md')).toBe(false);
   });

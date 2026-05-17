@@ -12,11 +12,8 @@ import type {
 } from '../planningDocs/types';
 import type { PlanningDocsConflictRecordV1 } from '../planningDocs/syncTypes';
 import { listPlanningDocsPushCandidates } from './planningDocsFirestorePush';
-import {
-  PLANNING_DOCS_DISK_SYNC_DIR,
-  readPlanningDocsSyncState,
-  syncStatePath,
-} from './planningDocsFirestoreHydrate';
+import { listPlanningDiskSyncDirsAbs } from '../planningDocs/fluxxPlanningPaths';
+import { readPlanningDocsSyncState, syncStatePath } from './planningDocsFirestoreHydrate';
 function sha256Utf8(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
@@ -47,23 +44,25 @@ async function readConflictRecord(
 async function latestConflictBasenameByPath(
   planningDir: string,
 ): Promise<Map<string, { basename: string; createdAt: string }>> {
-  const dir = path.join(planningDir, PLANNING_DOCS_DISK_SYNC_DIR, 'conflicts');
   const out = new Map<string, { basename: string; createdAt: string }>();
-  let names: string[];
-  try {
-    names = await fs.readdir(dir);
-  } catch {
-    return out;
-  }
-  for (const basename of names) {
-    if (!basename.endsWith('.json')) continue;
-    const rec = await readConflictRecord(planningDir, dir, basename);
-    if (!rec) continue;
-    const norm = normalizePlanningDocRelativePath(rec.relativePath);
-    if (!norm) continue;
-    const prev = out.get(norm);
-    if (!prev || rec.createdAt > prev.createdAt) {
-      out.set(norm, { basename, createdAt: rec.createdAt });
+  for (const syncDir of await listPlanningDiskSyncDirsAbs(planningDir)) {
+    const dir = path.join(syncDir, 'conflicts');
+    let names: string[];
+    try {
+      names = await fs.readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const basename of names) {
+      if (!basename.endsWith('.json')) continue;
+      const rec = await readConflictRecord(planningDir, dir, basename);
+      if (!rec) continue;
+      const norm = normalizePlanningDocRelativePath(rec.relativePath);
+      if (!norm) continue;
+      const prev = out.get(norm);
+      if (!prev || rec.createdAt > prev.createdAt) {
+        out.set(norm, { basename, createdAt: rec.createdAt });
+      }
     }
   }
   return out;

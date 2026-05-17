@@ -827,7 +827,7 @@ export default function App() {
     cloudProjectsState.projects,
   ]);
 
-  // Multi-repo2 cloud: keep ~/.flux/projects/<cloudId>/ workspace `repos[]` aligned with shared repo ids + bindings.
+  // Multi-repo2 cloud: keep ~/.fluxx/projects/<cloudId>/ workspace `repos[]` aligned with shared repo ids + bindings.
   useEffect(() => {
     if (!project || project.kind !== 'cloud') return;
     if (project.sharedRepos.length === 0) return;

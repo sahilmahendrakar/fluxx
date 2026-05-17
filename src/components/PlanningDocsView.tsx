@@ -346,7 +346,7 @@ export function PlanningDocsView({
             <div className="shrink-0 space-y-2 border-b border-amber-500/20 bg-amber-500/[0.07] px-5 py-3 text-[12px] text-amber-50/95">
               <p className="leading-snug">
                 This file could not be merged automatically with the team copy. Conflict details are saved under{' '}
-                <span className="font-mono text-amber-100/90">planning/.flux-docs-sync/</span>.
+                <span className="font-mono text-amber-100/90">planning/.fluxx-docs-sync/</span>.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button

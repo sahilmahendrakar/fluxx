@@ -1,9 +1,12 @@
 import path from 'node:path';
 import { isPlanningInstructionSeedFile, isUnderPlanningUnsyncedPrefix } from './cloudPlanningDocsMigration';
-import { PLANNING_INSTRUCTIONS_STATE_BASENAME } from './planningInstructionMarkers';
+import {
+  isPlanningInstructionsStateRelPath,
+  isUnderPlanningDiskSyncRelPrefix,
+  PLANNING_DOCS_DISK_SYNC_REL_PREFIX,
+} from './fluxxPlanningPaths';
 
-/** Internal sync metadata under `planning/` — not editable as planning docs in-app. */
-export const PLANNING_DOCS_DISK_SYNC_REL_PREFIX = '.flux-docs-sync';
+export { PLANNING_DOCS_DISK_SYNC_REL_PREFIX } from './fluxxPlanningPaths';
 
 /** User-facing planning markdown lives under `<planningDir>/docs/` (agents stay at `<planningDir>/`). */
 export const PLANNING_USER_DOCS_REL_SEGMENT = 'docs';
@@ -93,19 +96,18 @@ function resolveMarkdownUnderBaseDir(baseDir: string, norm: string): string | nu
   return candidate;
 }
 
-/** True for `.flux-docs-sync/**` and `_flux_unsynced/**` (same rules as push listing). */
+/** True for `.fluxx-docs-sync/**` (and legacy `.flux-docs-sync/**`) and `_flux_unsynced/**`. */
 export function isPlanningMarkdownRelativePathForbiddenForUserWrite(relativePath: string): boolean {
   const norm = normalizePlanningDocRelativePath(relativePath);
   if (!norm) return false;
-  const sync = PLANNING_DOCS_DISK_SYNC_REL_PREFIX;
-  if (norm === sync || norm.startsWith(`${sync}/`)) return true;
+  if (isUnderPlanningDiskSyncRelPrefix(norm)) return true;
   return isUnderPlanningUnsyncedPrefix(norm);
 }
 
 /** Reserved agent/runtime markdown or paths that must never be user planning docs. */
 export function isPlanningUserDocRelativePathDisallowed(norm: string): boolean {
   if (isPlanningMarkdownRelativePathForbiddenForUserWrite(norm)) return true;
-  if (norm === PLANNING_INSTRUCTIONS_STATE_BASENAME) return true;
+  if (isPlanningInstructionsStateRelPath(norm)) return true;
   const segments = norm.split('/');
   for (const seg of segments) {
     const lower = seg.toLowerCase();

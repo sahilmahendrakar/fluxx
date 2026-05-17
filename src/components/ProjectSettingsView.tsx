@@ -1077,7 +1077,7 @@ function ProjectConfigPane({
                   while the PTY working directory stays under this project’s{' '}
                   <code className="text-zinc-400">worktrees/</code>,{' '}
                   <code className="text-zinc-400">planning/</code>, or your{' '}
-                  <code className="text-zinc-400">~/.flux/worktrees</code> tree. Agents you launch
+                  <code className="text-zinc-400">~/.fluxx/worktrees</code> tree. Agents you launch
                   manually outside Fluxx are never affected.
                 </>
               }

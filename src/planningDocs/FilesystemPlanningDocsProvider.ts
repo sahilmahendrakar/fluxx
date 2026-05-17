@@ -16,6 +16,7 @@ import {
   resolvePlanningUserMarkdownAbsPathForRead,
   safeResolvePlanningMarkdownAbsPath,
 } from './path';
+import { isPlanningDiskSyncDirName } from './fluxxPlanningPaths';
 import { migrateLegacyPlanningMarkdownIntoUserDocsDir } from './planningUserDocsLegacyMigration';
 
 function errnoCode(err: unknown): string | undefined {
@@ -63,7 +64,7 @@ async function collectLegacyMarkdownRelPathsOutsideDocs(planningDir: string): Pr
       if (ent.isDirectory()) {
         if (
           ent.name === 'docs' ||
-          ent.name === '.flux-docs-sync' ||
+          isPlanningDiskSyncDirName(ent.name) ||
           ent.name === '_flux_unsynced' ||
           ent.name === '.cursor'
         ) {

@@ -26,6 +26,7 @@ import {
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
+import { ensureFluxBaseDirMigrated } from './main/fluxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
 import {
   cwdUnderTrustPromptAutorespondRoots,
@@ -494,8 +495,7 @@ app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark';
   }
 
-  const fluxBaseDir = path.join(os.homedir(), '.flux');
-  await fs.mkdir(fluxBaseDir, { recursive: true });
+  const fluxBaseDir = await ensureFluxBaseDirMigrated();
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();

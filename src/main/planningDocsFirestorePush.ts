@@ -9,10 +9,8 @@ import {
   safeResolvePlanningMarkdownAbsPath,
 } from '../planningDocs/path';
 import type { PlanningDocsPushCandidate } from '../planningDocs/syncTypes';
-import {
-  PLANNING_DOCS_DISK_SYNC_DIR,
-  readPlanningDocsSyncState,
-} from './planningDocsFirestoreHydrate';
+import { isUnderPlanningDiskSyncRelPrefix } from '../planningDocs/fluxxPlanningPaths';
+import { readPlanningDocsSyncState } from './planningDocsFirestoreHydrate';
 import { readPlanningDocsCloudMigrationState } from './planningDocsMigrationDisk';
 
 function sha256Utf8(content: string): string {
@@ -21,7 +19,7 @@ function sha256Utf8(content: string): string {
 
 function shouldSkipPlanningRelPath(rel: string): boolean {
   const norm = rel.replace(/\\/g, '/').replace(/^\/+/, '');
-  if (norm === PLANNING_DOCS_DISK_SYNC_DIR || norm.startsWith(`${PLANNING_DOCS_DISK_SYNC_DIR}/`)) {
+  if (isUnderPlanningDiskSyncRelPrefix(norm)) {
     return true;
   }
   return isUnderPlanningUnsyncedPrefix(norm);

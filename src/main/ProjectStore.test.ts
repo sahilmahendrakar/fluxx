@@ -329,7 +329,7 @@ describe('ProjectStore repo-id operations', () => {
     ]);
   });
 
-  it('migrates legacy basename Flux dir to ~/.flux/projects/<id>/ on create', async () => {
+  it('migrates legacy basename Flux dir to ~/.fluxx/projects/<id>/ on create', async () => {
     const rootA = path.join(tmp, 'w', 'repo-name');
     await fs.mkdir(rootA, { recursive: true });
     await touchGitRepo(rootA);
@@ -424,7 +424,7 @@ describe('ProjectStore repo-id operations', () => {
     const cloud = new ProjectStore(tmp);
     await cloud.ensureCloudLayoutForRoot('cloud-retire', rootA);
 
-    await expect(fs.readFile(path.join(legacyCloud, '.flux-superseded-by'), 'utf8')).resolves.toBe(
+    await expect(fs.readFile(path.join(legacyCloud, '.fluxx-superseded-by'), 'utf8')).resolves.toBe(
       `${canonicalCloud}\n`,
     );
   });
@@ -446,7 +446,7 @@ describe('ProjectStore repo-id operations', () => {
       /migration conflict/,
     );
     const conflict = JSON.parse(
-      await fs.readFile(path.join(legacyCloud, '.flux-migration-conflict.json'), 'utf8'),
+      await fs.readFile(path.join(legacyCloud, '.fluxx-migration-conflict.json'), 'utf8'),
     ) as { legacyDir: string; canonicalDir: string; reason: string };
     expect(conflict.legacyDir).toBe(legacyCloud);
     expect(conflict.canonicalDir).toBe(canonicalCloud);
@@ -532,7 +532,7 @@ describe('ProjectStore.listMaterializationDirsForProjectId', () => {
     expect(cloudDirs.map((p) => path.resolve(p))).toEqual([path.resolve(legacyCloud)]);
   });
 
-  it('refuses unsafe legacy flat ~/.flux/projects root deletion when nested projects exist', async () => {
+  it('refuses unsafe legacy flat ~/.fluxx/projects root deletion when nested projects exist', async () => {
     const projectsRoot = path.join(tmp, 'projects');
     const nested = path.join(projectsRoot, 'nested');
     await writeLegacyConfig(nested, path.join(tmp, 'r2'), { id: 'nested-proj' });
@@ -543,7 +543,7 @@ describe('ProjectStore.listMaterializationDirsForProjectId', () => {
     );
   });
 
-  it('allows legacy flat ~/.flux/projects root deletion when no nested project dirs exist', async () => {
+  it('allows legacy flat ~/.fluxx/projects root deletion when no nested project dirs exist', async () => {
     const projectsRoot = path.join(tmp, 'projects');
     await writeLegacyConfig(projectsRoot, path.join(tmp, 'r1'), { id: 'flat-only' });
     await expect(assertSafeToDeleteLegacyFlatProjectsRoot(tmp, projectsRoot)).resolves.toBeUndefined();

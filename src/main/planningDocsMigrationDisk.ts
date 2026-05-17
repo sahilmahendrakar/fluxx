@@ -7,18 +7,28 @@ import {
 import { safeResolvePlanningMarkdownAbsPath } from '../planningDocs/path';
 import type { PlanningDocsCloudMigrationPersistedV1 } from '../planningDocs/types';
 
-const MIGRATION_STATE_FILE = '.flux-cloud-docs-migration.json';
+import {
+  FLUXX_PLANNING_CLOUD_DOCS_MIGRATION_BASENAME,
+  LEGACY_PLANNING_CLOUD_DOCS_MIGRATION_BASENAME,
+  resolvePlanningMetadataFileAbs,
+} from '../planningDocs/fluxxPlanningPaths';
 
-function migrationStatePath(planningDir: string): string {
-  return path.join(planningDir, MIGRATION_STATE_FILE);
+function migrationStatePathForWrite(planningDir: string): string {
+  return path.join(planningDir, FLUXX_PLANNING_CLOUD_DOCS_MIGRATION_BASENAME);
 }
 
 export async function readPlanningDocsCloudMigrationState(
   planningDir: string,
   expectedCloudProjectId: string,
 ): Promise<PlanningDocsCloudMigrationPersistedV1 | null> {
+  const statePath = await resolvePlanningMetadataFileAbs(
+    planningDir,
+    FLUXX_PLANNING_CLOUD_DOCS_MIGRATION_BASENAME,
+    LEGACY_PLANNING_CLOUD_DOCS_MIGRATION_BASENAME,
+  );
+  if (!statePath) return null;
   try {
-    const raw = await fs.readFile(migrationStatePath(planningDir), 'utf8');
+    const raw = await fs.readFile(statePath, 'utf8');
     const parsed = JSON.parse(raw) as PlanningDocsCloudMigrationPersistedV1;
     if (parsed?.version !== 1 || typeof parsed.cloudProjectId !== 'string') return null;
     if (parsed.cloudProjectId !== expectedCloudProjectId) return null;
@@ -37,7 +47,7 @@ export async function writePlanningDocsCloudMigrationState(
 ): Promise<void> {
   await fs.mkdir(planningDir, { recursive: true });
   const payload = `${JSON.stringify(next, null, 2)}\n`;
-  await fs.writeFile(migrationStatePath(planningDir), payload, 'utf8');
+  await fs.writeFile(migrationStatePathForWrite(planningDir), payload, 'utf8');
 }
 
 export async function patchPlanningDocsCloudMigrationState(

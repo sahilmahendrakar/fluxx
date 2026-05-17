@@ -32,7 +32,7 @@ export interface CreateSessionParams {
    */
   trustPromptAutorespond?: boolean;
   /**
-   * Resolved absolute path prefixes (Flux `worktrees/`, `planning/`, optional `~/.flux/worktrees`).
+   * Resolved absolute path prefixes (Flux `worktrees/`, `planning/`, optional `~/.fluxx/worktrees`).
    * Empty or omitted disables cwd-gated autoresponse even if `trustPromptAutorespond` is true.
    */
   trustPromptAutorespondRoots?: string[];
