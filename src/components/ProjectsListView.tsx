@@ -112,7 +112,7 @@ export function ProjectsListView({
     setLocalRemovalError(null);
     setLocalRemovalId(id);
     try {
-      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+      const result = await window.electronAPI.projects.removeFluxxOwnedLocalState({
         kind: 'local',
         id,
       });
@@ -125,7 +125,7 @@ export function ProjectsListView({
       }
       await refreshLocal();
     } catch (err) {
-      console.error('[removeFluxOwnedLocalState local]', err);
+      console.error('[removeFluxxOwnedLocalState local]', err);
       setLocalRemovalError(
         err instanceof Error ? err.message : 'Could not remove project from Fluxx.',
       );
@@ -145,7 +145,7 @@ export function ProjectsListView({
     setCloudLocalCleanupError(null);
     setCloudLocalCleanupId(summary.id);
     try {
-      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+      const result = await window.electronAPI.projects.removeFluxxOwnedLocalState({
         kind: 'cloud',
         id: summary.id,
       });
@@ -157,7 +157,7 @@ export function ProjectsListView({
         setCloudLocalCleanupError(lines.join('\n'));
       }
     } catch (err) {
-      console.error('[removeFluxOwnedLocalState cloud]', err);
+      console.error('[removeFluxxOwnedLocalState cloud]', err);
       setCloudLocalCleanupError(
         err instanceof Error ? err.message : 'Could not remove local team project data.',
       );
@@ -253,7 +253,7 @@ export function ProjectsListView({
       return;
     }
     try {
-      const result = await window.electronAPI.projects.removeFluxOwnedLocalState({
+      const result = await window.electronAPI.projects.removeFluxxOwnedLocalState({
         kind: 'cloud',
         id: summary.id,
       });
@@ -267,7 +267,7 @@ export function ProjectsListView({
         );
       }
     } catch (err) {
-      console.error('[removeFluxOwnedLocalState after team delete]', err);
+      console.error('[removeFluxxOwnedLocalState after team delete]', err);
       setCloudDeleteCleanupWarning(
         `The team project was deleted, but local cleanup failed: ${
           err instanceof Error ? err.message : String(err)

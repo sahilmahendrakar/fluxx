@@ -230,8 +230,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
     removeLocal: (id: string) =>
       ipcRenderer.invoke('projects:removeLocal', id) as Promise<void>,
-    removeFluxOwnedLocalState: (key: ActiveProjectKey) =>
-      ipcRenderer.invoke('projects:removeFluxOwnedLocalState', key) as Promise<{
+    removeFluxxOwnedLocalState: (key: ActiveProjectKey) =>
+      ipcRenderer.invoke('projects:removeFluxxOwnedLocalState', key) as Promise<{
         ok: boolean;
         warnings: string[];
         errors: string[];
@@ -319,7 +319,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'sourceBranch'
           | 'createSourceBranchIfMissing'
           | 'repoId'
-          | 'fluxWorkBranch'
+          | 'fluxxWorkBranch'
         >
       > & {
         githubPr?: TaskGithubPr | null;
@@ -330,7 +330,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       taskId: string,
       previous: Pick<
         Task,
-        'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxWorkBranch'
+        'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxxWorkBranch'
       > & {
         githubPr?: TaskGithubPr;
       },
@@ -344,7 +344,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) as Promise<{ ok: true } | { ok: false; message: string }>,
     assertRepoIdEditable: (
       taskId: string,
-      previous: Pick<Task, 'repoId' | 'fluxWorkBranch'> & { githubPr?: TaskGithubPr },
+      previous: Pick<Task, 'repoId' | 'fluxxWorkBranch'> & { githubPr?: TaskGithubPr },
       patch: Pick<Task, 'repoId'>,
     ) =>
       ipcRenderer.invoke(
@@ -364,7 +364,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resolveWorktrees: (
       taskIdsOrEntries:
         | string[]
-        | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null }[],
+        | { taskId: string; repoId?: string | null; fluxxWorkBranch?: string | null }[],
     ) =>
       ipcRenderer.invoke('tasks:resolveWorktrees', taskIdsOrEntries) as Promise<
         Record<string, boolean>
@@ -383,12 +383,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('task:userInput', handler);
       return () => ipcRenderer.removeListener('task:userInput', handler as Parameters<typeof ipcRenderer.removeListener>[1]);
     },
-    onPersistFluxWorkBranch: (cb: (p: { taskId: string; fluxWorkBranch: string }) => void) => {
-      const handler = (_e: unknown, p: { taskId: string; fluxWorkBranch: string }) => cb(p);
-      ipcRenderer.on('task:persistFluxWorkBranch', handler);
+    onPersistFluxxWorkBranch: (cb: (p: { taskId: string; fluxxWorkBranch: string }) => void) => {
+      const handler = (_e: unknown, p: { taskId: string; fluxxWorkBranch: string }) => cb(p);
+      ipcRenderer.on('task:persistFluxxWorkBranch', handler);
       return () =>
         ipcRenderer.removeListener(
-          'task:persistFluxWorkBranch',
+          'task:persistFluxxWorkBranch',
           handler as Parameters<typeof ipcRenderer.removeListener>[1],
         );
     },

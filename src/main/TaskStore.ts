@@ -29,6 +29,17 @@ function errnoCode(err: unknown): string | undefined {
     : undefined;
 }
 
+type LegacyFluxTaskRow = Task & { fluxWorkBranch?: string };
+
+/** Maps pre-rebrand `fluxWorkBranch` JSON keys to `fluxxWorkBranch`. */
+function normalizeLegacyFluxxTaskRow(t: Task): Task {
+  if (t.fluxxWorkBranch?.trim()) return t;
+  const legacy = (t as LegacyFluxTaskRow).fluxWorkBranch?.trim();
+  if (!legacy) return t;
+  const { fluxWorkBranch: _drop, ...rest } = t as LegacyFluxTaskRow;
+  return { ...rest, fluxxWorkBranch: legacy };
+}
+
 export class TaskStore {
   private filePath: string | null;
   private tasks: Task[] = [];
@@ -86,7 +97,12 @@ export class TaskStore {
         this.tasks = [];
         return;
       }
-      this.tasks = parsed as Task[];
+      const rows = parsed as LegacyFluxTaskRow[];
+      const migrated = rows.some((r) => Boolean(r.fluxWorkBranch?.trim() && !r.fluxxWorkBranch?.trim()));
+      this.tasks = rows.map(normalizeLegacyFluxxTaskRow);
+      if (migrated) {
+        await this.save();
+      }
     } catch (err: unknown) {
       if (errnoCode(err) === 'ENOENT') {
         this.tasks = [];
@@ -127,6 +143,20 @@ export class TaskStore {
         return { ...t, repoId: primaryRepoId };
       }
       return t;
+    });
+    if (changed) {
+      await this.save();
+    }
+  }
+
+  /** Renames persisted `fluxWorkBranch` keys to `fluxxWorkBranch` in tasks.json. */
+  async migrateLegacyFluxxTaskFields(): Promise<void> {
+    if (!this.filePath) return;
+    let changed = false;
+    this.tasks = this.tasks.map((t) => {
+      const next = normalizeLegacyFluxxTaskRow(t);
+      if (next !== t) changed = true;
+      return next;
     });
     if (changed) {
       await this.save();
@@ -265,7 +295,7 @@ export class TaskStore {
         | 'sourceBranch'
         | 'createSourceBranchIfMissing'
         | 'repoId'
-        | 'fluxWorkBranch'
+        | 'fluxxWorkBranch'
       >
     > & {
       autoStartOnUnblock?: boolean | null;

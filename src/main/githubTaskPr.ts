@@ -10,7 +10,7 @@ import {
   parseGhPrViewJsonStdoutList,
 } from '../githubPrMetadata';
 import { resolveRepoForBranchDiscovery } from '../repoIdentity';
-import { expectedTaskFluxWorkBranch } from '../taskBranch';
+import { expectedTaskFluxxWorkBranch } from '../taskBranch';
 import { normalizeGitBranchShortName } from '../taskBranches';
 
 const execFile = promisify(execFileCallback);
@@ -163,8 +163,8 @@ export async function readCurrentBranch(worktreePath: string): Promise<string | 
   }
 }
 
-export function expectTaskWorkBranch(task: Pick<Task, 'id' | 'fluxWorkBranch'>, branch: string): TaskPrError | null {
-  const expected = expectedTaskFluxWorkBranch(task);
+export function expectTaskWorkBranch(task: Pick<Task, 'id' | 'fluxxWorkBranch'>, branch: string): TaskPrError | null {
+  const expected = expectedTaskFluxxWorkBranch(task);
   if (branch !== expected) {
     return {
       ok: false,
@@ -551,7 +551,7 @@ export function validateGithubPrMatchesTaskRemote(prUrl: string, originRemoteUrl
 export async function createPullRequestForTaskWorktree(params: {
   worktreePath: string;
   gitRootPath: string;
-  task: Pick<Task, 'id' | 'fluxWorkBranch'>;
+  task: Pick<Task, 'id' | 'fluxxWorkBranch'>;
   title: string;
   body: string;
   /** Normalized short branch name: task source branch, else project default. */

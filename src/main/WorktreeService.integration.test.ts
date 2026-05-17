@@ -6,7 +6,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import { WorktreeService } from './WorktreeService';
 import { isWorktreeCreateError } from './worktreeCreateError';
-import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
+import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
 
@@ -59,7 +59,7 @@ describe('WorktreeService.create integration', () => {
       });
       expect(branch.startsWith('flux/')).toBe(true);
       expect(worktreePath).toBe(
-        path.join(projectDir, 'worktrees', ...worktreePathSegmentsForFluxBranch(branch)),
+        path.join(projectDir, 'worktrees', ...worktreePathSegmentsForFluxxBranch(branch)),
       );
       await expect(fs.stat(worktreePath)).resolves.toBeDefined();
       expect(await localBranchExists(gitRoot, sourceName)).toBe(true);
@@ -105,7 +105,7 @@ describe('WorktreeService.create integration', () => {
       });
       expect(outA.branch.startsWith('flux/')).toBe(true);
       expect(outA.worktreePath).toBe(
-        path.join(projectDir, 'worktrees', repoIdA, ...worktreePathSegmentsForFluxBranch(outA.branch)),
+        path.join(projectDir, 'worktrees', repoIdA, ...worktreePathSegmentsForFluxxBranch(outA.branch)),
       );
 
       const srcB = 'develop';
@@ -124,7 +124,7 @@ describe('WorktreeService.create integration', () => {
       });
       expect(outB.branch.startsWith('flux/')).toBe(true);
       expect(outB.worktreePath).toBe(
-        path.join(projectDir, 'worktrees', repoIdB, ...worktreePathSegmentsForFluxBranch(outB.branch)),
+        path.join(projectDir, 'worktrees', repoIdB, ...worktreePathSegmentsForFluxxBranch(outB.branch)),
       );
 
       const headA = await execFile('git', ['rev-parse', 'HEAD'], {
@@ -308,7 +308,7 @@ describe('WorktreeService.create integration', () => {
       await execFile('git', ['checkout', 'main'], { cwd: gitRoot });
 
       const again = await svc.create({
-        task: { id: taskId, title: 'Different title', fluxWorkBranch: branch },
+        task: { id: taskId, title: 'Different title', fluxxWorkBranch: branch },
         repo: {
           repoId:
             'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',

@@ -3,10 +3,14 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 
 /** Nested layout root: `~/.fluxx/projects/<projectId>/`. */
-export const FLUX_PROJECTS_SUBDIR = 'projects';
+export const FLUXX_PROJECTS_SUBDIR = 'projects';
+/** @deprecated Use {@link FLUXX_PROJECTS_SUBDIR}. */
+export const FLUX_PROJECTS_SUBDIR = FLUXX_PROJECTS_SUBDIR;
 
 /** Pre-unification cloud workspace root (still honored when present). */
-export const FLUX_LEGACY_CLOUD_SUBDIR = 'cloud-projects';
+export const FLUXX_LEGACY_CLOUD_SUBDIR = 'cloud-projects';
+/** @deprecated Use {@link FLUXX_LEGACY_CLOUD_SUBDIR}. */
+export const FLUX_LEGACY_CLOUD_SUBDIR = FLUXX_LEGACY_CLOUD_SUBDIR;
 
 /** Written into a legacy project dir after a copy-based migration so discovery dedupes. */
 export const FLUXX_SUPERSEDED_SENTINEL = '.fluxx-superseded-by';
@@ -22,8 +26,8 @@ const SUPERSEDED_SENTINEL_NAMES = [FLUXX_SUPERSEDED_SENTINEL, LEGACY_FLUX_SUPERS
 const MIGRATION_CONFLICT_NAMES = [FLUXX_MIGRATION_CONFLICT_FILE, LEGACY_FLUX_MIGRATION_CONFLICT_FILE] as const;
 
 const RESERVED_TOP_LEVEL = new Set([
-  FLUX_PROJECTS_SUBDIR,
-  FLUX_LEGACY_CLOUD_SUBDIR,
+  FLUXX_PROJECTS_SUBDIR,
+  FLUXX_LEGACY_CLOUD_SUBDIR,
 ]);
 
 export function stableLocalProjectIdForRoot(rootPath: string): string {
@@ -34,26 +38,26 @@ export function sanitizeCloudProjectDirSegment(cloudProjectId: string): string {
   return cloudProjectId.replace(/[^A-Za-z0-9_-]/g, '_');
 }
 
-export function canonicalLocalProjectDir(fluxBaseDir: string, localProjectId: string): string {
-  return path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR, localProjectId);
+export function canonicalLocalProjectDir(fluxxBaseDir: string, localProjectId: string): string {
+  return path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR, localProjectId);
 }
 
-export function canonicalCloudProjectDir(fluxBaseDir: string, cloudProjectId: string): string {
+export function canonicalCloudProjectDir(fluxxBaseDir: string, cloudProjectId: string): string {
   return path.join(
-    fluxBaseDir,
-    FLUX_PROJECTS_SUBDIR,
+    fluxxBaseDir,
+    FLUXX_PROJECTS_SUBDIR,
     sanitizeCloudProjectDirSegment(cloudProjectId),
   );
 }
 
-export function legacyBasenameLocalProjectDir(fluxBaseDir: string, resolvedRoot: string): string {
-  return path.join(fluxBaseDir, path.basename(resolvedRoot));
+export function legacyBasenameLocalProjectDir(fluxxBaseDir: string, resolvedRoot: string): string {
+  return path.join(fluxxBaseDir, path.basename(resolvedRoot));
 }
 
-export function legacyCloudProjectDir(fluxBaseDir: string, cloudProjectId: string): string {
+export function legacyCloudProjectDir(fluxxBaseDir: string, cloudProjectId: string): string {
   return path.join(
-    fluxBaseDir,
-    FLUX_LEGACY_CLOUD_SUBDIR,
+    fluxxBaseDir,
+    FLUXX_LEGACY_CLOUD_SUBDIR,
     sanitizeCloudProjectDirSegment(cloudProjectId),
   );
 }
@@ -74,13 +78,13 @@ export type ProjectDirResolverInput =
  * - Cloud `id` is the Firestore project id (sanitized for the path segment).
  */
 export function resolveCanonicalProjectDir(
-  fluxBaseDir: string,
+  fluxxBaseDir: string,
   input: ProjectDirResolverInput,
 ): string {
   if (input.kind === 'local') {
-    return canonicalLocalProjectDir(fluxBaseDir, input.id);
+    return canonicalLocalProjectDir(fluxxBaseDir, input.id);
   }
-  return canonicalCloudProjectDir(fluxBaseDir, input.id);
+  return canonicalCloudProjectDir(fluxxBaseDir, input.id);
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -145,8 +149,8 @@ export async function projectDirHasWorktrees(projectDir: string): Promise<boolea
  * nested layout container. Move the tree to `~/.fluxx/projects/<id>/` using a temp path so
  * `projects/` can become a normal container for other repos' nested dirs.
  */
-export async function hoistLegacyFlatProjectsDirToNested(fluxBaseDir: string): Promise<string> {
-  const projectsRoot = path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR);
+export async function hoistLegacyFlatProjectsDirToNested(fluxxBaseDir: string): Promise<string> {
+  const projectsRoot = path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR);
   const directConfig = path.join(projectsRoot, 'config.json');
   if (!(await pathExists(directConfig))) {
     throw new Error('hoistLegacyFlatProjectsDirToNested: expected ~/.fluxx/projects/config.json');
@@ -163,14 +167,14 @@ export async function hoistLegacyFlatProjectsDirToNested(fluxBaseDir: string): P
       `Flux cannot migrate ~/.fluxx/projects/: invalid config.json (${e instanceof Error ? e.message : String(e)})`,
     );
   }
-  const target = canonicalLocalProjectDir(fluxBaseDir, id);
+  const target = canonicalLocalProjectDir(fluxxBaseDir, id);
   if (await pathExists(path.join(target, 'config.json'))) {
     throw new Error(
       `Flux cannot migrate ~/.fluxx/projects/: ${target} already exists with a different layout.`,
     );
   }
   const staging = path.join(
-    fluxBaseDir,
+    fluxxBaseDir,
     `.fluxx-relayout-staging-${id}-${process.pid}`,
   );
   await fs.rename(projectsRoot, staging);
@@ -281,9 +285,9 @@ export async function readProjectDirMigrationConflict(
 
 /** Enumerate `~/.fluxx/projects/<id>/` directories that look like Flux projects. */
 export async function listNestedProjectDirsUnderProjects(
-  fluxBaseDir: string,
+  fluxxBaseDir: string,
 ): Promise<string[]> {
-  const root = path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR);
+  const root = path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR);
   if (!(await isDirectory(root))) return [];
   const out: string[] = [];
   let dirents;
@@ -303,16 +307,16 @@ export async function listNestedProjectDirsUnderProjects(
 }
 
 /** `~/.fluxx/projects/config.json` — legacy repo whose folder name was `projects`. */
-export async function legacyFlatProjectsDirIfPresent(fluxBaseDir: string): Promise<string | null> {
-  const root = path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR);
+export async function legacyFlatProjectsDirIfPresent(fluxxBaseDir: string): Promise<string | null> {
+  const root = path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR);
   if (await pathExists(path.join(root, 'config.json'))) {
     return root;
   }
   return null;
 }
 
-export async function listLegacyCloudProjectDirs(fluxBaseDir: string): Promise<string[]> {
-  const root = path.join(fluxBaseDir, FLUX_LEGACY_CLOUD_SUBDIR);
+export async function listLegacyCloudProjectDirs(fluxxBaseDir: string): Promise<string[]> {
+  const root = path.join(fluxxBaseDir, FLUXX_LEGACY_CLOUD_SUBDIR);
   if (!(await isDirectory(root))) return [];
   const out: string[] = [];
   let dirents;
@@ -337,12 +341,12 @@ export async function listLegacyCloudProjectDirs(fluxBaseDir: string): Promise<s
  * on the root would destroy unrelated projects.
  */
 export async function assertSafeToDeleteLegacyFlatProjectsRoot(
-  fluxBaseDir: string,
+  fluxxBaseDir: string,
   materialDir: string,
 ): Promise<void> {
-  const projectsRoot = path.join(fluxBaseDir, FLUX_PROJECTS_SUBDIR);
+  const projectsRoot = path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR);
   if (path.resolve(materialDir) !== path.resolve(projectsRoot)) return;
-  const nested = await listNestedProjectDirsUnderProjects(fluxBaseDir);
+  const nested = await listNestedProjectDirsUnderProjects(fluxxBaseDir);
   if (nested.length > 0) {
     throw new Error(
       'Refusing to delete ~/.fluxx/projects/: nested project directories exist alongside the legacy flat config.json.',

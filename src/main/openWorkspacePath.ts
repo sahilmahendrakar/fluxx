@@ -4,7 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { shell } from 'electron';
 import type { OpenWorkspaceTarget, Session } from '../types';
-import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
+import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
 
@@ -198,7 +198,7 @@ export function pickSessionForTaskWorktree(
 /**
  * Resolves a local filesystem path for a task worktree:
  * 1. Active daemon session worktree (prefer matching {@link Session.repoId} when `repoId` is set),
- * 2. When `fluxWorkBranch` is set and `repoId` is set: `worktrees/{repoId}/<branch-path-segments>`,
+ * 2. When `fluxxWorkBranch` is set and `repoId` is set: `worktrees/{repoId}/<branch-path-segments>`,
  * 3. Repo-scoped folder under `worktrees/{repoId}/{taskId}` when `repoId` is set (multi-repo2),
  * 4. Legacy flat folder `worktrees/{taskId}`,
  * 5. First existing nested folder `worktrees/…/{taskId}` when repo id is unset (nested scan).
@@ -208,7 +208,7 @@ export async function resolveTaskWorktreePath(
   listSessions: () => Promise<Session[]>,
   projectDir: string,
   repoId?: string | null,
-  fluxWorkBranch?: string | null,
+  fluxxWorkBranch?: string | null,
 ): Promise<string | null> {
   if (!taskId.trim()) return null;
   try {
@@ -228,13 +228,13 @@ export async function resolveTaskWorktreePath(
   if (!projectDir) return null;
 
   const rid = repoId?.trim();
-  const fw = fluxWorkBranch?.trim();
+  const fw = fluxxWorkBranch?.trim();
   if (rid && fw) {
     const fluxScoped = path.join(
       projectDir,
       'worktrees',
       rid,
-      ...worktreePathSegmentsForFluxBranch(fw),
+      ...worktreePathSegmentsForFluxxBranch(fw),
     );
     try {
       const st = await fs.stat(fluxScoped);
@@ -271,7 +271,7 @@ export async function resolveTaskWorktreePath(
         const fluxNested = path.join(
           worktreesRootForFlux,
           name,
-          ...worktreePathSegmentsForFluxBranch(fw),
+          ...worktreePathSegmentsForFluxxBranch(fw),
         );
         try {
           const st = await fs.stat(fluxNested);

@@ -26,13 +26,13 @@ import {
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
 import { LocalBindingStore } from './main/LocalBindingStore';
-import { ensureFluxBaseDirMigrated } from './main/fluxBaseDir';
+import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
 import {
   cwdUnderTrustPromptAutorespondRoots,
   trustPromptAutorespondRootsForProject,
 } from './main/trustPromptAutorespondRoots';
-import { removeFluxOwnedLocalState } from './main/projectFluxRemoval';
+import { removeFluxxOwnedLocalState } from './main/projectFluxxRemoval';
 import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
@@ -171,7 +171,7 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
-import { expectedFluxWorkBranchForTask } from './main/fluxTaskBranch';
+import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
   buildCreatePrInstructionsMarkdown,
   buildTaskAgentPullRequestPrompt,
@@ -278,7 +278,7 @@ function parseLegacyLocalRow(value: unknown): { id: string; rootPath: string } |
 
 async function migrateLegacyProjectsJson(params: {
   userData: string;
-  fluxBaseDir: string;
+  fluxxBaseDir: string;
   appStateStore: AppStateStore;
   projectStore: ProjectStore;
   taskStore: TaskStore;
@@ -495,12 +495,12 @@ app.whenReady().then(async () => {
     nativeTheme.themeSource = 'dark';
   }
 
-  const fluxBaseDir = await ensureFluxBaseDirMigrated();
+  const fluxxBaseDir = await ensureFluxxBaseDirMigrated();
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();
 
-  const projectStore = new ProjectStore(fluxBaseDir);
+  const projectStore = new ProjectStore(fluxxBaseDir);
   const taskStore = new TaskStore('');
   await taskStore.init();
 
@@ -619,7 +619,7 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   await migrateLegacyProjectsJson({
     userData,
-    fluxBaseDir,
+    fluxxBaseDir,
     appStateStore,
     projectStore,
     taskStore,
@@ -1732,9 +1732,9 @@ app.whenReady().then(async () => {
     },
   );
   ipcMain.handle('projects:removeLocal', async (_e, id: string) => {
-    const result = await removeFluxOwnedLocalState({
+    const result = await removeFluxxOwnedLocalState({
       key: { kind: 'local', id },
-      fluxBaseDir,
+      fluxxBaseDir,
       projectStore,
       terminalBackend,
       appStateStore,
@@ -1745,7 +1745,7 @@ app.whenReady().then(async () => {
       console.error('[projects:removeLocal] incomplete', result.errors, result.warnings);
     }
   });
-  ipcMain.handle('projects:removeFluxOwnedLocalState', async (_e, raw: unknown) => {
+  ipcMain.handle('projects:removeFluxxOwnedLocalState', async (_e, raw: unknown) => {
     const key = parseActiveProjectKeyPayload(raw);
     if (!key) {
       return {
@@ -1755,9 +1755,9 @@ app.whenReady().then(async () => {
         deletedMaterializationDirs: [],
       };
     }
-    return removeFluxOwnedLocalState({
+    return removeFluxxOwnedLocalState({
       key,
-      fluxBaseDir,
+      fluxxBaseDir,
       projectStore,
       terminalBackend,
       appStateStore,
@@ -1897,7 +1897,7 @@ app.whenReady().then(async () => {
         () => terminalBackend.listSessions(),
         projectDir ?? '',
         parsed.repoId,
-        parsed.fluxWorkBranch ?? row?.fluxWorkBranch,
+        parsed.fluxxWorkBranch ?? row?.fluxxWorkBranch,
       );
       if (resolved) {
         return { path: resolved };
@@ -2004,7 +2004,7 @@ app.whenReady().then(async () => {
         previousFields && typeof previousFields === 'object'
           ? (previousFields as Pick<
               Task,
-              'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxWorkBranch'
+              'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxxWorkBranch'
             > & {
               githubPr?: TaskGithubPr;
             })
@@ -2065,16 +2065,16 @@ app.whenReady().then(async () => {
         const repoGitRootsForGuard = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
-          fluxWorkBranch: localRow?.fluxWorkBranch,
+          fluxxWorkBranch: localRow?.fluxxWorkBranch,
           repoId: prev.repoId,
           listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsForGuard,
         });
         if (locked) {
-          const fluxBranch = expectedFluxWorkBranchForTask({
+          const fluxBranch = expectedFluxxWorkBranchForTask({
             id: tid,
-            fluxWorkBranch: localRow?.fluxWorkBranch,
+            fluxxWorkBranch: localRow?.fluxxWorkBranch,
           });
           return {
             ok: false,
@@ -2109,7 +2109,7 @@ app.whenReady().then(async () => {
       const tid = taskId.trim();
       const prev =
         previousFields && typeof previousFields === 'object'
-          ? (previousFields as Pick<Task, 'repoId' | 'fluxWorkBranch'> & { githubPr?: TaskGithubPr })
+          ? (previousFields as Pick<Task, 'repoId' | 'fluxxWorkBranch'> & { githubPr?: TaskGithubPr })
           : {};
       const patch =
         patchFields && typeof patchFields === 'object'
@@ -2145,16 +2145,16 @@ app.whenReady().then(async () => {
         const repoGitRootsForRepoPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: tid,
-          fluxWorkBranch: localRow?.fluxWorkBranch,
+          fluxxWorkBranch: localRow?.fluxxWorkBranch,
           repoId: prev.repoId,
           listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsForRepoPatch,
         });
         if (locked) {
-          const fluxBranch = expectedFluxWorkBranchForTask({
+          const fluxBranch = expectedFluxxWorkBranchForTask({
             id: tid,
-            fluxWorkBranch: localRow?.fluxWorkBranch,
+            fluxxWorkBranch: localRow?.fluxxWorkBranch,
           });
           return {
             ok: false,
@@ -2185,7 +2185,7 @@ app.whenReady().then(async () => {
         taskId,
         repos,
         taskRepoId,
-        taskRow?.fluxWorkBranch?.trim() || null,
+        taskRow?.fluxxWorkBranch?.trim() || null,
       );
       return { errors };
     },
@@ -2196,7 +2196,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('tasks:resolveWorktrees', async (_e, raw: unknown): Promise<Record<string, boolean>> => {
     const projectDir = worktreeService.getProjectDir();
     if (!projectDir) return {};
-    let entries: { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null }[] = [];
+    let entries: { taskId: string; repoId?: string | null; fluxxWorkBranch?: string | null }[] = [];
     if (Array.isArray(raw)) {
       const first = raw[0];
       if (
@@ -2205,7 +2205,7 @@ app.whenReady().then(async () => {
         typeof (first as { taskId?: unknown }).taskId === 'string'
       ) {
         entries = raw
-          .filter((x): x is { taskId: string; repoId?: unknown; fluxWorkBranch?: unknown } => {
+          .filter((x): x is { taskId: string; repoId?: unknown; fluxxWorkBranch?: unknown } => {
             return Boolean(
               x &&
                 typeof x === 'object' &&
@@ -2215,12 +2215,12 @@ app.whenReady().then(async () => {
           })
           .map((x) => {
             const repoId = x.repoId;
-            const fluxRaw = x.fluxWorkBranch;
+            const fluxRaw = x.fluxxWorkBranch;
             return {
               taskId: String(x.taskId).trim(),
               repoId:
                 typeof repoId === 'string' ? repoId : repoId === null ? null : undefined,
-              fluxWorkBranch:
+              fluxxWorkBranch:
                 typeof fluxRaw === 'string'
                   ? fluxRaw.trim()
                   : fluxRaw === null
@@ -2241,8 +2241,8 @@ app.whenReady().then(async () => {
       project && project.kind === 'local'
         ? new Map(taskStore.getAll(project.id).map((t) => [t.id, t]))
         : null;
-    for (const { taskId, repoId, fluxWorkBranch } of capped) {
-      const fw = fluxWorkBranch ?? byId?.get(taskId)?.fluxWorkBranch ?? null;
+    for (const { taskId, repoId, fluxxWorkBranch } of capped) {
+      const fw = fluxxWorkBranch ?? byId?.get(taskId)?.fluxxWorkBranch ?? null;
       const p = await resolveTaskWorktreePath(
         taskId,
         () => terminalBackend.listSessions(),
@@ -2494,7 +2494,7 @@ app.whenReady().then(async () => {
         () => terminalBackend.listSessions(),
         projectDir,
         row?.repoId,
-        row?.fluxWorkBranch,
+        row?.fluxxWorkBranch,
       );
       const repos = await projectStore.getReposAt(projectDir);
       const resolvedPaths = await resolveGithubPrGitOperationPaths({
@@ -2657,19 +2657,19 @@ app.whenReady().then(async () => {
   function parseResolveTaskWorktreePayload(raw: unknown): {
     taskId: string;
     repoId?: string | null;
-    fluxWorkBranch?: string | null;
+    fluxxWorkBranch?: string | null;
   } {
     if (typeof raw === 'string') {
       return { taskId: raw.trim() };
     }
     if (raw && typeof raw === 'object' && typeof (raw as { taskId?: unknown }).taskId === 'string') {
-      const o = raw as { taskId: string; repoId?: unknown; fluxWorkBranch?: unknown };
+      const o = raw as { taskId: string; repoId?: unknown; fluxxWorkBranch?: unknown };
       const repoId = o.repoId;
-      const fluxRaw = o.fluxWorkBranch;
+      const fluxRaw = o.fluxxWorkBranch;
       return {
         taskId: o.taskId.trim(),
         repoId: typeof repoId === 'string' || repoId === null ? repoId : undefined,
-        fluxWorkBranch:
+        fluxxWorkBranch:
           typeof fluxRaw === 'string' ? fluxRaw.trim() : fluxRaw === null ? null : undefined,
       };
     }
@@ -3002,7 +3002,7 @@ app.whenReady().then(async () => {
           task: {
             id: merged.id,
             title: merged.title,
-            fluxWorkBranch: merged.fluxWorkBranch,
+            fluxxWorkBranch: merged.fluxxWorkBranch,
           },
           repo: {
             repoId: sessionRepoCfg.id,
@@ -3146,35 +3146,35 @@ app.whenReady().then(async () => {
       void taskAgentSessionRecordStore.markReplacedSessions(merged.id, result.id);
       const sourceBranchShort = (merged.sourceBranch ?? '').trim() || undefined;
       const row: TaskAgentSessionRecord = {
-        fluxSessionId: result.id,
+        fluxxSessionId: result.id,
         taskId: merged.id,
         projectId: project.id,
         repoId: sessionRepoCfg.id,
         agent: merged.agent,
         worktreePath,
-        fluxWorkBranch: branch,
+        fluxxWorkBranch: branch,
         ...(sourceBranchShort ? { sourceBranchShort } : {}),
         startedAt: result.startedAt,
       };
       void taskAgentSessionRecordStore.recordSessionStart(row);
-      const priorFw = (merged.fluxWorkBranch ?? '').trim();
+      const priorFw = (merged.fluxxWorkBranch ?? '').trim();
       if (priorFw !== branch) {
         if (project.kind === 'local') {
           const p = projectStore.get();
           if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
             try {
-              await taskStore.update(task.id, { fluxWorkBranch: branch });
+              await taskStore.update(task.id, { fluxxWorkBranch: branch });
               broadcastLocalTasksChanged();
             } catch (err) {
-              console.warn('[session:start] failed to persist fluxWorkBranch', err);
+              console.warn('[session:start] failed to persist fluxxWorkBranch', err);
             }
           }
         } else if (project.kind === 'cloud') {
           for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
-            win.webContents.send('task:persistFluxWorkBranch', {
+            win.webContents.send('task:persistFluxxWorkBranch', {
               taskId: task.id,
-              fluxWorkBranch: branch,
+              fluxxWorkBranch: branch,
             });
           }
         }
@@ -3205,7 +3205,7 @@ app.whenReady().then(async () => {
       | 'sourceBranch'
       | 'createSourceBranchIfMissing'
       | 'repoId'
-      | 'fluxWorkBranch'
+      | 'fluxxWorkBranch'
     >
   > & {
     githubPr?: TaskGithubPr | null;
@@ -3402,14 +3402,14 @@ app.whenReady().then(async () => {
         const repoGitRootsSourcePatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
-          fluxWorkBranch: previous.fluxWorkBranch,
+          fluxxWorkBranch: previous.fluxxWorkBranch,
           repoId: previous.repoId,
           listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsSourcePatch,
         });
         if (locked) {
-          const fluxBranch = expectedFluxWorkBranchForTask(previous);
+          const fluxBranch = expectedFluxxWorkBranchForTask(previous);
           throw new Error(
             `Cannot change this task's source branch while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           );
@@ -3441,14 +3441,14 @@ app.whenReady().then(async () => {
         const repoGitRootsPersistPatch = [...new Set(repos.map((r) => path.resolve(r.rootPath)))];
         const locked = await taskHasBlockingWorkspaceState({
           taskId: id,
-          fluxWorkBranch: previous.fluxWorkBranch,
+          fluxxWorkBranch: previous.fluxxWorkBranch,
           repoId: previous.repoId,
           listSessions: () => terminalBackend.listSessions(),
           projectDir: worktreeService.getProjectDir() || projectDir,
           repoGitRoots: repoGitRootsPersistPatch,
         });
         if (locked) {
-          const fluxBranch = expectedFluxWorkBranchForTask(previous);
+          const fluxBranch = expectedFluxxWorkBranchForTask(previous);
           throw new Error(
             `Cannot change this task's repository while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           );
@@ -3480,7 +3480,7 @@ app.whenReady().then(async () => {
           id,
           cleanupRepos,
           updated.repoId?.trim() ?? null,
-          updated.fluxWorkBranch?.trim() ?? null,
+          updated.fluxxWorkBranch?.trim() ?? null,
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {
@@ -3573,7 +3573,7 @@ app.whenReady().then(async () => {
       sessionId,
       gitRootForDaemonSession,
     );
-    await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxSession(sessionId);
+    await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(sessionId);
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {

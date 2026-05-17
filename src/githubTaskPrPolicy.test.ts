@@ -33,7 +33,7 @@ describe('buildGhPrCreateArgs', () => {
         title: 'T',
         body: 'B',
         baseBranch: 'feature/foo',
-        headBranch: 'flux/task-abc',
+        headBranch: 'fluxx/task-abc',
       }),
     ).toEqual([
       'pr',
@@ -45,7 +45,7 @@ describe('buildGhPrCreateArgs', () => {
       '--base',
       'feature/foo',
       '--head',
-      'flux/task-abc',
+      'fluxx/task-abc',
     ]);
   });
 });
@@ -53,7 +53,7 @@ describe('buildGhPrCreateArgs', () => {
 describe('extractPrUrlFromGhOutput', () => {
   it('extracts the created GitHub PR URL from gh stdout', () => {
     expect(
-      extractPrUrlFromGhOutput('Creating pull request for flux/task-abc into main\n\nhttps://github.com/o/r/pull/12\n'),
+      extractPrUrlFromGhOutput('Creating pull request for fluxx/task-abc into main\n\nhttps://github.com/o/r/pull/12\n'),
     ).toBe('https://github.com/o/r/pull/12');
   });
 
@@ -68,17 +68,17 @@ describe('selectPreferredGithubPrForHead', () => {
     const merged = {
       url: 'https://github.com/o/r/pull/2',
       state: 'merged' as const,
-      headBranch: 'flux/task-a',
+      headBranch: 'fluxx/task-a',
       mergedAt: '2024-02-01T00:00:00Z',
       updatedAt: '2024-02-01T00:00:00Z',
     };
     const open = {
       url: 'https://github.com/o/r/pull/1',
       state: 'open' as const,
-      headBranch: 'flux/task-a',
+      headBranch: 'fluxx/task-a',
       updatedAt: '2024-01-15T00:00:00Z',
     };
-    expect(selectPreferredGithubPrForHead([open, merged], 'flux/task-a')).toEqual(merged);
+    expect(selectPreferredGithubPrForHead([open, merged], 'fluxx/task-a')).toEqual(merged);
   });
 
   it('ignores PRs whose head does not match the task branch', () => {
@@ -90,7 +90,7 @@ describe('selectPreferredGithubPrForHead', () => {
           headBranch: 'other-branch',
         },
       ],
-      'flux/task-a',
+      'fluxx/task-a',
     );
     expect(picked).toBeNull();
   });
@@ -106,10 +106,10 @@ describe('mergeTaskPrPersistFields', () => {
         headBranch: 'wrong-head',
         baseBranch: 'wrong-base',
       },
-      'flux/task-x',
+      'fluxx/task-x',
       'feature/foo',
     );
-    expect(merged.headBranch).toBe('flux/task-x');
+    expect(merged.headBranch).toBe('fluxx/task-x');
     expect(merged.baseBranch).toBe('feature/foo');
     expect(merged.url).toContain('/pull/1');
   });
@@ -165,11 +165,11 @@ describe('prMetadataRefMismatchWarning', () => {
 
   it('describes head and base drift from GitHub', () => {
     const w = prMetadataRefMismatchWarning(
-      { url: 'u', headBranch: 'flux/task-old', baseBranch: 'main' },
-      { url: 'u', headBranch: 'flux/task-new', baseBranch: 'develop' },
+      { url: 'u', headBranch: 'fluxx/task-old', baseBranch: 'main' },
+      { url: 'u', headBranch: 'fluxx/task-new', baseBranch: 'develop' },
     );
-    expect(w).toContain('flux/task-new');
-    expect(w).toContain('flux/task-old');
+    expect(w).toContain('fluxx/task-new');
+    expect(w).toContain('fluxx/task-old');
     expect(w).toContain('develop');
     expect(w).toContain('main');
   });

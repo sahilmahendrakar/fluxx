@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  chooseFluxTaskWorkBranchName,
+  chooseFluxxTaskWorkBranchName,
   slugifySingleBranchSegment,
-  worktreePathSegmentsForFluxBranch,
-} from './fluxTaskWorkBranchNaming';
+  worktreePathSegmentsForFluxxBranch,
+} from './fluxxTaskWorkBranchNaming';
 
 describe('slugifySingleBranchSegment', () => {
   it('normalizes diacritics and punctuation', () => {
@@ -15,16 +15,16 @@ describe('slugifySingleBranchSegment', () => {
   });
 });
 
-describe('worktreePathSegmentsForFluxBranch', () => {
+describe('worktreePathSegmentsForFluxxBranch', () => {
   it('splits on slash', () => {
-    expect(worktreePathSegmentsForFluxBranch('a/b-c')).toEqual(['a', 'b-c']);
+    expect(worktreePathSegmentsForFluxxBranch('a/b-c')).toEqual(['a', 'b-c']);
   });
 });
 
-describe('chooseFluxTaskWorkBranchName', () => {
+describe('chooseFluxxTaskWorkBranchName', () => {
   it('builds author/title and bumps on collision', () => {
     const taken = new Set<string>(['jane/feature'.toLowerCase()]);
-    const first = chooseFluxTaskWorkBranchName({
+    const first = chooseFluxxTaskWorkBranchName({
       authorSlug: 'jane',
       taskTitle: 'Feature',
       taskId: 't1',
@@ -38,7 +38,7 @@ describe('chooseFluxTaskWorkBranchName', () => {
     for (let n = 1; n <= 99; n++) {
       taken.add(n === 1 ? 'jane/x' : `jane/x-${n}`.toLowerCase());
     }
-    const b = chooseFluxTaskWorkBranchName({
+    const b = chooseFluxxTaskWorkBranchName({
       authorSlug: 'jane',
       taskTitle: 'x',
       taskId: 'tid-9',

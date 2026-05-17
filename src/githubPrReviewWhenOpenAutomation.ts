@@ -1,5 +1,5 @@
 import type { Task, TaskGithubPr, TaskStatus } from './types';
-import { expectedTaskFluxWorkBranch } from './taskBranch';
+import { expectedTaskFluxxWorkBranch } from './taskBranch';
 import { normalizeGitBranchShortName } from './taskBranches';
 
 /**
@@ -17,7 +17,7 @@ export function shouldAutoMoveTaskToReviewForOpenPr(input: {
   enabled: boolean;
   taskStatus: TaskStatus;
   githubPr: TaskGithubPr | undefined;
-  task: Pick<Task, 'id' | 'fluxWorkBranch'>;
+  task: Pick<Task, 'id' | 'fluxxWorkBranch'>;
 }): boolean {
   if (!input.enabled) return false;
   if (input.githubPr?.state !== 'open') return false;
@@ -26,7 +26,7 @@ export function shouldAutoMoveTaskToReviewForOpenPr(input: {
   }
   const head = input.githubPr.headBranch?.trim() ?? '';
   if (head.length > 0) {
-    const expected = expectedTaskFluxWorkBranch(input.task);
+    const expected = expectedTaskFluxxWorkBranch(input.task);
     const nh = normalizeGitBranchShortName(head);
     const ne = normalizeGitBranchShortName(expected);
     if (nh && ne && nh !== ne) {

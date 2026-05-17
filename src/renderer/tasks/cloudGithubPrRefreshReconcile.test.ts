@@ -73,7 +73,7 @@ describe('buildCloudGithubPrRefreshPatch', () => {
     const openPr: TaskGithubPr = {
       url: 'https://github.com/o/r/pull/2',
       state: 'open',
-      headBranch: 'flux/task-t1',
+      headBranch: 'fluxx/task-t1',
     };
     const live = baseTask({
       id: 't1',

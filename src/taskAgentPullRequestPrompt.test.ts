@@ -12,25 +12,25 @@ describe('resolveAgentPullRequestBranchContext', () => {
       resolveAgentPullRequestBranchContext({
         task: {} as Pick<Task, 'sourceBranch'>,
         projectDefaultBranchShort: 'main',
-        sessionBranch: 'flux/task-abc',
+        sessionBranch: 'fluxx/task-abc',
       }),
-    ).toEqual({ baseBranch: 'main', headBranch: 'flux/task-abc' });
+    ).toEqual({ baseBranch: 'main', headBranch: 'fluxx/task-abc' });
 
     expect(
       resolveAgentPullRequestBranchContext({
         task: {} as Pick<Task, 'sourceBranch'>,
         projectDefaultBranchShort: 'release',
-        sessionBranch: 'flux/task-abc',
+        sessionBranch: 'fluxx/task-abc',
       }),
-    ).toEqual({ baseBranch: 'release', headBranch: 'flux/task-abc' });
+    ).toEqual({ baseBranch: 'release', headBranch: 'fluxx/task-abc' });
 
     expect(
       resolveAgentPullRequestBranchContext({
         task: { sourceBranch: 'develop' } as Pick<Task, 'sourceBranch'>,
         projectDefaultBranchShort: 'main',
-        sessionBranch: 'flux/task-xyz',
+        sessionBranch: 'fluxx/task-xyz',
       }),
-    ).toEqual({ baseBranch: 'develop', headBranch: 'flux/task-xyz' });
+    ).toEqual({ baseBranch: 'develop', headBranch: 'fluxx/task-xyz' });
   });
 
   it('maps origin/foo style source to short base', () => {
@@ -38,9 +38,9 @@ describe('resolveAgentPullRequestBranchContext', () => {
       resolveAgentPullRequestBranchContext({
         task: { sourceBranch: 'origin/feature/x' } as Pick<Task, 'sourceBranch'>,
         projectDefaultBranchShort: 'main',
-        sessionBranch: 'flux/task-1',
+        sessionBranch: 'fluxx/task-1',
       }),
-    ).toEqual({ baseBranch: 'feature/x', headBranch: 'flux/task-1' });
+    ).toEqual({ baseBranch: 'feature/x', headBranch: 'fluxx/task-1' });
   });
 });
 
@@ -66,7 +66,7 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     const text = buildTaskAgentPullRequestPrompt({
       taskId: 'task-b',
       taskTitle: 'Backend fix',
-      headBranch: 'flux/task-b',
+      headBranch: 'fluxx/task-b',
       baseBranch: 'develop',
       instructionsAbsolutePath: instructionsPath,
       repoDisplayLabel: 'service-b',
@@ -76,7 +76,7 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     expect(text).not.toMatch(/\bFlux\b/);
     expect(text).toContain('- **Repository:** service-b');
     expect(text).toContain('`/Users/me/projects/service-b`');
-    expect(text).toContain('`flux/task-b`');
+    expect(text).toContain('`fluxx/task-b`');
     expect(text).toContain('`develop`');
     expect(text).not.toContain('`main`');
     expect(text).not.toContain('Suggested PR');
@@ -87,13 +87,13 @@ describe('buildTaskAgentPullRequestPrompt', () => {
     const text = buildTaskAgentPullRequestPrompt({
       taskId: 'task-42',
       taskTitle: 'Fix login bug',
-      headBranch: 'flux/task-42',
+      headBranch: 'fluxx/task-42',
       baseBranch: 'main',
       instructionsAbsolutePath: instructionsPath,
     });
     expect(text).toContain('`task-42`');
     expect(text).toContain('Fix login bug');
-    expect(text).toContain('`flux/task-42`');
+    expect(text).toContain('`fluxx/task-42`');
     expect(text).toContain('`main`');
     expect(text).toContain('`' + instructionsPath + '`');
     expect(text).toContain('Do not commit secrets');

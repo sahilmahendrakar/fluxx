@@ -20,6 +20,32 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+type LegacySessionRecordRow = TaskAgentSessionRecord & {
+  fluxSessionId?: string;
+  fluxWorkBranch?: string;
+};
+
+function normalizeLegacyFluxxSessionRecord(r: unknown): TaskAgentSessionRecord | null {
+  if (!r || typeof r !== 'object') return null;
+  const row = r as LegacySessionRecordRow;
+  const fluxxSessionId =
+    typeof row.fluxxSessionId === 'string'
+      ? row.fluxxSessionId
+      : typeof row.fluxSessionId === 'string'
+        ? row.fluxSessionId
+        : null;
+  if (!fluxxSessionId || typeof row.taskId !== 'string') return null;
+  const fluxxWorkBranch =
+    typeof row.fluxxWorkBranch === 'string'
+      ? row.fluxxWorkBranch
+      : typeof row.fluxWorkBranch === 'string'
+        ? row.fluxWorkBranch
+        : '';
+  if (!fluxxWorkBranch.trim()) return null;
+  const { fluxSessionId: _s, fluxWorkBranch: _w, ...rest } = row;
+  return { ...rest, fluxxSessionId, fluxxWorkBranch };
+}
+
 export type TaskAgentSessionRecordStoreDeps = {
   getProjectDir: () => string;
 };
@@ -67,13 +93,19 @@ export class TaskAgentSessionRecordStore {
         'records' in parsed &&
         Array.isArray((parsed as PersistedFileV1).records)
       ) {
-        this.cache = (parsed as PersistedFileV1).records.filter(
+        const rawRecords = (parsed as PersistedFileV1).records;
+        const migrated = rawRecords.some(
           (r) =>
             r &&
             typeof r === 'object' &&
-            typeof (r as TaskAgentSessionRecord).fluxSessionId === 'string' &&
-            typeof (r as TaskAgentSessionRecord).taskId === 'string',
-        ) as TaskAgentSessionRecord[];
+            ('fluxSessionId' in r || 'fluxWorkBranch' in r),
+        );
+        this.cache = rawRecords
+          .map((r) => normalizeLegacyFluxxSessionRecord(r))
+          .filter((r): r is TaskAgentSessionRecord => r != null);
+        if (migrated) {
+          await this.persist();
+        }
       } else {
         this.cache = [];
       }
@@ -107,14 +139,14 @@ export class TaskAgentSessionRecordStore {
     });
   }
 
-  async mergeConversationId(fluxSessionId: string, agentConversationId: string): Promise<void> {
+  async mergeConversationId(fluxxSessionId: string, agentConversationId: string): Promise<void> {
     const id = agentConversationId.trim();
     if (!id) return;
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();
       let changed = false;
       this.cache = this.cache.map((r) => {
-        if (r.fluxSessionId !== fluxSessionId) return r;
+        if (r.fluxxSessionId !== fluxxSessionId) return r;
         if (r.agentConversationId === id) return r;
         changed = true;
         return { ...r, agentConversationId: id };
@@ -132,7 +164,7 @@ export class TaskAgentSessionRecordStore {
       const endedAt = session.stoppedAt ?? new Date().toISOString();
       let changed = false;
       this.cache = this.cache.map((r) => {
-        if (r.fluxSessionId !== session.id) return r;
+        if (r.fluxxSessionId !== session.id) return r;
         if (opts.reason === 'workspace-deleted') {
           changed = true;
           return {
@@ -154,13 +186,13 @@ export class TaskAgentSessionRecordStore {
     });
   }
 
-  async markReplacedSessions(taskId: string, keepFluxSessionId: string): Promise<void> {
+  async markReplacedSessions(taskId: string, keepFluxxSessionId: string): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();
       let changed = false;
       this.cache = this.cache.map((r) => {
         if (r.taskId !== taskId) return r;
-        if (r.fluxSessionId === keepFluxSessionId) return r;
+        if (r.fluxxSessionId === keepFluxxSessionId) return r;
         if (r.endedAt) return r;
         changed = true;
         return {
@@ -173,10 +205,10 @@ export class TaskAgentSessionRecordStore {
     });
   }
 
-  async markWorkspaceDeletedForFluxSession(fluxSessionId: string): Promise<void> {
+  async markWorkspaceDeletedForFluxxSession(fluxxSessionId: string): Promise<void> {
     await this.markSessionEnded(
       {
-        id: fluxSessionId,
+        id: fluxxSessionId,
         status: 'stopped',
         startedAt: '',
         stoppedAt: new Date().toISOString(),
@@ -225,12 +257,12 @@ export class TaskAgentSessionRecordStore {
       if (!(await worktreeStillPresent(wt))) continue;
       const stoppedAt = r.endedAt ?? r.startedAt;
       return {
-        id: r.fluxSessionId,
+        id: r.fluxxSessionId,
         taskId: r.taskId,
         projectId: r.projectId,
         ...(r.repoId != null && r.repoId.length > 0 ? { repoId: r.repoId } : {}),
         worktreePath: r.worktreePath,
-        branch: r.fluxWorkBranch,
+        branch: r.fluxxWorkBranch,
         status: 'interrupted',
         startedAt: r.startedAt,
         stoppedAt,

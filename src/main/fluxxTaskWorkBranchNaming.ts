@@ -9,12 +9,12 @@ const execFile = promisify(execFileCallback);
  * Human-readable Flux task work branches use `git config user.name` (and
  * fallbacks) from the **repository** that owns the worktree (`cwd` = git root),
  * normalized to a single path segment. There is no separate Flux setting yet;
- * add one later and thread it through {@link resolveFluxAuthorSlugForBranches}
- * before calling {@link chooseFluxTaskWorkBranchName}.
+ * add one later and thread it through {@link resolveFluxxAuthorSlugForBranches}
+ * before calling {@link chooseFluxxTaskWorkBranchName}.
  */
-export async function resolveFluxAuthorSlugForBranches(gitRoot: string): Promise<string> {
+export async function resolveFluxxAuthorSlugForBranches(gitRoot: string): Promise<string> {
   const trimmedRoot = gitRoot?.trim();
-  if (!trimmedRoot) return 'flux-user';
+  if (!trimmedRoot) return 'fluxx-user';
 
   const readCfg = async (key: string): Promise<string> => {
     try {
@@ -37,11 +37,11 @@ export async function resolveFluxAuthorSlugForBranches(gitRoot: string): Promise
   const fromEmail = slugifySingleBranchSegment(local, 40);
   if (fromEmail) return fromEmail;
 
-  return 'flux-user';
+  return 'fluxx-user';
 }
 
 /** Maps a Flux work branch to nested directories under `<project>/worktrees/<repoId>/`. */
-export function worktreePathSegmentsForFluxBranch(branchShort: string): string[] {
+export function worktreePathSegmentsForFluxxBranch(branchShort: string): string[] {
   const n = branchShort.trim();
   if (!n) return [];
   return n.split('/').filter((s) => s.length > 0);
@@ -82,13 +82,13 @@ function branchLooksValid(shortName: string): boolean {
  * Picks `authorSlug/titleSlug` with optional `-2`, `-3`, … suffix on the title
  * segment, then a short hash suffix, ensuring the result passes git ref rules.
  */
-export function chooseFluxTaskWorkBranchName(input: {
+export function chooseFluxxTaskWorkBranchName(input: {
   authorSlug: string;
   taskTitle: string;
   taskId: string;
   takenShortNames: ReadonlySet<string>;
 }): string {
-  const author = slugifySingleBranchSegment(input.authorSlug, 40) || 'flux-user';
+  const author = slugifySingleBranchSegment(input.authorSlug, 40) || 'fluxx-user';
   const rawTitle = input.taskTitle?.trim() || '';
   let titleBase =
     slugifySingleBranchSegment(rawTitle, MAX_TOTAL_BRANCH_CHARS) || titleFallbackSlug(input.taskId);
@@ -138,7 +138,7 @@ export function chooseFluxTaskWorkBranchName(input: {
   return `${author}/${titleFallbackSlug(input.taskId)}`;
 }
 
-export async function collectTakenFluxWorkBranchNames(gitRoot: string): Promise<Set<string>> {
+export async function collectTakenFluxxWorkBranchNames(gitRoot: string): Promise<Set<string>> {
   const cwd = gitRoot.trim();
   const out = new Set<string>();
   if (!cwd) return out;

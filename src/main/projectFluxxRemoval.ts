@@ -57,7 +57,7 @@ export async function stopTerminalSessionsForProject(
  * Removes Flux-managed task worktrees under `projectDir/worktrees/` using owning git roots
  * from `repos` (legacy flat `worktrees/<taskId>` and `worktrees/<repoId>/<taskId>`).
  */
-export async function removeFluxWorktreesUnderProjectDir(
+export async function removeFluxxWorktreesUnderProjectDir(
   projectDir: string,
   repos: readonly RepoConfig[],
 ): Promise<string[]> {
@@ -128,11 +128,11 @@ export async function removeFluxWorktreesUnderProjectDir(
   return errors;
 }
 
-async function deleteFluxProjectMaterializationDir(
-  fluxBaseDir: string,
+async function deleteFluxxProjectMaterializationDir(
+  fluxxBaseDir: string,
   projectDir: string,
 ): Promise<void> {
-  await assertSafeToDeleteLegacyFlatProjectsRoot(fluxBaseDir, projectDir);
+  await assertSafeToDeleteLegacyFlatProjectsRoot(fluxxBaseDir, projectDir);
   await fs.rm(projectDir, { recursive: true, force: true });
 }
 
@@ -145,7 +145,7 @@ export type RemoveFluxOwnedLocalStateResult = {
 
 export type RemoveFluxOwnedLocalStateDeps = {
   key: ActiveProjectKey;
-  fluxBaseDir: string;
+  fluxxBaseDir: string;
   projectStore: ProjectStore;
   terminalBackend: TerminalBackend;
   appStateStore: AppStateStore;
@@ -159,13 +159,13 @@ export type RemoveFluxOwnedLocalStateDeps = {
  * active workspace when that project is open. Does not delete user repository clones
  * (`RepoConfig.rootPath`).
  */
-export async function removeFluxOwnedLocalState(
+export async function removeFluxxOwnedLocalState(
   deps: RemoveFluxOwnedLocalStateDeps,
 ): Promise<RemoveFluxOwnedLocalStateResult> {
   const warnings: string[] = [];
   const errors: string[] = [];
   const deletedMaterializationDirs: string[] = [];
-  const { key, fluxBaseDir, projectStore, terminalBackend, appStateStore, bindingStore } =
+  const { key, fluxxBaseDir, projectStore, terminalBackend, appStateStore, bindingStore } =
     deps;
 
   warnings.push(...(await stopTerminalSessionsForProject(terminalBackend, key.id)));
@@ -180,11 +180,11 @@ export async function removeFluxOwnedLocalState(
       continue;
     }
 
-    const wtErrs = await removeFluxWorktreesUnderProjectDir(projectDir, cfg.repos);
+    const wtErrs = await removeFluxxWorktreesUnderProjectDir(projectDir, cfg.repos);
     errors.push(...wtErrs);
 
     try {
-      await deleteFluxProjectMaterializationDir(fluxBaseDir, projectDir);
+      await deleteFluxxProjectMaterializationDir(fluxxBaseDir, projectDir);
       deletedMaterializationDirs.push(projectDir);
     } catch (err) {
       errors.push(`Delete project workspace ${projectDir}: ${errText(err)}`);

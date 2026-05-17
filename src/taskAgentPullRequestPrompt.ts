@@ -4,7 +4,7 @@ import { effectiveTaskSourceBranchShort } from './taskBranches';
 export type TaskAgentPullRequestPromptParams = {
   taskId: string;
   taskTitle: string;
-  /** Fluxx task work branch (session head), e.g. `flux/task-…`. */
+  /** Fluxx task work branch (session head), e.g. `fluxx/task-…`. */
   headBranch: string;
   /** Resolved PR base branch (task source branch or project default). */
   baseBranch: string;

@@ -74,14 +74,14 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
         githubPr: {
           url: 'https://github.com/o/r/pull/1',
           state: 'open',
-          headBranch: 'flux/task-abc123',
+          headBranch: 'fluxx/task-abc123',
         },
         task: legacyTask,
       }),
     ).toBe(true);
   });
 
-  it('uses persisted fluxWorkBranch when matching head', () => {
+  it('uses persisted fluxxWorkBranch when matching head', () => {
     expect(
       shouldAutoMoveTaskToReviewForOpenPr({
         enabled: true,
@@ -91,7 +91,7 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
           state: 'open',
           headBranch: 'jane/add-auth',
         },
-        task: { id: taskId, fluxWorkBranch: 'jane/add-auth' },
+        task: { id: taskId, fluxxWorkBranch: 'jane/add-auth' },
       }),
     ).toBe(true);
   });

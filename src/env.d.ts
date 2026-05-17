@@ -213,7 +213,7 @@ declare global {
         addLocal: () => Promise<LocalProject | { error: 'NOT_GIT_REPO' } | null>;
         activateLocal: (id: string | null) => Promise<LocalProject | null>;
         removeLocal: (id: string) => Promise<void>;
-        removeFluxOwnedLocalState: (key: ActiveProjectKey) => Promise<{
+        removeFluxxOwnedLocalState: (key: ActiveProjectKey) => Promise<{
           ok: boolean;
           warnings: string[];
           errors: string[];
@@ -283,7 +283,7 @@ declare global {
               | 'sourceBranch'
               | 'createSourceBranchIfMissing'
               | 'repoId'
-              | 'fluxWorkBranch'
+              | 'fluxxWorkBranch'
             >
           > & {
             githubPr?: TaskGithubPr | null;
@@ -295,7 +295,7 @@ declare global {
           taskId: string,
           previous: Pick<
             Task,
-            'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxWorkBranch'
+            'sourceBranch' | 'createSourceBranchIfMissing' | 'repoId' | 'fluxxWorkBranch'
           > & {
             githubPr?: TaskGithubPr;
           },
@@ -303,7 +303,7 @@ declare global {
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         assertRepoIdEditable: (
           taskId: string,
-          previous: Pick<Task, 'repoId' | 'fluxWorkBranch'> & { githubPr?: TaskGithubPr },
+          previous: Pick<Task, 'repoId' | 'fluxxWorkBranch'> & { githubPr?: TaskGithubPr },
           patch: Pick<Task, 'repoId'>,
         ) => Promise<{ ok: true } | { ok: false; message: string }>;
         delete: (id: string) => Promise<void>;
@@ -317,15 +317,15 @@ declare global {
         resolveWorktrees: (
           taskIdsOrEntries:
             | string[]
-            | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null }[],
+            | { taskId: string; repoId?: string | null; fluxxWorkBranch?: string | null }[],
         ) => Promise<Record<string, boolean>>;
         cleanupResources: (id: string) => Promise<{ errors: string[] }>;
         onChanged: (cb: () => void) => () => void;
         onUserInput: (
           cb: (p: { sessionId: string; taskId: string }) => void,
         ) => () => void;
-        onPersistFluxWorkBranch: (
-          cb: (p: { taskId: string; fluxWorkBranch: string }) => void,
+        onPersistFluxxWorkBranch: (
+          cb: (p: { taskId: string; fluxxWorkBranch: string }) => void,
         ) => () => void;
       };
       sessions: {

@@ -48,6 +48,7 @@ export default defineConfig(({ mode }) => {
       inline('RESEND_API_KEY'),
       inline('RESEND_FROM_DOMAIN'),
       inline('RESEND_FROM_NAME'),
+      inline('FLUXX_APP_URL'),
       inline('FLUX_APP_URL'),
     ]),
   };

@@ -7,7 +7,7 @@ export function planningDirFromFluxProjectDir(projectDir: string | null | undefi
 }
 
 /** Flux-owned project dir (local store, else cloud worktree binding). */
-export function fluxProjectDirOrNull(
+export function fluxxProjectDirOrNull(
   projectDirFromStore: string | null | undefined,
   projectDirFromWorktree: string | null | undefined,
 ): string | null {
@@ -19,6 +19,6 @@ export function resolvePlanningDocsDirFromSources(
   projectDirFromWorktree: string | null | undefined,
 ): string | null {
   return planningDirFromFluxProjectDir(
-    fluxProjectDirOrNull(projectDirFromStore, projectDirFromWorktree),
+    fluxxProjectDirOrNull(projectDirFromStore, projectDirFromWorktree),
   );
 }

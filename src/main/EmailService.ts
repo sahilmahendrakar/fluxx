@@ -11,7 +11,8 @@ const RESEND_API = 'https://api.resend.com/emails';
 const API_KEY = process.env.RESEND_API_KEY ?? '';
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN ?? '';
 const FROM_NAME = process.env.RESEND_FROM_NAME ?? 'Fluxx';
-const APP_URL = process.env.FLUX_APP_URL || 'http://localhost:5173';
+const APP_URL =
+  process.env.FLUXX_APP_URL || process.env.FLUX_APP_URL || 'http://localhost:5173';
 
 export interface InviteEmailInput {
   to: string;

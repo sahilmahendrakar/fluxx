@@ -90,9 +90,9 @@ describe('mergeTaskRowWithPullRequestAgentPayload', () => {
       resolveAgentPullRequestBranchContext({
         task: merged,
         projectDefaultBranchShort: 'main',
-        sessionBranch: 'flux/task-c1',
+        sessionBranch: 'fluxx/task-c1',
       }),
-    ).toEqual({ baseBranch: 'feature/foo', headBranch: 'flux/task-c1' });
+    ).toEqual({ baseBranch: 'feature/foo', headBranch: 'fluxx/task-c1' });
   });
 
   it('legacy: no row source and no payload source falls back to project default', () => {
@@ -101,8 +101,8 @@ describe('mergeTaskRowWithPullRequestAgentPayload', () => {
       resolveAgentPullRequestBranchContext({
         task: merged,
         projectDefaultBranchShort: 'release',
-        sessionBranch: 'flux/task-x',
+        sessionBranch: 'fluxx/task-x',
       }),
-    ).toEqual({ baseBranch: 'release', headBranch: 'flux/task-x' });
+    ).toEqual({ baseBranch: 'release', headBranch: 'fluxx/task-x' });
   });
 });

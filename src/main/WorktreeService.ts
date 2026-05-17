@@ -9,11 +9,11 @@ import {
 import { WorktreeCreateError } from './worktreeCreateError';
 import { resolveLocalBranchShortForWorktreePath, readHeadBranchShortAtPath } from './gitWorktreeBranch';
 import {
-  chooseFluxTaskWorkBranchName,
-  collectTakenFluxWorkBranchNames,
-  resolveFluxAuthorSlugForBranches,
-  worktreePathSegmentsForFluxBranch,
-} from './fluxTaskWorkBranchNaming';
+  chooseFluxxTaskWorkBranchName,
+  collectTakenFluxxWorkBranchNames,
+  resolveFluxxAuthorSlugForBranches,
+  worktreePathSegmentsForFluxxBranch,
+} from './fluxxTaskWorkBranchNaming';
 import { normalizeGitBranchShortName, validateStoredTaskSourceBranchName } from '../taskBranches';
 
 const execFile = promisify(execFileCallback);
@@ -76,7 +76,7 @@ export class WorktreeService {
   }
 
   async create(params: {
-    task: { id: string; title: string; fluxWorkBranch?: string };
+    task: { id: string; title: string; fluxxWorkBranch?: string };
     repo: WorktreeRepoCreateParams;
     source: WorktreeSourceBranchOptions;
     layout: WorktreeLayoutMode;
@@ -98,17 +98,17 @@ export class WorktreeService {
       );
     }
 
-    const persisted = normalizeGitBranchShortName(task.fluxWorkBranch ?? '');
+    const persisted = normalizeGitBranchShortName(task.fluxxWorkBranch ?? '');
     const persistedOk =
       persisted.length > 0 && validateStoredTaskSourceBranchName(persisted).ok;
 
-    const taken = await collectTakenFluxWorkBranchNames(gitRootResolved);
+    const taken = await collectTakenFluxxWorkBranchNames(gitRootResolved);
     let branch: string;
     if (persistedOk) {
       branch = persisted;
     } else {
-      const authorSlug = await resolveFluxAuthorSlugForBranches(gitRootResolved);
-      branch = chooseFluxTaskWorkBranchName({
+      const authorSlug = await resolveFluxxAuthorSlugForBranches(gitRootResolved);
+      branch = chooseFluxxTaskWorkBranchName({
         authorSlug,
         taskTitle: task.title,
         taskId: task.id,
@@ -119,7 +119,7 @@ export class WorktreeService {
     const worktreesRoot = path.join(this.projectDir, 'worktrees');
     await fs.mkdir(worktreesRoot, { recursive: true });
 
-    const branchSegments = worktreePathSegmentsForFluxBranch(branch);
+    const branchSegments = worktreePathSegmentsForFluxxBranch(branch);
     let worktreePath: string;
     if (layout === 'repo-scoped') {
       worktreePath = path.join(worktreesRoot, repoIdTrim, ...branchSegments);

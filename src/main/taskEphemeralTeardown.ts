@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import type { RepoConfig, Session } from '../types';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
-import { worktreePathSegmentsForFluxBranch } from './fluxTaskWorkBranchNaming';
+import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 
 /**
  * Stop a task session, close its shells, and remove its git worktree — same
@@ -45,7 +45,7 @@ export async function teardownEphemeralResourcesForTask(
   /** Persists which repository this task targets — drives repo-scoped `worktrees/<repoId>/…` cleanup. */
   taskRepoId?: string | null,
   /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
-  fluxWorkBranch?: string | null,
+  fluxxWorkBranch?: string | null,
 ): Promise<string[]> {
   const errors: string[] = [];
   let sessionIds: string[] = [];
@@ -100,9 +100,9 @@ export async function teardownEphemeralResourcesForTask(
   }
 
   const rid = taskRepoId?.trim();
-  const fw = fluxWorkBranch?.trim();
+  const fw = fluxxWorkBranch?.trim();
   if (rid && fw) {
-    const fluxScoped = path.join(projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxBranch(fw));
+    const fluxScoped = path.join(projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxxBranch(fw));
     try {
       await fs.access(fluxScoped);
       const cfg = repos.find((r) => r.id === rid);
@@ -170,7 +170,7 @@ export async function teardownEphemeralResourcesForTask(
         const fluxNested = path.join(
           worktreesRoot,
           name,
-          ...worktreePathSegmentsForFluxBranch(fw),
+          ...worktreePathSegmentsForFluxxBranch(fw),
         );
         try {
           await fs.access(fluxNested);

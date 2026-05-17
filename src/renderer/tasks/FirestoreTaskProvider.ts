@@ -223,7 +223,7 @@ export class FirestoreTaskProvider implements TaskProvider {
           sourceBranch: previous.sourceBranch,
           createSourceBranchIfMissing: previous.createSourceBranchIfMissing,
           githubPr: previous.githubPr,
-          fluxWorkBranch: previous.fluxWorkBranch,
+          fluxxWorkBranch: previous.fluxxWorkBranch,
           ...(previous.repoId !== undefined ? { repoId: previous.repoId } : {}),
         },
         {
@@ -248,7 +248,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         {
           repoId: previous.repoId,
           githubPr: previous.githubPr,
-          fluxWorkBranch: previous.fluxWorkBranch,
+          fluxxWorkBranch: previous.fluxxWorkBranch,
         },
         {
           ...(patch.repoId !== undefined ? { repoId: patch.repoId } : {}),
@@ -350,11 +350,13 @@ export class FirestoreTaskProvider implements TaskProvider {
         updates.repoId = nextRepoId;
       }
     }
-    if (patch.fluxWorkBranch !== undefined) {
-      const b = patch.fluxWorkBranch.trim();
+    if (patch.fluxxWorkBranch !== undefined) {
+      const b = patch.fluxxWorkBranch.trim();
       if (b.length === 0) {
+        updates.fluxxWorkBranch = deleteField();
         updates.fluxWorkBranch = deleteField();
       } else {
+        updates.fluxxWorkBranch = b;
         updates.fluxWorkBranch = b;
       }
     }
@@ -432,7 +434,7 @@ function toTask(
     ...parseSourceBranchField(data.sourceBranch),
     ...parseCreateSourceBranchIfMissingField(data.createSourceBranchIfMissing),
     ...parseRepoIdField(data.repoId, primaryRepoId),
-    ...parseFluxWorkBranchField(data.fluxWorkBranch),
+    ...parseFluxxWorkBranchField(data.fluxxWorkBranch ?? data.fluxWorkBranch),
     ...parseAttachedPlanningDocsField(data.attachedPlanningDocs),
   };
 }
@@ -447,11 +449,11 @@ function parseAttachedPlanningDocsField(
   return { attachedPlanningDocs: parsed };
 }
 
-function parseFluxWorkBranchField(
+function parseFluxxWorkBranchField(
   val: unknown,
-): { fluxWorkBranch: string } | Record<string, never> {
+): { fluxxWorkBranch: string } | Record<string, never> {
   if (typeof val === 'string' && val.trim() !== '') {
-    return { fluxWorkBranch: val.trim() };
+    return { fluxxWorkBranch: val.trim() };
   }
   return {};
 }

@@ -8,7 +8,7 @@ export const LEGACY_FLUX_HOME_DIRNAME = '.flux';
 /** Written into `~/.fluxx` after a successful rename or copy from `~/.flux`. */
 export const FLUXX_HOME_MIGRATION_SENTINEL = '.fluxx-migrated-from-flux';
 
-export function fluxBaseDirPath(homeDir: string = os.homedir()): string {
+export function fluxxBaseDirPath(homeDir: string = os.homedir()): string {
   return path.join(homeDir, FLUXX_HOME_DIRNAME);
 }
 
@@ -35,8 +35,8 @@ function errnoCode(err: unknown): string | undefined {
  * Ensures the Flux home directory exists at `~/.fluxx`. On first launch when only
  * `~/.flux` exists, renames it atomically (or copies + sentinel on cross-device failure).
  */
-export async function ensureFluxBaseDirMigrated(homeDir: string = os.homedir()): Promise<string> {
-  const fluxxDir = fluxBaseDirPath(homeDir);
+export async function ensureFluxxBaseDirMigrated(homeDir: string = os.homedir()): Promise<string> {
+  const fluxxDir = fluxxBaseDirPath(homeDir);
   const legacyDir = legacyFluxBaseDirPath(homeDir);
 
   if (await pathExists(fluxxDir)) {

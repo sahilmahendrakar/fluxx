@@ -671,7 +671,7 @@ export default function App() {
   const tasksWorktreeIdsKey = useMemo(
     () =>
       tasks
-        .map((t) => `${t.id}\t${t.repoId ?? ''}\t${t.fluxWorkBranch ?? ''}`)
+        .map((t) => `${t.id}\t${t.repoId ?? ''}\t${t.fluxxWorkBranch ?? ''}`)
         .sort()
         .join('\0'),
     [tasks],
@@ -707,7 +707,7 @@ export default function App() {
           tasksRef.current.map((t) => ({
             taskId: t.id,
             repoId: t.repoId,
-            fluxWorkBranch: t.fluxWorkBranch,
+            fluxxWorkBranch: t.fluxxWorkBranch,
           })),
         )
         .then((map) => {
@@ -1080,12 +1080,12 @@ export default function App() {
 
   useEffect(() => {
     if (project?.kind !== 'cloud') return;
-    return window.electronAPI.tasks.onPersistFluxWorkBranch(({ taskId, fluxWorkBranch }) => {
+    return window.electronAPI.tasks.onPersistFluxxWorkBranch(({ taskId, fluxxWorkBranch }) => {
       setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, fluxWorkBranch } : t)),
+        prev.map((t) => (t.id === taskId ? { ...t, fluxxWorkBranch } : t)),
       );
-      void providerRef.current?.update(taskId, { fluxWorkBranch }).catch((err) => {
-        console.error('[task:fluxWorkBranch] Firestore write failed', { taskId, err });
+      void providerRef.current?.update(taskId, { fluxxWorkBranch }).catch((err) => {
+        console.error('[task:fluxxWorkBranch] Firestore write failed', { taskId, err });
       });
     });
   }, [project?.kind]);
@@ -1884,8 +1884,8 @@ export default function App() {
       if (patch.repoId !== undefined) {
         persistable.repoId = patch.repoId;
       }
-      if (patch.fluxWorkBranch !== undefined) {
-        persistable.fluxWorkBranch = patch.fluxWorkBranch;
+      if (patch.fluxxWorkBranch !== undefined) {
+        persistable.fluxxWorkBranch = patch.fluxxWorkBranch;
       }
       if (patchGh !== undefined) {
         persistable.githubPr = patchGh;

@@ -447,7 +447,7 @@ export default function TaskDetailPanel({
     let cancelled = false;
     const refreshWorktreePath = () => {
       void window.electronAPI.workspace
-        .resolveTaskWorktree({ taskId: task.id, repoId: task.repoId, fluxWorkBranch: task.fluxWorkBranch })
+        .resolveTaskWorktree({ taskId: task.id, repoId: task.repoId, fluxxWorkBranch: task.fluxxWorkBranch })
         .then((r) => {
           if (!cancelled) {
             setResolvedWorktreePath(r.path);
@@ -929,7 +929,7 @@ export default function TaskDetailPanel({
     if (repoChanged && showRepoSection) {
       const r = await window.electronAPI.tasks.assertRepoIdEditable(
         task.id,
-        { repoId: task.repoId, githubPr: task.githubPr, fluxWorkBranch: task.fluxWorkBranch },
+        { repoId: task.repoId, githubPr: task.githubPr, fluxxWorkBranch: task.fluxxWorkBranch },
         { repoId: nextRepo },
       );
       if (!r.ok) {
@@ -946,7 +946,7 @@ export default function TaskDetailPanel({
           createSourceBranchIfMissing: task.createSourceBranchIfMissing,
           repoId: task.repoId,
           githubPr: task.githubPr,
-          fluxWorkBranch: task.fluxWorkBranch,
+          fluxxWorkBranch: task.fluxxWorkBranch,
         },
         {
           ...combined,

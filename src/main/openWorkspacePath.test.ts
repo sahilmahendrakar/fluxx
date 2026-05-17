@@ -15,7 +15,7 @@ describe('pickSessionForTaskWorktree', () => {
     projectId: 'p',
     repoId,
     worktreePath: `/wt/${taskId}`,
-    branch: 'flux/task-x',
+    branch: 'fluxx/task-x',
     status: 'running',
     startedAt: '',
   });

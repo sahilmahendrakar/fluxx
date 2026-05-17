@@ -1,6 +1,6 @@
 /**
  * Task **source** branch (see `Task.sourceBranch`) vs the generated Flux work
- * branch on `Session.branch` (`flux/task-<id>`). Helpers normalize user/MCP
+ * branch on `Session.branch` (`fluxx/task-<id>`). Helpers normalize user/MCP
  * input and classify presence against local + remote short-name sets.
  */
 

@@ -17,7 +17,7 @@ export type TaskPatch = Partial<
     | 'sourceBranch'
     | 'createSourceBranchIfMissing'
     | 'repoId'
-    | 'fluxWorkBranch'
+    | 'fluxxWorkBranch'
   >
 > & {
   workspaceCleanedAt?: string | null;

@@ -376,7 +376,7 @@ export interface Task {
   /**
    * Git branch this task is logically based on (PR merge target / conceptual base).
    * Distinct from {@link Session.branch}, which is the Flux task worktree branch
-   * (historically `flux/task-<id>`, now usually `<git-author-slug>/<title-slug>`).
+   * (historically `fluxx/task-<id>`, now usually `<git-author-slug>/<title-slug>`).
    * When omitted on legacy rows, treat as the project default (`RepoConfig.baseBranch` / detected default).
    */
   sourceBranch?: string;
@@ -396,9 +396,9 @@ export interface Task {
   /**
    * Flux task work branch persisted after the first successful worktree creation
    * (`<author-slug>/<title-slug>` with optional collision suffix). Omitted on older
-   * tasks: treat as the legacy `flux/task-<id>` pattern from `src/main/fluxTaskBranch.ts`.
+   * tasks: treat as the legacy `fluxx/task-<id>` pattern from `src/main/fluxxTaskBranch.ts`.
    */
-  fluxWorkBranch?: string;
+  fluxxWorkBranch?: string;
   /** Linked GitHub PR metadata (optional). */
   githubPr?: TaskGithubPr;
   /**
@@ -496,13 +496,13 @@ export type TaskAgentSessionEndedReason =
 
 /** One durable row per logical Flux task session (survives app restart). */
 export interface TaskAgentSessionRecord {
-  fluxSessionId: string;
+  fluxxSessionId: string;
   taskId: string;
   projectId: string;
   repoId?: string;
   agent: Agent;
   worktreePath: string;
-  fluxWorkBranch: string;
+  fluxxWorkBranch: string;
   sourceBranchShort?: string;
   startedAt: string;
   endedAt?: string;
@@ -517,7 +517,7 @@ export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manag
 /** Payload for `workspace:resolveTaskWorktree` — bare string is legacy (`taskId` only). */
 export type ResolveTaskWorktreeIpcPayload =
   | string
-  | { taskId: string; repoId?: string | null; fluxWorkBranch?: string | null };
+  | { taskId: string; repoId?: string | null; fluxxWorkBranch?: string | null };
 
 /**
  * Structured failure when no on-disk/session path exists — distinguishes missing clone

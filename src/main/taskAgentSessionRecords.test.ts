@@ -7,24 +7,24 @@ describe('TaskAgentSessionRecordStore', () => {
     const store = new TaskAgentSessionRecordStore({ getProjectDir: () => dir });
     store._testImportRecords([
       {
-        fluxSessionId: 's1',
+        fluxxSessionId: 's1',
         taskId: 't1',
         projectId: 'p1',
         agent: 'cursor',
         worktreePath: '/wt',
-        fluxWorkBranch: 'flux/task',
+        fluxxWorkBranch: 'fluxx/task',
         startedAt: '2020-01-01T00:00:00.000Z',
         endedAt: '2020-01-01T01:00:00.000Z',
         endedReason: 'agent-exit-ok',
         agentConversationId: 'old-id',
       },
       {
-        fluxSessionId: 's2',
+        fluxxSessionId: 's2',
         taskId: 't1',
         projectId: 'p1',
         agent: 'cursor',
         worktreePath: '/wt',
-        fluxWorkBranch: 'flux/task',
+        fluxxWorkBranch: 'fluxx/task',
         startedAt: '2020-01-02T00:00:00.000Z',
         endedAt: '2020-01-02T01:00:00.000Z',
         endedReason: 'app-quit',
@@ -38,18 +38,18 @@ describe('TaskAgentSessionRecordStore', () => {
     const store = new TaskAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
       {
-        fluxSessionId: 'sid',
+        fluxxSessionId: 'sid',
         taskId: 't1',
         projectId: 'p1',
         agent: 'cursor',
         worktreePath: '/wt',
-        fluxWorkBranch: 'b',
+        fluxxWorkBranch: 'b',
         startedAt: '2020-01-01T00:00:00.000Z',
         endedAt: '2020-01-01T01:00:00.000Z',
         endedReason: 'agent-exit-ok',
       },
     ]);
-    await store.markWorkspaceDeletedForFluxSession('sid');
+    await store.markWorkspaceDeletedForFluxxSession('sid');
     await expect(store.getColdResumeSessionView('t1', 'p1', async () => true)).resolves.toBeNull();
   });
 });
