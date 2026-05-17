@@ -1,6 +1,6 @@
 import type { TaskStatus } from '../types';
 
-/** Task column values accepted by `flux__list_tasks` `excludeStatuses`. */
+/** Task column values accepted by `fluxx__list_tasks` `excludeStatuses`. */
 export const FLUX_TASK_STATUS_VALUES = [
   'backlog',
   'in-progress',

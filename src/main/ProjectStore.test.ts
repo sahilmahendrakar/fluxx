@@ -10,7 +10,7 @@ import {
 import { planningAssistantMarkdown, PLANNING_ASSISTANT_TEMPLATE_VERSION, wrapPlanningInstructionsManagedBlock } from './planningAssistantInstructions';
 import { stripFluxPlanningTemplateVersionComment } from '../planningDocs/cloudPlanningDocsMigration';
 import {
-  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
+  FLUXX_PLANNING_INSTRUCTIONS_BEGIN,
   PLANNING_INSTRUCTIONS_STATE_BASENAME,
 } from '../planningDocs/planningInstructionMarkers';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
@@ -567,7 +567,7 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     });
     expect((await fs.stat(path.join(dir, 'docs'))).isDirectory()).toBe(true);
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('fluxx__get_project_info');
     expect(claude).toContain('repos[]');
     expect(claude).toContain('repoId');
   });
@@ -584,7 +584,7 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
       multiRepoGuide: false,
     });
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('fluxx__get_project_info');
     expect(claude).not.toContain('repos[]');
     expect(claude).not.toContain('repoId');
   });
@@ -592,8 +592,8 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
   it('wraps new seeds with Flux markers and persists instruction state', async () => {
     await ensurePlanningAssistantMarkdownFiles(dir, 'N', '/tmp/root', { multiRepoGuide: true });
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
-    expect(claude).toContain('<!-- flux-planning-template');
+    expect(claude).toContain(FLUXX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(claude).toContain('<!-- fluxx-planning-template');
     const st = JSON.parse(
       await fs.readFile(path.join(dir, PLANNING_INSTRUCTIONS_STATE_BASENAME), 'utf8'),
     ) as { schemaVersion: number; files: Record<string, unknown> };
@@ -618,8 +618,8 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await fs.writeFile(path.join(dir, 'AGENTS.md'), legacy, 'utf8');
     await ensurePlanningAssistantMarkdownFiles(dir, 'Legacy', '/other/root', { multiRepoGuide: true });
     const upgraded = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(upgraded).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
-    expect(upgraded).toContain('flux__get_project_info');
+    expect(upgraded).toContain(FLUXX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(upgraded).toContain('fluxx__get_project_info');
   });
 
   it('preserves manual instruction files that are not Flux templates', async () => {
@@ -637,8 +637,8 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await ensurePlanningAssistantMarkdownFiles(dir, 'Up', '/tmp/u', { multiRepoGuide: true });
     const next = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
     expect(next).toContain('# My notes');
-    expect(next).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
-    expect(next).toContain(`flux-planning-template ${PLANNING_ASSISTANT_TEMPLATE_VERSION}`);
+    expect(next).toContain(FLUXX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(next).toContain(`fluxx-planning-template ${PLANNING_ASSISTANT_TEMPLATE_VERSION}`);
   });
 
   it('upgrades only the Flux template file when CLAUDE is manual and AGENTS is legacy', async () => {
@@ -650,6 +650,6 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await ensurePlanningAssistantMarkdownFiles(dir, 'Split', '/tmp/s', { multiRepoGuide: true });
     expect(await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe('manual-only');
     const agents = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
-    expect(agents).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
+    expect(agents).toContain(FLUXX_PLANNING_INSTRUCTIONS_BEGIN);
   });
 });

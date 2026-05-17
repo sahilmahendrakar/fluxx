@@ -10,8 +10,10 @@ import {
   PLANNING_CLOUD_UNSYNCED_PREFIX,
 } from './cloudPlanningDocsMigration';
 import {
-  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
-  FLUX_PLANNING_INSTRUCTIONS_END,
+  FLUX_PLANNING_INSTRUCTIONS_BEGIN_LEGACY,
+  FLUX_PLANNING_INSTRUCTIONS_END_LEGACY,
+  FLUXX_PLANNING_INSTRUCTIONS_BEGIN,
+  FLUXX_PLANNING_INSTRUCTIONS_END,
 } from './planningInstructionMarkers';
 
 describe('classifyPlanningDocsMigrationScenario', () => {
@@ -54,16 +56,22 @@ describe('planningMarkdownEquivalentForSeededInstructions', () => {
     expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', a, b)).toBe(true);
   });
 
-  it('strips flux template version comments before comparing', () => {
+  it('strips flux and fluxx template version comments before comparing', () => {
     const a = '<!-- flux-planning-template 1 -->\n\n# Planning workspace — x\n`/a`';
-    const b = '<!-- flux-planning-template 2 -->\n\n# Planning workspace — y\n`/b`';
+    const b = '<!-- fluxx-planning-template 2 -->\n\n# Planning workspace — y\n`/b`';
     expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', a, b)).toBe(true);
   });
 
-  it('treats marker-wrapped bodies as equivalent to plain managed inner', () => {
+  it('treats Fluxx marker-wrapped bodies as equivalent to plain managed inner', () => {
     const inner = '# Planning workspace — team\n\nSame `/repo/tools`';
-    const wrapped = `${FLUX_PLANNING_INSTRUCTIONS_BEGIN}\n${inner}\n${FLUX_PLANNING_INSTRUCTIONS_END}`;
+    const wrapped = `${FLUXX_PLANNING_INSTRUCTIONS_BEGIN}\n${inner}\n${FLUXX_PLANNING_INSTRUCTIONS_END}`;
     expect(planningMarkdownEquivalentForSeededInstructions('CLAUDE.md', wrapped, inner)).toBe(true);
+    expect(extractPlanningInstructionManagedBodyForEquivalence(wrapped)).toBe(inner);
+  });
+
+  it('still parses legacy Flux marker blocks for equivalence', () => {
+    const inner = '# Planning workspace — team\n\nSame `/repo/tools`';
+    const wrapped = `${FLUX_PLANNING_INSTRUCTIONS_BEGIN_LEGACY}\n${inner}\n${FLUX_PLANNING_INSTRUCTIONS_END_LEGACY}`;
     expect(extractPlanningInstructionManagedBodyForEquivalence(wrapped)).toBe(inner);
   });
 });
