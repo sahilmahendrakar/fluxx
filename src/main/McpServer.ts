@@ -121,7 +121,7 @@ export class McpServer {
 
   private createSdkServer(): BaseMcpServer {
     const server = new BaseMcpServer(
-      { name: 'flux', version: '0.1.1' },
+      { name: 'fluxx', version: '0.1.1' },
       { capabilities: { tools: {} } },
     );
     this.registerTools(server);
@@ -305,9 +305,27 @@ export class McpServer {
     return out;
   }
 
+  /**
+   * Register a canonical `fluxx__*` tool and a one-release `flux__*` alias (same handler).
+   */
+  private registerFluxxTool(
+    server: BaseMcpServer,
+    name: `fluxx__${string}`,
+    description: string,
+    schema: Parameters<BaseMcpServer['tool']>[2],
+    handler: Parameters<BaseMcpServer['tool']>[3],
+  ): void {
+    server.tool(name, description, schema, handler);
+    const legacyName = name.replace(/^fluxx__/, 'flux__');
+    if (legacyName !== name) {
+      server.tool(legacyName, description, schema, handler);
+    }
+  }
+
   private registerTools(server: BaseMcpServer): void {
-    server.tool(
-      'flux__list_tasks',
+    this.registerFluxxTool(
+      server,
+      'fluxx__list_tasks',
       'List tasks on the Fluxx board for the current project. By default returns every task. Optional excludeStatuses removes tasks in those columns (values: backlog, in-progress, needs-input, done)—e.g. pass ["done"] to omit completed work and shrink the payload. Filtering runs in the desktop app after tasks load so local and cloud projects behave the same.',
       {
         excludeStatuses: z
@@ -341,8 +359,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__create_task',
+    this.registerFluxxTool(
+      server,
+      'fluxx__create_task',
       'Create a new task on the Fluxx board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in fluxx__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository. For implementation tasks carved out of a larger plan, pass attachedPlanningDocs with { relativePath } entries pointing at existing markdown in the planning docs tree (e.g. docs/feature-plan.md or notes/plan.md under the planning workspace); each path must exist on disk or the tool returns an error. Keep the task description focused on the specific slice of work—the attached doc carries the broader context.',
       {
         title: z.string().describe('Task title'),
@@ -533,8 +552,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__update_task',
+    this.registerFluxxTool(
+      server,
+      'fluxx__update_task',
       'Update an existing task on the Fluxx board. When multi-repo2 is enabled, repoId may be changed only while the task has no linked PR and no active Fluxx workspace/session (same rules as the app UI); otherwise the update fails with an error. Optional attachedPlanningDocs replaces the full attachment list; pass null or [] to clear. Non-empty lists are validated and each file must exist in the active planning docs tree (e.g. docs/plan.md).',
       {
         id: z.string().describe('Task id'),
@@ -754,8 +774,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__start_task',
+    this.registerFluxxTool(
+      server,
+      'fluxx__start_task',
       'Move a task to In progress on the Fluxx board and start its agent session',
       {
         id: z.string().describe('Task id from fluxx__list_tasks'),
@@ -823,8 +844,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__delete_task',
+    this.registerFluxxTool(
+      server,
+      'fluxx__delete_task',
       'Permanently remove a task from the Fluxx board for the current project. Requires confirm=true after the user explicitly asked to delete this task.',
       {
         id: z.string().describe('Task id from fluxx__list_tasks'),
@@ -863,8 +885,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__list_members',
+    this.registerFluxxTool(
+      server,
+      'fluxx__list_members',
       'List members of the current cloud project (uid, email, displayName, role owner|member, optional photoURL). Sorted with owners first, then by display name. For local projects returns members: [] with a note; use emails for assigneeEmail when creating or updating tasks.',
       {},
       async () => {
@@ -891,8 +914,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__get_project_info',
+    this.registerFluxxTool(
+      server,
+      'fluxx__get_project_info',
       'Returns the Fluxx project name, task counts per column, and git default branch for the primary repository when discovery succeeds. When the multi-repo2 feature is enabled, also returns repos (each with id, label, isPrimary, configuredDefaultBranch, optional defaultBranchShort, rootPath, pathStatus or binding) and primaryRepoId; top-level rootPath is always the primary clone path for backwards compatibility.',
       {},
       async () => {
@@ -975,8 +999,9 @@ export class McpServer {
       },
     );
 
-    server.tool(
-      'flux__list_repo_branches',
+    this.registerFluxxTool(
+      server,
+      'fluxx__list_repo_branches',
       'List local and origin remote branch short names, the configured default branch, and optionally classify one branch name. When multi-repo2 is enabled, pass repoId (from fluxx__get_project_info.repos[].id) to inspect a non-primary repository; omit repoId for the primary repo.',
       {
         repoId: z
