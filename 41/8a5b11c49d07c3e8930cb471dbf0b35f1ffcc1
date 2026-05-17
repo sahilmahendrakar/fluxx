@@ -1,0 +1,35 @@
+src/boardViewPrefs.ts
+  s_199f7a80bbfe0b::t_d607fc5d83a3cf 1-61
+src/boardViewPrefs.test.ts
+  s_199f7a80bbfe0b::t_72c3c7bea1c219 2-8,11,26-38
+  s_199f7a80bbfe0b::t_a455b69ea1fa4c 1,9-10,12-25
+src/components/Board.tsx
+  s_199f7a80bbfe0b::t_2994159a05ab98 86
+  s_199f7a80bbfe0b::t_2749f26fa19ea3 214
+  s_199f7a80bbfe0b::t_6b16539b8293f7 35
+  s_199f7a80bbfe0b::t_0ae1f993a94766 199-202
+  s_199f7a80bbfe0b::t_9bdf1ed4b4680c 115-117,122-127
+  s_199f7a80bbfe0b::t_14b0947bcd0222 25-30
+src/components/BoardViewToggle.tsx
+  s_199f7a80bbfe0b::t_8af51d003ab9d3 1-15,17-41,43-44
+  s_199f7a80bbfe0b::t_97d47a7def33ae 16
+  s_199f7a80bbfe0b::t_a40a788cc42dbc 42
+src/App.tsx
+  s_199f7a80bbfe0b::t_5e2a40c15b76fd 3224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "418a5b11c49d07c3e8930cb471dbf0b35f1ffcc1",
+  "prompts": {},
+  "sessions": {
+    "s_199f7a80bbfe0b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "362a5106-0485-4e21-82e8-8096b84ff209",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
