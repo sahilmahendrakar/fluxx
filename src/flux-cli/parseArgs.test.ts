@@ -82,6 +82,59 @@ describe('parseFluxCliArgs', () => {
     }
   });
 
+  it('parses task create and update attach-doc flags', () => {
+    const create = parseFluxCliArgs([
+      'tasks',
+      'create',
+      '--title',
+      'Ship',
+      '--attach-doc',
+      'docs/plan.md',
+      '--attach-docs',
+      'notes/extra.md',
+    ]);
+    expect(create.ok).toBe(true);
+    if (create.ok && create.command.kind === 'tasks' && create.command.action === 'create') {
+      expect(create.command.payload.attachedPlanningDocs).toEqual([
+        { relativePath: 'docs/plan.md' },
+        { relativePath: 'notes/extra.md' },
+      ]);
+    }
+
+    const update = parseFluxCliArgs([
+      'tasks',
+      'update',
+      '--id',
+      't1',
+      '--attach-planning-doc',
+      'docs/plan.md',
+    ]);
+    expect(update.ok).toBe(true);
+    if (update.ok && update.command.kind === 'tasks' && update.command.action === 'update') {
+      expect(update.command.payload.attachedPlanningDocs).toEqual([{ relativePath: 'docs/plan.md' }]);
+    }
+
+    const cleared = parseFluxCliArgs(['tasks', 'update', '--id', 't1', '--clear-attached-docs']);
+    expect(cleared.ok).toBe(true);
+    if (cleared.ok && cleared.command.kind === 'tasks' && cleared.command.action === 'update') {
+      expect(cleared.command.payload.attachedPlanningDocs).toBeNull();
+    }
+  });
+
+  it('rejects ambiguous attach-doc and clear-attached-docs', () => {
+    expect(
+      parseFluxCliArgs([
+        'tasks',
+        'update',
+        '--id',
+        't1',
+        '--attach-doc',
+        'docs/a.md',
+        '--clear-attach-docs',
+      ]).ok,
+    ).toBe(false);
+  });
+
   it('rejects ambiguous label and dependency clears', () => {
     expect(
       parseFluxCliArgs(['tasks', 'update', '--id', 't1', '--label', 'x', '--clear-labels']).ok,

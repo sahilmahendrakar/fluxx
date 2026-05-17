@@ -14,6 +14,7 @@ describe('flux CLI --help', () => {
     expect(out).toContain('--depends-on-task-id');
     expect(out).toContain('--label');
     expect(out).toContain('--source-branch');
+    expect(out).toContain('--attach-doc');
     expect(out).not.toContain('requires --title');
   });
 
@@ -24,5 +25,7 @@ describe('flux CLI --help', () => {
     const out = write.mock.calls.map((c) => String(c[0])).join('');
     expect(out).toContain('--depends-on-task-id');
     expect(out).toContain('--clear-dependencies');
+    expect(out).toContain('--attach-doc');
+    expect(out).toContain('--clear-attached-docs');
   });
 });

@@ -13,6 +13,8 @@ Optional:
   --create-source-branch-if-missing=true|false
   --repo-id <id>                 Multi-repo projects only (alias: --repo)
   --assignee-email <email>       Cloud projects; resolve uid via fluxx members list
+  --attach-doc <relativePath>    Repeat; planning markdown path (e.g. docs/plan.md)
+                                 (aliases: --attach-docs, --attach-planning-doc)
   --agent-model <model>
   --agent-yolo=true|false
   --json                         JSON on stdout`;
@@ -31,6 +33,9 @@ Optional:
   --clear-labels                 Remove all labels
   --depends-on-task-id <taskId>  Replaces all dependencies when any dependency flag is passed
   --clear-dependencies           Remove all dependencies (aliases: --clear-blocked-by)
+  --attach-doc <relativePath>    Replaces all attachments when any --attach-doc is passed
+                                 (aliases: --attach-docs, --attach-planning-doc)
+  --clear-attached-docs          Remove all planning doc attachments (alias: --clear-attach-docs)
   --source-branch <git-branch>   Alias: --feature-branch, --branch
   --create-source-branch-if-missing=true|false
   --repo-id <id>                 Only before session/worktree/PR exists

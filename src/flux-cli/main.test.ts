@@ -110,4 +110,62 @@ describe('runFluxCli', () => {
       blockedByTaskIds: ['parent'],
     });
   });
+
+  it('sends attachedPlanningDocs on task create and update', async () => {
+    process.env.FLUX_AUTOMATION_URL = 'http://127.0.0.1:9';
+    process.env.FLUX_AUTOMATION_TOKEN = 'tok';
+    process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY = JSON.stringify({
+      kind: 'local',
+      id: 'p1',
+    });
+    const fetchMock = vi.fn(async () => ({
+      status: 200,
+      json: async () => ({ ok: true, data: { id: 't1' } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const createCode = await runFluxCli([
+      'tasks',
+      'create',
+      '--json',
+      '--title',
+      'Task',
+      '--attach-doc',
+      'docs/plan.md',
+    ]);
+    expect(createCode).toBe(EXIT_OK);
+    const createBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      op: string;
+      payload: Record<string, unknown>;
+    };
+    expect(createBody.op).toBe('tasks.create');
+    expect(createBody.payload).toMatchObject({
+      title: 'Task',
+      attachedPlanningDocs: [{ relativePath: 'docs/plan.md' }],
+    });
+
+    fetchMock.mockClear();
+    const updateCode = await runFluxCli([
+      'tasks',
+      'update',
+      '--json',
+      '--id',
+      't1',
+      '--clear-attached-docs',
+    ]);
+    expect(updateCode).toBe(EXIT_OK);
+    const updateBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      op: string;
+      payload: Record<string, unknown>;
+    };
+    expect(updateBody.op).toBe('tasks.update');
+    expect(updateBody.payload).toMatchObject({
+      id: 't1',
+      attachedPlanningDocs: null,
+    });
+
+    delete process.env.FLUX_AUTOMATION_URL;
+    delete process.env.FLUX_AUTOMATION_TOKEN;
+    delete process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY;
+  });
 });

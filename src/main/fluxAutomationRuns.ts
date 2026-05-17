@@ -10,7 +10,16 @@ import type {
   AutomationBridgeTasksUpdatePayload,
   AutomationBridgeTasksUpdateResult,
 } from '../rendererAutomationBridge';
-import type { ActiveProjectKey, Agent, RepoBranchDiscoveryResponse, RepoConfig, Task, TaskGithubPr } from '../types';
+import type {
+  ActiveProjectKey,
+  Agent,
+  RepoBranchDiscoveryResponse,
+  RepoConfig,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+} from '../types';
+import { parseTaskAttachedPlanningDocsForMcp } from '../taskAttachedPlanningDocs';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
@@ -65,7 +74,10 @@ export type FluxAutomationHost = {
           | 'createSourceBranchIfMissing'
           | 'repoId'
         >
-      > & { githubPr?: TaskGithubPr | null },
+      > & {
+        githubPr?: TaskGithubPr | null;
+        attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      },
     ) => Promise<Task>;
     startTask: (id: string) => Promise<Task>;
     startSessionForExistingTask: (task: Task) => Promise<void>;
@@ -122,7 +134,19 @@ type CreateTaskMcpShape = {
   agentModel?: string;
   agentYolo?: boolean;
   repoId?: string;
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[];
 };
+
+function parseAutomationAttachedPlanningDocs(
+  raw: unknown,
+  mode: 'create' | 'update',
+): { ok: true; docs: TaskAttachedPlanningDoc[] | null | undefined } | { ok: false; error: string } {
+  const parsed = parseTaskAttachedPlanningDocsForMcp(raw, mode);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.message };
+  }
+  return { ok: true, docs: parsed.docs };
+}
 
 export async function automationRunCreateTask(
   h: FluxAutomationHost,
@@ -132,6 +156,11 @@ export async function automationRunCreateTask(
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
   }
+  const attachParsed = parseAutomationAttachedPlanningDocs(input.attachedPlanningDocs, 'create');
+  if (!attachParsed.ok) {
+    return { ok: false, error: attachParsed.error };
+  }
+  const attachedPlanningDocs = attachParsed.docs;
   const agent: Agent | null =
     input.agent === 'none'
       ? null
@@ -176,6 +205,9 @@ export async function automationRunCreateTask(
       ...modelYolo,
       ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
       ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
+        ? { attachedPlanningDocs }
+        : {}),
     });
     if (input.description != null && input.description !== '') {
       task = await h.taskStore.update(task.id, {
@@ -205,6 +237,9 @@ export async function automationRunCreateTask(
         ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
         : {}),
       ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
+      ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
+        ? { attachedPlanningDocs }
+        : {}),
     },
   };
   const result = await h.bridge.request<Task>('tasks.create', active.activeKey, payload);
@@ -227,6 +262,7 @@ type UpdateTaskMcpShape = {
   createSourceBranchIfMissing?: boolean;
   githubPr?: TaskGithubPr | null;
   repoId?: string;
+  attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
 };
 
 export async function automationRunUpdateTask(
@@ -237,6 +273,11 @@ export async function automationRunUpdateTask(
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
   }
+  const attachParsed = parseAutomationAttachedPlanningDocs(input.attachedPlanningDocs, 'update');
+  if (!attachParsed.ok) {
+    return { ok: false, error: attachParsed.error };
+  }
+  const attachedPlanningDocs = attachParsed.docs;
   if (active.kind === 'local') {
     const existing = h.getTaskInCurrentProject(input.id);
     if (!existing) {
@@ -256,7 +297,10 @@ export async function automationRunUpdateTask(
         | 'createSourceBranchIfMissing'
         | 'repoId'
       >
-    > & { githubPr?: TaskGithubPr | null } = {};
+    > & {
+      githubPr?: TaskGithubPr | null;
+      attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    } = {};
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description;
     if (input.status !== undefined) patch.status = input.status;
@@ -279,6 +323,9 @@ export async function automationRunUpdateTask(
     }
     if (input.repoId !== undefined) {
       patch.repoId = input.repoId;
+    }
+    if (attachedPlanningDocs !== undefined) {
+      patch.attachedPlanningDocs = attachedPlanningDocs;
     }
     const updated = await h.taskActions.updateTask(input.id, patch);
     h.notifyTasksChanged();
@@ -309,7 +356,11 @@ export async function automationRunUpdateTask(
       | 'createSourceBranchIfMissing'
       | 'repoId'
     >
-  > & { assigneeId?: string | null; githubPr?: TaskGithubPr | null } = {};
+  > & {
+    assigneeId?: string | null;
+    githubPr?: TaskGithubPr | null;
+    attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  } = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.description !== undefined) patch.description = input.description;
   if (input.status !== undefined) patch.status = input.status;
@@ -336,6 +387,9 @@ export async function automationRunUpdateTask(
     patch.repoId = input.repoId;
   }
   if (assigneeId !== undefined) patch.assigneeId = assigneeId;
+  if (attachedPlanningDocs !== undefined) {
+    patch.attachedPlanningDocs = attachedPlanningDocs;
+  }
   const payload: AutomationBridgeTasksUpdatePayload = { taskId: input.id, patch };
   const result = await h.bridge.request<AutomationBridgeTasksUpdateResult>(
     'tasks.update',

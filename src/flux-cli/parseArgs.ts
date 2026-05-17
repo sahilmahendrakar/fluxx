@@ -179,15 +179,23 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
     '--feature-branch',
     '--branch',
   ]);
+  const { values: attachDocRaw, rest: withoutAttachDoc } = collectRepeatedFlags(withoutSourceBranch, [
+    '--attach-doc',
+    '--attach-docs',
+    '--attach-planning-doc',
+  ]);
 
-  const payload = parseKeyValuePayload(withoutSourceBranch);
+  const payload = parseKeyValuePayload(withoutAttachDoc);
   const labels = splitListValues(labelsRaw);
   const blockedByTaskIds = splitListValues(blockedByRaw);
+  const attachDocPaths = splitListValues(attachDocRaw);
   const clearLabels = payload.clearLabels === true;
   const clearBlockedBy =
     payload.clearBlockedBy === true ||
     payload.clearBlockedByTaskIds === true ||
     payload.clearDependencies === true;
+  const clearAttachedDocs =
+    payload.clearAttachedDocs === true || payload.clearAttachDocs === true;
 
   if (clearLabels && labels.length > 0) {
     return { ok: false, message: 'Pass either --label/--labels or --clear-labels, not both' };
@@ -198,13 +206,26 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
       message: 'Pass either dependency flags or --clear-dependencies, not both',
     };
   }
+  if (clearAttachedDocs && attachDocPaths.length > 0) {
+    return {
+      ok: false,
+      message: 'Pass either --attach-doc/--attach-docs or --clear-attached-docs, not both',
+    };
+  }
 
   delete payload.clearLabels;
   delete payload.clearBlockedBy;
   delete payload.clearBlockedByTaskIds;
   delete payload.clearDependencies;
+  delete payload.clearAttachedDocs;
+  delete payload.clearAttachDocs;
   if (labels.length > 0 || clearLabels) payload.labels = labels;
   if (blockedByTaskIds.length > 0 || clearBlockedBy) payload.blockedByTaskIds = blockedByTaskIds;
+  if (attachDocPaths.length > 0) {
+    payload.attachedPlanningDocs = attachDocPaths.map((relativePath) => ({ relativePath }));
+  } else if (clearAttachedDocs) {
+    payload.attachedPlanningDocs = null;
+  }
   if (repoId !== undefined) payload.repoId = repoId;
   if (sourceBranch !== undefined) payload.sourceBranch = sourceBranch;
   return { ok: true, payload };

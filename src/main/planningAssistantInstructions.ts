@@ -16,7 +16,7 @@ import {
 export { PLANNING_INSTRUCTIONS_STATE_BASENAME } from '../planningDocs/planningInstructionMarkers';
 
 /** Bumps when `planningAssistantMarkdown` prose meaningfully changes (used with embedded version tag). */
-export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 5;
+export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 6;
 
 export type PlanningInstructionFileName = 'CLAUDE.md' | 'AGENTS.md';
 
@@ -157,12 +157,12 @@ When user intent spans more than one repository and is ambiguous, **ask once** w
   4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.`;
 
   const createTaskLine = multiRepoGuide
-    ? `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--repo-id <repos[].id>\` (omit for primary), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
-    : `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\``;
+    ? `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`), \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--repo-id <repos[].id>\` (omit for primary), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
+    : `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`), \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\``;
 
   const updateTaskLine = multiRepoGuide
-    ? `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id <repos[].id>\` (only while no session/worktree/PR — same as UI), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
-    : `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
+    ? `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id <repos[].id>\` (only while no session/worktree/PR — same as UI), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
+    : `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
 
   const projectInfoLine = `- \`fluxx project info --json\` — project \`name\`, \`rootPath\` (primary clone), ${multiRepoGuide ? '`repos` / `primaryRepoId` when multi-repo is active, ' : ''}\`taskCounts\`, and \`defaultBranchShort\` when git discovery succeeds (see \`branchDiscoveryError\` if not)`;
 
@@ -203,7 +203,7 @@ ${listBranchesLine}
 
 Board relationship: new tasks land in **Backlog**. \`fluxx tasks start\` is the usual way to mark work actively in flight. Use \`fluxx tasks update\` for other status changes (e.g. **Needs input**, **Review**, **Done**) or edits to title/description/agent.
 
-**Planning doc attachments:** When you turn a broad plan into concrete board tasks, add \`attachedPlanningDocs: [{ "relativePath": "docs/your-plan.md" }]\` (or another existing path under the planning docs tree, e.g. \`notes/plan.md\`) so implementers see the full write-up in Fluxx. Each task \`description\` should still spell out only that task's slice of work (acceptance, files, edge cases)—do not replace descriptions with a pointer to the plan alone.
+**Planning doc attachments:** When you turn a broad plan into concrete board tasks, pass repeated \`--attach-doc <relativePath>\` on \`fluxx tasks create\` (or \`fluxx tasks update\` to replace attachments) so implementers see the full write-up in Fluxx — paths are relative to the planning docs tree, e.g. \`docs/your-plan.md\` or \`notes/plan.md\` (\`.md\` only). Example: \`fluxx tasks create --json --title "..." --attach-doc docs/your-plan.md ...\`. Each task \`description\` should still spell out only that task's slice of work (acceptance, files, edge cases)—do not replace descriptions with a pointer to the plan alone.
 
 ## Multi-task features (required)
 
@@ -217,7 +217,7 @@ When you split one user-facing feature or initiative into **two or more** board 
 
 **Task branches (all creates):** \`--source-branch\` / \`--feature-branch\` set the git branch for agent sessions. \`--create-source-branch-if-missing=true\` creates the branch on first session start when it does not exist yet.
 
-**Task labels and dependencies:** Use repeated flags, not JSON: \`--label frontend --label enhancement\`, \`--depends-on-task-id <taskId>\` (repeat per blocker), \`--clear-labels\`, \`--clear-dependencies\` on update. Reference only tasks in the current project.
+**Task labels, dependencies, and planning docs:** Use repeated flags, not JSON: \`--label frontend --label enhancement\`, \`--depends-on-task-id <taskId>\` (repeat per blocker), \`--attach-doc docs/plan.md\` (repeat per doc), \`--clear-labels\`, \`--clear-dependencies\`, \`--clear-attached-docs\` on update. Reference only tasks in the current project.
 
 **Team (cloud) projects:** CLI commands route through the running Fluxx app. It must be **open and signed in**; if you see auth or “open Fluxx” errors, ask the user to bring Fluxx to the foreground and try again.
 

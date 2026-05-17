@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { AutomationBridgeProjectInfoRepoSummary } from '../rendererAutomationBridge';
-import type { RepoConfig, RepoPathStatus, Task, TaskGithubPr } from '../types';
+import type { RepoConfig, RepoPathStatus, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
 import { collectRepoBranchDiscovery } from './repoGit';
 import type { AppStateStore } from './AppStateStore';
 import { automationBridgeFailureToInvoke } from './automationBridgeFailureMessage';
@@ -46,7 +46,10 @@ export type FluxAutomationHostDeps = {
           | 'createSourceBranchIfMissing'
           | 'repoId'
         >
-      > & { githubPr?: TaskGithubPr | null },
+      > & {
+        githubPr?: TaskGithubPr | null;
+        attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      },
     ) => Promise<Task>;
     startTask: (id: string) => Promise<Task>;
     startSessionForExistingTask: (task: Task) => Promise<void>;
