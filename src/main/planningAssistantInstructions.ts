@@ -92,6 +92,15 @@ function assembleInstructionFileWithMarkers(
   return mid;
 }
 
+function isGeneratedPlanningAssistantMarkdownWithoutMarkers(body: string): boolean {
+  return (
+    body.includes('# Planning workspace —') &&
+    (body.includes('## Flux CLI') ||
+      (body.includes('You have access to the following Flux tools for task management') &&
+        body.includes('flux__get_project_info')))
+  );
+}
+
 async function readUtf8IfExists(filePath: string): Promise<string | null> {
   try {
     return await fs.readFile(filePath, 'utf8');
@@ -264,6 +273,9 @@ function computeNextInstructionFile(
   }
 
   const full = parsed.fullBody;
+  if (isGeneratedPlanningAssistantMarkdownWithoutMarkers(full)) {
+    return { nextBody: wrapPlanningInstructionsManagedBlock(managedInner), wroteManaged: true };
+  }
   if (planningMarkdownEquivalentForSeededInstructions(relativePath, full, managedInner)) {
     return { nextBody: wrapPlanningInstructionsManagedBlock(managedInner), wroteManaged: true };
   }
