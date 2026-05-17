@@ -1,0 +1,29 @@
+docs/github-release-notes-template.md
+  s_b08efa5ecb7a73::t_95164edc48f664 1-15
+src/main/AppUpdater.ts
+  s_b08efa5ecb7a73::t_95164edc48f664 6
+forge.config.ts
+  s_b08efa5ecb7a73::t_95164edc48f664 22
+.github/workflows/release.yml
+  s_b08efa5ecb7a73::t_95164edc48f664 105-116
+package.json
+  s_b08efa5ecb7a73::t_95164edc48f664 22
+docs/macos-github-releases.md
+  s_b08efa5ecb7a73::t_95164edc48f664 3-15,41-43,63,76,80-81,88,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "004219cf741f6a3fe0695a6dd92b7f6bd9721140",
+  "prompts": {},
+  "sessions": {
+    "s_b08efa5ecb7a73": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26ac005a-1545-4555-abb1-e9887d8b313c",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
