@@ -1,0 +1,19 @@
+src/renderer/tasks/orderKey.ts
+  s_2f2a4926778dec::t_34787bfe67d17e 51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "49385a313ce7dc12980e668d3f578a87fc3a8425",
+  "prompts": {},
+  "sessions": {
+    "s_2f2a4926778dec": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "990c69f5-a209-43d9-886a-aad7ecb35987",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
