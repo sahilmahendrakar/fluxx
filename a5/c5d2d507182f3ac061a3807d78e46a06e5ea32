@@ -1,0 +1,50 @@
+src/flux-cli/help.ts
+  s_8d7e2e91bbf256::t_58cbdc2f32968d 16-17
+  s_8d7e2e91bbf256::t_08577b58a5f4f7 36-38
+src/flux-cli/help.test.ts
+  s_8d7e2e91bbf256::t_f2df9069dd8345 28-29
+  s_8d7e2e91bbf256::t_7bff72e57382d3 17
+src/flux-cli/parseArgs.test.ts
+  s_8d7e2e91bbf256::t_a6ffdb8a126484 85-137
+src/flux-cli/main.test.ts
+  s_8d7e2e91bbf256::t_f07638691c2f8f 113-170
+src/main/fluxAutomationRuns.ts
+  s_8d7e2e91bbf256::t_a24f7d35edcf87 77-80
+  s_8d7e2e91bbf256::t_fea17f0a11e5b9 137,140-149
+  s_8d7e2e91bbf256::t_4a6bc46414f177 159-163
+  s_8d7e2e91bbf256::t_496f6602110c3c 208-210
+  s_8d7e2e91bbf256::t_f66e04cc4ff5a1 265
+  s_8d7e2e91bbf256::t_b7259a0ff6a180 359-363
+  s_8d7e2e91bbf256::t_ee36c17308393a 300-303
+  s_8d7e2e91bbf256::t_ddc2a611f05502 240-242
+  s_8d7e2e91bbf256::t_5e12fefe69625f 390-392
+  s_8d7e2e91bbf256::t_f4cff090804e3e 13-22
+  s_8d7e2e91bbf256::t_f48ea0e88c07af 276-280
+  s_8d7e2e91bbf256::t_a02dcd2d9b0db8 327-329
+src/main/planningAssistantInstructions.ts
+  s_8d7e2e91bbf256::t_7db35f272e2e2a 220
+  s_8d7e2e91bbf256::t_aaac59544516c1 19
+  s_8d7e2e91bbf256::t_0ef28225f6cc27 160-161,164-165
+  s_8d7e2e91bbf256::t_a19351fd5672f1 206
+src/main/fluxAutomationHost.ts
+  s_8d7e2e91bbf256::t_6a0bc5e5e4d7c7 6
+  s_8d7e2e91bbf256::t_5189f4192d1ef7 49-52
+src/flux-cli/parseArgs.ts
+  s_8d7e2e91bbf256::t_fd2d60a4ab2cdf 182-186,188,191,197-198,209-214,220-221,224-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "a5c5d2d507182f3ac061a3807d78e46a06e5ea32",
+  "prompts": {},
+  "sessions": {
+    "s_8d7e2e91bbf256": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c1aae936-2d75-4a97-9a04-447d3d820834",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
