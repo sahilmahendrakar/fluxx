@@ -1,0 +1,19 @@
+index.html
+  s_afe8655ad1a605::t_7a49890057bf36 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c979424f7b28ab5fb44be362ee5cf32a2cd9bcf9",
+  "prompts": {},
+  "sessions": {
+    "s_afe8655ad1a605": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "845a323a-719f-4708-92a1-b778777f663c",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
