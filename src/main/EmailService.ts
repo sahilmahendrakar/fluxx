@@ -10,7 +10,7 @@ const RESEND_API = 'https://api.resend.com/emails';
 
 const API_KEY = process.env.RESEND_API_KEY ?? '';
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN ?? '';
-const FROM_NAME = process.env.RESEND_FROM_NAME ?? 'Flux';
+const FROM_NAME = process.env.RESEND_FROM_NAME ?? 'Fluxx';
 const APP_URL = process.env.FLUX_APP_URL || 'http://localhost:5173';
 
 export interface InviteEmailInput {
@@ -39,7 +39,7 @@ export class EmailService {
         ? `${input.inviterName} (${input.inviterEmail})`
         : input.inviterName ?? input.inviterEmail ?? 'A teammate';
 
-    const subject = `${inviter} invited you to "${input.projectName}" on Flux`;
+    const subject = `${inviter} invited you to "${input.projectName}" on Fluxx`;
     const html = renderInviteHtml({
       projectName: input.projectName,
       inviter,
@@ -93,15 +93,15 @@ function renderInviteHtml(args: {
   const appUrl = escapeHtml(args.appUrl);
   return `<!doctype html><html><body style="background:#09090b;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,system-ui,sans-serif;margin:0;padding:32px">
 <div style="max-width:480px;margin:0 auto;padding:28px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02)">
-  <h1 style="margin:0 0 8px;font-size:18px;font-weight:600">You've been invited to Flux</h1>
+  <h1 style="margin:0 0 8px;font-size:18px;font-weight:600">You've been invited to Fluxx</h1>
   <p style="margin:0 0 16px;color:#a1a1aa;font-size:14px;line-height:1.6">
     ${inviter} invited you to the project <strong style="color:#fafafa">${project}</strong>.
   </p>
   <p style="margin:0 0 20px;color:#a1a1aa;font-size:14px;line-height:1.6">
-    Open Flux and sign in with this email address. The invite will appear on your homepage — click <em>Accept</em> to join the project.
+    Open Fluxx and sign in with this email address. The invite will appear on your homepage — click <em>Accept</em> to join the project.
   </p>
   <p style="margin:0 0 20px">
-    <a href="${appUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#ffffff;color:#09090b;font-size:13px;font-weight:600;text-decoration:none">Open Flux</a>
+    <a href="${appUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#ffffff;color:#09090b;font-size:13px;font-weight:600;text-decoration:none">Open Fluxx</a>
   </p>
   <p style="margin:0 0 16px;color:#71717a;font-size:12px;line-height:1.5">
     Or paste this into your browser: <a href="${appUrl}" style="color:#a1a1aa">${appUrl}</a>
@@ -118,9 +118,9 @@ function renderInviteText(args: {
   inviter: string;
   appUrl: string;
 }): string {
-  return `${args.inviter} invited you to the Flux project "${args.projectName}".
+  return `${args.inviter} invited you to the Fluxx project "${args.projectName}".
 
-Open Flux: ${args.appUrl}
+Open Fluxx: ${args.appUrl}
 
 Sign in with this email address. The invite will appear on your homepage — click Accept to join the project.
 

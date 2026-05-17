@@ -103,7 +103,7 @@ async function handleRequest(
       id: req.id,
       ok: false,
       code: 'AUTH_NOT_READY',
-      message: 'Sign in to Flux to use cloud project tools',
+      message: 'Sign in to Fluxx to use cloud project tools',
     };
   }
   if (!provider) {

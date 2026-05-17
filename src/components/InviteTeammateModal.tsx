@@ -57,7 +57,7 @@ export function InviteTeammateModal({
           Invite to {projectName}
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
-          They'll see the invite on their Flux homepage after signing in.
+          They'll see the invite on their Fluxx homepage after signing in.
         </p>
         <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
           Email

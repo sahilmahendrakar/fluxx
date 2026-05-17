@@ -442,7 +442,7 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: 'Flux',
+    title: 'Fluxx',
     backgroundColor: WINDOW_BACKGROUND,
     ...(windowIcon ? { icon: windowIcon } : {}),
     ...(process.platform === 'darwin'
@@ -747,7 +747,7 @@ app.whenReady().then(async () => {
       if (msg.includes('UNKNOWN_METHOD')) {
         console.warn(
           '[main] terminal backend does not support getSessionSilenceStates — running sessions may not ' +
-            'auto-transition to needs-input; upgrade Flux',
+            'auto-transition to needs-input; upgrade Fluxx',
         );
       } else {
         console.warn('[main] catchup getSessionSilenceStates failed', err);
@@ -2078,7 +2078,7 @@ app.whenReady().then(async () => {
           });
           return {
             ok: false,
-            message: `Cannot change this task's source branch while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+            message: `Cannot change this task's source branch while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           };
         }
         const candidate = nextPersistedSourceBranchShortAfterPatch(previousTask, patch);
@@ -2158,7 +2158,7 @@ app.whenReady().then(async () => {
           });
           return {
             ok: false,
-            message: `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+            message: `Cannot change this task's repository while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           };
         }
         return { ok: true };
@@ -2427,7 +2427,7 @@ app.whenReady().then(async () => {
           ok: false,
           code: 'PR_CREATE_FAILED',
           message:
-            'Could not write PR instructions for the agent. Ensure a Flux project directory is available.',
+            'Could not write PR instructions for the agent. Ensure a Fluxx project directory is available.',
         };
       }
       const repoCfg = resolveRepoForBranchDiscovery(repos, mergedTaskFields.repoId);
@@ -2683,7 +2683,7 @@ app.whenReady().then(async () => {
     if (!projectDir?.trim()) {
       return {
         code: 'no-project-dir',
-        message: 'No Flux project directory is open.',
+        message: 'No Fluxx project directory is open.',
       };
     }
     const rid = repoId?.trim();
@@ -3411,7 +3411,7 @@ app.whenReady().then(async () => {
         if (locked) {
           const fluxBranch = expectedFluxWorkBranchForTask(previous);
           throw new Error(
-            `Cannot change this task's source branch while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+            `Cannot change this task's source branch while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           );
         }
       }
@@ -3450,7 +3450,7 @@ app.whenReady().then(async () => {
         if (locked) {
           const fluxBranch = expectedFluxWorkBranchForTask(previous);
           throw new Error(
-            `Cannot change this task's repository while a Flux workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
+            `Cannot change this task's repository while a Fluxx workspace exists (session, worktree folder, or local branch '${fluxBranch}'). Remove the workspace or stop the session first.`,
           );
         }
       }
@@ -4203,11 +4203,11 @@ app.on('before-quit', (e) => {
               buttons: ['Quit', 'Cancel'],
               defaultId: 1,
               cancelId: 1,
-              title: 'Quit Flux?',
-              message: 'Quit Flux and stop local agents?',
+              title: 'Quit Fluxx?',
+              message: 'Quit Fluxx and stop local agents?',
               detail:
                 'Running task agents, terminal panes, and planning sessions in this app will end. ' +
-                'Closing only the Flux window keeps them running until you fully quit the app (for example from the Dock or File menu).',
+                'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).',
             };
             const { response } =
               focused && !focused.isDestroyed()

@@ -1073,12 +1073,12 @@ function ProjectConfigPane({
               title="Auto-accept agent trust prompts"
               description={
                 <>
-                  When on, Flux may answer the one-time trust dialog for Claude Code and Cursor only
+                  When on, Fluxx may answer the one-time trust dialog for Claude Code and Cursor only
                   while the PTY working directory stays under this project’s{' '}
                   <code className="text-zinc-400">worktrees/</code>,{' '}
                   <code className="text-zinc-400">planning/</code>, or your{' '}
                   <code className="text-zinc-400">~/.flux/worktrees</code> tree. Agents you launch
-                  manually outside Flux are never affected.
+                  manually outside Fluxx are never affected.
                 </>
               }
               checked={trustAutorespondEnabled}
@@ -1134,9 +1134,9 @@ function ProjectConfigPane({
               title="Move to Review when pull request is open"
               description={
                 <>
-                  After Flux refreshes PR metadata from GitHub, if the linked PR is open and the task
+                  After Fluxx refreshes PR metadata from GitHub, if the linked PR is open and the task
                   is in Backlog or In progress, move it to Review. When GitHub reports a head
-                  branch, it must match this task&apos;s Flux work branch. Merged or closed PRs are
+                  branch, it must match this task&apos;s Fluxx work branch. Merged or closed PRs are
                   ignored. For cloud projects this preference is stored per machine.
                 </>
               }
@@ -1385,9 +1385,9 @@ function ProjectConfigPane({
             <div>
               <h2 className="text-[13px] font-medium text-zinc-200">MCP servers</h2>
               <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
-                Add provider configs for Flux-launched Claude and Cursor sessions. Paste a full
+                Add provider configs for Fluxx-launched Claude and Cursor sessions. Paste a full
                 MCP config or a single server entry; <code className="text-zinc-400">flux</code>{' '}
-                is reserved and managed by Flux.
+                is reserved and managed by Fluxx.
               </p>
             </div>
             <button
@@ -1481,7 +1481,7 @@ function ProjectConfigPane({
             </div>
           ) : null}
           <p className="mt-2 text-[11px] leading-snug text-zinc-600">
-            Stored only on this machine for the active Flux project. Environment variables in MCP
+            Stored only on this machine for the active Fluxx project. Environment variables in MCP
             server configs are not synced to teammates.
           </p>
           <div className="mt-1.5 min-h-4 text-[11px]">
@@ -1507,7 +1507,7 @@ function ProjectConfigPane({
                 <p className="mt-1 text-[12px] leading-snug text-zinc-600">
                   Shared metadata comes from the cloud project. Bind each repo to a local clone on
                   this machine so agents and git operations can run. Paths are stored only in your
-                  local Flux data, not synced to teammates.
+                  local Fluxx data, not synced to teammates.
                 </p>
               ) : multiRepoLocalManagementEnabled ? (
                 <p className="mt-1 text-[12px] leading-snug text-zinc-600">
@@ -2252,13 +2252,13 @@ function RepoFields({
               </p>
             ) : repoState?.pathStatus === 'not_git' ? (
               <p className="mt-2 text-[11px] text-amber-300">
-                This folder exists, but Flux cannot find a .git directory in it.
+                This folder exists, but Fluxx cannot find a .git directory in it.
               </p>
             ) : null}
           </div>
           <FieldEditor
             label="Display name"
-            description="Optional label shown for this repository in Flux."
+            description="Optional label shown for this repository in Fluxx."
             repoId={repo.id}
             rootPath={repo.rootPath}
             useRepoId={multiRepoManagementEnabled}

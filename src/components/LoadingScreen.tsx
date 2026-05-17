@@ -9,7 +9,7 @@ export function LoadingScreen() {
           className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-200"
           aria-hidden
         />
-        <div className="text-sm font-medium tracking-tight text-zinc-400">Flux</div>
+        <div className="text-sm font-medium tracking-tight text-zinc-400">Fluxx</div>
       </div>
     </div>
   );

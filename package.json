@@ -1,6 +1,6 @@
 {
-  "name": "flux",
-  "productName": "Flux",
+  "name": "fluxx",
+  "productName": "Fluxx",
   "version": "0.1.1",
   "description": "Task-driven AI agent orchestration for developers",
   "main": ".vite/build/main.js",

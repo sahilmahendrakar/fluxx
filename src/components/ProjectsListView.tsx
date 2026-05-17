@@ -47,7 +47,7 @@ export function ProjectsListView({
   const [cloudLocalCleanupError, setCloudLocalCleanupError] = useState<string | null>(null);
   const [cloudLocalCleanupId, setCloudLocalCleanupId] = useState<string | null>(null);
   const [cloudDeleteCleanupWarning, setCloudDeleteCleanupWarning] = useState<string | null>(null);
-  /** Local project id currently undergoing `Remove from Flux` cleanup. */
+  /** Local project id currently undergoing `Remove from Fluxx` cleanup. */
   const [localRemovalId, setLocalRemovalId] = useState<string | null>(null);
 
   const uid = auth.user?.uid ?? null;
@@ -104,7 +104,7 @@ export function ProjectsListView({
   const handleRemoveLocalFlux = async (id: string, name: string) => {
     if (
       !window.confirm(
-        `Remove "${name}" from Flux?\n\nThis deletes Flux-owned data under ~/.flux for this project (tasks, planning docs, MCP config, and Flux-managed git worktrees), stops any running task or planning sessions for it, and clears saved tabs. Your original repository clone is not deleted.`,
+        `Remove "${name}" from Fluxx?\n\nThis deletes Fluxx-owned data under ~/.flux for this project (tasks, planning docs, MCP config, and Fluxx-managed git worktrees), stops any running task or planning sessions for it, and clears saved tabs. Your original repository clone is not deleted.`,
       )
     ) {
       return;
@@ -127,7 +127,7 @@ export function ProjectsListView({
     } catch (err) {
       console.error('[removeFluxOwnedLocalState local]', err);
       setLocalRemovalError(
-        err instanceof Error ? err.message : 'Could not remove project from Flux.',
+        err instanceof Error ? err.message : 'Could not remove project from Fluxx.',
       );
     } finally {
       setLocalRemovalId(null);
@@ -137,7 +137,7 @@ export function ProjectsListView({
   const handleRemoveCloudLocalData = async (summary: CloudProjectSummary) => {
     if (
       !window.confirm(
-        `Remove local Flux data for "${summary.name}"?\n\nThis machine will forget the local folder binding, delete Flux materialized files under ~/.flux for this team project, stop related sessions, and clear saved tabs. The team project in the cloud is unchanged. Your git clone is not deleted.`,
+        `Remove local Fluxx data for "${summary.name}"?\n\nThis machine will forget the local folder binding, delete Fluxx materialized files under ~/.flux for this team project, stop related sessions, and clear saved tabs. The team project in the cloud is unchanged. Your git clone is not deleted.`,
       )
     ) {
       return;
@@ -237,7 +237,7 @@ export function ProjectsListView({
     if (summary.ownerId !== uid) return;
     if (
       !window.confirm(
-        `Delete "${summary.name}" from the team?\n\nThis removes the Firestore project for everyone. Any teammate who still has a clone can keep working locally, but shared Flux task data in the cloud will be gone.`,
+        `Delete "${summary.name}" from the team?\n\nThis removes the Firestore project for everyone. Any teammate who still has a clone can keep working locally, but shared Fluxx task data in the cloud will be gone.`,
       )
     ) {
       return;
@@ -324,7 +324,7 @@ export function ProjectsListView({
           </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-white">
-              Flux
+              Fluxx
             </h1>
             <p className="text-[13px] text-zinc-500">Projects</p>
           </div>
@@ -488,7 +488,7 @@ export function ProjectsListView({
                         disabled={cloudLocalCleanupId === p.id}
                         onClick={() => void handleRemoveCloudLocalData(p)}
                         className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
-                        title="Remove local Flux data and unbind this machine (does not delete the team project)"
+                        title="Remove local Fluxx data and unbind this machine (does not delete the team project)"
                       >
                         {cloudLocalCleanupId === p.id ? 'Removing…' : 'Local data'}
                       </button>
@@ -585,7 +585,7 @@ export function ProjectsListView({
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[13px] font-medium text-zinc-300">
                         {removing ? (
-                          <LocalRemovalSpinner aria-label="Removing project from Flux" />
+                          <LocalRemovalSpinner aria-label="Removing project from Fluxx" />
                         ) : (
                           p.name.slice(0, 1).toUpperCase()
                         )}
@@ -607,9 +607,9 @@ export function ProjectsListView({
                       disabled={removing}
                       onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
                       className={`rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-300'}`}
-                      title="Remove from Flux (deletes ~/.flux workspace; keeps your git clone)"
-                    >
-                      {removing ? 'Removing…' : 'Remove from Flux'}
+                      title="Remove from Fluxx (deletes ~/.flux workspace; keeps your git clone)"
+                      >
+                      {removing ? 'Removing…' : 'Remove from Fluxx'}
                     </button>
                   </div>
                 </li>

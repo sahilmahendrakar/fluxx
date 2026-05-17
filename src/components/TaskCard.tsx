@@ -290,7 +290,7 @@ export default function TaskCard({
   const branchChipLabel = effectiveTaskSourceBranchShort(task, branchCompareShort);
   const branchChipTitle =
     task.createSourceBranchIfMissing === true
-      ? `${branchChipLabel} — Flux will create this branch when the task starts`
+      ? `${branchChipLabel} — Fluxx will create this branch when the task starts`
       : `Source branch: ${branchChipLabel}`;
   const unblockToggleLockedByOtherAssignee = Boolean(
     cloudUnblockAutostartClientUid &&

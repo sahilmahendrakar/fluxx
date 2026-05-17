@@ -23,7 +23,7 @@ export function useTrustAutorespondNotice(
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setNote(`Flux auto-accepted ${agentLabel(agent)}'s trust prompt.`);
+    setNote(`Fluxx auto-accepted ${agentLabel(agent)}'s trust prompt.`);
     timerRef.current = setTimeout(() => {
       setNote(null);
       timerRef.current = null;

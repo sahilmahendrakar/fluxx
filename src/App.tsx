@@ -129,9 +129,9 @@ function isWorkspaceSessionTabId(tabId: string): boolean {
 }
 
 const TASK_PR_ERROR_HINTS: Partial<Record<TaskPrErrorCode, string>> = {
-  NO_PROJECT: 'Open a project workspace in Flux, then try again.',
+  NO_PROJECT: 'Open a project workspace in Fluxx, then try again.',
   NO_WORKTREE:
-    "Start this task's agent session so Flux has a live worktree, then try opening the PR again.",
+    "Start this task's agent session so Fluxx has a live worktree, then try opening the PR again.",
   NO_AGENT_SESSION:
     'Open the task and start its agent session from the board or task panel, then click the PR icon again.',
   AGENT_SESSION_NOT_RUNNING:
@@ -3443,7 +3443,7 @@ export default function App() {
       {taskDeleteConfirmTask ? (
         <ConfirmDialog
           title="Delete task and workspace?"
-          description={`This removes "${taskDeleteConfirmTask.title}" from the board and tears down its Flux workspace.`}
+          description={`This removes "${taskDeleteConfirmTask.title}" from the board and tears down its Fluxx workspace.`}
           bullets={[
             'Remove the task from the board',
             'End agent sessions tied to this task (running agents stop)',

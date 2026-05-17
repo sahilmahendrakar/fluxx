@@ -278,7 +278,7 @@ export function Sidebar({
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">
       <div className="px-3 pb-3 pt-3.5">
         <div className="flex items-center justify-between">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">Flux</div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">Fluxx</div>
           <button
             type="button"
             onClick={onCollapse}

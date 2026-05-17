@@ -205,11 +205,11 @@ function respondHtml(res: http.ServerResponse, status: number, body: string): vo
 
 function renderClosePage(message: string): string {
   const safe = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Flux</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Fluxx</title>
 <style>body{background:#09090b;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
 .card{max-width:420px;padding:32px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);text-align:center}
 h1{margin:0 0 8px;font-size:18px;font-weight:600}
 p{margin:0;color:#a1a1aa;font-size:14px}</style></head>
-<body><div class="card"><h1>Flux</h1><p>${safe}</p></div>
+<body><div class="card"><h1>Fluxx</h1><p>${safe}</p></div>
 <script>setTimeout(function(){window.close();},500);</script></body></html>`;
 }

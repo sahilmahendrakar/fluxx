@@ -52,7 +52,7 @@ export function describePendingBranchCreation(
 ): string {
   const b = normalizeGitBranchShortName(branchShort);
   const d = normalizeGitBranchShortName(defaultBranchShort);
-  return `Flux will create branch ${b} from ${d} when this task starts.`;
+  return `Fluxx will create branch ${b} from ${d} when this task starts.`;
 }
 
 export default function TaskSourceBranchPicker({
@@ -148,7 +148,7 @@ export default function TaskSourceBranchPicker({
       {discovery && emptyRepo && !discoveryLoading ? (
         <p className="text-[12px] text-zinc-500" role="status">
           No local or <code className="text-zinc-400">origin/*</code> branches were found. You can
-          still type a branch name; Flux can create it from {discovery.defaultBranchShort} when the
+          still type a branch name; Fluxx can create it from {discovery.defaultBranchShort} when the
           task starts.
         </p>
       ) : null}
