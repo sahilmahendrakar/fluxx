@@ -1037,9 +1037,9 @@ function ProjectConfigPane({
               description={
                 <>
                   Applies when a task leaves Backlog for In progress (board drag, task detail, MCP{' '}
-                  <code className="text-zinc-400">flux__update_task</code>). Other columns into In
+                  <code className="text-zinc-400">fluxx__update_task</code>). Other columns into In
                   progress do not auto-start from this setting.{' '}
-                  <code className="text-zinc-400">flux__start_task</code> always starts a session
+                  <code className="text-zinc-400">fluxx__start_task</code> always starts a session
                   regardless of this setting.
                 </>
               }
@@ -1279,7 +1279,7 @@ function ProjectConfigPane({
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
                 New tasks and MCP{' '}
-                <code className="font-mono text-zinc-500">flux__create_task</code> when no agent is
+                <code className="font-mono text-zinc-500">fluxx__create_task</code> when no agent is
                 given. Codex ignores model/YOLO here.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -1386,7 +1386,7 @@ function ProjectConfigPane({
               <h2 className="text-[13px] font-medium text-zinc-200">MCP servers</h2>
               <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
                 Add provider configs for Fluxx-launched Claude and Cursor sessions. Paste a full
-                MCP config or a single server entry; <code className="text-zinc-400">flux</code>{' '}
+                MCP config or a single server entry; <code className="text-zinc-400">fluxx</code>{' '}
                 is reserved and managed by Fluxx.
               </p>
             </div>

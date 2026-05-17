@@ -24,17 +24,17 @@ describe('mcpConfig', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('creates a project config with the reserved Flux server', async () => {
+  it('creates a project config with the reserved Fluxx server', async () => {
     const result = await ensureProjectMcpConfig(dir);
 
     expect(result.path).toBe(projectMcpConfigPath(dir));
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.fluxx).toEqual(FLUX_SSE_MCP_ENTRY);
     await expect(fs.readFile(result.path, 'utf8')).resolves.toContain(
       'http://localhost:47432/sse',
     );
   });
 
-  it('preserves external servers while forcing the Flux server entry', async () => {
+  it('preserves external servers while forcing the Fluxx server entry', async () => {
     const result = await writeProjectMcpConfigText(
       dir,
       JSON.stringify({
@@ -55,7 +55,8 @@ describe('mcpConfig', () => {
       command: 'npx',
       args: ['-y', '@datadog/mcp-server'],
     });
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.fluxx).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.flux).toBeUndefined();
   });
 
   it('rejects malformed config shapes', () => {
@@ -121,7 +122,7 @@ describe('mcpConfig', () => {
       type: 'http',
       url: 'https://mcp.notion.com/mcp',
     });
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.fluxx).toEqual(FLUX_SSE_MCP_ENTRY);
   });
 
   it('infers SSE transport for URL-only /sse entries', () => {
@@ -164,6 +165,6 @@ describe('mcpConfig', () => {
     );
     expect(merged.mcpServers.repoLocal).toEqual({ command: 'repo-mcp' });
     expect(merged.mcpServers.datadog).toEqual({ command: 'datadog-mcp' });
-    expect(merged.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(merged.mcpServers.fluxx).toEqual(FLUX_SSE_MCP_ENTRY);
   });
 });

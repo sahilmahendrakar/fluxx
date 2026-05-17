@@ -16,7 +16,7 @@ import {
 export { PLANNING_INSTRUCTIONS_STATE_BASENAME } from '../planningDocs/planningInstructionMarkers';
 
 /** Bumps when `planningAssistantMarkdown` prose meaningfully changes (used with embedded version tag). */
-export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 3;
+export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 4;
 
 export type PlanningInstructionFileName = 'CLAUDE.md' | 'AGENTS.md';
 

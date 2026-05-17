@@ -3647,15 +3647,15 @@ app.whenReady().then(async () => {
     resolvePlanningDocsDir,
     {
       updateTask: (id, patch) =>
-        updateTaskWithTransitionHandling(id, patch, 'mcp:flux__update_task'),
-      startTask: (id) => startTaskAndSession(id, 'mcp:flux__start_task'),
+        updateTaskWithTransitionHandling(id, patch, 'mcp:fluxx__update_task'),
+      startTask: (id) => startTaskAndSession(id, 'mcp:fluxx__start_task'),
       startSessionForExistingTask: (task) =>
-        runStartSessionForTaskWithLogging(task, 'mcp:flux__start_task'),
+        runStartSessionForTaskWithLogging(task, 'mcp:fluxx__start_task'),
       autoStartIfTransitionedToInProgress: (previous, updated) =>
         maybeAutoStartSessionOnInProgressTransition(
           previous,
           updated,
-          'mcp:flux__update_task',
+          'mcp:fluxx__update_task',
         ),
     },
   );

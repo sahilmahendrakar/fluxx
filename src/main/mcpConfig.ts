@@ -2,7 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export const PROJECT_MCP_CONFIG_BASENAME = 'mcp.json';
-export const FLUX_MCP_SERVER_NAME = 'flux';
+/** Legacy reserved MCP server key (removed on merge; tools still aliased as `flux__*` for one release). */
+export const LEGACY_FLUX_MCP_SERVER_NAME = 'flux';
+
+export const FLUX_MCP_SERVER_NAME = 'fluxx';
 export const FLUX_SSE_MCP_ENTRY = {
   type: 'sse' as const,
   url: 'http://localhost:47432/sse',
@@ -124,9 +127,11 @@ export function parseMcpServersPasteText(raw: string): McpConfig {
 }
 
 export function withFluxMcpServer(config: McpConfig): McpConfig {
+  const servers = { ...config.mcpServers };
+  delete servers[LEGACY_FLUX_MCP_SERVER_NAME];
   return {
     mcpServers: {
-      ...config.mcpServers,
+      ...servers,
       [FLUX_MCP_SERVER_NAME]: FLUX_SSE_MCP_ENTRY,
     },
   };
