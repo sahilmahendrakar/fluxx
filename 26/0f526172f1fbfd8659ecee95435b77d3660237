@@ -1,0 +1,50 @@
+README.md
+  s_13f22287c7fa72::t_e0128623635e03 84
+  s_13f22287c7fa72::t_138b330768c079 88
+src/components/ProjectSettingsView.tsx
+  s_13f22287c7fa72::t_b556862af16fb2 1042
+  s_13f22287c7fa72::t_8b49da7dc20dd7 1389
+  s_13f22287c7fa72::t_00e271a52e1346 1040
+  s_13f22287c7fa72::t_da791dcccbb067 1282
+src/main.ts
+  s_13f22287c7fa72::t_e880e480c034af 3651,3653
+  s_13f22287c7fa72::t_ac22ce7a63fb69 3650,3658
+src/main/mcpConfig.test.ts
+  s_13f22287c7fa72::t_ab0699de3bd629 168
+  s_13f22287c7fa72::t_add666c619ec82 27,31
+  s_13f22287c7fa72::t_5e262eb294ed4f 37,58-59
+  s_13f22287c7fa72::t_71e667bf26204c 125
+src/main/planningAssistantInstructions.ts
+  s_13f22287c7fa72::t_7eb83488d483fe 19
+src/main/mcpConfig.ts
+  s_13f22287c7fa72::t_0fe19b44ba1ab1 130-131,134
+  s_13f22287c7fa72::t_b4ba3f718acb6f 5-8
+src/main/McpServer.ts
+  s_13f22287c7fa72::t_fbaec86977c069 917-919
+  s_13f22287c7fa72::t_3bad2f40538f16 777-779
+  s_13f22287c7fa72::t_08423e93d92306 124
+  s_13f22287c7fa72::t_9940a99db6446a 555-557
+  s_13f22287c7fa72::t_56dd298ac61dd4 308-324,326-328
+  s_13f22287c7fa72::t_65411c3c24c3f4 847-849
+  s_13f22287c7fa72::t_8a4443fcfe62c5 1002-1004
+  s_13f22287c7fa72::t_0717b28b706c66 362-364
+  s_13f22287c7fa72::t_310d33dd2aa2c8 888-890
+src/components/TaskCard.tsx
+  s_13f22287c7fa72::t_e3423d0a3e29cf 238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "260f526172f1fbfd8659ecee95435b77d3660237",
+  "prompts": {},
+  "sessions": {
+    "s_13f22287c7fa72": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "56e1d77d-d180-48f3-b528-6248ef5573c0",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
