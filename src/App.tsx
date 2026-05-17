@@ -776,8 +776,9 @@ export default function App() {
         }
         return;
       }
-      const binding = await window.electronAPI.projects.getLocalBinding(match.id);
-      if (!binding) {
+      let binding = await window.electronAPI.projects.getLocalBinding(match.id);
+      const mat = await window.electronAPI.projects.resolveCloudMaterializationDir(match.id);
+      if ('error' in mat) {
         await window.electronAPI.projects.clearActive();
         if (!cancelled) {
           setPendingCloudActive(null);
@@ -785,35 +786,34 @@ export default function App() {
         }
         return;
       }
-      const primaryPath = primaryRootPathFromCloudBinding(
-        match.id,
-        binding,
-        match.repos,
-      );
-      if (!primaryPath) {
-        await window.electronAPI.projects.clearActive();
-        if (!cancelled) {
-          setPendingCloudActive(null);
-          setActivationLoading(false);
-        }
-        return;
-      }
+      const boundPrimary = binding
+        ? primaryRootPathFromCloudBinding(match.id, binding, match.repos)
+        : undefined;
+      const activationRootPath = boundPrimary ?? mat.projectDir;
       const result = await window.electronAPI.projects.activateCloud({
         id: match.id,
-        rootPath: primaryPath,
-        ...(match.repos?.length
-          ? { sharedRepos: match.repos }
-          : {}),
+        rootPath: activationRootPath,
+        ...(match.repos?.length ? { sharedRepos: match.repos } : {}),
       });
       if (cancelled) return;
       if (!result || 'error' in result) {
-        await window.electronAPI.projects.clearLocalBinding(match.id);
+        if (boundPrimary) {
+          await window.electronAPI.projects.clearLocalBinding(match.id);
+        }
         await window.electronAPI.projects.clearActive();
         setPendingCloudActive(null);
         setActivationLoading(false);
         return;
       }
-      setProject(hydrateCloudProject(match, binding));
+      binding =
+        (await window.electronAPI.projects.getLocalBinding(match.id)) ??
+        binding ??
+        { lastOpenedAt: new Date().toISOString() };
+      setProject(
+        hydrateCloudProject(match, binding, {
+          materializationRootPath: boundPrimary ? undefined : mat.projectDir,
+        }),
+      );
       setPendingCloudActive(null);
       setActivationLoading(false);
     })();

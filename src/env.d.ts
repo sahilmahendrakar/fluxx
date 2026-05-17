@@ -235,6 +235,15 @@ declare global {
           rootPath: string;
           sharedRepos?: CloudSharedRepo[];
         }) => Promise<ActivateCloudResult>;
+        resolveCloudMaterializationDir: (
+          cloudProjectId: string,
+        ) => Promise<{ projectDir: string } | { error: string }>;
+        applyCloudCreateBindings: (payload: {
+          cloudProjectId: string;
+          bindings: { repoId: string; rootPath: string }[];
+          primaryRepoId?: string;
+          sharedRepos?: CloudSharedRepo[];
+        }) => Promise<{ ok: true } | { error: string; code?: 'NOT_GIT_REPO' }>;
         clearLocalBinding: (cloudProjectId: string) => Promise<void>;
       };
       auth: {

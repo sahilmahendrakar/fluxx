@@ -51,6 +51,19 @@ function parseBindingEntry(_id: string, value: unknown): LocalBinding | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
   const repoBindings = parseRepoBindingsRecord(v.repoBindings);
+  if (typeof v.lastOpenedAt === 'string' && (!repoBindings || Object.keys(repoBindings).length === 0)) {
+    if (typeof v.rootPath === 'string' && v.rootPath.length > 0) {
+      const binding: LocalBinding = {
+        rootPath: v.rootPath,
+        lastOpenedAt: v.lastOpenedAt,
+      };
+      fillBindingPrefs(v, binding);
+      return binding;
+    }
+    const shellOnly: LocalBinding = { lastOpenedAt: v.lastOpenedAt };
+    fillBindingPrefs(v, shellOnly);
+    return shellOnly;
+  }
   if (repoBindings && Object.keys(repoBindings).length > 0) {
     let lastOpenedAt: string | undefined =
       typeof v.lastOpenedAt === 'string' ? v.lastOpenedAt : undefined;
@@ -363,6 +376,37 @@ export class LocalBindingStore {
     this.bindings[projectId] = normalized;
     await this.save();
     return normalized;
+  }
+
+  /**
+   * Records that a cloud project was opened without binding a git clone (shell-only).
+   * Preserves existing repo bindings and preferences.
+   */
+  async touchShell(projectId: string): Promise<void> {
+    const now = new Date().toISOString();
+    const prev = this.bindings[projectId];
+    if (prev) {
+      const migrated = migrateLegacyCloudBinding(projectId, { ...prev });
+      const next: LocalBinding = { ...migrated, lastOpenedAt: now };
+      this.bindings[projectId] = stripLegacyRootPathForPersistence(next);
+    } else {
+      this.bindings[projectId] = { lastOpenedAt: now };
+    }
+    await this.save();
+  }
+
+  async setPrimaryRepoId(projectId: string, primaryRepoId: string): Promise<void> {
+    const pid = primaryRepoId.trim();
+    if (!pid) return;
+    const existing = this.bindings[projectId];
+    if (!existing) return;
+    const migrated = migrateLegacyCloudBinding(projectId, { ...existing });
+    if (migrated.primaryRepoId === pid) return;
+    this.bindings[projectId] = stripLegacyRootPathForPersistence({
+      ...migrated,
+      primaryRepoId: pid,
+    });
+    await this.save();
   }
 
   async touch(projectId: string): Promise<void> {

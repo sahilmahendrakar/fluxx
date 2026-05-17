@@ -264,6 +264,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sharedRepos?: CloudSharedRepo[];
     }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
+    resolveCloudMaterializationDir: (cloudProjectId: string) =>
+      ipcRenderer.invoke(
+        'projects:resolveCloudMaterializationDir',
+        cloudProjectId,
+      ) as Promise<{ projectDir: string } | { error: string }>,
+    applyCloudCreateBindings: (payload: {
+      cloudProjectId: string;
+      bindings: { repoId: string; rootPath: string }[];
+      primaryRepoId?: string;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('projects:applyCloudCreateBindings', payload) as Promise<
+        { ok: true } | { error: string; code?: 'NOT_GIT_REPO' }
+      >,
     clearLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
   },

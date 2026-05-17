@@ -36,11 +36,14 @@ import {
 } from './main/fluxAutomationBridge';
 import { AppStateStore } from './main/AppStateStore';
 import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
+import { parseFirestoreRepos } from './cloudFirestoreRepoParse';
+import { isCloudShellRootPath } from './cloudProjectActivation';
 import { hydrateCloudProject } from './cloudBindingPrefs';
 import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
+import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
@@ -736,6 +739,11 @@ app.whenReady().then(async () => {
         }
       }
     }
+    if (!activeRootPath) {
+      activeRootPath = path.resolve(
+        canonicalCloudProjectDir(fluxxBaseDir, activeProjectKey.id),
+      );
+    }
   }
 
   if (activeProjectKey?.kind === 'cloud' && activeRootPath) {
@@ -1050,29 +1058,7 @@ app.whenReady().then(async () => {
     'No local clone is bound for this repository. Open Project settings → Project Config and use “Bind local folder” for that repository.';
 
   function parseCloudSharedReposArg(raw: unknown): CloudSharedRepo[] {
-    if (!Array.isArray(raw)) return [];
-    const out: CloudSharedRepo[] = [];
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue;
-      const o = item as Record<string, unknown>;
-      if (
-        typeof o.id !== 'string' ||
-        typeof o.name !== 'string' ||
-        typeof o.baseBranch !== 'string'
-      ) {
-        continue;
-      }
-      const repo: CloudSharedRepo = {
-        id: o.id.trim(),
-        name: o.name,
-        baseBranch: o.baseBranch,
-      };
-      if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
-        repo.remoteUrl = o.remoteUrl.trim();
-      }
-      out.push(repo);
-    }
-    return out;
+    return parseFirestoreRepos(raw) ?? [];
   }
 
   async function syncCloudReposDiskFromBinding(params: {
@@ -1882,31 +1868,100 @@ app.whenReady().then(async () => {
       _e,
       payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
     ) => {
-      try {
-        await fs.access(path.join(payload.rootPath, '.git'));
-      } catch {
-        return { error: 'NOT_GIT_REPO' as const };
+      const resolvedRoot = path.resolve(payload.rootPath);
+      const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
+      if (!shellOnly) {
+        try {
+          await fs.access(path.join(resolvedRoot, '.git'));
+        } catch {
+          return { error: 'NOT_GIT_REPO' as const };
+        }
+        await bindingStore.set(payload.id, resolvedRoot);
+      } else {
+        await bindingStore.touchShell(payload.id);
       }
-      await bindingStore.set(payload.id, payload.rootPath);
       await projectStore.clear();
       await taskStore.reinit('');
       const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
         payload.id,
-        payload.rootPath,
+        resolvedRoot,
       );
-      worktreeService.setRootPath(payload.rootPath);
+      worktreeService.setRootPath(resolvedRoot);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
       });
-      if (payload.sharedRepos && payload.sharedRepos.length > 0) {
+      const sharedRepos = parseCloudSharedReposArg(payload.sharedRepos);
+      if (sharedRepos.length > 0) {
         await syncCloudReposDiskFromBinding({
           cloudProjectId: payload.id,
           projectDir,
-          sharedRepos: payload.sharedRepos,
+          sharedRepos,
         });
       }
       return { ok: true as const };
+    },
+  );
+  ipcMain.handle(
+    'projects:resolveCloudMaterializationDir',
+    async (_e, cloudProjectId: string) => {
+      if (typeof cloudProjectId !== 'string' || !cloudProjectId.trim()) {
+        return { error: 'cloudProjectId is required' };
+      }
+      return {
+        projectDir: path.resolve(
+          canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId.trim()),
+        ),
+      };
+    },
+  );
+  ipcMain.handle(
+    'projects:applyCloudCreateBindings',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true } | { error: string; code?: 'NOT_GIT_REPO' }> => {
+      if (!payload || typeof payload !== 'object') {
+        return { error: 'Invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      const cloudProjectId =
+        typeof p.cloudProjectId === 'string' ? p.cloudProjectId.trim() : '';
+      if (!cloudProjectId) return { error: 'cloudProjectId is required' };
+      const bindingsRaw = p.bindings;
+      if (!Array.isArray(bindingsRaw)) return { error: 'bindings array is required' };
+      const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+      const primaryRepoId =
+        typeof p.primaryRepoId === 'string' ? p.primaryRepoId.trim() : '';
+      for (const row of bindingsRaw) {
+        if (!row || typeof row !== 'object') continue;
+        const o = row as Record<string, unknown>;
+        const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
+        const rootPath = typeof o.rootPath === 'string' ? o.rootPath.trim() : '';
+        if (!repoId || !rootPath) continue;
+        try {
+          await fs.access(path.join(rootPath, '.git'));
+        } catch {
+          return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
+        }
+        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, rootPath);
+      }
+      if (primaryRepoId) {
+        await bindingStore.setPrimaryRepoId(cloudProjectId, primaryRepoId);
+      }
+      if (sharedRepos.length > 0) {
+        const matDir = path.resolve(canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId));
+        const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
+          cloudProjectId,
+          matDir,
+        );
+        await syncCloudReposDiskFromBinding({
+          cloudProjectId,
+          projectDir,
+          sharedRepos,
+        });
+      }
+      return { ok: true };
     },
   );
   ipcMain.handle('projects:clearLocalBinding', async (_e, cloudProjectId: string) => {

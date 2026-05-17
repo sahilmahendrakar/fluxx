@@ -168,14 +168,21 @@ export function hydrateCloudProject(
     repos?: CloudSharedRepo[];
   },
   binding: CloudProjectLocalBinding,
+  options?: { materializationRootPath?: string },
 ): CloudProject {
   const prefs = resolvedPrefsFromBinding(binding);
   const migrated = migrateLegacyCloudBinding(summary.id, binding);
   const primary = primaryMachineBinding(summary.id, migrated, summary.repos);
-  if (!primary) {
-    throw new Error('[hydrateCloudProject] binding has no primary repo path');
+  const materializationRoot = options?.materializationRootPath?.trim();
+  const rootPath = primary?.rootPath ?? materializationRoot;
+  if (!rootPath) {
+    throw new Error('[hydrateCloudProject] binding has no primary repo path or materialization root');
   }
-  const sharedRepos = sharedReposForHydration(summary.id, summary.repos, primary);
+  const sharedRepos = primary
+    ? sharedReposForHydration(summary.id, summary.repos, primary)
+    : summary.repos && summary.repos.length > 0
+      ? summary.repos
+      : sharedReposForHydration(summary.id, summary.repos, { rootPath });
   return {
     id: summary.id,
     kind: 'cloud',
@@ -183,7 +190,7 @@ export function hydrateCloudProject(
     ownerId: summary.ownerId,
     memberIds: summary.memberIds,
     createdAt: summary.createdAt,
-    rootPath: primary.rootPath,
+    rootPath,
     sharedRepos,
     repoMachineBindings: repoMachineBindingsForHydration(sharedRepos, migrated),
     ...prefs,

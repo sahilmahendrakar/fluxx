@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
+import { hydrateCloudProject, primaryRootPathFromCloudBinding } from '../cloudBindingPrefs';
 import {
-  hydrateCloudProject,
-  primaryRootPathFromCloudBinding,
-} from '../cloudBindingPrefs';
-import type { CloudProject, LocalProject } from '../types';
+  cloudProjectNeedsRepoBinding,
+  cloudProjectUsesLegacyFolderPicker,
+  shellCloudBinding,
+} from '../cloudProjectActivation';
+import { buildCloudSharedReposAtCreate } from '../cloudProjectCreate';
+import type { CloudProject, CloudProjectLocalBinding, LocalProject } from '../types';
 import type { AuthState } from '../renderer/auth/useAuth';
 import type { CloudProjectsState } from '../renderer/projects/useCloudProjects';
-import type { CloudProjectSummary } from '../renderer/projects/cloudProjects';
+import type {
+  CloudProjectCreateRepoInput,
+  CloudProjectSummary,
+} from '../renderer/projects/cloudProjects';
 import {
   createCloudProject,
   deleteCloudProject,
@@ -49,6 +55,9 @@ export function ProjectsListView({
   const [cloudDeleteCleanupWarning, setCloudDeleteCleanupWarning] = useState<string | null>(null);
   /** Local project id currently undergoing `Remove from Fluxx` cleanup. */
   const [localRemovalId, setLocalRemovalId] = useState<string | null>(null);
+  const [cloudBindingsById, setCloudBindingsById] = useState<
+    Record<string, CloudProjectLocalBinding | null>
+  >({});
 
   const uid = auth.user?.uid ?? null;
 
@@ -60,6 +69,26 @@ export function ProjectsListView({
       console.error('[projects.listLocal] failed', err);
     }
   };
+
+  useEffect(() => {
+    if (cloudProjects.status !== 'ready' || cloudProjects.projects.length === 0) {
+      setCloudBindingsById({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      cloudProjects.projects.map(async (p) => {
+        const binding = await window.electronAPI.projects.getLocalBinding(p.id);
+        return [p.id, binding] as const;
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      setCloudBindingsById(Object.fromEntries(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudProjects.status, cloudProjects.projects]);
 
   useEffect(() => {
     let cancelled = false;
@@ -173,10 +202,10 @@ export function ProjectsListView({
     setActivatingId(summary.id);
     try {
       let binding = await window.electronAPI.projects.getLocalBinding(summary.id);
-      if (!binding) {
-        const picked = await window.electronAPI.projects.pickDirectoryForCloud(
-          summary.id,
-        );
+      const legacyPicker = cloudProjectUsesLegacyFolderPicker(summary.repos);
+
+      if (!binding && legacyPicker) {
+        const picked = await window.electronAPI.projects.pickDirectoryForCloud(summary.id);
         if (!picked) return;
         if ('error' in picked) {
           setCloudError('That folder is not a git repository.');
@@ -184,51 +213,89 @@ export function ProjectsListView({
         }
         binding = await window.electronAPI.projects.getLocalBinding(summary.id);
       }
-      if (!binding) {
-        setCloudError('Could not read local project binding.');
+
+      const mat = await window.electronAPI.projects.resolveCloudMaterializationDir(summary.id);
+      if ('error' in mat) {
+        setCloudError(mat.error);
         return;
       }
-      const primaryPath = primaryRootPathFromCloudBinding(
-        summary.id,
-        binding,
-        summary.repos,
-      );
-      if (!primaryPath) {
-        setCloudError('Could not read local project binding.');
-        return;
-      }
+      const materializationRootPath = mat.projectDir;
+
+      const boundPrimary = binding
+        ? primaryRootPathFromCloudBinding(summary.id, binding, summary.repos)
+        : undefined;
+      const activationRootPath = boundPrimary ?? materializationRootPath;
+
       const result = await window.electronAPI.projects.activateCloud({
         id: summary.id,
-        rootPath: primaryPath,
-        ...(summary.repos?.length
-          ? { sharedRepos: summary.repos }
-          : {}),
+        rootPath: activationRootPath,
+        ...(summary.repos?.length ? { sharedRepos: summary.repos } : {}),
       });
       if (!result || 'error' in result) {
-        setCloudError(
-          result && 'error' in result
-            ? 'The bound folder is no longer a git repository. Pick a new one.'
-            : 'Could not activate project.',
-        );
-        await window.electronAPI.projects.clearLocalBinding(summary.id);
+        if (boundPrimary) {
+          setCloudError(
+            result && 'error' in result
+              ? 'The bound folder is no longer a git repository. Re-bind it in project settings.'
+              : 'Could not activate project.',
+          );
+          await window.electronAPI.projects.clearLocalBinding(summary.id);
+        } else {
+          setCloudError('Could not activate project.');
+        }
         return;
       }
-      onProjectActivated(hydrateCloudProject(summary, binding));
+
+      const refreshed =
+        (await window.electronAPI.projects.getLocalBinding(summary.id)) ??
+        binding ??
+        shellCloudBinding(new Date().toISOString());
+
+      onProjectActivated(
+        hydrateCloudProject(summary, refreshed, {
+          materializationRootPath: boundPrimary ? undefined : materializationRootPath,
+        }),
+      );
     } finally {
       setActivatingId(null);
     }
   };
 
-  const handleCreateCloud = async (name: string) => {
+  const handleCreateCloud = async (input: {
+    name: string;
+    repos: CloudProjectCreateRepoInput[];
+    primaryRootPath?: string;
+  }) => {
     if (!uid) return;
-    const summary = await createCloudProject(
-      uid,
-      name,
-      auth.user?.displayName ?? undefined,
-      auth.user?.email ?? undefined,
-      auth.user?.photoURL ?? null,
-    );
+    const summary = await createCloudProject(uid, input.name, {
+      displayName: auth.user?.displayName ?? undefined,
+      email: auth.user?.email ?? undefined,
+      photoURL: auth.user?.photoURL ?? null,
+      repos: input.repos.length > 0 ? input.repos : undefined,
+      primaryRootPath: input.primaryRootPath,
+    });
     setCreateCloudOpen(false);
+
+    if (summary.repos && summary.repos.length > 0 && input.repos.length > 0) {
+      const { primaryRepoId } = buildCloudSharedReposAtCreate(
+        summary.id,
+        input.repos,
+        input.primaryRootPath,
+      );
+      const bindings = summary.repos.map((sr, i) => ({
+        repoId: sr.id,
+        rootPath: input.repos[i]?.rootPath ?? '',
+      }));
+      const bindResult = await window.electronAPI.projects.applyCloudCreateBindings({
+        cloudProjectId: summary.id,
+        bindings: bindings.filter((b) => b.rootPath),
+        primaryRepoId,
+        sharedRepos: summary.repos,
+      });
+      if ('error' in bindResult) {
+        setCloudError(bindResult.error);
+      }
+    }
+
     await handleOpenCloud(summary);
   };
 
@@ -460,7 +527,13 @@ export function ProjectsListView({
               </div>
             ) : (
               <ul className="flex flex-col gap-1.5">
-                {cloudProjects.projects.map((p) => (
+                {cloudProjects.projects.map((p) => {
+                  const needsRepo = cloudProjectNeedsRepoBinding(
+                    p.id,
+                    p.repos,
+                    cloudBindingsById[p.id],
+                  );
+                  return (
                   <li key={p.id}>
                     <div className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04]">
                       <button
@@ -473,8 +546,15 @@ export function ProjectsListView({
                           {p.name.slice(0, 1).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium text-zinc-100">
-                            {p.name}
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[13px] font-medium text-zinc-100">
+                              {p.name}
+                            </span>
+                            {needsRepo ? (
+                              <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-200/90">
+                                Needs repo
+                              </span>
+                            ) : null}
                           </div>
                           <div className="truncate text-[11px] text-zinc-500">
                             {p.ownerId === uid
@@ -514,7 +594,8 @@ export function ProjectsListView({
                       ) : null}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
