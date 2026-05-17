@@ -176,7 +176,7 @@ ${workspaceIntro}
 
 ## Fluxx CLI
 
-Planning sessions inject bridge env and prepend the packaged \`fluxx\` shim to \`PATH\` when Fluxx starts a session. Use the command as \`fluxx ...\`; do **not** create a \`FLUXX_BIN\` variable, paste the absolute shim path, or run \`which fluxx\` except when troubleshooting a missing command. **Always pass \`--json\`** on board commands so you can parse stdout. Run \`fluxx tasks create --help\` or \`fluxx tasks update --help\` for the full flag list. If \`fluxx\` is missing, ask the user to start planning from the Fluxx app (not a bare shell).
+Planning sessions inject bridge env and prepend the packaged \`fluxx\` shim to \`PATH\` when Fluxx starts a session. Use the command as \`fluxx ...\`; \`flux ...\` is a legacy alias for compatibility. Do **not** create a \`FLUXX_BIN\` variable, paste the absolute shim path, or run \`which fluxx\` except when troubleshooting a missing command. **Always pass \`--json\`** on board commands so you can parse stdout. Run \`fluxx tasks create --help\` or \`fluxx tasks update --help\` for the full flag list. If \`fluxx\` is missing, ask the user to start planning from the Fluxx app (not a bare shell).
 
 ## Your role
 

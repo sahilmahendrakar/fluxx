@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertPackagedFluxCliContract } from './src/main/packagedFluxCliContract';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
 const githubUpdatesRepo = 'fluxx-web';
@@ -118,6 +119,15 @@ const dmgContents = (opts: { appPath: string }) => [
   { x: 230, y: 260, type: 'file' as const, path: opts.appPath },
 ];
 
+export const packagedFluxCliFuseOptions = {
+  version: FuseVersion.V1,
+  [FuseV1Options.RunAsNode]: true,
+  [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+  [FuseV1Options.EnableNodeCliInspectArguments]: false,
+  [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
+  [FuseV1Options.OnlyLoadAppFromAsar]: true,
+} as const;
+
 /**
  * Keep the packaged app lean: only Vite output and `package.json` enter the
  * asar; devDependencies and the repo `node_modules` tree are omitted.
@@ -163,6 +173,21 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
     await fsp.cp(shimSrc, shimDst);
     await fsp.chmod(shimDst, 0o755);
   }
+
+  const fluxxShim = await fsp.readFile(path.join(cliDir, 'fluxx'), 'utf8');
+  const fluxShim = await fsp.readFile(path.join(cliDir, 'flux'), 'utf8');
+  if (
+    !fluxxShim.includes('FLUXX_ELECTRON_EXE') ||
+    !fluxxShim.includes('FLUX_ELECTRON_EXE') ||
+    !fluxxShim.includes('ELECTRON_RUN_AS_NODE=1')
+  ) {
+    throw new Error(
+      '[forge.config] packaged fluxx shim must run the bundled CLI through Electron RunAsNode',
+    );
+  }
+  if (!fluxShim.includes('exec "$DIR/fluxx" "$@"')) {
+    throw new Error('[forge.config] packaged legacy flux shim must delegate to fluxx');
+  }
 }
 const config: ForgeConfig = {
   packagerConfig: {
@@ -196,6 +221,9 @@ const config: ForgeConfig = {
       _platform,
       _arch,
     ) => {
+      assertPackagedFluxCliContract({
+        runAsNodeFuseEnabled: packagedFluxCliFuseOptions[FuseV1Options.RunAsNode],
+      });
       await stageFluxCliResources(buildPath);
     },
     postMake: async (_forgeConfig, makeResults) =>
@@ -252,14 +280,7 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
-    new FusesPlugin({
-      version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
-    }),
+    new FusesPlugin(packagedFluxCliFuseOptions),
   ],
   publishers: [
     new PublisherGithub({
