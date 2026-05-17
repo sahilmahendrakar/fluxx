@@ -1,0 +1,122 @@
+src/cloudRepoDiskSync.ts
+  s_62874be4f1c0c5::t_fe019c379e164b 13
+src/main/planningDocsListEnrichment.ts
+  s_62874be4f1c0c5::t_23bccaaaf5c0e1 15-16
+  s_62874be4f1c0c5::t_bc65b998c9a4b7 48-58
+  s_62874be4f1c0c5::t_f67da5e0ae2d22 59-65
+src/components/PlanningDocsView.tsx
+  s_62874be4f1c0c5::t_aefb935081932a 349
+src/main/projectDirLayout.ts
+  s_62874be4f1c0c5::t_8305580c7be938 5,12-14,17-22
+  s_62874be4f1c0c5::t_23684605435339 72
+  s_62874be4f1c0c5::t_a4afb22ec2cf0e 144-145
+  s_62874be4f1c0c5::t_7e223db7c90739 152
+  s_62874be4f1c0c5::t_984accefb87e7d 163
+  s_62874be4f1c0c5::t_d697d772c527d7 169
+  s_62874be4f1c0c5::t_7a183d5a77e8cc 174
+  s_62874be4f1c0c5::t_09f671236c4768 244-251,253-279
+  s_62874be4f1c0c5::t_968fd8829a21ed 282
+  s_62874be4f1c0c5::t_6666d89b135449 305
+  s_62874be4f1c0c5::t_2521f177fadbd2 335
+  s_62874be4f1c0c5::t_89a886ab64860c 348
+src/planningDocs/types.ts
+  s_62874be4f1c0c5::t_e959fe7fa88afd 9
+  s_62874be4f1c0c5::t_a99ab9ea765da7 35
+src/planningDocs/fluxxPlanningPaths.ts
+  s_62874be4f1c0c5::t_b0e03bc4e4c368 1-71,87-108
+  s_62874be4f1c0c5::t_4aba65143bd6dc 72-86
+src/main/trustPromptAutorespondRoots.test.ts
+  s_62874be4f1c0c5::t_6900a431bfd5b8 4,8,12-13
+.gitignore
+  s_62874be4f1c0c5::t_4ef9a997f0fe59 96
+src/main/planningDocsMigrationDisk.test.ts
+  s_62874be4f1c0c5::t_0e787c6ed30952 1-41
+src/planningDocs/planningUserDocsLegacyMigration.ts
+  s_62874be4f1c0c5::t_a4cf32223fb2ed 10-15,18
+  s_62874be4f1c0c5::t_bf2a5985934a0d 29
+  s_62874be4f1c0c5::t_73fd976cd55dcc 87-92,94
+  s_62874be4f1c0c5::t_edea4cccdbe731 204
+src/main/planningDocsConflictResolve.ts
+  s_62874be4f1c0c5::t_523d2e5f33183f 10-13
+  s_62874be4f1c0c5::t_dd23b837824d23 21-26,33-34
+  s_62874be4f1c0c5::t_458f68aafd48b8 35-47
+  s_62874be4f1c0c5::t_02d7fcab1d808f 59-69
+  s_62874be4f1c0c5::t_4006724e9ed98b 70-74
+  s_62874be4f1c0c5::t_eefba068b31053 82-87
+  s_62874be4f1c0c5::t_9ee34e330ec0cc 197
+src/planningDocs/path.test.ts
+  s_62874be4f1c0c5::t_0659a46a99790e 149,155-156
+src/main/projectDirLayout.test.ts
+  s_62874be4f1c0c5::t_ce387a9c009002 1-67
+src/components/ProjectSettingsView.tsx
+  s_62874be4f1c0c5::t_352cfe0116343b 1080
+src/main/planningDocsFirestoreHydrate.ts
+  s_62874be4f1c0c5::t_7e568eda2c6fef 15-20,22
+  s_62874be4f1c0c5::t_3be1846d88bc42 50-56,62-65
+  s_62874be4f1c0c5::t_a1de741bb71ea0 95
+  s_62874be4f1c0c5::t_0ae4c89897d4ad 273
+src/planningDocs/planningInstructionMarkers.ts
+  s_62874be4f1c0c5::t_67d7f92c922c95 15-19
+src/terminal-runtime/protocol.ts
+  s_62874be4f1c0c5::t_455a4555e104de 35
+src/main/trustPromptAutorespondRoots.ts
+  s_62874be4f1c0c5::t_4ce1275a3340ee 3
+  s_62874be4f1c0c5::t_819720842ca590 14-15
+src/main.ts
+  s_62874be4f1c0c5::t_a624cd513ee39e 498
+src/planningDocs/FilesystemPlanningDocsProvider.ts
+  s_62874be4f1c0c5::t_f6366b834c69d6 19
+  s_62874be4f1c0c5::t_47310230cce339 67
+src/App.tsx
+  s_62874be4f1c0c5::t_88a73ba0227588 830
+src/main/ProjectStore.test.ts
+  s_62874be4f1c0c5::t_0c81dadb7d6907 332
+  s_62874be4f1c0c5::t_b677f6dce5d1b7 427
+  s_62874be4f1c0c5::t_7caa08660f2819 449
+  s_62874be4f1c0c5::t_5442840873a3c4 535
+  s_62874be4f1c0c5::t_471ff18a4b84d7 546
+src/main/fluxBaseDir.ts
+  s_62874be4f1c0c5::t_a782af0991e035 1-73
+src/planningDocs/cloudPlanningDocsMigration.ts
+  s_62874be4f1c0c5::t_5d170729db33c4 19
+  s_62874be4f1c0c5::t_266c747eba62c5 30
+src/planningDocs/path.ts
+  s_62874be4f1c0c5::t_52621bf568b180 3-7,9
+  s_62874be4f1c0c5::t_b3eac6a38055fd 99,103
+  s_62874be4f1c0c5::t_2499c8aa0a74cf 110
+src/main/planningDocsFirestorePush.ts
+  s_62874be4f1c0c5::t_0ba3079ef3630c 12-13
+  s_62874be4f1c0c5::t_44522db77a8f2e 22
+src/main/planningDocsMigrationDisk.ts
+  s_62874be4f1c0c5::t_8d319d4856366f 10-14,16-17
+  s_62874be4f1c0c5::t_8805bab0d21a21 24-29,31
+  s_62874be4f1c0c5::t_ee09851174bd3e 50
+src/planningDocs/FilesystemPlanningDocsProvider.test.ts
+  s_62874be4f1c0c5::t_afa9ee359eb865 85-86
+CLAUDE.md
+  s_62874be4f1c0c5::t_2bd65e8633ed29 19,21
+src/main/ProjectStore.ts
+  s_62874be4f1c0c5::t_058e98b867defc 810-811
+  s_62874be4f1c0c5::t_9e1273821cde92 820-821
+  s_62874be4f1c0c5::t_53d2ababe4f267 1071
+  s_62874be4f1c0c5::t_f51340cc68dcdf 1156
+src/main/fluxBaseDir.test.ts
+  s_62874be4f1c0c5::t_c0a717ebafc4b0 1-31,33-61
+  s_62874be4f1c0c5::t_fe5c60d0dafe87 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "217bbc2d919b90958026e3d05cf23fd449bbfc42",
+  "prompts": {},
+  "sessions": {
+    "s_62874be4f1c0c5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "71e66336-6512-42cc-b27b-c0010d7aae35",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
