@@ -1,0 +1,81 @@
+src/main/planningAssistantInstructions.ts
+  s_7e96379c01cfbf::t_2814f3fc54afbb 215
+  s_7e96379c01cfbf::t_3a4bccf45ec418 197
+  s_7e96379c01cfbf::t_1efd57fa2096d7 152
+  s_7e96379c01cfbf::t_fa485f7fc14748 191
+  s_7e96379c01cfbf::t_787f7357eef7c4 19
+  s_7e96379c01cfbf::t_f5d26ad1e8f526 10-12
+  s_7e96379c01cfbf::t_0b25bd4141a2b0 135
+  s_7e96379c01cfbf::t_709d2411846f87 138,142,153,156-157,160-161,180,182,184,187,189,195
+  s_7e96379c01cfbf::t_bbd3534b153931 132
+  s_7e96379c01cfbf::t_118f55a23298b8 193
+  s_7e96379c01cfbf::t_288ae0144bc23f 179
+  s_7e96379c01cfbf::t_74ba2948b1aeea 48-49,52-54,56
+  s_7e96379c01cfbf::t_674e78327f884f 266
+  s_7e96379c01cfbf::t_bba22420e5018b 169
+  s_7e96379c01cfbf::t_abad50ab50ca90 174
+  s_7e96379c01cfbf::t_de5d0704183a8f 148-149
+  s_7e96379c01cfbf::t_1ce4fc5a927178 70-71,74-75,78,80
+CLAUDE.md
+  s_7e96379c01cfbf::t_60e7938ea8a3ce 1,3,5,7
+src/main/ProjectStore.test.ts
+  s_7e96379c01cfbf::t_d77078de0edb82 640-641
+  s_7e96379c01cfbf::t_e988a9ff9b0b0d 13
+  s_7e96379c01cfbf::t_ebd4f5b81a88e9 595-596
+  s_7e96379c01cfbf::t_c1c13feebaca63 570,587
+  s_7e96379c01cfbf::t_ca3b64e78b9a02 621-622
+  s_7e96379c01cfbf::t_6ff1b1b82daa22 653
+src/mcpBridge.ts
+  s_7e96379c01cfbf::t_bf410e7559fa98 24
+  s_7e96379c01cfbf::t_af8ed2d07682b4 108
+src/planningDocs/cloudPlanningDocsMigration.test.ts
+  s_7e96379c01cfbf::t_b4a66c774d1e42 59,61,65,67,71-74
+  s_7e96379c01cfbf::t_b5fc6cb6d96f83 13-16
+src/renderer/mcp/useMcpRendererBridge.ts
+  s_7e96379c01cfbf::t_730c9c2d810696 106
+src/planningDocs/cloudPlanningDocsMigration.ts
+  s_7e96379c01cfbf::t_093272e25cc26e 35
+  s_7e96379c01cfbf::t_61756833519a4a 27
+  s_7e96379c01cfbf::t_a7f31cceb7c57b 91,96-97,100,102
+  s_7e96379c01cfbf::t_2c588dc051e758 73-74,76,78,84
+src/planningDocs/planningInstructionMarkers.ts
+  s_7e96379c01cfbf::t_abaff4d0891ea2 1-3,5-15,17-35
+src/main/agentSpawn.ts
+  s_7e96379c01cfbf::t_3f5ba2bd32e32d 145
+src/main/mcpListTasksFilter.ts
+  s_7e96379c01cfbf::t_d9c6d31d9ae906 3
+src/main/McpServer.ts
+  s_7e96379c01cfbf::t_c4050e296b30ea 224,226,228
+  s_7e96379c01cfbf::t_8a73f72cb8c021 828,830
+  s_7e96379c01cfbf::t_c710ae960cab45 808
+  s_7e96379c01cfbf::t_c8a6bd2de3be6a 538
+  s_7e96379c01cfbf::t_314ed3f57c7773 399
+  s_7e96379c01cfbf::t_1a8a33b3247c3f 311
+  s_7e96379c01cfbf::t_12cc139dd8752d 593
+  s_7e96379c01cfbf::t_c89519c1d8e027 759,761
+  s_7e96379c01cfbf::t_e4b23fa46607d9 381
+  s_7e96379c01cfbf::t_c2293ea047e5c4 206
+  s_7e96379c01cfbf::t_2d7eecd21810d3 779
+  s_7e96379c01cfbf::t_77705f19282a90 980
+  s_7e96379c01cfbf::t_9890d93c253dbf 346
+  s_7e96379c01cfbf::t_67f126501cf995 896
+  s_7e96379c01cfbf::t_421d07c46a5310 986
+AGENT.md
+  s_7e96379c01cfbf::t_947dab325bbb03 1,3,5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "65b2d0c03dbf7e39c5ac4567ca78c84d2e3be281",
+  "prompts": {},
+  "sessions": {
+    "s_7e96379c01cfbf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "80982003-22fc-4ffe-a3c9-0bb148be770a",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
