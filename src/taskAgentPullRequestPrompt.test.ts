@@ -47,6 +47,9 @@ describe('resolveAgentPullRequestBranchContext', () => {
 describe('buildCreatePrInstructionsMarkdown', () => {
   it('includes workflow steps and constraints', () => {
     const text = buildCreatePrInstructionsMarkdown();
+    expect(text).toContain('# Fluxx: GitHub pull request from the task agent');
+    expect(text).toContain('Fluxx app');
+    expect(text).not.toMatch(/\bFlux\b/);
     expect(text).toContain('git status');
     expect(text).toContain('gh pr create');
     expect(text).toContain('force-push');
@@ -69,6 +72,8 @@ describe('buildTaskAgentPullRequestPrompt', () => {
       repoDisplayLabel: 'service-b',
       repoRootPath: '/Users/me/projects/service-b',
     });
+    expect(text).toContain('## Fluxx: open a GitHub pull request for this task');
+    expect(text).not.toMatch(/\bFlux\b/);
     expect(text).toContain('- **Repository:** service-b');
     expect(text).toContain('`/Users/me/projects/service-b`');
     expect(text).toContain('`flux/task-b`');

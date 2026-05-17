@@ -4,11 +4,11 @@ import { effectiveTaskSourceBranchShort } from './taskBranches';
 export type TaskAgentPullRequestPromptParams = {
   taskId: string;
   taskTitle: string;
-  /** Flux task work branch (session head), e.g. `flux/task-…`. */
+  /** Fluxx task work branch (session head), e.g. `flux/task-…`. */
   headBranch: string;
   /** Resolved PR base branch (task source branch or project default). */
   baseBranch: string;
-  /** Absolute path to Flux-written `create-pr.md` (project-level, outside the worktree). */
+  /** Absolute path to Fluxx-written `create-pr.md` (project-level, outside the worktree). */
   instructionsAbsolutePath: string;
   /** Repository label for this task (`multi-repo2`); keeps agents from opening PRs in the wrong repo. */
   repoDisplayLabel?: string;
@@ -23,17 +23,17 @@ export type TaskAgentPullRequestPromptParams = {
  */
 export function buildCreatePrInstructionsMarkdown(): string {
   return [
-    '# Flux: GitHub pull request from the task agent',
+    '# Fluxx: GitHub pull request from the task agent',
     '',
-    "Use this task's git worktree as cwd. The user asked Flux to delegate PR creation to you (the task agent), not to run `gh pr create` from the Flux app.",
+    "Use this task's git worktree as cwd. The user asked Fluxx to delegate PR creation to you (the task agent), not to run `gh pr create` from the Fluxx app.",
     '',
-    'The Flux prompt that referenced this file includes the **task id**, **task title**, **repository** (when Flux knows which clone), **head branch**, and **PR base branch**. Choose an appropriate PR title and body from the task and repo context.',
+    'The Fluxx prompt that referenced this file includes the **task id**, **task title**, **repository** (when Fluxx knows which clone), **head branch**, and **PR base branch**. Choose an appropriate PR title and body from the task and repo context.',
     '',
     '## What to do',
     '1. Inspect the repo: `git status`, and `git diff` / `git diff --staged` as needed.',
     '2. Commit any changes that belong to this task with a clear message. Skip files that look like secrets, credentials, or local-only noise.',
     '3. Push the head branch to `origin` (e.g. `git push -u origin HEAD` or equivalent for this branch). Do **not** force-push or use other destructive git commands unless the user has explicitly approved them in this session.',
-    '4. Ensure the **PR base branch** from the Flux message exists on `origin` (e.g. `git ls-remote --heads origin <base>`). If it is missing locally and remotely, stop and explain. If it exists locally but not on `origin`, push it with a normal non-force push (e.g. `git push origin <base>`). Never force-push the base branch.',
+    '4. Ensure the **PR base branch** from the Fluxx message exists on `origin` (e.g. `git ls-remote --heads origin <base>`). If it is missing locally and remotely, stop and explain. If it exists locally but not on `origin`, push it with a normal non-force push (e.g. `git push origin <base>`). Never force-push the base branch.',
     '5. Create a GitHub pull request targeting that base branch, e.g. `gh pr create --base <base> --head <head> --title ... --body ...` (adjust flags to match the repo; `gh` must already be authenticated).',
     '6. When finished, reply with the **PR URL** so the user can open it. If something blocks you (no `gh`, auth, push rejected, wrong branch), explain briefly and say what they should fix.',
     '',
@@ -45,7 +45,7 @@ export function buildCreatePrInstructionsMarkdown(): string {
 
 /**
  * Resolves head/base for the GitHub PR the task agent should open, using the
- * same source-branch rules as Flux's PR automation (`effectiveTaskSourceBranchShort`).
+ * same source-branch rules as Fluxx's PR automation (`effectiveTaskSourceBranchShort`).
  */
 export function resolveAgentPullRequestBranchContext(params: {
   task: Pick<Task, 'sourceBranch'>;
@@ -72,7 +72,7 @@ export function buildTaskAgentPullRequestPrompt(p: TaskAgentPullRequestPromptPar
   const repoPath = (p.repoRootPath ?? '').trim();
 
   const lines: string[] = [
-    '## Flux: open a GitHub pull request for this task',
+    '## Fluxx: open a GitHub pull request for this task',
     '',
     '- **Task id:** `' + p.taskId + '`',
     '- **Task title:** ' + (p.taskTitle.trim() || '(untitled)'),
