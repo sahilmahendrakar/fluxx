@@ -21,7 +21,7 @@ export type McpBridgeOp =
   | 'repo.branchDiscovery'
   | 'members.list';
 
-/** One project member row for `members.list` / `flux__list_members` (cloud). */
+/** One project member row for `members.list` / `fluxx__list_members` (cloud). */
 export interface McpBridgeMember {
   uid: string;
   email: string;
@@ -105,7 +105,7 @@ export type McpBridgeResponse =
   | { id: string; ok: true; data: unknown }
   | { id: string; ok: false; code: McpBridgeErrorCode; message: string };
 
-/** One repository row for `flux__get_project_info` when multi-repo2 is enabled. */
+/** One repository row for `fluxx__get_project_info` when multi-repo2 is enabled. */
 export interface McpBridgeProjectInfoRepoSummary {
   id: string;
   /** Human-readable name (cloud: Firestore label; local: Flux repo name / folder). */

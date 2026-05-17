@@ -343,7 +343,7 @@ export class McpServer {
 
     server.tool(
       'flux__create_task',
-      'Create a new task on the Fluxx board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in flux__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository. For implementation tasks carved out of a larger plan, pass attachedPlanningDocs with { relativePath } entries pointing at existing markdown in the planning docs tree (e.g. docs/feature-plan.md or notes/plan.md under the planning workspace); each path must exist on disk or the tool returns an error. Keep the task description focused on the specific slice of work—the attached doc carries the broader context.',
+      'Create a new task on the Fluxx board for the current project. When the multi-repo2 feature is enabled and the project lists several repositories in fluxx__get_project_info, pass repoId to attach the task to a specific repo (string id from repos[].id); omit repoId to use the primary repository. For implementation tasks carved out of a larger plan, pass attachedPlanningDocs with { relativePath } entries pointing at existing markdown in the planning docs tree (e.g. docs/feature-plan.md or notes/plan.md under the planning workspace); each path must exist on disk or the tool returns an error. Keep the task description focused on the specific slice of work—the attached doc carries the broader context.',
       {
         title: z.string().describe('Task title'),
         description: z.string().optional().describe('Task description'),
@@ -396,7 +396,7 @@ export class McpServer {
           .string()
           .optional()
           .describe(
-            'Only when multi-repo2 is enabled: stable repo id from flux__get_project_info.repos[].id. Must match a configured repository; omit to use primaryRepoId.',
+            'Only when multi-repo2 is enabled: stable repo id from fluxx__get_project_info.repos[].id. Must match a configured repository; omit to use primaryRepoId.',
           ),
         attachedPlanningDocs: z
           .array(z.object({ relativePath: z.string() }))
@@ -590,7 +590,7 @@ export class McpServer {
           .string()
           .optional()
           .describe(
-            'Only when multi-repo2 is enabled: change task.repoId using an id from flux__get_project_info.repos[]. Rejected when a session, worktree, or PR blocks repo moves (same as the UI).',
+            'Only when multi-repo2 is enabled: change task.repoId using an id from fluxx__get_project_info.repos[]. Rejected when a session, worktree, or PR blocks repo moves (same as the UI).',
           ),
         attachedPlanningDocs: z
           .array(z.object({ relativePath: z.string() }))
@@ -758,7 +758,7 @@ export class McpServer {
       'flux__start_task',
       'Move a task to In progress on the Fluxx board and start its agent session',
       {
-        id: z.string().describe('Task id from flux__list_tasks'),
+        id: z.string().describe('Task id from fluxx__list_tasks'),
       },
       async (input) => {
         try {
@@ -776,7 +776,7 @@ export class McpServer {
             if (existing.agent == null) {
               return jsonToolPayload({
                 error:
-                  'This task has no coding agent assigned. Use flux__update_task to set agent before starting.',
+                  'This task has no coding agent assigned. Use fluxx__update_task to set agent before starting.',
               });
             }
             const updated = await this.taskActions.startTask(input.id);
@@ -805,7 +805,7 @@ export class McpServer {
           if (existing.agent == null) {
             return jsonToolPayload({
               error:
-                'This task has no coding agent assigned. Use flux__update_task to set agent before starting.',
+                'This task has no coding agent assigned. Use fluxx__update_task to set agent before starting.',
             });
           }
           const updateResult = await this.bridge.request<McpBridgeTasksUpdateResult>(
@@ -827,7 +827,7 @@ export class McpServer {
       'flux__delete_task',
       'Permanently remove a task from the Fluxx board for the current project. Requires confirm=true after the user explicitly asked to delete this task.',
       {
-        id: z.string().describe('Task id from flux__list_tasks'),
+        id: z.string().describe('Task id from fluxx__list_tasks'),
         confirm: z
           .literal(true)
           .describe('Must be true — only set after the user confirmed they want this task deleted'),
@@ -977,13 +977,13 @@ export class McpServer {
 
     server.tool(
       'flux__list_repo_branches',
-      'List local and origin remote branch short names, the configured default branch, and optionally classify one branch name. When multi-repo2 is enabled, pass repoId (from flux__get_project_info.repos[].id) to inspect a non-primary repository; omit repoId for the primary repo.',
+      'List local and origin remote branch short names, the configured default branch, and optionally classify one branch name. When multi-repo2 is enabled, pass repoId (from fluxx__get_project_info.repos[].id) to inspect a non-primary repository; omit repoId for the primary repo.',
       {
         repoId: z
           .string()
           .optional()
           .describe(
-            'Only when multi-repo2 is enabled: which project repository to read (id from flux__get_project_info.repos). Omit for the primary repository.',
+            'Only when multi-repo2 is enabled: which project repository to read (id from fluxx__get_project_info.repos). Omit for the primary repository.',
           ),
         classifyBranch: z
           .string()

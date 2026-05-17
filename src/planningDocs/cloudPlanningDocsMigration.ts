@@ -24,7 +24,7 @@
  *   avoids noisy conflict copies while still replacing with shared content when Firestore
  *   has the team version.
  *
- *   Flux-managed instruction upgrades persist `planning/.flux-instructions.json` (local metadata only;
+ *   Fluxx-managed instruction upgrades persist `planning/.flux-instructions.json` (local metadata only;
  *   not a planning doc and not cloud-synced).
  *
  * Persisted completion flags: `planning/.flux-cloud-docs-migration.json`
@@ -32,10 +32,7 @@
  * Firestore IO: `renderer/planningDocs/firestorePlanningDocs.ts`.
  */
 
-import {
-  FLUX_PLANNING_INSTRUCTIONS_BEGIN,
-  FLUX_PLANNING_INSTRUCTIONS_END,
-} from './planningInstructionMarkers';
+import { findPlanningInstructionMarkerBounds } from './planningInstructionMarkers';
 
 /** Local-only tree for divergent copies preserved during Firestore-first hydration. */
 export const PLANNING_CLOUD_UNSYNCED_PREFIX = '_flux_unsynced';
@@ -73,36 +70,36 @@ export function normalizePlanningInstructionHeading(markdown: string): string {
   return markdown.replace(/^#\s+Planning workspace — .*$/m, '# Planning workspace — __FLUX_NAME__');
 }
 
-const FLUX_PLANNING_TEMPLATE_VERSION_COMMENT = /^<!--\s*flux-planning-template\s+(\d+)\s*-->\s*\n?/im;
+const FLUXX_PLANNING_TEMPLATE_VERSION_COMMENT =
+  /^<!--\s*(?:flux|fluxx)-planning-template\s+(\d+)\s*-->\s*\n?/im;
 
-/** Strips the optional Flux template version tag emitted at the top of managed instruction bodies. */
+/** Strips the optional Fluxx template version tag emitted at the top of managed instruction bodies. */
 export function stripFluxPlanningTemplateVersionComment(markdown: string): string {
-  return markdown.replace(/\r\n/g, '\n').replace(FLUX_PLANNING_TEMPLATE_VERSION_COMMENT, '');
+  return markdown.replace(/\r\n/g, '\n').replace(FLUXX_PLANNING_TEMPLATE_VERSION_COMMENT, '');
 }
 
 /** Reads the numeric template version from the first line of a managed instruction body, or `0` if absent. */
 export function readFluxPlanningTemplateVersionFromManagedBody(managedBody: string): number {
   const unified = managedBody.replace(/\r\n/g, '\n');
-  const m = unified.match(FLUX_PLANNING_TEMPLATE_VERSION_COMMENT);
+  const m = unified.match(FLUXX_PLANNING_TEMPLATE_VERSION_COMMENT);
   if (!m) return 0;
   const n = Number.parseInt(m[1] ?? '', 10);
   return Number.isFinite(n) ? n : 0;
 }
 
 /**
- * When instruction files use Flux marker blocks, compare only the managed inner region.
+ * When instruction files use Fluxx marker blocks, compare only the managed inner region.
  * Otherwise use the full document (legacy unwrapped seeds).
  */
 export function extractPlanningInstructionManagedBodyForEquivalence(markdown: string): string {
   const unified = markdown.replace(/\r\n/g, '\n');
-  const beginIdx = unified.indexOf(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
-  const endIdx = unified.indexOf(FLUX_PLANNING_INSTRUCTIONS_END);
-  if (beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) {
+  const bounds = findPlanningInstructionMarkerBounds(unified);
+  if (!bounds) {
     return unified;
   }
-  const afterBegin = beginIdx + FLUX_PLANNING_INSTRUCTIONS_BEGIN.length;
+  const afterBegin = bounds.beginIdx + bounds.beginMarkerLen;
   return unified
-    .slice(afterBegin, endIdx)
+    .slice(afterBegin, bounds.endIdx)
     .replace(/^\n+/, '')
     .replace(/\n+$/, '');
 }
