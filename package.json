@@ -67,7 +67,6 @@
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
     "@lucide/lab": "^0.1.2",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/addon-web-links": "^0.12.0",

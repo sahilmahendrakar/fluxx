@@ -119,12 +119,13 @@ export function agentSpawnResumeSpec(
  * Planning PTY uses project-level agent (and optional model for Claude / Cursor).
  * Task sessions use {@link agentSpawnSpec} with the task row.
  *
+ * All planning agents read `planning/CLAUDE.md` and `planning/AGENTS.md` for Flux CLI usage.
+ *
  * @param agentModel — For `claude-code`, non-empty → `--model`; for `cursor`, passed to
  *   `--model` (default `auto` when blank). Ignored for `codex`.
  */
 export function planningSpawnSpec(
   agent: Agent,
-  mcpConfigPath: string,
   agentModel?: string,
   agentYolo?: boolean,
 ): { command: string; args: string[] } {
@@ -138,12 +139,6 @@ export function planningSpawnSpec(
       if (agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
-      args.push(
-        '--mcp-config',
-        mcpConfigPath,
-        '--append-system-prompt',
-        'You are a planning assistant for a software project. Help the developer plan features, maintain documentation in this directory, and manage tasks on the Flux board using the available flux__ tools (list/create/start/update/delete tasks; get_project_info, list_repo_branches, and list_members for repo/member context; create/update accept optional blockedByTaskIds, labels, assigneeEmail, sourceBranch, createSourceBranchIfMissing, and attachedPlanningDocs with { relativePath } entries for existing planning markdown (e.g. docs/plan.md under this workspace); update also accepts unassignAssignee:true and can set attachedPlanningDocs to null or [] to clear; when assigning or reassigning a task, call list_members if needed and pass the member email as assigneeEmail; when the user names a git branch for the work, pass sourceBranch on every related task you create; use createSourceBranchIfMissing only when they want a missing branch created on first session start; when you split a comprehensive plan into implementation tasks, attach the current plan doc via attachedPlanningDocs on each derived task but keep each task description scoped to that task slice only; delete requires explicit user intent and confirm:true). Do not write application code.',
-      );
       return { command: 'claude', args };
     }
     case 'codex':
@@ -153,7 +148,7 @@ export function planningSpawnSpec(
       };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
-      const args: string[] = ['--model', model, '--approve-mcps'];
+      const args: string[] = ['--model', model];
       if (agentYolo === true) {
         args.push('--yolo');
       }

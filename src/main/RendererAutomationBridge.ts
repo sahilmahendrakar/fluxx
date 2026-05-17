@@ -1,34 +1,34 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import {
-  MCP_BRIDGE_READY_CHANNEL,
-  MCP_BRIDGE_REQUEST_CHANNEL,
-  MCP_BRIDGE_RESPONSE_CHANNEL,
-  type McpBridgeErrorCode,
-  type McpBridgeOp,
-  type McpBridgeRequest,
-  type McpBridgeResponse,
-} from '../mcpBridge';
+  AUTOMATION_BRIDGE_READY_CHANNEL,
+  AUTOMATION_BRIDGE_REQUEST_CHANNEL,
+  AUTOMATION_BRIDGE_RESPONSE_CHANNEL,
+  type AutomationBridgeErrorCode,
+  type AutomationBridgeOp,
+  type AutomationBridgeRequest,
+  type AutomationBridgeResponse,
+} from '../rendererAutomationBridge';
 import type { ActiveProjectKey } from '../types';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
 const DEFAULT_READY_TIMEOUT_MS = 5000;
 
-export type McpBridgeResult<T = unknown> =
+export type AutomationBridgeResult<T = unknown> =
   | { ok: true; data: T }
-  | { ok: false; code: McpBridgeErrorCode; message: string };
+  | { ok: false; code: AutomationBridgeErrorCode; message: string };
 
 interface PendingRequest {
-  resolve: (resp: McpBridgeResponse) => void;
+  resolve: (resp: AutomationBridgeResponse) => void;
   timer: NodeJS.Timeout;
 }
 
 /**
- * Main-side request/response bridge to the renderer for MCP cloud-project
- * operations. The renderer holds the Firebase auth context and the active
- * TaskProvider, so all Firestore reads/writes for cloud projects go through
- * this RPC. Local projects do not use the bridge.
+ * Main-side request/response bridge to the renderer for cloud-project automation
+ * (CLI and other automation callers). The renderer holds Firebase auth and the active
+ * TaskProvider, so Firestore reads/writes for cloud projects go through this RPC.
+ * Local projects do not use the bridge.
  */
-export class McpRendererBridge {
+export class RendererAutomationBridge {
   private getMainWindow: () => BrowserWindow | null;
   private rendererReady = false;
   private readyWaiters: Array<() => void> = [];
@@ -44,14 +44,14 @@ export class McpRendererBridge {
   install(): void {
     if (this.installed) return;
     this.installed = true;
-    ipcMain.on(MCP_BRIDGE_RESPONSE_CHANNEL, (_e, resp: McpBridgeResponse) => {
+    ipcMain.on(AUTOMATION_BRIDGE_RESPONSE_CHANNEL, (_e, resp: AutomationBridgeResponse) => {
       const pending = this.pending.get(resp.id);
       if (!pending) return;
       clearTimeout(pending.timer);
       this.pending.delete(resp.id);
       pending.resolve(resp);
     });
-    ipcMain.on(MCP_BRIDGE_READY_CHANNEL, () => {
+    ipcMain.on(AUTOMATION_BRIDGE_READY_CHANNEL, () => {
       this.markReady();
     });
   }
@@ -79,7 +79,7 @@ export class McpRendererBridge {
   }
 
   private failAllPending(
-    code: McpBridgeErrorCode,
+    code: AutomationBridgeErrorCode,
     message: string,
   ): void {
     this.rendererReady = false;
@@ -130,11 +130,11 @@ export class McpRendererBridge {
   }
 
   async request<T = unknown>(
-    op: McpBridgeOp,
+    op: AutomationBridgeOp,
     expectedActiveKey: ActiveProjectKey,
     payload?: unknown,
     options?: { timeoutMs?: number; readyTimeoutMs?: number },
-  ): Promise<McpBridgeResult<T>> {
+  ): Promise<AutomationBridgeResult<T>> {
     const win = this.getMainWindow();
     if (!win || win.isDestroyed()) {
       return {
@@ -155,10 +155,10 @@ export class McpRendererBridge {
       };
     }
 
-    const id = `mcp-bridge-${Date.now()}-${++this.nextId}`;
+    const id = `automation-bridge-${Date.now()}-${++this.nextId}`;
     const timeoutMs = options?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 
-    const envelope = await new Promise<McpBridgeResponse>((resolve) => {
+    const envelope = await new Promise<AutomationBridgeResponse>((resolve) => {
       const timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id);
@@ -172,9 +172,9 @@ export class McpRendererBridge {
       }, timeoutMs);
       this.pending.set(id, { resolve, timer });
 
-      const req: McpBridgeRequest = { id, op, expectedActiveKey, payload };
+      const req: AutomationBridgeRequest = { id, op, expectedActiveKey, payload };
       try {
-        win.webContents.send(MCP_BRIDGE_REQUEST_CHANNEL, req);
+        win.webContents.send(AUTOMATION_BRIDGE_REQUEST_CHANNEL, req);
       } catch (err) {
         const pending = this.pending.get(id);
         if (pending) {

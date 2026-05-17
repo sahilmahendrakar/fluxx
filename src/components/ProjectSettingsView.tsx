@@ -1036,10 +1036,10 @@ function ProjectConfigPane({
               title="Auto-start sessions when tasks move from Backlog to In progress"
               description={
                 <>
-                  Applies when a task leaves Backlog for In progress (board drag, task detail, MCP{' '}
-                  <code className="text-zinc-400">flux__update_task</code>). Other columns into In
+                  Applies when a task leaves Backlog for In progress (board drag, task detail,{' '}
+                  <code className="text-zinc-400">flux tasks update</code>). Other columns into In
                   progress do not auto-start from this setting.{' '}
-                  <code className="text-zinc-400">flux__start_task</code> always starts a session
+                  <code className="text-zinc-400">flux tasks start</code> always starts a session
                   regardless of this setting.
                 </>
               }
@@ -1096,7 +1096,7 @@ function ProjectConfigPane({
                   After a task reaches Done, automatically run the same cleanup as the broom on the
                   card: stop agent sessions and remove the task git worktree on this machine. The task
                   stays in Done with the broom marked complete. Applies to drags, detail status changes,
-                  and MCP updates. For cloud projects this preference is stored per machine.
+                  and Flux CLI updates. For cloud projects this preference is stored per machine.
                 </>
               }
               checked={autoCleanupOnDoneEnabled}
@@ -1278,8 +1278,8 @@ function ProjectConfigPane({
                 Default task agent
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
-                New tasks and MCP{' '}
-                <code className="font-mono text-zinc-500">flux__create_task</code> when no agent is
+                New tasks and{' '}
+                <code className="font-mono text-zinc-500">flux tasks create</code> when no agent is
                 given. Codex ignores model/YOLO here.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">

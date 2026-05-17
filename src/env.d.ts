@@ -35,9 +35,9 @@ import type {
   PlanningAttachResult,
 } from './terminal-runtime/protocol';
 import type {
-  McpBridgeRequest,
-  McpBridgeResponse,
-} from './mcpBridge';
+  AutomationBridgeRequest,
+  AutomationBridgeResponse,
+} from './rendererAutomationBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
 import type {
   PlanningDocsApplyFirestoreSnapshotResult,
@@ -460,10 +460,10 @@ declare global {
         quitAndInstall: () => Promise<void>;
         onStateChanged: (cb: (state: AppUpdateState) => void) => () => void;
       };
-      mcpBridge: {
+      automationBridge: {
         signalReady: () => void;
-        onRequest: (cb: (req: McpBridgeRequest) => void) => () => void;
-        respond: (resp: McpBridgeResponse) => void;
+        onRequest: (cb: (req: AutomationBridgeRequest) => void) => () => void;
+        respond: (resp: AutomationBridgeResponse) => void;
       };
     };
   }

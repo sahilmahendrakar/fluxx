@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  FLUX_SSE_MCP_ENTRY,
   addProjectMcpServersText,
   ensureProjectMcpConfig,
   materializeCursorMcpConfig,
@@ -24,17 +23,15 @@ describe('mcpConfig', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('creates a project config with the reserved Flux server', async () => {
+  it('creates an empty project config for external MCP servers', async () => {
     const result = await ensureProjectMcpConfig(dir);
 
     expect(result.path).toBe(projectMcpConfigPath(dir));
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
-    await expect(fs.readFile(result.path, 'utf8')).resolves.toContain(
-      'http://localhost:47432/sse',
-    );
+    expect(result.config.mcpServers).toEqual({});
+    await expect(fs.readFile(result.path, 'utf8')).resolves.not.toContain('localhost:47432');
   });
 
-  it('preserves external servers while forcing the Flux server entry', async () => {
+  it('preserves external servers without injecting a Flux server entry', async () => {
     const result = await writeProjectMcpConfigText(
       dir,
       JSON.stringify({
@@ -55,7 +52,10 @@ describe('mcpConfig', () => {
       command: 'npx',
       args: ['-y', '@datadog/mcp-server'],
     });
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.flux).toEqual({
+      type: 'stdio',
+      command: 'wrong',
+    });
   });
 
   it('rejects malformed config shapes', () => {
@@ -121,7 +121,7 @@ describe('mcpConfig', () => {
       type: 'http',
       url: 'https://mcp.notion.com/mcp',
     });
-    expect(result.config.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(result.config.mcpServers.flux).toBeUndefined();
   });
 
   it('infers SSE transport for URL-only /sse entries', () => {
@@ -164,6 +164,6 @@ describe('mcpConfig', () => {
     );
     expect(merged.mcpServers.repoLocal).toEqual({ command: 'repo-mcp' });
     expect(merged.mcpServers.datadog).toEqual({ command: 'datadog-mcp' });
-    expect(merged.mcpServers.flux).toEqual(FLUX_SSE_MCP_ENTRY);
+    expect(merged.mcpServers.flux).toBeUndefined();
   });
 });

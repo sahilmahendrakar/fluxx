@@ -561,15 +561,19 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  it('writes repo-aware MCP guidance when multiRepoGuide is true', async () => {
+  it('writes repo-aware CLI guidance when multiRepoGuide is true', async () => {
     await ensurePlanningAssistantMarkdownFiles(dir, 'MyApp', '/tmp/primary', {
       multiRepoGuide: true,
     });
     expect((await fs.stat(path.join(dir, 'docs'))).isDirectory()).toBe(true);
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('<!-- flux-planning-template 3 -->');
+    expect(claude).toContain('## Multi-task features (required)');
+    expect(claude).toContain('flux project info --json');
     expect(claude).toContain('repos[]');
-    expect(claude).toContain('repoId');
+    expect(claude).toContain('--repo-id');
+    expect(claude).toContain('do **not** create a `FLUX_BIN` variable');
+    expect(claude).not.toContain('flux__');
   });
 
   it('migrates legacy top-level markdown into docs/ when present', async () => {
@@ -579,14 +583,67 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await expect(fs.access(path.join(dir, PLANNING_USER_DOCS_LEGACY_MIGRATION_STATE_BASENAME))).resolves.toBeUndefined();
   });
 
-  it('uses single-repo tool copy when multiRepoGuide is false', async () => {
+  it('uses single-repo CLI copy when multiRepoGuide is false', async () => {
     await ensurePlanningAssistantMarkdownFiles(dir, 'Solo', '/tmp/one', {
       multiRepoGuide: false,
     });
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('flux__get_project_info');
+    expect(claude).toContain('flux project info --json');
     expect(claude).not.toContain('repos[]');
-    expect(claude).not.toContain('repoId');
+    expect(claude).not.toContain('--repo-id');
+    expect(claude).not.toContain('flux__');
+  });
+
+  it('upgrades generated CLI assistant files missing the current version marker', async () => {
+    const v1Cli = `# Planning workspace — Old
+
+## Flux CLI
+
+Planning sessions inject bridge env.
+`;
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), v1Cli, 'utf8');
+
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Upgraded', '/tmp/repo', {
+      multiRepoGuide: false,
+    });
+
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(claude).toContain('<!-- flux-planning-template 3 -->');
+    expect(claude).toContain('## Multi-task features (required)');
+    expect(claude).toContain('--depends-on-task-id');
+  });
+
+  it('migrates generated MCP-era assistant files to CLI guidance', async () => {
+    const legacy = `# Planning workspace — Old
+
+You have access to the following Flux tools for task management:
+- \`flux__get_project_info\`
+- \`flux__create_task\`
+`;
+    await fs.writeFile(path.join(dir, 'CLAUDE.md'), legacy, 'utf8');
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), legacy, 'utf8');
+
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Migrated', '/tmp/repo', {
+      multiRepoGuide: false,
+    });
+
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    const agents = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+    expect(claude).toContain('flux project info --json');
+    expect(agents).toContain('flux tasks create --json');
+    expect(claude).not.toContain('flux__');
+    expect(agents).not.toContain('flux__');
+  });
+
+  it('preserves non-generated assistant files', async () => {
+    const custom = '# Custom project instructions\n\nKeep this hand-written note.\n';
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), custom, 'utf8');
+
+    await ensurePlanningAssistantMarkdownFiles(dir, 'Custom', '/tmp/repo', {
+      multiRepoGuide: false,
+    });
+
+    await expect(fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8')).resolves.toBe(custom);
   });
 
   it('wraps new seeds with Flux markers and persists instruction state', async () => {
@@ -619,7 +676,7 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     await ensurePlanningAssistantMarkdownFiles(dir, 'Legacy', '/other/root', { multiRepoGuide: true });
     const upgraded = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
     expect(upgraded).toContain(FLUX_PLANNING_INSTRUCTIONS_BEGIN);
-    expect(upgraded).toContain('flux__get_project_info');
+    expect(upgraded).toContain('flux project info --json');
   });
 
   it('preserves manual instruction files that are not Flux templates', async () => {

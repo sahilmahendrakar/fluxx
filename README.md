@@ -79,13 +79,14 @@ pnpm start
 
 Sign-in is optional. Without the env vars set, Flux runs fully local (open local projects, run agents). To enable Google sign-in, create a Firebase project + a Google OAuth "Desktop app" client and fill in the `.env` values documented in `.env.example`.
 
-### Planning assistant and MCP
+### Planning assistant and Flux CLI
 
-When Flux is running, the main process exposes an MCP server at `http://localhost:47432/sse` (fixed port). Flux keeps this reserved `flux` server in `mcp.json` in the project directory and uses the same file for additional external MCP servers, such as Datadog or Atlassian. Use Project Config → MCP servers → Add MCP to paste provider snippets; Flux accepts either a full `{ "mcpServers": { ... } }` config or a single `"name": { ... }` server entry. For cloud projects, this config is stored in the local project materialization on your machine and is not synced to teammates.
+When you start a planning session, Flux injects automation bridge env vars, writes `.flux/cli-bridge.json` under the project directory, and prepends the packaged `flux` shim to the PTY `PATH` (dev builds use `.vite/build`). Planning agents run board commands in the shell, for example `flux project info --json` and `flux tasks list --json`.
 
-Claude Code sessions receive the project MCP config with `--mcp-config`. Cursor Agent sessions use Cursor's project config location, so Flux materializes the merged config into `.cursor/mcp.json` in the planning workspace or task worktree before launch and starts Cursor with `--approve-mcps`. Codex MCP config is not wired in this version. Flux owns the agent PTY lifecycle; any external MCP subprocesses are started and stopped by the agent CLI for that session.
 
-Task tools are named `flux__list_tasks`, `flux__create_task`, `flux__start_task`, `flux__update_task`, `flux__delete_task`, and `flux__get_project_info`. They operate on the **currently open** local project’s board in the app. `flux__list_tasks` accepts optional `excludeStatuses` (array of `backlog` \| `in-progress` \| `needs-input` \| `done`) to drop those columns from the JSON response; omit it to list every task. `flux__create_task` and `flux__update_task` accept an optional `labels` array for feature tags; values are normalized (trimmed, no empties, case-insensitive unique). `flux__create_task` also accepts optional `agentModel` and `agentYolo`; when omitted, the project’s saved defaults apply (same as new tasks in the UI). `flux__delete_task` requires `confirm: true` in the tool arguments after the user explicitly asked to remove that task.
+Seeded `planning/CLAUDE.md` and `planning/AGENTS.md` document the CLI surface for all planning agents. Always pass `--json` on board commands. When the user names a git branch for work, pass `--source-branch` on each related `flux tasks create`. `flux tasks delete` requires `--confirm` after explicit user intent.
+
+Planning automation uses the loopback HTTP bridge and packaged `flux` CLI only (no built-in Flux MCP server on port 47432). Project MCP config remains available for external provider servers, such as Datadog or Atlassian: Project Config → MCP servers → Add MCP accepts either a full `{ "mcpServers": { ... } }` config or a single `"name": { ... }` server entry. Flux no longer injects a reserved `flux` MCP server into `mcp.json`; planning agents use the CLI for Flux board operations.
 
 ---
 

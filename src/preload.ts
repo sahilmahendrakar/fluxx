@@ -34,12 +34,12 @@ import type {
   PlanningAttachResult,
 } from './terminal-runtime/protocol';
 import {
-  MCP_BRIDGE_READY_CHANNEL,
-  MCP_BRIDGE_REQUEST_CHANNEL,
-  MCP_BRIDGE_RESPONSE_CHANNEL,
-  type McpBridgeRequest,
-  type McpBridgeResponse,
-} from './mcpBridge';
+  AUTOMATION_BRIDGE_READY_CHANNEL,
+  AUTOMATION_BRIDGE_REQUEST_CHANNEL,
+  AUTOMATION_BRIDGE_RESPONSE_CHANNEL,
+  type AutomationBridgeRequest,
+  type AutomationBridgeResponse,
+} from './rendererAutomationBridge';
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
 import type {
   PlanningDocsApplyFirestoreSnapshotResult,
@@ -654,16 +654,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener(ch, handler);
     },
   },
-  mcpBridge: {
-    signalReady: () => ipcRenderer.send(MCP_BRIDGE_READY_CHANNEL),
-    onRequest: (cb: (req: McpBridgeRequest) => void) => {
-      const handler = (_e: IpcRendererEvent, req: McpBridgeRequest) => cb(req);
-      ipcRenderer.on(MCP_BRIDGE_REQUEST_CHANNEL, handler);
+  automationBridge: {
+    signalReady: () => ipcRenderer.send(AUTOMATION_BRIDGE_READY_CHANNEL),
+    onRequest: (cb: (req: AutomationBridgeRequest) => void) => {
+      const handler = (_e: IpcRendererEvent, req: AutomationBridgeRequest) => cb(req);
+      ipcRenderer.on(AUTOMATION_BRIDGE_REQUEST_CHANNEL, handler);
       return () =>
-        ipcRenderer.removeListener(MCP_BRIDGE_REQUEST_CHANNEL, handler);
+        ipcRenderer.removeListener(AUTOMATION_BRIDGE_REQUEST_CHANNEL, handler);
     },
-    respond: (resp: McpBridgeResponse) => {
-      ipcRenderer.send(MCP_BRIDGE_RESPONSE_CHANNEL, resp);
+    respond: (resp: AutomationBridgeResponse) => {
+      ipcRenderer.send(AUTOMATION_BRIDGE_RESPONSE_CHANNEL, resp);
     },
   },
 });

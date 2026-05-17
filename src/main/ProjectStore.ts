@@ -39,7 +39,6 @@ import {
   DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
 } from '../cloudBindingPrefs';
-import { ensureProjectMcpConfigExists } from './mcpConfig';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
 
 export { ensurePlanningAssistantMarkdownFiles };
@@ -1056,8 +1055,6 @@ export class ProjectStore {
     }
 
     await atomicWriteFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
-
-    await ensureProjectMcpConfigExists(projectDir);
 
     await ensurePlanningAssistantMarkdownFiles(
       path.join(projectDir, 'planning'),

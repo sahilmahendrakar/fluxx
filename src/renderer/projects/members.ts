@@ -10,7 +10,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import type { McpBridgeMember } from '../../mcpBridge';
+import type { AutomationBridgeMember } from '../../rendererAutomationBridge';
 import { getFirebaseFirestore } from '../firebase';
 
 export interface ProjectMember {
@@ -66,9 +66,9 @@ function toMember(d: QueryDocumentSnapshot<DocumentData>): ProjectMember {
   };
 }
 
-function toBridgeMember(d: QueryDocumentSnapshot<DocumentData>): McpBridgeMember {
+function toBridgeMember(d: QueryDocumentSnapshot<DocumentData>): AutomationBridgeMember {
   const data = d.data() ?? {};
-  const row: McpBridgeMember = {
+  const row: AutomationBridgeMember = {
     uid: d.id,
     role: data.role === 'owner' ? 'owner' : 'member',
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
@@ -93,7 +93,7 @@ function sortMembersByRoleThenName<T extends { role: 'owner' | 'member'; display
  * One-shot read of `projects/{projectId}/members` for MCP bridge (same collection as
  * {@link subscribeToProjectMembers}). Sorted owner-first, then display name.
  */
-export async function fetchProjectMembersForBridge(projectId: string): Promise<McpBridgeMember[]> {
+export async function fetchProjectMembersForBridge(projectId: string): Promise<AutomationBridgeMember[]> {
   const db = getFirebaseFirestore();
   const snap = await getDocs(collection(db, 'projects', projectId, 'members'));
   const members = snap.docs.map(toBridgeMember);

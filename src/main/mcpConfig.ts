@@ -2,11 +2,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export const PROJECT_MCP_CONFIG_BASENAME = 'mcp.json';
-export const FLUX_MCP_SERVER_NAME = 'flux';
-export const FLUX_SSE_MCP_ENTRY = {
-  type: 'sse' as const,
-  url: 'http://localhost:47432/sse',
-};
 
 export interface McpConfig {
   mcpServers: Record<string, unknown>;
@@ -123,21 +118,12 @@ export function parseMcpServersPasteText(raw: string): McpConfig {
   }
 }
 
-export function withFluxMcpServer(config: McpConfig): McpConfig {
-  return {
-    mcpServers: {
-      ...config.mcpServers,
-      [FLUX_MCP_SERVER_NAME]: FLUX_SSE_MCP_ENTRY,
-    },
-  };
-}
-
 export function defaultMcpConfig(): McpConfig {
-  return withFluxMcpServer({ mcpServers: {} });
+  return { mcpServers: {} };
 }
 
 export function formatMcpConfig(config: McpConfig): string {
-  return `${JSON.stringify(withFluxMcpServer(config), null, 2)}\n`;
+  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 export async function ensureProjectMcpConfigExists(projectDir: string): Promise<void> {
@@ -167,10 +153,9 @@ export async function ensureProjectMcpConfig(
     }
     config = defaultMcpConfig();
   }
-  const merged = withFluxMcpServer(config);
-  const text = formatMcpConfig(merged);
+  const text = formatMcpConfig(config);
   await fs.writeFile(mcpPath, text, 'utf8');
-  return { path: mcpPath, text, config: merged };
+  return { path: mcpPath, text, config };
 }
 
 export async function writeProjectMcpConfigText(
@@ -178,7 +163,7 @@ export async function writeProjectMcpConfigText(
   raw: string,
 ): Promise<ProjectMcpConfigPayload> {
   const mcpPath = projectMcpConfigPath(projectDir);
-  const config = withFluxMcpServer(parseMcpConfigText(raw));
+  const config = parseMcpConfigText(raw);
   const text = formatMcpConfig(config);
   await fs.writeFile(mcpPath, text, 'utf8');
   return { path: mcpPath, text, config };
@@ -190,12 +175,12 @@ export async function addProjectMcpServersText(
 ): Promise<ProjectMcpConfigPayload> {
   const existing = await ensureProjectMcpConfig(projectDir);
   const additions = parseMcpServersPasteText(raw);
-  const config = withFluxMcpServer({
+  const config = {
     mcpServers: {
       ...existing.config.mcpServers,
       ...additions.mcpServers,
     },
-  });
+  };
   const text = formatMcpConfig(config);
   await fs.writeFile(existing.path, text, 'utf8');
   return { path: existing.path, text, config };
@@ -216,12 +201,12 @@ export async function materializeCursorMcpConfig(
       throw err;
     }
   }
-  const merged = withFluxMcpServer({
+  const merged = {
     mcpServers: {
       ...existing.mcpServers,
       ...projectConfig.mcpServers,
     },
-  });
+  };
   await fs.writeFile(targetPath, formatMcpConfig(merged), 'utf8');
   return targetPath;
 }

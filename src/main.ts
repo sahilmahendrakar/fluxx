@@ -16,8 +16,18 @@ import {
   resolveRepoForBranchDiscovery,
   validateTaskRepoIdPatchValue,
 } from './repoIdentity';
-import { McpServer } from './main/McpServer';
-import { McpRendererBridge } from './main/McpRendererBridge';
+import { AutomationHttpServer } from './main/AutomationHttpServer';
+import {
+  invokeFluxAutomationRequest,
+  type FluxAutomationHostDeps,
+} from './main/fluxAutomationHost';
+import { RendererAutomationBridge } from './main/RendererAutomationBridge';
+import {
+  fluxAutomationPtyEnv,
+  newFluxAutomationToken,
+  resolveFluxCliBinDir,
+  writeFluxCliBridgeConfig,
+} from './main/fluxAutomationBridge';
 import { AppStateStore } from './main/AppStateStore';
 import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
 import { hydrateCloudProject } from './cloudBindingPrefs';
@@ -421,8 +431,10 @@ function resolveWindowIconPath(): string | undefined {
 
 let mainWindow: BrowserWindow | null = null;
 
-let fluxMcpServer: McpServer | null = null;
-let fluxMcpRendererBridge: McpRendererBridge | null = null;
+let fluxAutomationServer: AutomationHttpServer | null = null;
+let fluxAutomationHostDeps: FluxAutomationHostDeps | null = null;
+let fluxAutomationToken: string | null = null;
+let fluxAutomationRendererBridge: RendererAutomationBridge | null = null;
 
 let planningDocsWatcher: ReturnType<typeof createPlanningDocsWatcher> | null = null;
 
@@ -3627,9 +3639,9 @@ app.whenReady().then(async () => {
     }
   });
 
-  const mcpRendererBridge = new McpRendererBridge(() => mainWindow);
-  mcpRendererBridge.install();
-  fluxMcpRendererBridge = mcpRendererBridge;
+  const automationRendererBridge = new RendererAutomationBridge(() => mainWindow);
+  automationRendererBridge.install();
+  fluxAutomationRendererBridge = automationRendererBridge;
 
   const resolvePlanningDocsDir = (): string | null =>
     resolvePlanningDocsDirFromSources(
@@ -3637,29 +3649,44 @@ app.whenReady().then(async () => {
       worktreeService.getProjectDir(),
     );
 
-  fluxMcpServer = new McpServer(
+  fluxAutomationHostDeps = {
     taskStore,
     projectStore,
     appStateStore,
     bindingStore,
-    mcpRendererBridge,
-    () => mainWindow,
-    resolvePlanningDocsDir,
-    {
+    bridge: automationRendererBridge,
+    getMainWindow: () => mainWindow,
+    taskActions: {
       updateTask: (id, patch) =>
-        updateTaskWithTransitionHandling(id, patch, 'mcp:flux__update_task'),
-      startTask: (id) => startTaskAndSession(id, 'mcp:flux__start_task'),
+        updateTaskWithTransitionHandling(id, patch, 'cli:flux tasks update'),
+      startTask: (id) => startTaskAndSession(id, 'cli:flux tasks start'),
       startSessionForExistingTask: (task) =>
-        runStartSessionForTaskWithLogging(task, 'mcp:flux__start_task'),
+        runStartSessionForTaskWithLogging(task, 'cli:flux tasks start'),
       autoStartIfTransitionedToInProgress: (previous, updated) =>
         maybeAutoStartSessionOnInProgressTransition(
           previous,
           updated,
-          'mcp:flux__update_task',
+          'cli:flux tasks update',
         ),
     },
+  };
+
+  fluxAutomationToken = newFluxAutomationToken();
+  fluxAutomationServer = new AutomationHttpServer(
+    fluxAutomationToken,
+    () => appStateStore.get().activeProjectKey,
+    (body) => {
+      if (!fluxAutomationHostDeps) {
+        return Promise.resolve({
+          ok: false as const,
+          error: 'Automation host not ready',
+          code: 'NO_ACTIVE_PROJECT' as const,
+        });
+      }
+      return invokeFluxAutomationRequest(fluxAutomationHostDeps, body);
+    },
   );
-  fluxMcpServer.start();
+  fluxAutomationServer.start();
 
   async function activeProjectIdForPlanning(): Promise<string | null> {
     const activeKey = appStateStore.get().activeProjectKey;
@@ -3762,10 +3789,6 @@ app.whenReady().then(async () => {
         project.name,
         project.rootPath,
       );
-      const projectMcpConfig = await ensureProjectMcpConfig(projectDir);
-      if (planningAgent === 'cursor') {
-        await materializeCursorMcpConfig(planningDir, projectMcpConfig.config);
-      }
 
       const spawnModel = resolvedPlanningModelForSpawn(
         project,
@@ -3775,7 +3798,6 @@ app.whenReady().then(async () => {
       const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
       const { command, args } = planningSpawnSpec(
         planningAgent,
-        projectMcpConfig.path,
         spawnModel,
         spawnYolo,
       );
@@ -3786,6 +3808,23 @@ app.whenReady().then(async () => {
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
 
+      let ptyEnv: Record<string, string> | undefined;
+      if (fluxAutomationServer && fluxAutomationToken) {
+        await fluxAutomationServer.whenReady();
+        const baseUrl = fluxAutomationServer.baseUrl;
+        await writeFluxCliBridgeConfig(projectDir, {
+          url: baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+        });
+        ptyEnv = fluxAutomationPtyEnv({
+          baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+          fluxCliBinDir: resolveFluxCliBinDir(),
+        });
+      }
+
       const result = await terminalBackend.startPlanning({
         projectId: project.id,
         agent: planningAgent,
@@ -3795,6 +3834,7 @@ app.whenReady().then(async () => {
         cols: 220,
         rows: 50,
         ...trustAutorespondArg,
+        ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
       if ('error' in result) {
         console.error('[planning:start] daemon spawn failed', {
@@ -4162,8 +4202,8 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
-  if (mainWindow && fluxMcpRendererBridge) {
-    fluxMcpRendererBridge.attachWindow(mainWindow);
+  if (mainWindow && fluxAutomationRendererBridge) {
+    fluxAutomationRendererBridge.attachWindow(mainWindow);
   }
 });
 
@@ -4181,8 +4221,8 @@ app.on('activate', () => {
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
-    if (mainWindow && fluxMcpRendererBridge) {
-      fluxMcpRendererBridge.attachWindow(mainWindow);
+    if (mainWindow && fluxAutomationRendererBridge) {
+      fluxAutomationRendererBridge.attachWindow(mainWindow);
     }
   }
 });
@@ -4220,7 +4260,10 @@ app.on('before-quit', (e) => {
         }
       }
 
-      fluxMcpServer?.stop();
+      fluxAutomationServer?.stop();
+      fluxAutomationServer = null;
+      fluxAutomationToken = null;
+      fluxAutomationHostDeps = null;
       planningDocsWatcher?.dispose();
       planningDocsWatcher = null;
 

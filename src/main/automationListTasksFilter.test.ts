@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TaskStatus } from '../types';
-import { filterTasksByExcludeStatuses } from './mcpListTasksFilter';
+import { filterTasksByExcludeStatuses } from './automationListTasksFilter';
 
 function row(id: string, status: TaskStatus): { id: string; status: TaskStatus } {
   return { id, status };

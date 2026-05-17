@@ -78,7 +78,7 @@ import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
 import { invalidateSessionAttachCache } from './terminal/warmAttach';
 import { isTaskBlocked, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from './taskDependencies';
 import { useCloudPlanningDocsMigration } from './renderer/planningDocs/useCloudPlanningDocsMigration';
-import { useMcpRendererBridge } from './renderer/mcp/useMcpRendererBridge';
+import { useRendererAutomationBridge } from './renderer/automation/useRendererAutomationBridge';
 import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlanningDocsFirestorePush';
 import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { isFirebaseConfigured } from './renderer/firebase';
@@ -1622,7 +1622,7 @@ export default function App() {
     onCloudPrMergedAutoDone: handleCloudPrRefreshMergedAutoDone,
   });
 
-  useMcpRendererBridge({
+  useRendererAutomationBridge({
     project,
     provider,
     uid,

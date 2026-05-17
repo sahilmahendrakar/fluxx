@@ -14,6 +14,7 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,6 +129,32 @@ function packagerIgnore(file: string): boolean {
   return true;
 }
 
+/** Stage `flux-cli.js` + `flux` shim for planning PTYs in packaged builds. */
+async function stageFluxCliResources(buildPath: string): Promise<void> {
+  const resourcesDir = path.resolve(buildPath, '..');
+  const cliDir = path.join(resourcesDir, 'flux-cli');
+  await fsp.mkdir(cliDir, { recursive: true });
+
+  const cliSrc = path.join(__dirname, '.vite', 'build', 'flux-cli.js');
+  if (!fs.existsSync(cliSrc)) {
+    throw new Error(
+      `[forge.config] expected flux-cli bundle at ${cliSrc}; Vite must build it before packageAfterCopy runs`,
+    );
+  }
+  await fsp.cp(cliSrc, path.join(cliDir, 'flux-cli.js'));
+  const cliMapSrc = `${cliSrc}.map`;
+  if (fs.existsSync(cliMapSrc)) {
+    await fsp.cp(cliMapSrc, path.join(cliDir, 'flux-cli.js.map'));
+  }
+
+  const shimSrc = path.resolve(__dirname, 'scripts', 'flux-shim');
+  if (!fs.existsSync(shimSrc)) {
+    throw new Error(`[forge.config] expected flux shim at ${shimSrc}`);
+  }
+  const shimDst = path.join(cliDir, 'flux');
+  await fsp.cp(shimSrc, shimDst);
+  await fsp.chmod(shimDst, 0o755);
+}
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -153,6 +180,15 @@ const config: ForgeConfig = {
   } as ForgePackagerOptions,
   rebuildConfig: {},
   hooks: {
+    packageAfterCopy: async (
+      _forgeConfig,
+      buildPath,
+      _electronVersion,
+      _platform,
+      _arch,
+    ) => {
+      await stageFluxCliResources(buildPath);
+    },
     postMake: async (_forgeConfig, makeResults) =>
       postMakeWriteLatestMacYml(makeResults),
   },
@@ -184,6 +220,11 @@ const config: ForgeConfig = {
           // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
           entry: 'src/main.ts',
           config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        {
+          entry: 'src/flux-cli/main.ts',
+          config: 'vite.flux-cli.config.ts',
           target: 'main',
         },
         {

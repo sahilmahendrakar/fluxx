@@ -235,7 +235,7 @@ interface Props {
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
   hasWorktree?: boolean;
-  /** Persist agent / model / YOLO for this task (same fields as task detail & MCP `flux__update_task`). */
+  /** Persist agent / model / YOLO for this task (same fields as task detail & `flux tasks update`). */
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   /** True when a daemon session exists for this task (main-window session tab can be opened). */
   canOpenTaskWorkspaceTab: boolean;
