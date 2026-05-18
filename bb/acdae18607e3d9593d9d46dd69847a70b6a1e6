@@ -1,0 +1,38 @@
+src/components/newProject/newProjectWizard.test.ts
+  s_4d2fe9d2868504::t_742358041421a1 9
+src/projectCreate.test.ts
+  s_4d2fe9d2868504::t_74d693f3e99132 13
+src/projectCreate.ts
+  s_4d2fe9d2868504::t_c93cbacbca74e6 7
+  s_4d2fe9d2868504::t_5ba9372ed2a292 313
+src/components/NewProjectModal.tsx
+  s_4d2fe9d2868504::t_3b66e91b677b55 381-409,413-415,417-419,442,457,459-461,463-484
+  s_4d2fe9d2868504::t_6692a37b97f56f 420-441,443-455
+  s_4d2fe9d2868504::t_bbfd106bf8272e 1-2
+  s_4d2fe9d2868504::t_8e6d5cc49548bc 462
+  s_4d2fe9d2868504::t_8bc477570b548b 416
+  s_4d2fe9d2868504::t_a836729be474ae 52-53,60-62,68-97
+  s_4d2fe9d2868504::t_5d844763e314c3 410-412
+  s_4d2fe9d2868504::t_574046122700e7 321-330
+  s_4d2fe9d2868504::t_7a403977b6c599 456,458
+src/main/projectDirLayout.ts
+  s_4d2fe9d2868504::t_9f8ad0450102f9 37
+src/repoIdentity.ts
+  s_4d2fe9d2868504::t_4f15c673bb9e1c 122-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "bbacdae18607e3d9593d9d46dd69847a70b6a1e6",
+  "prompts": {},
+  "sessions": {
+    "s_4d2fe9d2868504": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8b10c6db-7b9f-4cff-b539-df8583fc6d9b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
