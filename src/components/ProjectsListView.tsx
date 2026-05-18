@@ -22,8 +22,11 @@ import { buildProjectPickerRows } from '../renderer/projects/buildProjectPickerR
 import { NewProjectModal } from './NewProjectModal';
 import { InviteTeammateModal } from './InviteTeammateModal';
 import { ProjectPickerSyncBadges } from './ProjectPickerSyncBadges';
-import { sendInvite } from '../renderer/invites/invites';
 import { projectCreateErrorMessage } from '../projectCreate';
+import {
+  sendNewProjectTeamInvites,
+  summarizeNewProjectInviteOutcomes,
+} from './newProject/newProjectTeamInvites';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -316,7 +319,7 @@ export function ProjectsListView({
     repos: CloudProjectCreateRepoInput[];
     primaryRootPath?: string;
     teamInvites: string[];
-  }) => {
+  }): Promise<{ inviteWarnings: string[] }> => {
     if (!uid) {
       throw new Error(projectCreateErrorMessage('AUTH_REQUIRED'));
     }
@@ -350,22 +353,23 @@ export function ProjectsListView({
       }
     }
 
+    let inviteWarnings: string[] = [];
     if (input.teamInvites.length > 0) {
-      const inviteOptions = {
-        projectName: summary.name,
-        inviterName: auth.user?.displayName ?? undefined,
-        inviterEmail: auth.user?.email ?? undefined,
-      };
-      await Promise.all(
-        input.teamInvites.map((email) =>
-          sendInvite(summary.id, uid, email, inviteOptions).catch((err) => {
-            console.warn('[newProject] invite failed', email, err);
-          }),
-        ),
+      const outcomes = await sendNewProjectTeamInvites(
+        summary.id,
+        uid,
+        input.teamInvites,
+        {
+          projectName: summary.name,
+          inviterName: auth.user?.displayName ?? undefined,
+          inviterEmail: auth.user?.email ?? undefined,
+        },
       );
+      inviteWarnings = summarizeNewProjectInviteOutcomes(outcomes);
     }
 
     await handleOpenCloud(summary);
+    return { inviteWarnings };
   };
 
   const handleDeleteCloud = async (summary: CloudProjectSummary) => {
