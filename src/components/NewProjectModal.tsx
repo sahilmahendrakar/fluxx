@@ -14,6 +14,10 @@ import {
   wizardReposToCloudCreateInput,
   wizardReposToCreateInput,
 } from './newProject/newProjectWizard';
+import {
+  removeInviteEmailAtIndex,
+  shouldShowInviteStep,
+} from './newProject/newProjectTeamInvites';
 
 export interface NewProjectModalCreateLocalResult {
   ok: true;
@@ -39,7 +43,7 @@ export interface NewProjectModalProps {
     repos: ReturnType<typeof wizardReposToCloudCreateInput>;
     primaryRootPath?: string;
     teamInvites: string[];
-  }) => Promise<void>;
+  }) => Promise<{ inviteWarnings: string[] }>;
 }
 
 type WizardStep = 'details' | 'invites';
@@ -61,6 +65,7 @@ export function NewProjectModal({
   const [signInBusy, setSignInBusy] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
   const [inviteEmails, setInviteEmails] = useState<string[]>(['']);
+  const [inviteWarnings, setInviteWarnings] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [repoError, setRepoError] = useState<string | null>(null);
@@ -163,12 +168,16 @@ export function NewProjectModal({
       return;
     }
     try {
-      await onCreateTeam({
+      const result = await onCreateTeam({
         name: trimmed,
         repos: wizardReposToCloudCreateInput(repos),
         primaryRootPath: resolvePrimaryRootPath(repos, primaryRootPath),
         teamInvites: inviteResult.emails,
       });
+      if (result.inviteWarnings.length > 0) {
+        setInviteWarnings(result.inviteWarnings);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the team project.');
@@ -182,7 +191,7 @@ export function NewProjectModal({
       return;
     }
     setError(null);
-    if (effectiveTeamSync) {
+    if (shouldShowInviteStep(effectiveTeamSync, signedIn)) {
       setStep('invites');
       return;
     }
@@ -224,20 +233,60 @@ export function NewProjectModal({
             Optional. Teammates receive an email invite to this project.
           </p>
 
+          {inviteWarnings ? (
+            <>
+              <p className="mt-3 rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-3 py-2 text-[12px] text-emerald-200/95">
+                Project created. Your board is ready.
+              </p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {inviteWarnings.map((warning) => (
+                  <li
+                    key={warning}
+                    className="rounded-md border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-200/95"
+                  >
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-md bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100"
+                >
+                  Done
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
           <div className="mt-4 flex flex-col gap-2">
             {inviteEmails.map((value, index) => (
-              <input
-                key={index}
-                type="email"
-                value={value}
-                onChange={(e) => {
-                  const next = [...inviteEmails];
-                  next[index] = e.target.value;
-                  setInviteEmails(next);
-                }}
-                placeholder="name@company.com"
-                className="w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
-              />
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  type="email"
+                  value={value}
+                  onChange={(e) => {
+                    const next = [...inviteEmails];
+                    next[index] = e.target.value;
+                    setInviteEmails(next);
+                  }}
+                  placeholder="name@company.com"
+                  className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
+                />
+                {inviteEmails.length > 1 ? (
+                  <button
+                    type="button"
+                    aria-label="Remove email"
+                    onClick={() =>
+                      setInviteEmails((prev) => removeInviteEmailAtIndex(prev, index))
+                    }
+                    className="shrink-0 rounded-md px-2 py-1.5 text-[11px] text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
             ))}
             <button
               type="button"
@@ -280,6 +329,8 @@ export function NewProjectModal({
               </button>
             </div>
           </div>
+            </>
+          )}
         </form>
       </ModalBackdrop>
     );
