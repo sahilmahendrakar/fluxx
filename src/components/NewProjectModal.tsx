@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../renderer/auth/useAuth';
 import {
   normalizeTeamInviteEmails,
-  prepareLocalProjectCreateInput,
   projectCreateErrorMessage,
   type ProjectCreateError,
+  type ProjectCreateWizardPayload,
 } from '../projectCreate';
 import { repoRootBasename } from '../repoIdentity';
 import {
@@ -32,7 +32,7 @@ export type NewProjectModalCreateLocalResponse =
 export interface NewProjectModalProps {
   onClose: () => void;
   onCreateLocal: (
-    input: ReturnType<typeof prepareLocalProjectCreateInput>,
+    input: ProjectCreateWizardPayload,
   ) => Promise<NewProjectModalCreateLocalResponse>;
   onCreateTeam: (input: {
     name: string;
@@ -138,11 +138,11 @@ export function NewProjectModal({
       setError('Enter a project name.');
       return;
     }
-    const payload = prepareLocalProjectCreateInput({
+    const payload: ProjectCreateWizardPayload = {
       name: trimmed,
       repos: wizardReposToCreateInput(repos),
       primaryRootPath: resolvePrimaryRootPath(repos, primaryRootPath),
-    });
+    };
     const result = await onCreateLocal(payload);
     if (!result.ok) {
       setError(projectCreateErrorMessage(result.error, result.message));
@@ -189,6 +189,9 @@ export function NewProjectModal({
     setBusy(true);
     try {
       await runCreateLocal();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message || 'Could not create the project.');
     } finally {
       setBusy(false);
     }

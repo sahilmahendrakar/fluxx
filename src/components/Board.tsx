@@ -23,6 +23,7 @@ import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
 import { BoardRepoOnboardingBanner } from './BoardRepoOnboardingBanner';
+import { BoardPlanningInitCallout } from './BoardPlanningInitCallout';
 import {
   projectRepoActionsBlocked,
   type ProjectRepoReadiness,
@@ -80,6 +81,10 @@ interface Props {
   onOpenTaskWorkspaceTab: (taskId: string) => void;
   projectRepoReadiness: ProjectRepoReadiness;
   onOpenProjectSettings: () => void;
+  showPlanningInitCallout?: boolean;
+  planningInitBusy?: boolean;
+  onPlanningInitStart?: () => void;
+  onPlanningInitSkip?: () => void;
 }
 
 export default function Board({
@@ -111,6 +116,10 @@ export default function Board({
   onOpenTaskWorkspaceTab,
   projectRepoReadiness,
   onOpenProjectSettings,
+  showPlanningInitCallout = false,
+  planningInitBusy = false,
+  onPlanningInitStart,
+  onPlanningInitSkip,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -225,6 +234,13 @@ export default function Board({
           readiness={projectRepoReadiness}
           onOpenProjectSettings={onOpenProjectSettings}
         />
+        {showPlanningInitCallout && onPlanningInitStart && onPlanningInitSkip ? (
+          <BoardPlanningInitCallout
+            busy={planningInitBusy}
+            onStart={onPlanningInitStart}
+            onSkip={onPlanningInitSkip}
+          />
+        ) : null}
         {noMatches ? (
           <div
             className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"

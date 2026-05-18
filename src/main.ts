@@ -6,11 +6,19 @@ import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
-import { writeOnboardingPending } from './main/projectOnboarding';
 import {
+  getPlanningInitStatus,
+  planningDocsAreInitialized,
+  setPlanningInitStatus,
+  shouldShowPlanningInitCallout,
+  writeOnboardingPending,
+} from './main/projectOnboarding';
+import {
+  normalizeProjectCreateInput,
   validateLocalProjectCreateInput,
   type ProjectCreateInput,
   type ProjectCreateResult,
+  type ProjectCreateWizardPayload,
 } from './projectCreate';
 import {
   effectiveTaskRepoId,
@@ -218,17 +226,25 @@ function parsePlanningStartPayload(payload: unknown): {
   agent: Agent;
   agentModel?: string;
   agentYolo?: boolean;
+  initialPrompt?: string;
 } | null {
   if (isPlanningAgent(payload)) {
     return { agent: payload };
   }
   if (!payload || typeof payload !== 'object') return null;
-  const o = payload as { agent?: unknown; agentModel?: unknown; agentYolo?: unknown };
+  const o = payload as {
+    agent?: unknown;
+    agentModel?: unknown;
+    agentYolo?: unknown;
+    initialPrompt?: unknown;
+  };
   if (!isPlanningAgent(o.agent)) return null;
   const agentModel =
     typeof o.agentModel === 'string' ? o.agentModel : undefined;
   const agentYolo = typeof o.agentYolo === 'boolean' ? o.agentYolo : undefined;
-  return { agent: o.agent, agentModel, agentYolo };
+  const initialPrompt =
+    typeof o.initialPrompt === 'string' ? o.initialPrompt : undefined;
+  return { agent: o.agent, agentModel, agentYolo, initialPrompt };
 }
 
 function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch | null {
@@ -1705,8 +1721,18 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(
     'projects:create',
-    async (_e, input: ProjectCreateInput): Promise<ProjectCreateResult> => {
-      const validated = await validateLocalProjectCreateInput(input, {
+    async (
+      _e,
+      input: ProjectCreateInput | ProjectCreateWizardPayload,
+    ): Promise<ProjectCreateResult> => {
+      let normalized: ProjectCreateInput;
+      try {
+        normalized = normalizeProjectCreateInput(input);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: 'CREATE_FAILED', message };
+      }
+      const validated = await validateLocalProjectCreateInput(normalized, {
         isGitRepo: async (rootPath) => {
           try {
             await fs.access(path.join(rootPath, '.git'));
@@ -1966,6 +1992,70 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle('projects:clearLocalBinding', async (_e, cloudProjectId: string) => {
     await bindingStore.remove(cloudProjectId);
+  });
+
+  ipcMain.handle('projectOnboarding:getState', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    const status = await getPlanningInitStatus(projectDir);
+    const docsInitialized = await planningDocsAreInitialized(planningDir);
+    const showCallout = shouldShowPlanningInitCallout(status, docsInitialized);
+    return { status, docsInitialized, showCallout };
+  });
+
+  ipcMain.handle(
+    'projectOnboarding:setStatus',
+    async (_e, status: unknown) => {
+      if (
+        status !== 'pending' &&
+        status !== 'dismissed' &&
+        status !== 'started' &&
+        status !== 'completed'
+      ) {
+        return { error: 'INVALID_STATUS' as const };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_ACTIVE_PROJECT' as const };
+      }
+      await setPlanningInitStatus(projectDir, status);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    'projectOnboarding:writePending',
+    async (_e, projectDirArg: unknown) => {
+      const projectDir =
+        typeof projectDirArg === 'string' && projectDirArg.trim()
+          ? path.resolve(projectDirArg.trim())
+          : worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_PROJECT_DIR' as const };
+      }
+      await writeOnboardingPending(projectDir);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle('projectOnboarding:maybeCompleteAfterSession', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const status = await getPlanningInitStatus(projectDir);
+    if (status !== 'started') {
+      return { ok: true as const, changed: false as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    if (!(await planningDocsAreInitialized(planningDir))) {
+      return { ok: true as const, changed: false as const };
+    }
+    await setPlanningInitStatus(projectDir, 'completed');
+    return { ok: true as const, changed: true as const };
   });
 
   // ---- Auth ----
@@ -3816,6 +3906,7 @@ app.whenReady().then(async () => {
         agent: requestedAgent,
         agentModel: requestedModel,
         agentYolo: requestedYolo,
+        initialPrompt: requestedInitialPrompt,
       } = parsed;
 
       const activeKey = appStateStore.get().activeProjectKey;
@@ -3901,6 +3992,7 @@ app.whenReady().then(async () => {
         planningAgent,
         spawnModel,
         spawnYolo,
+        requestedInitialPrompt,
       );
       const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
       const trustAutorespondArg =

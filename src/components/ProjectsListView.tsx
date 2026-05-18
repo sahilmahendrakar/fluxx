@@ -288,7 +288,7 @@ export function ProjectsListView({
   };
 
   const handleCreateLocalFromWizard = async (
-    input: import('../projectCreate').ProjectCreateInput,
+    input: import('../projectCreate').ProjectCreateWizardPayload,
   ) => {
     const result = await window.electronAPI.projects.create(input);
     if (!result.ok) {
@@ -363,6 +363,13 @@ export function ProjectsListView({
           }),
         ),
       );
+    }
+
+    const matDir = await window.electronAPI.projects.resolveCloudMaterializationDir(
+      summary.id,
+    );
+    if (matDir && 'projectDir' in matDir) {
+      await window.electronAPI.projectOnboarding.writePending(matDir.projectDir);
     }
 
     await handleOpenCloud(summary);
