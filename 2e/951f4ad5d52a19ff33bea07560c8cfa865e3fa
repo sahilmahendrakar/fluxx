@@ -1,0 +1,30 @@
+src/components/TabBar.tsx
+  s_fb3a3e073e80da::t_6b576de594adcf 34-38
+  s_fb3a3e073e80da::t_5a48a1b91efcc7 99
+  s_fb3a3e073e80da::t_8b480d39d52d05 1-2,7
+  s_fb3a3e073e80da::t_9fd4a833530b9e 112
+src/components/Sidebar.tsx
+  s_fb3a3e073e80da::t_a631fd1f563432 4
+  s_fb3a3e073e80da::t_3a04f15a74949f 457
+  s_fb3a3e073e80da::t_873926a108452b 435
+src/taskStatusDot.ts
+  s_fb3a3e073e80da::t_012ff29397685e 1-20
+src/components/TaskCard.tsx
+  s_fb3a3e073e80da::t_2cd9b44515e649 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "2e951f4ad5d52a19ff33bea07560c8cfa865e3fa",
+  "prompts": {},
+  "sessions": {
+    "s_fb3a3e073e80da": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5588c81e-8f50-4748-b388-954ff471bdf1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
