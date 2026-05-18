@@ -38,6 +38,10 @@ import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
 import { ProjectSettingsView } from './components/ProjectSettingsView';
 import { TabBar, buildSessionTabs } from './components/TabBar';
+import {
+  buildSidebarSessionLayout,
+  sidebarReposForProject,
+} from './sidebarSessionGroups';
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
 import { taskDeleteNeedsWorkspaceConfirmation } from './taskDeleteWorkspaceConfirmation';
@@ -2873,6 +2877,15 @@ export default function App() {
     [sessionItems, minimizedWorkspaceIds],
   );
 
+  const sidebarSessionLayout = useMemo(() => {
+    if (!project) return { kind: 'flat' as const, items: [] };
+    return buildSidebarSessionLayout({
+      sessions: sidebarSessionItems,
+      repos: sidebarReposForProject(project, projectRepos),
+      tasks,
+    });
+  }, [project, sidebarSessionItems, projectRepos, tasks]);
+
   const openTabItems = useMemo(
     () => sessionItems.filter((item) => openTabIds.has(item.session.id)),
     [sessionItems, openTabIds],
@@ -3038,7 +3051,7 @@ export default function App() {
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={handleSelectPlanningDoc}
-          sessions={sidebarSessionItems}
+          sessionLayout={sidebarSessionLayout}
           onOpenSession={handleOpenSessionFromSidebar}
           onMinimizeSession={handleMinimizeSession}
           onDeleteWorkspace={requestDeleteWorkspace}
