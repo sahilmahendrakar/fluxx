@@ -6,7 +6,7 @@ import {
   projectCreateErrorMessage,
 } from '../../projectCreate';
 import { deriveStablePrimaryRepoIdForProject } from '../../repoIdentity';
-import { stableLocalProjectIdForRoot } from '../../main/projectDirLayout';
+import { stableLocalProjectIdForRoot } from '../../repoIdentity';
 import {
   resolvePrimaryRootPath,
   suggestProjectNameFromRepo,

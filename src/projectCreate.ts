@@ -1,10 +1,10 @@
 import path from 'node:path';
 import type { Agent, AgentSessionModelDefaults, RepoConfig } from './types';
-import { stableLocalProjectIdForRoot } from './main/projectDirLayout';
 import {
   deriveRepoIdForRootPath,
   deriveStablePrimaryRepoIdForProject,
   normalizeRepoRootPathForIdentity,
+  stableLocalProjectIdForRoot,
 } from './repoIdentity';
 
 /** Single creation payload for local-only and team-synced projects. */
@@ -310,7 +310,7 @@ export function validateLocalProjectCreateInput(
       };
     }
 
-    const { stableLocalProjectIdForRoot } = await import('./main/projectDirLayout');
+    const { stableLocalProjectIdForRoot } = await import('./repoIdentity');
 
     const resolvePrimaryRootForId = (): string | 'PRIMARY_REPO_REQUIRED' => {
       if (repoInputs.length === 1) {

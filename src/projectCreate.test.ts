@@ -10,7 +10,7 @@ import {
   validateProjectName,
 } from './projectCreate';
 import { deriveStablePrimaryRepoIdForProject } from './repoIdentity';
-import { stableLocalProjectIdForRoot } from './main/projectDirLayout';
+import { stableLocalProjectIdForRoot } from './repoIdentity';
 
 describe('validateProjectName', () => {
   it('rejects empty and whitespace-only names', () => {

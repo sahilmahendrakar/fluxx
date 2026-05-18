@@ -742,7 +742,6 @@ export function ProjectsListView({
       {newProjectOpen ? (
         <NewProjectModal
           onClose={() => setNewProjectOpen(false)}
-          canUseTeamSync={auth.status === 'signedIn'}
           onCreateLocal={handleCreateLocalFromWizard}
           onCreateTeam={handleCreateTeamFromWizard}
         />
