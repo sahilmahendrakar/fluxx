@@ -25,6 +25,18 @@ import { ProjectPickerSyncBadges } from './ProjectPickerSyncBadges';
 
 type ActiveProject = LocalProject | CloudProject;
 
+const EMPTY_CLOUD_PROJECTS: CloudProjectSummary[] = [];
+
+function cloudBindingsRecordEqual(
+  a: Record<string, CloudProjectLocalBinding | null>,
+  b: Record<string, CloudProjectLocalBinding | null>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return bKeys.every((k) => a[k] === b[k]);
+}
+
 interface ProjectsListViewProps {
   onProjectActivated: (project: ActiveProject) => void;
   auth: AuthState;
@@ -62,18 +74,26 @@ export function ProjectsListView({
 
   const uid = auth.user?.uid ?? null;
   const signedIn = auth.status === 'signedIn';
-  const cloudProjectsList =
-    cloudProjects.status === 'ready' ? cloudProjects.projects : [];
+  const readyCloudProjects =
+    cloudProjects.status === 'ready' ? cloudProjects.projects : EMPTY_CLOUD_PROJECTS;
+
+  const cloudProjectIdsKey = useMemo(
+    () =>
+      cloudProjects.status === 'ready'
+        ? cloudProjects.projects.map((p) => p.id).join('\0')
+        : '',
+    [cloudProjects.status, cloudProjects.projects],
+  );
 
   const pickerRows = useMemo(
     () =>
       buildProjectPickerRows({
         localProjects: projects,
-        cloudProjects: cloudProjectsList,
+        cloudProjects: readyCloudProjects,
         cloudBindingsById,
         uid,
       }),
-    [projects, cloudProjectsList, cloudBindingsById, uid],
+    [projects, readyCloudProjects, cloudBindingsById, uid],
   );
 
   const refreshLocal = async () => {
@@ -86,24 +106,33 @@ export function ProjectsListView({
   };
 
   useEffect(() => {
-    if (cloudProjects.status !== 'ready' || cloudProjects.projects.length === 0) {
-      setCloudBindingsById({});
+    if (cloudProjects.status !== 'ready' || readyCloudProjects.length === 0) {
+      setCloudBindingsById((prev) =>
+        Object.keys(prev).length === 0 ? prev : {},
+      );
       return;
     }
     let cancelled = false;
+    const projectsSnapshot = readyCloudProjects;
     void Promise.all(
-      cloudProjects.projects.map(async (p) => {
+      projectsSnapshot.map(async (p) => {
         const binding = await window.electronAPI.projects.getLocalBinding(p.id);
         return [p.id, binding] as const;
       }),
     ).then((rows) => {
       if (cancelled) return;
-      setCloudBindingsById(Object.fromEntries(rows));
+      const next = Object.fromEntries(rows) as Record<
+        string,
+        CloudProjectLocalBinding | null
+      >;
+      setCloudBindingsById((prev) =>
+        cloudBindingsRecordEqual(prev, next) ? prev : next,
+      );
     });
     return () => {
       cancelled = true;
     };
-  }, [cloudProjects.status, cloudProjects.projects]);
+  }, [cloudProjects.status, cloudProjectIdsKey, readyCloudProjects.length]);
 
   useEffect(() => {
     let cancelled = false;

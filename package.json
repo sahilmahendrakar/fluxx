@@ -8,7 +8,7 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
-    "start:aux": "electron-forge start -- --user-data-dir=.flux-test-userdata",
+    "start:aux": "FLUX_AUX_DEV_SERVER_PORT=5180 electron-forge start -- --user-data-dir=.flux-test-userdata",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",

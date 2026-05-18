@@ -2,8 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 
-/** Nested layout root: `~/.fluxx/projects/<projectId>/`. */
-export const FLUXX_PROJECTS_SUBDIR = 'projects';
+import {
+  FLUXX_PROJECTS_SUBDIR,
+  canonicalCloudProjectDir,
+  sanitizeCloudProjectDirSegment,
+} from '../projectDirPaths';
+
+export { FLUXX_PROJECTS_SUBDIR, canonicalCloudProjectDir, sanitizeCloudProjectDirSegment };
 /** @deprecated Use {@link FLUXX_PROJECTS_SUBDIR}. */
 export const FLUX_PROJECTS_SUBDIR = FLUXX_PROJECTS_SUBDIR;
 
@@ -34,20 +39,8 @@ export function stableLocalProjectIdForRoot(rootPath: string): string {
   return createHash('sha256').update(path.resolve(rootPath)).digest('hex');
 }
 
-export function sanitizeCloudProjectDirSegment(cloudProjectId: string): string {
-  return cloudProjectId.replace(/[^A-Za-z0-9_-]/g, '_');
-}
-
 export function canonicalLocalProjectDir(fluxxBaseDir: string, localProjectId: string): string {
   return path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR, localProjectId);
-}
-
-export function canonicalCloudProjectDir(fluxxBaseDir: string, cloudProjectId: string): string {
-  return path.join(
-    fluxxBaseDir,
-    FLUXX_PROJECTS_SUBDIR,
-    sanitizeCloudProjectDirSegment(cloudProjectId),
-  );
 }
 
 export function legacyBasenameLocalProjectDir(fluxxBaseDir: string, resolvedRoot: string): string {
