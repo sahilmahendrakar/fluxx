@@ -1,0 +1,48 @@
+src/main/planningAgentSessionRecords.test.ts
+  s_2a1d294edd8eb1::t_8d5d9b9aa904ba 167-203
+src/main.ts
+  s_2a1d294edd8eb1::t_1d2d707146a741 3742-3750,3754-3761
+  s_2a1d294edd8eb1::t_ce2623ca19ba6d 3775-3776
+  s_2a1d294edd8eb1::t_b98072c6da9ef3 3849,3851-3870,3873-3877,3880-3881,3894,3899-3900,3902-3903
+  s_2a1d294edd8eb1::t_b04dc72f982be6 3955-3957
+  s_2a1d294edd8eb1::t_4b2a03e15d9c84 3892
+  s_2a1d294edd8eb1::t_d9e9e8a4a54b12 3794-3805,3816-3827
+  s_2a1d294edd8eb1::t_caf3fa6248479b 3996-4001
+  s_2a1d294edd8eb1::t_441654e770d6cb 3893,3895-3898,3901
+  s_2a1d294edd8eb1::t_0909b104e7d766 3850,3871-3872,3878-3879
+  s_2a1d294edd8eb1::t_670915031e8ba5 56,59-62
+src/main/agentSpawn.ts
+  s_2a1d294edd8eb1::t_5e04f646b526e9 127-176
+src/main/planningColdRestore.ts
+  s_2a1d294edd8eb1::t_96d5207507baff 1-63
+src/main/planningColdRestore.test.ts
+  s_2a1d294edd8eb1::t_fc95941d29c5d0 1-76
+src/env.d.ts
+  s_2a1d294edd8eb1::t_15f9496d2cd7fb 375-383
+src/preload.ts
+  s_2a1d294edd8eb1::t_376ea4c6b7c669 506-514
+src/main/agentSpawn.test.ts
+  s_2a1d294edd8eb1::t_05847c6ee0de2b 3-8
+  s_2a1d294edd8eb1::t_17a514a3098580 91-129
+src/main/planningAgentSessionRecords.ts
+  s_2a1d294edd8eb1::t_d5b76820fed119 303,316
+  s_2a1d294edd8eb1::t_b241abd8c7db90 273,284
+  s_2a1d294edd8eb1::t_74dbc31f9eb7c3 177-203
+  s_2a1d294edd8eb1::t_f5e72d3b197e7a 227-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "eda4c9fbcfa657d0781f1c71852905d8d8cbab6f",
+  "prompts": {},
+  "sessions": {
+    "s_2a1d294edd8eb1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8e2756e2-d315-4b97-96b8-1029d5752f6b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
