@@ -1,0 +1,34 @@
+src/cloudProjectActivation.ts
+  s_5bbadf0204e895::t_66b62a93e9134c 7
+src/main/projectDirLayout.ts
+  s_5bbadf0204e895::t_af073fe65b013b 6-9
+  s_5bbadf0204e895::t_d9ea8a4c545e48 5,10-11
+src/components/ProjectsListView.tsx
+  s_832eb8a4ad3e3f::t_99e305e8b2fd55 79,112,130
+src/projectDirPaths.ts
+  s_5bbadf0204e895::t_37008b4e631ce8 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "c36f01153b0f171dbe656416a4289c411f4cfad6",
+  "prompts": {},
+  "sessions": {
+    "s_5bbadf0204e895": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3099a29b-f7c9-45ac-ab9f-8b7f8415b609",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    },
+    "s_832eb8a4ad3e3f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5bd740c6-c1c0-445f-a072-bfba8e61fd77",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
