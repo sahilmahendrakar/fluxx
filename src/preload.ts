@@ -503,7 +503,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () =>
       ipcRenderer.invoke('planning:list') as Promise<PlanningSession[]>,
     start: (
-      payload: Agent | { agent: Agent; agentModel?: string; agentYolo?: boolean },
+      payload:
+        | Agent
+        | {
+            agent?: Agent;
+            agentModel?: string;
+            agentYolo?: boolean;
+            resume?: boolean;
+            sessionId?: string;
+          },
     ) =>
       ipcRenderer.invoke('planning:start', payload) as Promise<PlanningStartResult>,
     stop: (sessionId: string) =>

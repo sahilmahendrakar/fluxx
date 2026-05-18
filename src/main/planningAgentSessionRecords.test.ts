@@ -164,6 +164,43 @@ describe('PlanningAgentSessionRecordStore', () => {
     await expect(store.getColdResumePlanningSessionView('proj-1', async () => false)).resolves.toBeNull();
   });
 
+  it('markColdResumeReplaced stops offering a resumed interrupted row', async () => {
+    const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        ...baseRow,
+        endedAt: '2026-01-01T01:00:00.000Z',
+        endedReason: 'app-quit',
+        agentConversationId: 'conv-1',
+      },
+    ]);
+    await store.markColdResumeReplaced('plan-1');
+    await expect(store.getColdResumePlanningSessionView('proj-1', async () => true)).resolves.toBeNull();
+    const listed = await store.listColdResumePlanningSessions('proj-1', async () => true);
+    expect(listed).toEqual([]);
+  });
+
+  it('getColdResumePlanningSessionById returns a specific interrupted row', async () => {
+    const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        ...baseRow,
+        fluxxSessionId: 'target',
+        endedAt: '2026-01-02T01:00:00.000Z',
+        endedReason: 'app-quit',
+      },
+      {
+        ...baseRow,
+        fluxxSessionId: 'other',
+        endedAt: '2026-01-03T01:00:00.000Z',
+        endedReason: 'app-quit',
+      },
+    ]);
+    await expect(
+      store.getColdResumePlanningSessionById('proj-1', 'target', async () => true),
+    ).resolves.toMatchObject({ id: 'target', status: 'interrupted' });
+  });
+
   it('excludes live session ids from synthetic list', async () => {
     const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
