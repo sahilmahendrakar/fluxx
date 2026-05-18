@@ -19,9 +19,11 @@ import {
 import type { InvitesState } from '../renderer/invites/useInvites';
 import { acceptInvite } from '../renderer/invites/invites';
 import { buildProjectPickerRows } from '../renderer/projects/buildProjectPickerRows';
-import { CreateCloudProjectModal } from './CreateCloudProjectModal';
+import { NewProjectModal } from './NewProjectModal';
 import { InviteTeammateModal } from './InviteTeammateModal';
 import { ProjectPickerSyncBadges } from './ProjectPickerSyncBadges';
+import { sendInvite } from '../renderer/invites/invites';
+import { projectCreateErrorMessage } from '../projectCreate';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -54,9 +56,7 @@ export function ProjectsListView({
 }: ProjectsListViewProps) {
   const [projects, setProjects] = useState<LocalProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
-  const [gitError, setGitError] = useState(false);
-  const [createCloudOpen, setCreateCloudOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [inviteFor, setInviteFor] = useState<CloudProjectSummary | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
@@ -151,31 +151,6 @@ export function ProjectsListView({
       cancelled = true;
     };
   }, []);
-
-  const handleNewProject = () => {
-    if (signedIn) {
-      setCreateCloudOpen(true);
-      return;
-    }
-    void handleAddLocal();
-  };
-
-  const handleAddLocal = async () => {
-    setGitError(false);
-    setAdding(true);
-    try {
-      const result = await window.electronAPI.projects.addLocal();
-      if (!result) return;
-      if ('error' in result) {
-        if (result.error === 'NOT_GIT_REPO') setGitError(true);
-        return;
-      }
-      const active = await window.electronAPI.projects.activateLocal(result.id);
-      if (active) onProjectActivated(active);
-    } finally {
-      setAdding(false);
-    }
-  };
 
   const handleOpenLocal = async (id: string) => {
     const active = await window.electronAPI.projects.activateLocal(id);
@@ -312,12 +287,40 @@ export function ProjectsListView({
     }
   };
 
-  const handleCreateCloud = async (input: {
+  const handleCreateLocalFromWizard = async (
+    input: import('../projectCreate').ProjectCreateInput,
+  ) => {
+    const result = await window.electronAPI.projects.create(input);
+    if (!result.ok) {
+      return {
+        ok: false as const,
+        error: result.error,
+        message: result.message,
+      };
+    }
+    const active = await window.electronAPI.projects.activateLocal(result.project.id);
+    if (active) {
+      await refreshLocal();
+      onProjectActivated(active);
+      return { ok: true as const, project: active };
+    }
+    return {
+      ok: false as const,
+      error: 'CREATE_FAILED' as const,
+      message: 'Project was created but could not be opened.',
+    };
+  };
+
+  const handleCreateTeamFromWizard = async (input: {
     name: string;
     repos: CloudProjectCreateRepoInput[];
     primaryRootPath?: string;
+    teamInvites: string[];
   }) => {
-    if (!uid) return;
+    if (!uid) {
+      throw new Error(projectCreateErrorMessage('AUTH_REQUIRED'));
+    }
+    setCloudError(null);
     const summary = await createCloudProject(uid, input.name, {
       displayName: auth.user?.displayName ?? undefined,
       email: auth.user?.email ?? undefined,
@@ -325,7 +328,6 @@ export function ProjectsListView({
       repos: input.repos.length > 0 ? input.repos : undefined,
       primaryRootPath: input.primaryRootPath,
     });
-    setCreateCloudOpen(false);
 
     if (summary.repos && summary.repos.length > 0 && input.repos.length > 0) {
       const { primaryRepoId } = buildCloudSharedReposAtCreate(
@@ -344,8 +346,23 @@ export function ProjectsListView({
         sharedRepos: summary.repos,
       });
       if ('error' in bindResult) {
-        setCloudError(bindResult.error);
+        throw new Error(bindResult.error);
       }
+    }
+
+    if (input.teamInvites.length > 0) {
+      const inviteOptions = {
+        projectName: summary.name,
+        inviterName: auth.user?.displayName ?? undefined,
+        inviterEmail: auth.user?.email ?? undefined,
+      };
+      await Promise.all(
+        input.teamInvites.map((email) =>
+          sendInvite(summary.id, uid, email, inviteOptions).catch((err) => {
+            console.warn('[newProject] invite failed', email, err);
+          }),
+        ),
+      );
     }
 
     await handleOpenCloud(summary);
@@ -435,18 +452,27 @@ export function ProjectsListView({
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
-            <span className="text-base font-semibold tracking-tight text-white">
-              F
-            </span>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
+              <span className="text-base font-semibold tracking-tight text-white">
+                F
+              </span>
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-white">
+                Fluxx
+              </h1>
+              <p className="text-[13px] text-zinc-500">Projects</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">
-              Fluxx
-            </h1>
-            <p className="text-[13px] text-zinc-500">Projects</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setNewProjectOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98]"
+          >
+            New project
+          </button>
         </div>
 
         {authSlot ? <div className="mt-8">{authSlot}</div> : null}
@@ -508,14 +534,6 @@ export function ProjectsListView({
             <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
               Projects
             </h2>
-            <button
-              type="button"
-              disabled={adding}
-              onClick={handleNewProject}
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
-            >
-              {adding ? 'Opening…' : '+ New project'}
-            </button>
           </div>
 
           {cloudError ? (
@@ -579,24 +597,13 @@ export function ProjectsListView({
             </div>
           ) : null}
 
-          {gitError ? (
-            <p
-              className="mb-4 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95"
-              role="alert"
-            >
-              That folder isn&apos;t a git repository. Run{' '}
-              <code className="font-mono text-red-200">git init</code> first.
-            </p>
-          ) : null}
-
           {loading && pickerRows.length === 0 ? (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
               Loading…
             </div>
           ) : pickerRows.length === 0 ? (
             <EmptyProjectsState
-              onNewProject={handleNewProject}
-              busy={adding}
+              onNewProject={() => setNewProjectOpen(true)}
               teamSyncLoading={signedIn && cloudProjects.status === 'loading'}
             />
           ) : (
@@ -732,10 +739,12 @@ export function ProjectsListView({
         </div>
       </div>
 
-      {createCloudOpen ? (
-        <CreateCloudProjectModal
-          onClose={() => setCreateCloudOpen(false)}
-          onCreate={handleCreateCloud}
+      {newProjectOpen ? (
+        <NewProjectModal
+          onClose={() => setNewProjectOpen(false)}
+          canUseTeamSync={auth.status === 'signedIn'}
+          onCreateLocal={handleCreateLocalFromWizard}
+          onCreateTeam={handleCreateTeamFromWizard}
         />
       ) : null}
 
@@ -765,11 +774,9 @@ function LocalRemovalSpinner({ 'aria-label': ariaLabel }: { 'aria-label'?: strin
 
 function EmptyProjectsState({
   onNewProject,
-  busy,
   teamSyncLoading,
 }: {
   onNewProject: () => void;
-  busy: boolean;
   teamSyncLoading: boolean;
 }) {
   return (
@@ -781,11 +788,11 @@ function EmptyProjectsState({
       </p>
       <button
         type="button"
-        disabled={busy || teamSyncLoading}
+        disabled={teamSyncLoading}
         onClick={onNewProject}
         className="inline-flex min-h-[38px] min-w-[180px] items-center justify-center rounded-lg bg-white px-5 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
       >
-        {busy ? 'Opening…' : 'New project'}
+        New project
       </button>
     </div>
   );

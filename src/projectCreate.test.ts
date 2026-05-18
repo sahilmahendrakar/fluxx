@@ -2,7 +2,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   assignRepoIdsForCreate,
+  normalizeTeamInviteEmails,
+  prepareLocalProjectCreateInput,
   PROJECT_NAME_MAX_LENGTH,
+  projectCreateErrorMessage,
   validateLocalProjectCreateInput,
   validateProjectName,
 } from './projectCreate';
@@ -127,5 +130,37 @@ describe('validateLocalProjectCreateInput', () => {
       { isGitRepo: async () => false },
     );
     expect(out).toEqual({ ok: false, error: 'NOT_GIT_REPO' });
+  });
+});
+
+describe('prepareLocalProjectCreateInput', () => {
+  it('builds local-only payload with primaryRepoId when repos exist', () => {
+    const root = path.resolve('/tmp/wizard-primary');
+    const input = prepareLocalProjectCreateInput({
+      name: 'Wizard',
+      repos: [{ rootPath: root }],
+    });
+    expect(input.syncMode).toBe('local-only');
+    expect(input.primaryRepoId).toBe(
+      deriveStablePrimaryRepoIdForProject({
+        projectId: stableLocalProjectIdForRoot(root),
+        rootPath: root,
+      }),
+    );
+  });
+});
+
+describe('normalizeTeamInviteEmails', () => {
+  it('dedupes case-insensitively', () => {
+    expect(normalizeTeamInviteEmails(['A@b.com', 'a@b.com'])).toEqual({
+      ok: true,
+      emails: ['a@b.com'],
+    });
+  });
+});
+
+describe('projectCreateErrorMessage', () => {
+  it('includes CREATE_FAILED detail when provided', () => {
+    expect(projectCreateErrorMessage('CREATE_FAILED', 'disk full')).toBe('disk full');
   });
 });
