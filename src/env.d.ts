@@ -372,7 +372,15 @@ declare global {
       planning: {
         list: () => Promise<PlanningSession[]>;
         start: (
-          payload: Agent | { agent: Agent; agentModel?: string; agentYolo?: boolean },
+          payload:
+            | Agent
+            | {
+                agent?: Agent;
+                agentModel?: string;
+                agentYolo?: boolean;
+                resume?: boolean;
+                sessionId?: string;
+              },
         ) => Promise<PlanningStartResult>;
         stop: (sessionId: string) => Promise<void>;
         get: (sessionId: string) => Promise<PlanningSession | null>;

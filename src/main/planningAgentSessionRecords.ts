@@ -174,6 +174,33 @@ export class PlanningAgentSessionRecordStore {
     });
   }
 
+  async getRecord(fluxxSessionId: string): Promise<PlanningAgentSessionRecord | null> {
+    await this.ensureLoaded();
+    const row = this.cache.find((r) => r.fluxxSessionId === fluxxSessionId);
+    return row ? { ...row } : null;
+  }
+
+  /** Stop offering a specific cold-resumable row after the user resumes it. */
+  async markColdResumeReplaced(fluxxSessionId: string): Promise<void> {
+    await this.enqueueWrite(async () => {
+      await this.ensureLoaded();
+      let changed = false;
+      this.cache = this.cache.map((r) => {
+        if (r.fluxxSessionId !== fluxxSessionId) return r;
+        if (r.endedReason === 'replaced-by-new-session' || r.endedReason === 'user-archived') {
+          return r;
+        }
+        changed = true;
+        return {
+          ...r,
+          endedAt: r.endedAt ?? new Date().toISOString(),
+          endedReason: 'replaced-by-new-session' as const,
+        };
+      });
+      if (changed) await this.persist();
+    });
+  }
+
   async markReplacedSessions(projectId: string, keepFluxxSessionId: string): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();
@@ -197,6 +224,42 @@ export class PlanningAgentSessionRecordStore {
    * Synthetic planning session for UI when no live PTY exists but the last session ended in a
    * resumable way and the planning directory is still present.
    */
+  private recordToInterruptedView(r: PlanningAgentSessionRecord): PlanningSession {
+    const stoppedAt = r.endedAt ?? r.startedAt;
+    return {
+      id: r.fluxxSessionId,
+      projectId: r.projectId,
+      agent: r.agent,
+      planningDir: r.planningDir,
+      status: 'interrupted',
+      startedAt: r.startedAt,
+      stoppedAt,
+      ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
+    };
+  }
+
+  private isColdResumableRecord(r: PlanningAgentSessionRecord): boolean {
+    return COLD_RESUMABLE_END_REASONS.includes(
+      r.endedReason as PlanningAgentSessionEndedReason,
+    );
+  }
+
+  async getColdResumePlanningSessionById(
+    projectId: string,
+    fluxxSessionId: string,
+    planningDirStillPresent: (absPath: string) => Promise<boolean>,
+  ): Promise<PlanningSession | null> {
+    await this.ensureLoaded();
+    const r = this.cache.find(
+      (row) => row.projectId === projectId && row.fluxxSessionId === fluxxSessionId,
+    );
+    if (!r || !this.isColdResumableRecord(r)) return null;
+    const dir = r.planningDir?.trim();
+    if (!dir) return null;
+    if (!(await planningDirStillPresent(dir))) return null;
+    return this.recordToInterruptedView(r);
+  }
+
   async getColdResumePlanningSessionView(
     projectId: string,
     planningDirStillPresent: (absPath: string) => Promise<boolean>,
@@ -207,11 +270,7 @@ export class PlanningAgentSessionRecordStore {
     const candidates = this.cache
       .filter((r) => r.projectId === projectId)
       .filter((r) => !exclude.has(r.fluxxSessionId))
-      .filter((r) =>
-        COLD_RESUMABLE_END_REASONS.includes(
-          r.endedReason as PlanningAgentSessionEndedReason,
-        ),
-      )
+      .filter((r) => this.isColdResumableRecord(r))
       .sort((a, b) => {
         const ea = a.endedAt ?? a.startedAt;
         const eb = b.endedAt ?? b.startedAt;
@@ -222,17 +281,7 @@ export class PlanningAgentSessionRecordStore {
       const dir = r.planningDir?.trim();
       if (!dir) continue;
       if (!(await planningDirStillPresent(dir))) continue;
-      const stoppedAt = r.endedAt ?? r.startedAt;
-      return {
-        id: r.fluxxSessionId,
-        projectId: r.projectId,
-        agent: r.agent,
-        planningDir: r.planningDir,
-        status: 'interrupted',
-        startedAt: r.startedAt,
-        stoppedAt,
-        ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
-      };
+      return this.recordToInterruptedView(r);
     }
     return null;
   }
@@ -251,11 +300,7 @@ export class PlanningAgentSessionRecordStore {
     const candidates = this.cache
       .filter((r) => r.projectId === projectId)
       .filter((r) => !exclude.has(r.fluxxSessionId))
-      .filter((r) =>
-        COLD_RESUMABLE_END_REASONS.includes(
-          r.endedReason as PlanningAgentSessionEndedReason,
-        ),
-      )
+      .filter((r) => this.isColdResumableRecord(r))
       .sort((a, b) => {
         const ea = a.endedAt ?? a.startedAt;
         const eb = b.endedAt ?? b.startedAt;
@@ -268,17 +313,7 @@ export class PlanningAgentSessionRecordStore {
       if (!dir) continue;
       if (!(await planningDirStillPresent(dir))) continue;
       seen.add(r.fluxxSessionId);
-      const stoppedAt = r.endedAt ?? r.startedAt;
-      rows.push({
-        id: r.fluxxSessionId,
-        projectId: r.projectId,
-        agent: r.agent,
-        planningDir: r.planningDir,
-        status: 'interrupted',
-        startedAt: r.startedAt,
-        stoppedAt,
-        ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
-      });
+      rows.push(this.recordToInterruptedView(r));
     }
     return rows;
   }
