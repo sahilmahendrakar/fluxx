@@ -1,0 +1,57 @@
+src/projectRepoReadiness.ts
+  s_7bc6ae3c498a56::t_5c21719f20302e 1-189
+  s_7bc6ae3c498a56::t_53b9a6090da261 190-195
+src/components/NewTaskModal.tsx
+  s_7bc6ae3c498a56::t_a4a67399f8a15d 15-18
+  s_7bc6ae3c498a56::t_fb1e7e8481e783 42-43
+  s_7bc6ae3c498a56::t_8cd73479c7f5bb 54-55
+  s_7bc6ae3c498a56::t_5187e0c6f5357c 133-134
+  s_7bc6ae3c498a56::t_5dd0cc8d2af77a 168-183
+src/components/BoardRepoOnboardingBanner.tsx
+  s_7bc6ae3c498a56::t_1dffb24e9f7df1 1-18,37-38
+  s_7bc6ae3c498a56::t_d040249c49069b 19-22,36
+  s_7bc6ae3c498a56::t_7101955c28b825 23-34
+  s_7bc6ae3c498a56::t_11ccff7d049d84 35
+src/components/TaskDetailPanel.tsx
+  s_7bc6ae3c498a56::t_0e39469d4da01b 78-82
+  s_7bc6ae3c498a56::t_c3c073876b1238 160-161
+  s_7bc6ae3c498a56::t_8b97eb18571f55 263-264
+  s_7bc6ae3c498a56::t_572e94ab8ae8d6 1000-1002
+  s_7bc6ae3c498a56::t_df13af080a588a 1205-1211
+  s_7bc6ae3c498a56::t_24fb7d99ed1440 2028-2044
+src/App.tsx
+  s_7bc6ae3c498a56::t_9ece7e000f2850 23,27
+  s_7bc6ae3c498a56::t_9fb39af116be5f 108-112
+  s_7bc6ae3c498a56::t_78e8f024388147 288-290
+  s_7bc6ae3c498a56::t_909e21141c471d 374-375,379-388,390-399,402-425
+  s_7bc6ae3c498a56::t_f9298fb5580e69 461-479,481-497,500-524
+  s_7bc6ae3c498a56::t_6b80e112d2d843 3275-3276
+  s_7bc6ae3c498a56::t_44adf661540506 3367-3368
+  s_7bc6ae3c498a56::t_3adf24a2c3eab4 3414-3415
+src/components/Board.tsx
+  s_7bc6ae3c498a56::t_9d364866224ca5 25-29
+  s_7bc6ae3c498a56::t_4ad3461ac827f3 81-82
+  s_7bc6ae3c498a56::t_0a8cd1f8cc9166 186
+  s_7bc6ae3c498a56::t_4d60fedc742f8b 216-218,224-227
+  s_7bc6ae3c498a56::t_72d42614d43579 253-257
+  s_7bc6ae3c498a56::t_26f39e3183f6fb 282-284
+  s_7bc6ae3c498a56::t_5662f8a75d77ae 302-303
+src/projectRepoReadiness.test.ts
+  s_7bc6ae3c498a56::t_ac339d18c2288c 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "ce8bf29d6ab3393c5c57c898349ad1a0ac716abe",
+  "prompts": {},
+  "sessions": {
+    "s_7bc6ae3c498a56": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "83082bb9-b8b4-458e-a639-3127afb77ddd",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
