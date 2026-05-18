@@ -164,6 +164,27 @@ describe('PlanningAgentSessionRecordStore', () => {
     await expect(store.getColdResumePlanningSessionView('proj-1', async () => false)).resolves.toBeNull();
   });
 
+  it('markSessionEnded with user-archived overrides app-quit cold rows', async () => {
+    const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        ...baseRow,
+        endedAt: '2026-01-01T01:00:00.000Z',
+        endedReason: 'app-quit',
+      },
+    ]);
+    await store.markSessionEnded(
+      {
+        id: 'plan-1',
+        status: 'stopped',
+        startedAt: baseRow.startedAt,
+        stoppedAt: '2026-01-02T00:00:00.000Z',
+      },
+      { reason: 'user-archived' },
+    );
+    await expect(store.getColdResumePlanningSessionView('proj-1', async () => true)).resolves.toBeNull();
+  });
+
   it('markColdResumeReplaced stops offering a resumed interrupted row', async () => {
     const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
