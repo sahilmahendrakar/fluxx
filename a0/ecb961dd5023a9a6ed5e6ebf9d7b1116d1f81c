@@ -1,0 +1,15 @@
+src/components/NewProjectModal.tsx
+  ai_agent 17-20,46,68,171,177-180,194,236-262,265-289,332-333
+src/components/ProjectsListView.tsx
+  ai_agent 26-29,322,356,358-366,368,372
+src/components/newProject/newProjectTeamInvites.test.ts
+  ai_agent 1-82
+src/components/newProject/newProjectTeamInvites.ts
+  ai_agent 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "a0ecb961dd5023a9a6ed5e6ebf9d7b1116d1f81c",
+  "prompts": {}
+}
