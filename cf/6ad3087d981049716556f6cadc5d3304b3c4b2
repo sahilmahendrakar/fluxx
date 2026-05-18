@@ -1,0 +1,74 @@
+src/main/agentSpawn.test.ts
+  s_9e8f31904a3d0b::t_76784b01aba42f 29,32-39
+src/main/projectOnboarding.ts
+  s_9e8f31904a3d0b::t_e5e2b3f9a78fbb 3,5,13-64,66,68,70,72,77-114
+src/planningInitPrompt.ts
+  s_9e8f31904a3d0b::t_f1655aa6e9551b 1-12
+src/env.d.ts
+  s_9e8f31904a3d0b::t_1f1ba6397e3770 215-217
+  s_9e8f31904a3d0b::t_a63dd6ab3b9b67 408-415
+  s_9e8f31904a3d0b::t_86e0ff63d4b69c 251-269
+src/main/projectOnboarding.test.ts
+  s_9e8f31904a3d0b::t_cafd0ba0ab31d7 1-51
+src/components/NewProjectModal.tsx
+  s_9e8f31904a3d0b::t_2a594de441f910 7
+  s_9e8f31904a3d0b::t_e4df2edaaf8696 35
+  s_9e8f31904a3d0b::t_ce0b8fdee63a3b 141,145
+  s_9e8f31904a3d0b::t_d544e810288312 192-194
+src/components/BoardPlanningInitCallout.tsx
+  s_9e8f31904a3d0b::t_a52b12a98d089c 9
+  s_9e8f31904a3d0b::t_2c915729529ea7 1-8,10-12
+  s_9e8f31904a3d0b::t_6489b951b9d380 13-42,44-45
+  s_9e8f31904a3d0b::t_f61f66a6af062a 43
+src/components/Board.tsx
+  s_9e8f31904a3d0b::t_885cc6df29306d 84-87
+  s_9e8f31904a3d0b::t_1019f487fb6730 237-243
+  s_9e8f31904a3d0b::t_24bfaad1000024 119-122
+  s_9e8f31904a3d0b::t_8e89e95c8bdf43 26
+src/App.tsx
+  s_9e8f31904a3d0b::t_25116fbd5cc314 99
+  s_9e8f31904a3d0b::t_d061d26e6cf10f 459-477
+  s_9e8f31904a3d0b::t_31b77542eca4e0 226-227
+  s_9e8f31904a3d0b::t_443ab8a775e83c 1288-1294,1301-1307,1309
+  s_9e8f31904a3d0b::t_2e25d0d7d1a80a 1349-1350
+  s_9e8f31904a3d0b::t_a64a1497adf6e0 2861-2896
+  s_9e8f31904a3d0b::t_34c85c48a1dcd8 3442-3449
+src/renderer/boardPlanningInitStart.ts
+  s_9e8f31904a3d0b::t_59543a1693557b 1-66
+src/main/agentSpawn.ts
+  s_9e8f31904a3d0b::t_1199bb87912a0c 131,133,144-146,152,156,160-161
+src/main.ts
+  s_9e8f31904a3d0b::t_7cd37ea6b93fad 3995
+  s_9e8f31904a3d0b::t_68f80411063d9e 1997-2060
+  s_9e8f31904a3d0b::t_6e70a4be51ceff 229,235-240,245-247
+  s_9e8f31904a3d0b::t_d14a4e55fbd5c9 10-15
+  s_9e8f31904a3d0b::t_f0175b3d007c8a 17,21
+  s_9e8f31904a3d0b::t_c28330b0373690 16
+  s_9e8f31904a3d0b::t_077d5e2ec37558 1724-1735
+  s_9e8f31904a3d0b::t_924a0e1276c6fd 3909
+src/preload.ts
+  s_9e8f31904a3d0b::t_d615892536a4b6 229-233
+  s_9e8f31904a3d0b::t_fd92891829ea81 288-313
+  s_9e8f31904a3d0b::t_a51305c9895adc 554-561
+src/components/ProjectsListView.tsx
+  s_9e8f31904a3d0b::t_5e6dd076ccceda 291
+  s_9e8f31904a3d0b::t_6e0696bb0ce936 368-374
+src/projectCreate.ts
+  s_9e8f31904a3d0b::t_1959326723dffa 26-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "cf6ad3087d981049716556f6cadc5d3304b3c4b2",
+  "prompts": {},
+  "sessions": {
+    "s_9e8f31904a3d0b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b03fdbc6-8344-4b3b-9d6f-f2b6e8464f88",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
