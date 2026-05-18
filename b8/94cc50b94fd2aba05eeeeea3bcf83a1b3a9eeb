@@ -1,0 +1,53 @@
+src/components/planningResumeUi.ts
+  s_4eb2cf6c52f4b7::t_2f8c0d9bb150d2 1-6,9,13-15,29-36,49-53,55-56
+  s_4eb2cf6c52f4b7::t_158500af0299e8 7-8,10-12,16-28,37-48,54,57-59
+src/main.ts
+  s_4eb2cf6c52f4b7::t_44392b13a56cef 3983-4003,4008-4009
+  s_4eb2cf6c52f4b7::t_f8c2e1d6d9d0fc 3956-3961
+src/main/planningAgentSessionRecords.test.ts
+  s_4eb2cf6c52f4b7::t_8389c10555c947 167-187
+src/components/PlanningPanel.tsx
+  s_4eb2cf6c52f4b7::t_e4851339d8709b 30,32-35
+  s_4eb2cf6c52f4b7::t_699579b6ab7fa8 464-492
+  s_4eb2cf6c52f4b7::t_0b8b964b580bd8 640-641
+  s_4eb2cf6c52f4b7::t_950860c261978e 594
+  s_4eb2cf6c52f4b7::t_e8e164dccb31bc 674
+  s_4eb2cf6c52f4b7::t_f349237d712734 639,642-645
+  s_4eb2cf6c52f4b7::t_4f5b1d1ceb5508 29,31,36-37
+  s_4eb2cf6c52f4b7::t_f6a6e1c1390b32 363-365,368-369,371,373,379,385-390
+  s_4eb2cf6c52f4b7::t_5770d29477695e 688,690-699,701,703
+  s_4eb2cf6c52f4b7::t_43dd5e7a8537b2 689
+  s_4eb2cf6c52f4b7::t_bd78306570b540 700,702
+  s_4eb2cf6c52f4b7::t_de22d2be2598fd 110,116
+  s_4eb2cf6c52f4b7::t_e281c419e4775c 616
+  s_4eb2cf6c52f4b7::t_9c43c63004dbff 614-615,617-618
+  s_4eb2cf6c52f4b7::t_e9de81361684a3 705-712,714
+  s_4eb2cf6c52f4b7::t_fd743e8c6550e0 677
+  s_4eb2cf6c52f4b7::t_d997602634bfca 704
+  s_4eb2cf6c52f4b7::t_d63d46b8f9f511 527-528,530-531
+  s_4eb2cf6c52f4b7::t_3092b755afa642 725-726
+  s_4eb2cf6c52f4b7::t_ef2a46d3c428b4 529
+  s_4eb2cf6c52f4b7::t_a1787c0a90f014 727
+  s_4eb2cf6c52f4b7::t_8c5ddda016edcc 418-442
+src/main/planningAgentSessionRecords.ts
+  s_4eb2cf6c52f4b7::t_1757c098cdc57c 164-177
+src/components/planningResumeUi.test.ts
+  s_4eb2cf6c52f4b7::t_b5fa5b89c3a2df 2-7,12,15-17,31-35,37-55
+  s_4eb2cf6c52f4b7::t_e5a6db2d5741e6 1,8-11,13-14,18-30,36,56-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "b894cc50b94fd2aba05eeeeea3bcf83a1b3a9eeb",
+  "prompts": {},
+  "sessions": {
+    "s_4eb2cf6c52f4b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "740f5d76-1fab-4d0a-a32b-1e2aea6a602e",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
