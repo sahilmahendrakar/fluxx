@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import { workspaceSessionStatusDotClass } from '../taskStatusDot';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 
@@ -431,7 +432,7 @@ export function Sidebar({
             {workspacesExpanded ? (
               <div className="flex flex-col gap-0.5 overflow-y-auto">
                 {sessions.length > 0
-                  ? sessions.map(({ session, title }) => {
+                  ? sessions.map(({ session, title, taskStatus }) => {
                     const active = activeTabId === session.id && !settingsRouteActive;
                     const running = session.status === 'running';
                     return (
@@ -453,7 +454,7 @@ export function Sidebar({
                           <span
                             className={[
                               'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                              running ? 'bg-emerald-400' : 'bg-zinc-600',
+                              workspaceSessionStatusDotClass(taskStatus, running),
                             ].join(' ')}
                             aria-hidden
                           />
