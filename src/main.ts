@@ -65,6 +65,7 @@ import {
   appendConversationParseBuffer,
   parseAgentConversationId,
 } from './main/agentConversationIdParse';
+import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
@@ -155,6 +156,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  PlanningAgentSessionRecord,
   TaskAgentSessionRecord,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
@@ -532,17 +534,37 @@ app.whenReady().then(async () => {
   const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: () => worktreeService.getProjectDir(),
   });
+  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+    getProjectDir: () => worktreeService.getProjectDir(),
+  });
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
-  terminalBackend.setSessionPtyDataHook?.((payload) => {
-    if (conversationCaptured.has(payload.sessionId)) return;
-    const prev = conversationParseTails.get(payload.sessionId) ?? '';
-    const next = appendConversationParseBuffer(prev, payload.data, 96 * 1024);
-    conversationParseTails.set(payload.sessionId, next);
-    const parsed = parseAgentConversationId(payload.agent, next);
+
+  function captureAgentConversationIdFromPty(
+    sessionId: string,
+    agent: Agent,
+    data: string,
+    onParsed: (id: string) => void,
+  ): void {
+    if (conversationCaptured.has(sessionId)) return;
+    const prev = conversationParseTails.get(sessionId) ?? '';
+    const next = appendConversationParseBuffer(prev, data, 96 * 1024);
+    conversationParseTails.set(sessionId, next);
+    const parsed = parseAgentConversationId(agent, next);
     if (!parsed) return;
-    conversationCaptured.add(payload.sessionId);
-    void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    conversationCaptured.add(sessionId);
+    onParsed(parsed);
+  }
+
+  terminalBackend.setSessionPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
+  });
+  terminalBackend.setPlanningPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void planningAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
   });
 
   // Map session ID → task ID for silence-based status transitions.
@@ -624,6 +646,16 @@ app.whenReady().then(async () => {
           sessionId: session.id,
         });
       }
+    },
+    onPlanningExit: (session) => {
+      const endReason = terminalQuitTeardownInProgress
+        ? ('app-quit' as const)
+        : session.status === 'stopped'
+          ? ('agent-exit-ok' as const)
+          : ('agent-exit-error' as const);
+      void planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      conversationParseTails.delete(session.id);
+      conversationCaptured.delete(session.id);
     },
   });
   terminalBackend.startSilenceSnapshotPolling();
@@ -3874,6 +3906,17 @@ app.whenReady().then(async () => {
         }
         return { error: result.error, message: result.message };
       }
+      void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
+      const planningRow: PlanningAgentSessionRecord = {
+        fluxxSessionId: result.id,
+        projectId: project.id,
+        agent: planningAgent,
+        planningDir,
+        startedAt: result.startedAt,
+        ...(spawnModel ? { agentModel: spawnModel } : {}),
+        ...(spawnYolo ? { agentYolo: true } : {}),
+      };
+      void planningAgentSessionRecordStore.recordSessionStart(planningRow);
       return result;
     },
   );
@@ -3883,6 +3926,17 @@ app.whenReady().then(async () => {
     if (!pid) return;
     const s = await terminalBackend.getPlanning(sessionId);
     if (!s || s.projectId !== pid) return;
+    void planningAgentSessionRecordStore.markSessionEnded(
+      {
+        id: sessionId,
+        status: 'stopped',
+        startedAt: s.startedAt,
+        stoppedAt: new Date().toISOString(),
+      },
+      { reason: 'user-archived' },
+    );
+    conversationParseTails.delete(sessionId);
+    conversationCaptured.delete(sessionId);
     await terminalBackend.stopPlanning(sessionId);
   });
 
