@@ -27,6 +27,9 @@ interface PlanningDocsViewProps {
   firebaseConfigured: boolean;
   onPlanningDocsMutated: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  /** When it matches `selectedPath`, open in edit mode (e.g. after creating a new doc). */
+  enterEditModePath?: string | null;
+  onNewPlanningDoc?: () => void;
 }
 
 function formatDocSyncTime(iso: string | undefined): string | null {
@@ -68,6 +71,8 @@ export function PlanningDocsView({
   firebaseConfigured,
   onPlanningDocsMutated,
   onDirtyChange,
+  enterEditModePath = null,
+  onNewPlanningDoc,
 }: PlanningDocsViewProps) {
   const api = window.electronAPI.planningDocs;
 
@@ -104,8 +109,10 @@ export function PlanningDocsView({
   }, [selectedPath]);
 
   useEffect(() => {
-    setViewMode('preview');
-  }, [selectedPath]);
+    setViewMode(
+      selectedPath != null && selectedPath === enterEditModePath ? 'edit' : 'preview',
+    );
+  }, [selectedPath, enterEditModePath]);
 
   useEffect(() => {
     if (!selectedPath) {
@@ -246,9 +253,18 @@ export function PlanningDocsView({
       {!selectedPath ? (
         <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-zinc-600">
           <p>
-            Choose a document from the sidebar, or expand <span className="px-1 font-medium text-zinc-500">Docs</span>{' '}
-            to see what is in <span className="font-mono text-zinc-500">planning/docs/</span>.
+            Choose a document from the sidebar, or create one under{' '}
+            <span className="font-mono text-zinc-500">planning/docs/</span>.
           </p>
+          {onNewPlanningDoc ? (
+            <button
+              type="button"
+              onClick={onNewPlanningDoc}
+              className="mt-4 rounded-md border border-sky-500/40 bg-sky-500/15 px-3 py-1.5 text-[12px] font-medium text-sky-100 transition hover:bg-sky-500/25"
+            >
+              New doc
+            </button>
+          ) : null}
           {showCloudChrome && !firebaseConfigured ? (
             <p className="mt-3 max-w-sm text-[12px] leading-relaxed text-zinc-500">
               Cloud projects can share these files with your team when Firebase is configured in this build.
@@ -322,6 +338,15 @@ export function PlanningDocsView({
                 >
                   {saving ? 'Saving…' : 'Save'}
                 </button>
+                {onNewPlanningDoc ? (
+                  <button
+                    type="button"
+                    onClick={onNewPlanningDoc}
+                    className="rounded-md border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-200 transition hover:bg-white/[0.08] hover:text-zinc-100"
+                  >
+                    New doc
+                  </button>
+                ) : null}
                 {dirty ? (
                   <span className="text-[11px] text-amber-200/80" title="Unsaved changes">
                     Unsaved

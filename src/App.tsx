@@ -30,6 +30,8 @@ import {
 import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
+import { NewPlanningDocModal } from './components/NewPlanningDocModal';
+import { planningDocWriteErrorMessage } from './renderer/planningDocs/validateNewPlanningDocPath';
 import TaskDetailPanel from './components/TaskDetailPanel';
 import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
@@ -233,6 +235,10 @@ export default function App() {
     string | null
   >(null);
   const [planningDocFileRevision, setPlanningDocFileRevision] = useState(0);
+  const [newPlanningDocModalOpen, setNewPlanningDocModalOpen] = useState(false);
+  const [planningDocEnterEditPath, setPlanningDocEnterEditPath] = useState<string | null>(
+    null,
+  );
   const planningDocsDirtyRef = useRef(false);
   /** Bumped when `project` changes so in-flight tab restore cannot unlock persistence for a newer project. */
   const tabRestoreGenerationRef = useRef(0);
@@ -2510,6 +2516,35 @@ export default function App() {
     setDocsSidebarExpanded((v) => !v);
   }, []);
 
+  const planningDocRelativePaths = useMemo(
+    () => planningDocFiles.map((f) => f.relativePath),
+    [planningDocFiles],
+  );
+
+  const handleOpenNewPlanningDocModal = useCallback(() => {
+    leaveSettingsIfActive();
+    setActiveTabId('docs');
+    setDocsSidebarExpanded(true);
+    setNewPlanningDocModalOpen(true);
+  }, []);
+
+  const handleCreatePlanningDoc = useCallback(
+    async (relativePath: string): Promise<{ ok: true } | { ok: false; message: string }> => {
+      const writeResult = await window.electronAPI.planningDocs.write(relativePath, '');
+      if ('error' in writeResult) {
+        return { ok: false, message: planningDocWriteErrorMessage(writeResult.error) };
+      }
+      leaveSettingsIfActive();
+      setActiveTabId('docs');
+      setDocsSidebarExpanded(true);
+      await refreshPlanningDocList();
+      setSelectedPlanningDocPath(relativePath);
+      setPlanningDocEnterEditPath(relativePath);
+      return { ok: true };
+    },
+    [refreshPlanningDocList],
+  );
+
   const handleSelectPlanningDoc = useCallback(
     (relativePath: string) => {
       leaveSettingsIfActive();
@@ -2524,6 +2559,7 @@ export default function App() {
         return;
       }
       setSelectedPlanningDocPath(relativePath);
+      setPlanningDocEnterEditPath(null);
       setActiveTabId('docs');
     },
     [selectedPlanningDocPath],
@@ -3038,6 +3074,7 @@ export default function App() {
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={handleSelectPlanningDoc}
+          onNewPlanningDoc={handleOpenNewPlanningDocModal}
           sessions={sidebarSessionItems}
           onOpenSession={handleOpenSessionFromSidebar}
           onMinimizeSession={handleMinimizeSession}
@@ -3373,6 +3410,8 @@ export default function App() {
                     planningDocsCloudListMeta={planningDocsCloudListMeta}
                     planningDocsFirestoreStream={planningDocsFirestoreStream}
                     firebaseConfigured={isFirebaseConfigured()}
+                    enterEditModePath={planningDocEnterEditPath}
+                    onNewPlanningDoc={handleOpenNewPlanningDocModal}
                     onPlanningDocsMutated={() => void refreshPlanningDocList()}
                     onDirtyChange={handlePlanningDocsDirtyChange}
                   />
@@ -3454,6 +3493,13 @@ export default function App() {
           destructive
           onConfirm={() => void confirmTaskDelete()}
           onCancel={cancelTaskDeleteConfirm}
+        />
+      ) : null}
+      {newPlanningDocModalOpen ? (
+        <NewPlanningDocModal
+          existingRelativePaths={planningDocRelativePaths}
+          onClose={() => setNewPlanningDocModalOpen(false)}
+          onCreate={handleCreatePlanningDoc}
         />
       ) : null}
       {cloudPlanningDocsSeedModal}

@@ -52,6 +52,7 @@ interface SidebarProps {
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
+  onNewPlanningDoc: () => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
@@ -245,6 +246,7 @@ export function Sidebar({
   planningDocsListError,
   selectedPlanningDocPath,
   onSelectPlanningDoc,
+  onNewPlanningDoc,
   sessions,
   onOpenSession,
   onMinimizeSession,
@@ -365,6 +367,16 @@ export function Sidebar({
                 ].join(' ')}
               >
                 <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={onNewPlanningDoc}
+                    className="mb-1 flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] font-medium text-sky-300/90 transition hover:bg-sky-500/10 hover:text-sky-200"
+                  >
+                    <span className="text-[12px] leading-none" aria-hidden>
+                      +
+                    </span>
+                    New doc
+                  </button>
                   {project.kind === 'cloud' ? (
                     <PlanningCloudDocsSyncHint
                       meta={planningDocsCloudListMeta}

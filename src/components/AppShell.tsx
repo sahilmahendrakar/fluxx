@@ -30,6 +30,7 @@ interface AppShellProps {
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
+  onNewPlanningDoc: () => void;
   sessions: SessionTabMeta[];
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
@@ -77,6 +78,7 @@ export function AppShell({
   planningDocsListError,
   selectedPlanningDocPath,
   onSelectPlanningDoc,
+  onNewPlanningDoc,
   sessions,
   onOpenSession,
   onMinimizeSession,
@@ -105,6 +107,7 @@ export function AppShell({
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={onSelectPlanningDoc}
+          onNewPlanningDoc={onNewPlanningDoc}
           sessions={sessions}
           onOpenSession={onOpenSession}
           onMinimizeSession={onMinimizeSession}
