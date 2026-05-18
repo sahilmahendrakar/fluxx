@@ -130,12 +130,16 @@ export const packagedFluxCliFuseOptions = {
 
 /**
  * Keep the packaged app lean: only Vite output and `package.json` enter the
- * asar; devDependencies and the repo `node_modules` tree are omitted.
+ * asar; devDependencies and most of the repo `node_modules` tree are omitted.
+ * `node-pty` stays external to the Vite bundle because it ships a native
+ * addon, so its runtime package must still be copied into the app.
  */
 function packagerIgnore(file: string): boolean {
   if (!file) return false;
   if (file === '/package.json') return false;
   if (file.startsWith('/.vite')) return false;
+  if (file === '/node_modules') return false;
+  if (file.startsWith('/node_modules/node-pty')) return false;
   return true;
 }
 
@@ -191,13 +195,12 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
 }
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '**/node_modules/node-pty/build/Release/**',
+    },
     // Left `false` so Forge does not run pnpm-prune on the staged tree; Vite
-    // bundles JS for main/renderer and native deps use `asarUnpack` below.
+    // bundles JS for main/renderer and native deps use the asar unpack rule above.
     prune: false,
-    // Unpack `.node` bindings from the asar so `node-pty` and similar native
-    // modules load at runtime — see `AutoUnpackNativesPlugin` below.
-    asarUnpack: ['**/*.node'],
     ignore: packagerIgnore,
     // Base path without extension; electron-packager picks .icns / .ico / .png per OS.
     icon: path.resolve(__dirname, 'assets', 'app-icon'),
@@ -214,13 +217,7 @@ const config: ForgeConfig = {
   } as ForgePackagerOptions,
   rebuildConfig: {},
   hooks: {
-    packageAfterCopy: async (
-      _forgeConfig,
-      buildPath,
-      _electronVersion,
-      _platform,
-      _arch,
-    ) => {
+    packageAfterCopy: async (_forgeConfig, buildPath) => {
       assertPackagedFluxCliContract({
         runAsNodeFuseEnabled: packagedFluxCliFuseOptions[FuseV1Options.RunAsNode],
       });

@@ -36,6 +36,8 @@ export interface CreateSessionParams {
    * Empty or omitted disables cwd-gated autoresponse even if `trustPromptAutorespond` is true.
    */
   trustPromptAutorespondRoots?: string[];
+  /** Extra environment for task agent PTYs, e.g. the Fluxx CLI loopback bridge. */
+  ptyEnv?: Record<string, string>;
 }
 
 export type CreateSessionResult =

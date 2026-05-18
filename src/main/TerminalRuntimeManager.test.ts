@@ -12,10 +12,15 @@ const ptyState = vi.hoisted(() => ({
     emitData: (data: string) => void;
     emitExit: (exitCode: number, signal?: number) => void;
   }>,
+  calls: [] as Array<{
+    command: string;
+    args: string[];
+    options: { env?: NodeJS.ProcessEnv };
+  }>,
 }));
 
 vi.mock('node-pty', () => ({
-  spawn: vi.fn(() => {
+  spawn: vi.fn((command: string, args: string[], options: { env?: NodeJS.ProcessEnv }) => {
     let dataCb: ((data: string) => void) | undefined;
     let exitCb: ((info: { exitCode: number; signal?: number }) => void) | undefined;
     const fake = {
@@ -31,6 +36,7 @@ vi.mock('node-pty', () => ({
       emitData: (data: string) => dataCb?.(data),
       emitExit: (exitCode: number, signal?: number) => exitCb?.({ exitCode, signal }),
     };
+    ptyState.calls.push({ command, args, options });
     ptyState.instances.push(fake);
     return fake;
   }),
@@ -39,6 +45,7 @@ vi.mock('node-pty', () => ({
 describe('TerminalRuntimeManager', () => {
   beforeEach(() => {
     ptyState.instances.length = 0;
+    ptyState.calls.length = 0;
   });
 
   it('create/list/attach/write/resize/stop session with mocked PTY', async () => {
@@ -89,6 +96,34 @@ describe('TerminalRuntimeManager', () => {
     mgr.stopSession(id);
     expect(pty.kill).toHaveBeenCalled();
     expect(mgr.listSessions()).toEqual([]);
+  });
+
+  it('overlays Fluxx CLI bridge env for task sessions', async () => {
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+
+    const created = mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'p1',
+      agent: 'claude-code',
+      command: 'claude',
+      args: [],
+      cols: 40,
+      rows: 12,
+      ptyEnv: {
+        FLUX_AUTOMATION_URL: 'http://127.0.0.1:1234',
+        FLUX_AUTOMATION_TOKEN: 'token',
+        PATH: '/fluxx-cli:/usr/bin',
+      },
+    });
+
+    expect('id' in created).toBe(true);
+    const env = ptyState.calls[0].options.env;
+    expect(env?.FLUX_AUTOMATION_URL).toBe('http://127.0.0.1:1234');
+    expect(env?.FLUX_AUTOMATION_TOKEN).toBe('token');
+    expect(env?.PATH).toBe('/fluxx-cli:/usr/bin');
   });
 
   it('shutdownAllPtys stops sessions, shells, and planning', async () => {

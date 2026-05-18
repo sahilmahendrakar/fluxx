@@ -206,6 +206,11 @@ export class TerminalRuntimeManager {
           cwd: params.worktreePath,
           cols: params.cols,
           rows: params.rows,
+          env: {
+            ...process.env,
+            HOME: process.env.HOME ?? os.homedir(),
+            ...(params.ptyEnv ?? {}),
+          },
         },
         {
           onData: (data, seq) => {

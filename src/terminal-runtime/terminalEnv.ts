@@ -51,6 +51,11 @@ export function normalizeUtf8Locale(
  * - `COLORFGBG=15;0` — Flux's window chrome is always dark, so hint white
  *   foreground on black background so TUIs that auto-pick palettes
  *   (vim, fzf) choose dark-mode variants.
+ * - color opt-ins / no-color cleanup — Electron can inherit `NO_COLOR=1`
+ *   or `FORCE_COLOR=0` from the launching environment (notably dev tools).
+ *   Agent TUIs honor those over `COLORTERM`, which flattens Claude/Cursor
+ *   branding to gray. PTYs in Fluxx are always color-capable, so strip the
+ *   no-color hint and explicitly allow color.
  */
 export function buildPtyEnv(
   baseEnv: NodeJS.ProcessEnv | Record<string, string>,
@@ -58,11 +63,14 @@ export function buildPtyEnv(
   // Copy so we never mutate the caller's env. Keeps `process.env` intact
   // for any other concurrent spawn.
   const env: NodeJS.ProcessEnv = { ...baseEnv };
+  delete env.NO_COLOR;
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
   env.LANG = normalizeUtf8Locale(baseEnv);
   env.TERM_PROGRAM = 'kitty';
   env.COLORFGBG = '15;0';
+  env.CLICOLOR = '1';
+  env.FORCE_COLOR = '3';
   return env;
 }
 

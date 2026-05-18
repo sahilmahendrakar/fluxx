@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electro
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
@@ -3121,6 +3120,24 @@ app.whenReady().then(async () => {
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
 
+      let ptyEnv: Record<string, string> | undefined;
+      const activeKey = appStateStore.get().activeProjectKey;
+      if (fluxAutomationServer && fluxAutomationToken && activeKey) {
+        await fluxAutomationServer.whenReady();
+        const baseUrl = fluxAutomationServer.baseUrl;
+        await writeFluxCliBridgeConfig(projectDirForSession, {
+          url: baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+        });
+        ptyEnv = fluxAutomationPtyEnv({
+          baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+          fluxCliBinDir: resolveFluxCliBinDir(),
+        });
+      }
+
       const result = await terminalBackend.createSession({
         worktreePath,
         branch,
@@ -3133,6 +3150,7 @@ app.whenReady().then(async () => {
         cols: 80,
         rows: 24,
         ...trustAutorespondArg,
+        ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
       if ('error' in result) {
         console.error('[session:start] daemon spawn failed', {

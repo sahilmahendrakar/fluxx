@@ -34,6 +34,8 @@ describe('buildPtyEnv', () => {
     expect(env.COLORTERM).toBe('truecolor');
     expect(env.TERM_PROGRAM).toBe('kitty');
     expect(env.COLORFGBG).toBe('15;0');
+    expect(env.CLICOLOR).toBe('1');
+    expect(env.FORCE_COLOR).toBe('3');
     expect(env.LANG).toBe('en_US.UTF-8');
   });
 
@@ -53,6 +55,17 @@ describe('buildPtyEnv', () => {
     expect(env.HOME).toBe('/tmp/home');
     expect(env.PATH).toBe('/usr/bin');
     expect(env.FLUX_DEBUG).toBe('1');
+  });
+
+  it('removes inherited no-color flags that flatten agent TUIs', () => {
+    const env = buildPtyEnv({
+      NO_COLOR: '1',
+      FORCE_COLOR: '0',
+      CLICOLOR: '0',
+    });
+    expect(env.NO_COLOR).toBeUndefined();
+    expect(env.FORCE_COLOR).toBe('3');
+    expect(env.CLICOLOR).toBe('1');
   });
 
   it('does not mutate the input env', () => {
