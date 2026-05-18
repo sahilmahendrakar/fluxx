@@ -1,0 +1,46 @@
+src/projectCreate.ts
+  s_4d2fe9d2868504::t_cef82fc5907214 3
+  s_4d2fe9d2868504::t_91f6583629e524 70-169
+src/components/NewProjectModal.tsx
+  s_4d2fe9d2868504::t_f6d09307eeb269 2-7,9-15,17-31,33-38,40,42,46,48-54,56-57,59-60,65-66,84-85,88-89,97-100,103,105-132,134,136-138,140,142-170,176-178,180-194,196-209,218-220,222-248,251-255,257,260,263,272-276,289,291,293-299,301-316,319-320,326-327,340-351,353-356,361-368,371-372,396,400,404,407-409,412-415,417-419,421-435,442-459
+  s_4d2fe9d2868504::t_ba6d2d67b8d494 195,290
+  s_4d2fe9d2868504::t_45843e019bedd3 179,210-216,221,249-250,300,318,336,352,406,410-411,416,420,436,460
+  s_4d2fe9d2868504::t_8b979a5efeaa35 217,292,317
+src/projectCreate.test.ts
+  s_4d2fe9d2868504::t_9f6e4fb7c2a73a 135-166
+  s_4d2fe9d2868504::t_a363c0aeb45f32 5-6,8
+src/components/ProjectsListView.tsx
+  s_4d2fe9d2868504::t_e85b9975bb68f5 721-726
+  s_4d2fe9d2868504::t_80b54da5cc01a4 411
+  s_4d2fe9d2868504::t_e409130adeb3d4 425-431
+  s_4d2fe9d2868504::t_db991486aaacc6 549,552
+  s_4d2fe9d2868504::t_b6e7a549dcae16 22,24-25
+  s_4d2fe9d2868504::t_5556cd7467979f 417
+  s_4d2fe9d2868504::t_78e61a893f9975 412,414-416,423
+  s_4d2fe9d2868504::t_279b991513d67f 246-270,274,276-279,305,309-321
+  s_4d2fe9d2868504::t_3d10cccdefb551 754,758-759,763-764,766
+  s_4d2fe9d2868504::t_25aa93f030d6b2 413
+  s_4d2fe9d2868504::t_8d4d801b293f60 46
+  s_4d2fe9d2868504::t_bbe3a1aac6f2ac 659
+  s_4d2fe9d2868504::t_18d70a6e15c543 418-422
+src/components/newProject/newProjectWizard.test.ts
+  s_4d2fe9d2868504::t_a966585cdc7f6b 1-98
+src/components/newProject/newProjectWizard.ts
+  s_4d2fe9d2868504::t_5c4d816b87f7ff 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "49ce53de032feb1de24bdc5a3dfd78479c4f96b6",
+  "prompts": {},
+  "sessions": {
+    "s_4d2fe9d2868504": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8b10c6db-7b9f-4cff-b539-df8583fc6d9b",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
