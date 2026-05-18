@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 
 import {
   FLUXX_PROJECTS_SUBDIR,
@@ -35,9 +34,7 @@ const RESERVED_TOP_LEVEL = new Set([
   FLUXX_LEGACY_CLOUD_SUBDIR,
 ]);
 
-export function stableLocalProjectIdForRoot(rootPath: string): string {
-  return createHash('sha256').update(path.resolve(rootPath)).digest('hex');
-}
+export { stableLocalProjectIdForRoot } from '../repoIdentity';
 
 export function canonicalLocalProjectDir(fluxxBaseDir: string, localProjectId: string): string {
   return path.join(fluxxBaseDir, FLUXX_PROJECTS_SUBDIR, localProjectId);

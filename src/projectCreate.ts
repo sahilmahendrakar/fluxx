@@ -4,6 +4,7 @@ import {
   deriveRepoIdForRootPath,
   deriveStablePrimaryRepoIdForProject,
   normalizeRepoRootPathForIdentity,
+  stableLocalProjectIdForRoot,
 } from './repoIdentity';
 
 /** Single creation payload for local-only and team-synced projects. */
@@ -64,6 +65,106 @@ export function validateProjectName(name: string): 'NAME_REQUIRED' | 'NAME_TOO_L
   if (trimmed.length === 0) return 'NAME_REQUIRED';
   if (trimmed.length > PROJECT_NAME_MAX_LENGTH) return 'NAME_TOO_LONG';
   return { ok: true, name: trimmed };
+}
+
+/** User-facing copy for {@link ProjectCreateError} codes from `projects:create`. */
+export function projectCreateErrorMessage(
+  error: ProjectCreateError,
+  message?: string,
+): string {
+  switch (error) {
+    case 'NAME_REQUIRED':
+      return 'Enter a project name.';
+    case 'NAME_TOO_LONG':
+      return `Project name must be ${PROJECT_NAME_MAX_LENGTH} characters or fewer.`;
+    case 'NOT_GIT_REPO':
+      return 'That folder isn’t a git repository. Run git init first.';
+    case 'DUPLICATE_REPO_PATH':
+      return 'That repository is already attached.';
+    case 'PRIMARY_REPO_REQUIRED':
+      return 'Choose a primary repository.';
+    case 'AUTH_REQUIRED':
+      return 'Sign in to create a team-synced project.';
+    case 'INVITE_INVALID_EMAIL':
+      return 'Enter a valid email address for each invite.';
+    case 'CREATE_FAILED':
+      return message?.trim() || 'Could not create the project. Try again.';
+    default:
+      return message?.trim() || 'Could not create the project. Try again.';
+  }
+}
+
+function resolvePrimaryRootPathForCreate(
+  repos: ProjectCreateRepoInput[],
+  primaryRootPath?: string,
+): string {
+  if (repos.length === 1) {
+    return path.resolve(repos[0].rootPath);
+  }
+  const want = primaryRootPath?.trim();
+  if (want) {
+    return path.resolve(want);
+  }
+  return path.resolve(repos[0].rootPath);
+}
+
+/**
+ * Builds a {@link ProjectCreateInput} for local-only creation from wizard state.
+ * Assigns {@link primaryRepoId} explicitly when repos are present.
+ */
+export function prepareLocalProjectCreateInput(params: {
+  name: string;
+  repos: ProjectCreateRepoInput[];
+  primaryRootPath?: string;
+}): ProjectCreateInput {
+  const nameResult = validateProjectName(params.name);
+  const trimmed = nameResult === 'NAME_REQUIRED' || nameResult === 'NAME_TOO_LONG'
+    ? params.name.trim()
+    : nameResult.name;
+  const repoInputs = params.repos ?? [];
+
+  if (repoInputs.length === 0) {
+    return {
+      name: trimmed,
+      repos: [],
+      syncMode: 'local-only',
+    };
+  }
+
+  const primaryRoot = resolvePrimaryRootPathForCreate(repoInputs, params.primaryRootPath);
+  const projectId = stableLocalProjectIdForRoot(primaryRoot);
+  const primaryRepoId = deriveStablePrimaryRepoIdForProject({
+    projectId,
+    rootPath: primaryRoot,
+  });
+
+  return {
+    name: trimmed,
+    repos: repoInputs,
+    primaryRepoId,
+    syncMode: 'local-only',
+  };
+}
+
+const TEAM_INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Normalizes invite emails from the wizard (trim, lowercase, dedupe). */
+export function normalizeTeamInviteEmails(
+  emails: string[],
+): { ok: true; emails: string[] } | { ok: false; error: 'INVITE_INVALID_EMAIL' } {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of emails) {
+    const lower = raw.trim().toLowerCase();
+    if (!lower) continue;
+    if (!TEAM_INVITE_EMAIL_RE.test(lower)) {
+      return { ok: false, error: 'INVITE_INVALID_EMAIL' };
+    }
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(lower);
+  }
+  return { ok: true, emails: out };
 }
 
 /**
@@ -209,7 +310,7 @@ export function validateLocalProjectCreateInput(
       };
     }
 
-    const { stableLocalProjectIdForRoot } = await import('./main/projectDirLayout');
+    const { stableLocalProjectIdForRoot } = await import('./repoIdentity');
 
     const resolvePrimaryRootForId = (): string | 'PRIMARY_REPO_REQUIRED' => {
       if (repoInputs.length === 1) {
