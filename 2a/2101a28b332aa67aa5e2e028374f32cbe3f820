@@ -1,0 +1,40 @@
+src/renderer/useMacWindowFullscreen.ts
+  s_f7d3d4db623eb6::t_7249352571bd94 1-21
+src/components/MacWindowDragStrip.tsx
+  s_f7d3d4db623eb6::t_48dc74c6f7aeab 24
+  s_f7d3d4db623eb6::t_013be912d7e8dc 1-15,17-23,25-26
+  s_f7d3d4db623eb6::t_b3167ce0725484 16
+src/index.css
+  s_f7d3d4db623eb6::t_50d5c1f1859a7c 27-35
+src/main.ts
+  s_f7d3d4db623eb6::t_4fca58d06a639a 185-188
+  s_f7d3d4db623eb6::t_57ed9ce478e821 831
+  s_f7d3d4db623eb6::t_39df2768055149 482-483
+src/env.d.ts
+  s_f7d3d4db623eb6::t_03306b1418c0aa 453-457
+src/preload.ts
+  s_f7d3d4db623eb6::t_d184b4f91932f6 639-648
+src/main/windowChrome.ts
+  s_f7d3d4db623eb6::t_97573899ceea98 22
+  s_f7d3d4db623eb6::t_b0f76c667c72a8 1-21,23-27
+src/App.tsx
+  s_f7d3d4db623eb6::t_49eba9b7bb55c0 38
+  s_f7d3d4db623eb6::t_18010e6f27a50a 2972
+  s_f7d3d4db623eb6::t_184c3b296c450a 2945,2956
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "2a2101a28b332aa67aa5e2e028374f32cbe3f820",
+  "prompts": {},
+  "sessions": {
+    "s_f7d3d4db623eb6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0325ea55-b18e-45d5-9661-b8a460bf67f1",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
