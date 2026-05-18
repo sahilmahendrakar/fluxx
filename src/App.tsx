@@ -96,6 +96,7 @@ import {
 } from './cloudBindingPrefs';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from './planningDocs/types';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
+import { startBoardPlanningInitSession } from './renderer/boardPlanningInitStart';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
   leaveSettingsIfActive,
@@ -222,6 +223,8 @@ export default function App() {
   const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
+  const [showPlanningInitCallout, setShowPlanningInitCallout] = useState(false);
+  const [planningInitBusy, setPlanningInitBusy] = useState(false);
   const [planningSidebarActiveId, setPlanningSidebarActiveId] = useState<string | null>(
     null,
   );
@@ -450,6 +453,25 @@ export default function App() {
       setPlanningSessions(list);
     } catch (err) {
       console.error('[App] planning.list failed', err);
+    }
+  }, []);
+
+  const refreshPlanningInitCallout = useCallback(async () => {
+    const api = window.electronAPI.projectOnboarding;
+    if (!api?.getState) {
+      setShowPlanningInitCallout(false);
+      return;
+    }
+    try {
+      const state = await api.getState();
+      if ('error' in state) {
+        setShowPlanningInitCallout(false);
+        return;
+      }
+      setShowPlanningInitCallout(state.showCallout);
+    } catch (err) {
+      console.error('[App] projectOnboarding.getState failed', err);
+      setShowPlanningInitCallout(false);
     }
   }, []);
 
@@ -1263,15 +1285,28 @@ export default function App() {
   useEffect(() => {
     if (!project) return;
     void refreshPlanningSessions();
-  }, [project?.id, refreshPlanningSessions]);
+    void refreshPlanningInitCallout();
+  }, [project?.id, refreshPlanningSessions, refreshPlanningInitCallout]);
+
+  useEffect(() => {
+    if (!project || activeTabId !== 'board' || settingsRouteActive) return;
+    void refreshPlanningInitCallout();
+  }, [project?.id, activeTabId, settingsRouteActive, refreshPlanningInitCallout]);
 
   useEffect(() => {
     const api = window.electronAPI.planning;
     if (!api?.onExit) return;
     return api.onExit(() => {
       void refreshPlanningSessions();
+      void window.electronAPI.projectOnboarding?.maybeCompleteAfterSession?.().then(
+        (result) => {
+          if (result && 'ok' in result && result.changed) {
+            void refreshPlanningInitCallout();
+          }
+        },
+      );
     });
-  }, [refreshPlanningSessions]);
+  }, [refreshPlanningSessions, refreshPlanningInitCallout]);
 
   useEffect(() => {
     const sid = parsePlanTabId(activeTabId);
@@ -1311,6 +1346,8 @@ export default function App() {
       setOpenPlanningMainTabIds(new Set());
       setPlanningSidebarOpen(false);
       setPlanPanelOpen(false);
+      setShowPlanningInitCallout(false);
+      setPlanningInitBusy(false);
       return;
     }
     tabRestoreGenerationRef.current += 1;
@@ -2821,6 +2858,42 @@ export default function App() {
     [refreshPlanningSessions],
   );
 
+  const handlePlanningInitSkip = useCallback(async () => {
+    setPlanningInitBusy(true);
+    try {
+      await window.electronAPI.projectOnboarding?.setStatus?.('dismissed');
+      setShowPlanningInitCallout(false);
+    } finally {
+      setPlanningInitBusy(false);
+    }
+  }, []);
+
+  const handlePlanningInitStart = useCallback(async () => {
+    if (!project) return;
+    setPlanningInitBusy(true);
+    try {
+      await window.electronAPI.projectOnboarding?.setStatus?.('started');
+      setShowPlanningInitCallout(false);
+      leaveSettingsIfActive();
+      setActiveTabId('board');
+      setPlanningSidebarOpen(true);
+      const session = await startBoardPlanningInitSession(project);
+      if ('error' in session) {
+        console.error('[App] planning init session failed', session.error);
+        return;
+      }
+      await refreshPlanningSessions();
+      setPlanningSidebarActiveId(session.id);
+      await refreshPlanningRelatedProjectState();
+    } finally {
+      setPlanningInitBusy(false);
+    }
+  }, [
+    project,
+    refreshPlanningSessions,
+    refreshPlanningRelatedProjectState,
+  ]);
+
   const handlePlanningActiveSessionChange = useCallback(
     (id: string | null) => {
       if (activeTabId === 'board' || activeTabId === 'plan') {
@@ -3366,6 +3439,14 @@ export default function App() {
                         onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
                         projectRepoReadiness={projectRepoReadiness}
                         onOpenProjectSettings={handleOpenProjectSettings}
+                        showPlanningInitCallout={
+                          activeTabId === 'board' &&
+                          !settingsRouteActive &&
+                          showPlanningInitCallout
+                        }
+                        planningInitBusy={planningInitBusy}
+                        onPlanningInitStart={() => void handlePlanningInitStart()}
+                        onPlanningInitSkip={() => void handlePlanningInitSkip()}
                       />
                       <TaskDetailPanel
                         task={selectedTask}

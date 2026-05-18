@@ -226,7 +226,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projects:addLocal') as Promise<
         LocalProject | { error: 'NOT_GIT_REPO' } | null
       >,
-    create: (input: import('./projectCreate').ProjectCreateInput) =>
+    create: (
+      input:
+        | import('./projectCreate').ProjectCreateInput
+        | import('./projectCreate').ProjectCreateWizardPayload,
+    ) =>
       ipcRenderer.invoke('projects:create', input) as Promise<
         import('./projectCreate').ProjectCreateResult
       >,
@@ -280,6 +284,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     clearLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
+  },
+  projectOnboarding: {
+    getState: () =>
+      ipcRenderer.invoke('projectOnboarding:getState') as Promise<
+        | {
+            status: import('./main/projectOnboarding').PlanningInitStatus;
+            docsInitialized: boolean;
+            showCallout: boolean;
+          }
+        | { error: 'NO_ACTIVE_PROJECT' }
+      >,
+    setStatus: (
+      status: import('./main/projectOnboarding').PlanningInitStatus,
+    ) =>
+      ipcRenderer.invoke('projectOnboarding:setStatus', status) as Promise<
+        { ok: true } | { error: 'INVALID_STATUS' | 'NO_ACTIVE_PROJECT' }
+      >,
+    writePending: (projectDir?: string) =>
+      ipcRenderer.invoke('projectOnboarding:writePending', projectDir) as Promise<
+        { ok: true } | { error: 'NO_PROJECT_DIR' }
+      >,
+    maybeCompleteAfterSession: () =>
+      ipcRenderer.invoke('projectOnboarding:maybeCompleteAfterSession') as Promise<
+        | { ok: true; changed: boolean }
+        | { error: 'NO_ACTIVE_PROJECT' }
+      >,
   },
   repo: {
     getBranchDiscovery: (arg?: string | RepoBranchDiscoveryRequest) =>
@@ -521,7 +551,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () =>
       ipcRenderer.invoke('planning:list') as Promise<PlanningSession[]>,
     start: (
-      payload: Agent | { agent: Agent; agentModel?: string; agentYolo?: boolean },
+      payload:
+        | Agent
+        | {
+            agent: Agent;
+            agentModel?: string;
+            agentYolo?: boolean;
+            initialPrompt?: string;
+          },
     ) =>
       ipcRenderer.invoke('planning:start', payload) as Promise<PlanningStartResult>,
     stop: (sessionId: string) =>

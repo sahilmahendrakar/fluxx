@@ -23,6 +23,28 @@ export interface ProjectCreateRepoInput {
   baseBranch?: string;
 }
 
+/** Wizard payload sent from the renderer; normalized on the main process before create. */
+export type ProjectCreateWizardPayload = {
+  name: string;
+  repos: ProjectCreateRepoInput[];
+  primaryRootPath?: string;
+};
+
+export function isProjectCreateWizardPayload(
+  input: ProjectCreateInput | ProjectCreateWizardPayload,
+): input is ProjectCreateWizardPayload {
+  return !('syncMode' in input);
+}
+
+export function normalizeProjectCreateInput(
+  input: ProjectCreateInput | ProjectCreateWizardPayload,
+): ProjectCreateInput {
+  if (isProjectCreateWizardPayload(input)) {
+    return prepareLocalProjectCreateInput(input);
+  }
+  return input;
+}
+
 export interface ProjectPlanningDefaultsInput {
   planningAgent?: Agent;
   defaultTaskAgent?: Agent;
