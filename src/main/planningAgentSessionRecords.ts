@@ -161,6 +161,20 @@ export class PlanningAgentSessionRecordStore {
       let changed = false;
       this.cache = this.cache.map((r) => {
         if (r.fluxxSessionId !== session.id) return r;
+        if (opts.reason === 'user-archived') {
+          if (
+            r.endedReason === 'user-archived' ||
+            r.endedReason === 'replaced-by-new-session'
+          ) {
+            return r;
+          }
+          changed = true;
+          return {
+            ...r,
+            endedAt,
+            endedReason: 'user-archived',
+          };
+        }
         if (r.endedAt && r.endedReason === 'app-quit') return r;
         if (r.endedAt) return r;
         changed = true;

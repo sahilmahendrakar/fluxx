@@ -3953,6 +3953,12 @@ app.whenReady().then(async () => {
         return { error: result.error, message: result.message };
       }
       if (resumeFromSessionId) {
+        const warmStale = await terminalBackend.getPlanning(resumeFromSessionId);
+        if (warmStale) {
+          conversationParseTails.delete(resumeFromSessionId);
+          conversationCaptured.delete(resumeFromSessionId);
+          await terminalBackend.stopPlanning(resumeFromSessionId);
+        }
         void planningAgentSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
       }
       void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
@@ -3974,19 +3980,36 @@ app.whenReady().then(async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return;
     const s = await terminalBackend.getPlanning(sessionId);
-    if (!s || s.projectId !== pid) return;
+    if (s && s.projectId === pid) {
+      void planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: sessionId,
+          status: 'stopped',
+          startedAt: s.startedAt,
+          stoppedAt: new Date().toISOString(),
+        },
+        { reason: 'user-archived' },
+      );
+      conversationParseTails.delete(sessionId);
+      conversationCaptured.delete(sessionId);
+      await terminalBackend.stopPlanning(sessionId);
+      return;
+    }
+    const cold = await planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+      pid,
+      sessionId,
+      planningDirStillPresent,
+    );
+    if (!cold) return;
     void planningAgentSessionRecordStore.markSessionEnded(
       {
         id: sessionId,
         status: 'stopped',
-        startedAt: s.startedAt,
-        stoppedAt: new Date().toISOString(),
+        startedAt: cold.startedAt,
+        stoppedAt: cold.stoppedAt ?? new Date().toISOString(),
       },
       { reason: 'user-archived' },
     );
-    conversationParseTails.delete(sessionId);
-    conversationCaptured.delete(sessionId);
-    await terminalBackend.stopPlanning(sessionId);
   });
 
   ipcMain.handle('planning:get', async (_e, sessionId: string) => {
