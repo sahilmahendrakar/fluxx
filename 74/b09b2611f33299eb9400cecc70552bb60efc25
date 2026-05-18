@@ -1,0 +1,44 @@
+src/main.ts
+  s_daadcc7e627b3a::t_72aae6fe482636 159
+  s_daadcc7e627b3a::t_c2c47011ce8d4b 3909-3919,3929-3939
+  s_daadcc7e627b3a::t_32cca3d4377e97 650-659
+  s_daadcc7e627b3a::t_469b6b2ff1156c 68
+  s_daadcc7e627b3a::t_2853b7605177ed 537-539,542-553,555-567
+src/types.ts
+  s_daadcc7e627b3a::t_b328eb3469803f 572-576
+  s_daadcc7e627b3a::t_8991edf4b39265 514-536
+src/main/planningAgentSessionRecords.ts
+  s_daadcc7e627b3a::t_24f5e7dc41814e 1-291
+src/main/terminalBackend/TerminalBackend.ts
+  s_daadcc7e627b3a::t_139e20d52f9306 56-61
+  s_daadcc7e627b3a::t_e17534c53576d1 20
+  s_daadcc7e627b3a::t_c9479ab9864791 2
+src/main/planningAgentSessionRecords.test.ts
+  s_daadcc7e627b3a::t_5e58d2012161d1 1-56,60-62,67,73-181
+  s_daadcc7e627b3a::t_b51a9e5f986455 57-59,63-66,68-72
+src/main/terminalBackend/LocalMainProcessTerminalBackend.ts
+  s_daadcc7e627b3a::t_83765f9824a5e2 45
+  ai_agent 69-72,77-80,88-89
+  s_daadcc7e627b3a::t_d9318143b7072e 16
+src/main/TerminalRuntimeManager.ts
+  s_daadcc7e627b3a::t_9f115102da2843 479-484
+  s_daadcc7e627b3a::t_a4e8a7aeb01160 158,160,166,168,178-179
+  s_daadcc7e627b3a::t_4ed003a2ef9ffa 124-130
+  s_daadcc7e627b3a::t_76b1332288936d 140,143-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "74b09b2611f33299eb9400cecc70552bb60efc25",
+  "prompts": {},
+  "sessions": {
+    "s_daadcc7e627b3a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8bb06305-4df4-4092-a550-9054ef602243",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
