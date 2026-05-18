@@ -511,6 +511,29 @@ export interface TaskAgentSessionRecord {
   agentConversationId?: string;
 }
 
+/** Persisted metadata for planning assistant PTY sessions (cold resume). */
+export type PlanningAgentSessionEndedReason =
+  | 'agent-exit-ok'
+  | 'agent-exit-error'
+  | 'app-quit'
+  | 'replaced-by-new-session'
+  | 'user-archived';
+
+/** One durable row per logical Flux planning session (survives app restart). */
+export interface PlanningAgentSessionRecord {
+  fluxxSessionId: string;
+  projectId: string;
+  agent: Agent;
+  planningDir: string;
+  startedAt: string;
+  endedAt?: string;
+  endedReason?: PlanningAgentSessionEndedReason;
+  /** Parsed from CLI output when available (Claude / Cursor). */
+  agentConversationId?: string;
+  agentModel?: string;
+  agentYolo?: boolean;
+}
+
 /** Where to open a task worktree folder from the main process (`workspace:openPath`). */
 export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manager';
 
@@ -546,6 +569,11 @@ export interface PlanningSession {
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;
+  /**
+   * When the CLI exposes a resumable id and Flux captured it from PTY output,
+   * main may attach it to the live or synthetic {@link PlanningSession} row.
+   */
+  agentConversationId?: string;
 }
 
 export type ShellStatus = 'running' | 'stopped' | 'error';
