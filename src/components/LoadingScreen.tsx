@@ -1,6 +1,6 @@
 export function LoadingScreen() {
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#09090b] text-zinc-100">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[280px] w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-600/[0.1] blur-[80px]" />
       </div>

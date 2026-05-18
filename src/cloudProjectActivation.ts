@@ -4,7 +4,7 @@ import {
   migrateLegacyCloudBinding,
   primaryMachineBinding,
 } from './cloudLocalBindingMigration';
-import { canonicalCloudProjectDir } from './main/projectDirLayout';
+import { canonicalCloudProjectDir } from './projectDirPaths';
 import { resolvePrimaryRepoIdFromList } from './repoIdentity';
 
 /** Canonical `~/.fluxx/projects/<cloudProjectId>/` workspace for shell-only opens. */

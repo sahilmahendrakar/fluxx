@@ -742,8 +742,9 @@ export default function App() {
         setActivationLoading(false);
         return;
       }
-      // Cloud: wait for auth + Firestore snapshot in the effect below.
+      // Cloud: resolve in the effect below — do not block the picker on auth/Firestore.
       setPendingCloudActive(key.id);
+      setActivationLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -757,6 +758,19 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       if (auth.status !== 'signedIn') {
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        try {
+          await window.electronAPI.projects.clearActive();
+        } catch (err) {
+          console.error('[pendingCloudActive] clearActive failed', err);
+        }
+        return;
+      }
+      if (cloudProjectsState.status === 'loading') return;
+      if (cloudProjectsState.status === 'error') {
         await window.electronAPI.projects.clearActive();
         if (!cancelled) {
           setPendingCloudActive(null);
@@ -826,6 +840,18 @@ export default function App() {
     cloudProjectsState.status,
     cloudProjectsState.projects,
   ]);
+
+  // Don't block the whole app forever if Firestore stays on "loading" while resolving a saved cloud active key.
+  useEffect(() => {
+    if (!pendingCloudActive) return;
+    if (auth.status !== 'signedIn') return;
+    if (cloudProjectsState.status !== 'loading') return;
+    const timer = window.setTimeout(() => {
+      setPendingCloudActive(null);
+      setActivationLoading(false);
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingCloudActive, auth.status, cloudProjectsState.status]);
 
   // Multi-repo2 cloud: keep ~/.fluxx/projects/<cloudId>/ workspace `repos[]` aligned with shared repo ids + bindings.
   useEffect(() => {
@@ -2939,7 +2965,8 @@ export default function App() {
     [selectedTask, cloudProjectId, runners.byTask, uid, projectMembers],
   );
 
-  if (activationLoading || auth.status === 'loading') {
+  // Block the shell while hydrating a saved active project (local or cloud).
+  if (activationLoading || pendingCloudActive) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
         {isMac ? (
