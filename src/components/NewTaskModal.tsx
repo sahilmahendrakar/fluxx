@@ -12,6 +12,10 @@ import { TaskLabelsField } from './TaskLabelsField';
 import type { ProjectMember } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
+import {
+  projectRepoActionsBlocked,
+  type ProjectRepoReadiness,
+} from '../projectRepoReadiness';
 
 interface Props {
   onClose: () => void;
@@ -35,6 +39,8 @@ interface Props {
   /** When set with multiple entries and multi-repo2, shows repo selector before branch. */
   projectRepos?: RepoConfig[];
   multiRepo2Enabled?: boolean;
+  projectRepoReadiness: ProjectRepoReadiness;
+  onOpenProjectSettings: () => void;
 }
 
 export default function NewTaskModal({
@@ -45,6 +51,8 @@ export default function NewTaskModal({
   projectMembers,
   projectRepos,
   multiRepo2Enabled = false,
+  projectRepoReadiness,
+  onOpenProjectSettings,
 }: Props) {
   const [title, setTitle] = useState('');
   const [agent, setAgent] = useState<Agent | null>(defaultAgent);
@@ -122,7 +130,8 @@ export default function NewTaskModal({
   const trimmed = title.trim();
   const branchTrim = branchInput.trim();
   const branchNameOk = branchTrim === '' || gitBranchShortNameLooksValid(branchInput);
-  const canSubmit = trimmed.length > 0 && branchNameOk;
+  const repoBlocked = projectRepoActionsBlocked(projectRepoReadiness);
+  const canSubmit = trimmed.length > 0 && branchNameOk && !repoBlocked;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -155,6 +164,22 @@ export default function NewTaskModal({
       >
         <h2 className="text-[15px] font-medium tracking-tight text-zinc-100">New task</h2>
         <p className="mt-1 text-[13px] text-zinc-500">Add a task to the backlog.</p>
+
+        {repoBlocked ? (
+          <div
+            className="mt-4 rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] leading-relaxed text-amber-100/90"
+            role="status"
+          >
+            <p>{projectRepoReadiness.message}</p>
+            <button
+              type="button"
+              onClick={onOpenProjectSettings}
+              className="mt-2 font-medium text-amber-50 underline decoration-amber-400/50 underline-offset-2 hover:decoration-amber-200/70"
+            >
+              {projectRepoReadiness.ctaLabel}
+            </button>
+          </div>
+        ) : null}
 
         <label className="mt-5 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
           Title
