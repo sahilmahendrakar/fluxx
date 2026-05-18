@@ -636,6 +636,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ) as Promise<{ ok: true } | { error: string }>,
     },
   },
+  /** macOS native window fullscreen (green button), for title-bar drag strip layout. */
+  windowChrome: {
+    getFullscreen: (): Promise<boolean> =>
+      ipcRenderer.invoke('window:getFullscreen'),
+    onFullscreenChanged: (cb: (isFullScreen: boolean) => void) => {
+      const ch = 'window:fullscreenChanged' as const;
+      const handler = (_e: IpcRendererEvent, isFullScreen: boolean) => cb(isFullScreen);
+      return ipcSubscribe(ipcRenderer, ch, handler);
+    },
+  },
   /**
    * macOS packaged builds — GitHub Releases via `electron-updater`; downloads only after `startDownload`.
    */

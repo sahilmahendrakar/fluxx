@@ -450,6 +450,11 @@ declare global {
           }) => Promise<{ ok: true } | { error: string }>;
         };
       };
+      /** macOS native window fullscreen (green button), for title-bar drag strip layout. */
+      windowChrome: {
+        getFullscreen: () => Promise<boolean>;
+        onFullscreenChanged: (cb: (isFullScreen: boolean) => void) => () => void;
+      };
       /**
        * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.
        */

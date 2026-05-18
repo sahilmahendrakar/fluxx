@@ -182,6 +182,10 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
+import {
+  attachWindowChromeListeners,
+  registerWindowChromeIpc,
+} from './main/windowChrome';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
   buildCreatePrInstructionsMarkdown,
@@ -474,6 +478,8 @@ const createWindow = () => {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  attachWindowChromeListeners(mainWindow);
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[mainWindow] did-fail-load', {
@@ -822,6 +828,7 @@ app.whenReady().then(async () => {
   }
 
   registerAppUpdater();
+  registerWindowChromeIpc(() => mainWindow);
 
   function parseActiveProjectKeyPayload(raw: unknown): ActiveProjectKey | null {
     if (!raw || typeof raw !== 'object') return null;
