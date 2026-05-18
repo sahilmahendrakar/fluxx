@@ -24,3 +24,12 @@ body {
 .app-window-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Renderer drag strip above `app-window-no-drag` content (see MacWindowDragStrip). */
+.mac-window-title-drag-strip--windowed {
+  height: 2.5rem; /* 40px — traffic-light clearance */
+}
+
+.mac-window-title-drag-strip--fullscreen {
+  height: 0.5rem; /* 8px — drag band without a large dead zone */
+}

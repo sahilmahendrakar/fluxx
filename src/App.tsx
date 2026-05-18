@@ -35,6 +35,7 @@ import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
 import { LoadingScreen } from './components/LoadingScreen';
 import { ProjectsListView } from './components/ProjectsListView';
+import { MacWindowDragStrip } from './components/MacWindowDragStrip';
 import { SignInCard } from './components/SignInCard';
 import { ProjectSettingsView } from './components/ProjectSettingsView';
 import { TabBar, buildSessionTabs } from './components/TabBar';
@@ -177,7 +178,6 @@ function readStoredPlanningWidth(): number | null {
 }
 
 export default function App() {
-  const isMac = window.electronAPI.platform === 'darwin';
   const [project, setProject] = useState<ActiveProject | null>(null);
   const [activationLoading, setActivationLoading] = useState(true);
   const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
@@ -2942,12 +2942,7 @@ export default function App() {
   if (activationLoading || auth.status === 'loading') {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
-        {isMac ? (
-          <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-            aria-hidden
-          />
-        ) : null}
+        <MacWindowDragStrip />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <LoadingScreen />
         </div>
@@ -2958,12 +2953,7 @@ export default function App() {
   if (!project) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
-        {isMac ? (
-          <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-            aria-hidden
-          />
-        ) : null}
+        <MacWindowDragStrip />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <ProjectsListView
             onProjectActivated={handleProjectActivated}
@@ -2979,12 +2969,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
-      {isMac ? (
-        <div
-          className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-          aria-hidden
-        />
-      ) : null}
+      <MacWindowDragStrip />
       <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
         {cleanupError ? (
           <div
