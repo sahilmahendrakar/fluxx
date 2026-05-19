@@ -1,6 +1,6 @@
 # macOS releases and GitHub auto-update feed
 
-Fluxx's packaged macOS builds read update metadata from **`sahilmahendrakar/fluxx-web`** on GitHub Releases using `electron-updater`. Windows and Linux are unchanged and do not use this feed.
+Fluxx's packaged macOS builds read update metadata from **`sahilmahendrakar/fluxx`** on GitHub Releases using `electron-updater`. Windows and Linux are unchanged and do not use this feed.
 
 ## Release artifact names
 
@@ -12,7 +12,7 @@ Electron Forge / `electron-packager` use `package.json` **`productName`** (`Flux
 | Zip (auto-update) | `{productName}-darwin-{arch}-{version}.zip` | `Fluxx-darwin-arm64-0.1.2.zip` |
 | Updater manifest | `latest-mac.yml` | references the zip basename and checksum |
 
-Legacy releases may still list `Flux-*` assets; new tags after the Fluxx rebrand publish `Fluxx-*` names. Marketing download URLs on [fluxx.sh](https://fluxx.sh) should point at the matching `Fluxx-*` DMG on `fluxx-web`.
+Legacy releases may still list `Flux-*` assets; new tags after the Fluxx rebrand publish `Fluxx-*` names. Older `fluxx-web` release assets remain on that repo for historical installs; new tags publish to **`sahilmahendrakar/fluxx`**. Marketing download URLs on [fluxx.sh](https://fluxx.sh) may still point at `fluxx-web` until updated separately.
 
 ## Developer release flow
 
@@ -40,7 +40,7 @@ pnpm run publish
 
 After Forge uploads assets, CI sets the GitHub release **title** to `Fluxx X.Y.Z` and the **body** from `docs/github-release-notes-template.md` (substituting `{{VERSION}}`). Edit that template before tagging when you want curated release notes instead of an empty Highlights section.
 
-The workflow runs from `sahilmahendrakar/flux`, but Forge publishes releases to `sahilmahendrakar/fluxx-web`. GitHub's default Actions token is scoped to the workflow repo, so release publishing uses a `RELEASE_GITHUB_TOKEN` secret with `contents: write` access to `fluxx-web`.
+The workflow runs in **`sahilmahendrakar/fluxx`**, and Forge publishes to the same repository. The workflow grants the default `GITHUB_TOKEN` **Contents: write** so `electron-forge publish` and `gh release edit` can create and update releases in-repo. No cross-repo PAT is required.
 
 ## Release assets
 
@@ -56,11 +56,10 @@ The DMG is for first install. The updater downloads and installs the zip describ
 
 ## Required GitHub secrets
 
-Add these repository secrets in **`sahilmahendrakar/flux`** under **Settings > Secrets and variables > Actions > Repository secrets**. The workflow reads secrets from `flux` because that is where the GitHub Action runs.
+Add these repository secrets in **`sahilmahendrakar/fluxx`** under **Settings > Secrets and variables > Actions > Repository secrets**:
 
 | Secret | Required for | Notes |
 |--------|--------------|-------|
-| `RELEASE_GITHUB_TOKEN` | Publishing GitHub Releases to `fluxx-web` | Fine-grained PAT or GitHub App token with `contents: read/write` on `sahilmahendrakar/fluxx-web`. Forge receives this as `GITHUB_TOKEN` when running `electron-forge publish`. |
 | `APPLE_ID` | Notarization | Apple Developer account email. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Notarization | Preferred app-specific password secret. |
 | `APPLE_PASSWORD` | Notarization | Legacy alias. The workflow maps `APPLE_APP_SPECIFIC_PASSWORD` or `APPLE_PASSWORD` into the `APPLE_PASSWORD` env var Forge has historically used, and `forge.config.ts` accepts either env var. |
@@ -71,22 +70,26 @@ Add these repository secrets in **`sahilmahendrakar/flux`** under **Settings > S
 
 Do not configure `CSC_LINK` or `CSC_KEY_PASSWORD` for this workflow. Those are electron-builder-style secrets, and this Forge/electron-packager signing path does not read them. The workflow imports the Developer ID certificate into a temporary macOS keychain so `osxSign: {}` can discover it normally.
 
+### Deprecated: `RELEASE_GITHUB_TOKEN`
+
+Previously, CI ran in this repo but published releases to **`sahilmahendrakar/fluxx-web`**, which required a `RELEASE_GITHUB_TOKEN` secret (PAT with `contents: write` on `fluxx-web`). That secret is **no longer used**. You can remove it from repository secrets after confirming a tag-driven release succeeds with the default `GITHUB_TOKEN`.
+
+If you ever need a PAT again (for example, publishing from a different workflow repo), it must target **`sahilmahendrakar/fluxx`** with **Contents: read and write**, not `fluxx-web`.
+
 ## Manual GitHub setup
 
-1. In GitHub, create a fine-grained personal access token or GitHub App token that can write releases in **`sahilmahendrakar/fluxx-web`**. For a fine-grained PAT, select only the `sahilmahendrakar/fluxx-web` repository and grant **Repository permissions > Contents: Read and write**.
-2. In **`sahilmahendrakar/flux`**, open **Settings > Secrets and variables > Actions > Repository secrets** and add `RELEASE_GITHUB_TOKEN` with that token value.
-3. In the same `flux` repository secrets page, add `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (or legacy `APPLE_PASSWORD`), `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and `APPLE_KEYCHAIN_PASSWORD`.
-4. Make sure GitHub Actions are enabled for `sahilmahendrakar/flux`. The workflow only needs default token **Contents: read** permission for checkout; release writes use `RELEASE_GITHUB_TOKEN`.
-5. After this PR is merged, create the next release by running `pnpm version patch` (or `minor` / `major`) and `git push --follow-tags`.
-6. Confirm the tag workflow succeeds and the matching `sahilmahendrakar/fluxx-web` GitHub Release contains `Fluxx-*` DMG and zip assets plus `latest-mac.yml`, with title **Fluxx X.Y.Z**.
+1. In **`sahilmahendrakar/fluxx`**, open **Settings > Secrets and variables > Actions > Repository secrets** and add `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (or legacy `APPLE_PASSWORD`), `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and `APPLE_KEYCHAIN_PASSWORD`.
+2. Make sure GitHub Actions are enabled for `sahilmahendrakar/fluxx`. The release workflow needs **Contents: write** on the default `GITHUB_TOKEN` (configured in `.github/workflows/release.yml`).
+3. Create the next release by running `pnpm version patch` (or `minor` / `major`) and `git push --follow-tags`.
+4. Confirm the tag workflow succeeds and the matching **`sahilmahendrakar/fluxx`** GitHub Release contains `Fluxx-*` DMG and zip assets plus `latest-mac.yml`, with title **Fluxx X.Y.Z**.
 
 ## App runtime
 
 - `autoUpdater.autoDownload` is `false`; no installer is fetched unless the app calls `downloadUpdate()`.
 - `FLUX_DISABLE_GITHUB_UPDATES=1` turns off configuring the updater and rejects update checks via IPC.
 
-To verify the feed from an installed packaged macOS build, use the app's update check path. It calls `electron-updater` against the GitHub provider configured for `sahilmahendrakar/fluxx-web`, reads the latest non-draft GitHub Release, downloads `latest-mac.yml`, and advertises a newer semver when one is available.
+To verify the feed from an installed packaged macOS build, use the app's update check path. It calls `electron-updater` against the GitHub provider configured for `sahilmahendrakar/fluxx`, reads the latest non-draft GitHub Release, downloads `latest-mac.yml`, and advertises a newer semver when one is available.
 
 ## Private repos
 
-Public `fluxx-web` needs no GitHub auth for clients to read release assets. For a private releases repo later, configure `electron-updater` auth (token / `addAuthHeader`) in addition to publisher credentials. That is not required for the public launch repo.
+Public `fluxx` needs no GitHub auth for clients to read release assets. For a private releases repo later, configure `electron-updater` auth (token / `addAuthHeader`) in addition to publisher credentials. That is not required for the public open-source repo.
