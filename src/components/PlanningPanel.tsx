@@ -26,6 +26,15 @@ import {
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import Terminal, { type TerminalHandle } from './Terminal';
+import {
+  isPlanningSessionResumable,
+  planningResumeButtonTitle,
+  planningResumeDismissTitle,
+  planningResumeStateDetail,
+  planningResumeStateHeading,
+  planningSessionHasWarmTerminal,
+  planningTabLabel,
+} from './planningResumeUi';
 
 /**
  * Header “Add session” prefs:
@@ -70,11 +79,6 @@ function tailNeedsInputHint(text: string): boolean {
   );
 }
 
-function planningTabLabel(s: PlanningSession, index: number): string {
-  const agent = AGENTS.find((a) => a.id === s.agent)?.label ?? s.agent;
-  return `Plan ${index + 1} · ${agent}`;
-}
-
 function planningPaneVisibilityStyle(visible: boolean): React.CSSProperties {
   return {
     visibility: visible ? 'visible' : 'hidden',
@@ -103,12 +107,13 @@ function PlanningTerminalPane({
   const planningApi = window.electronAPI.planning;
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
+  const warmTerminal = planningSessionHasWarmTerminal(session);
   const trustAutorespondNote = useTrustAutorespondNotice('planning', session.id, running);
 
   useTerminalPtyStream({
     terminalRef,
     id: session.id,
-    enabled: Boolean(planningApi && running),
+    enabled: Boolean(planningApi && warmTerminal),
     viewPolicy: OWNER_TERMINAL_VIEW_POLICY,
     getAttach: () => {
       if (!planningApi) {
@@ -355,24 +360,34 @@ export function PlanningPanel({
     [onLocalProjectRefresh],
   );
 
-  const buildStartPayload = ():
+  const buildStartPayload = (
+    agent: Agent = selectedAgent,
+  ):
     | Agent
     | { agent: Agent; agentModel?: string; agentYolo?: boolean } => {
-    if (selectedAgent === 'codex') {
-      return { agent: selectedAgent, agentYolo: planningYolo };
+    if (agent === 'codex') {
+      return { agent, agentYolo: planningYolo };
     }
-    if (selectedAgent === 'cursor') {
+    if (agent === 'cursor') {
       return {
-        agent: selectedAgent,
+        agent,
         agentModel: cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL,
         agentYolo: planningYolo,
       };
     }
     return {
-      agent: selectedAgent,
+      agent,
       agentModel: claudeModelId.trim(),
       agentYolo: planningYolo,
     };
+  };
+
+  const buildResumePayload = (session: PlanningSession) => {
+    const base = buildStartPayload(session.agent);
+    if (typeof base === 'string') {
+      return { resume: true as const, sessionId: session.id, agent: base };
+    }
+    return { ...base, resume: true as const, sessionId: session.id };
   };
 
   const handleStart = async () => {
@@ -400,6 +415,31 @@ export function PlanningPanel({
     }
   };
 
+  const handleResume = async (session: PlanningSession) => {
+    if (!planningApi) {
+      setError('Planning assistant is not available in this build.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await planningApi.start(buildResumePayload(session));
+      if (result && typeof result === 'object' && 'error' in result) {
+        const err = result as { error: string; message?: string };
+        setError(err.message ?? err.error ?? 'Failed to resume');
+        return;
+      }
+      const live = result as PlanningSession;
+      await onSessionsMutated();
+      onActiveSessionChange(live.id);
+      await onLocalProjectRefresh?.();
+    } catch {
+      setError('Failed to resume session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStopOne = async (sessionId: string) => {
     if (!planningApi) return;
     setLoading(true);
@@ -421,6 +461,35 @@ export function PlanningPanel({
   };
 
   const sessionRunning = activeSession?.status === 'running';
+  const activeResumable =
+    activeSession != null && isPlanningSessionResumable(activeSession);
+  const activeWarmTerminal =
+    activeSession != null && planningSessionHasWarmTerminal(activeSession);
+  const resumableCount = sessions.filter(isPlanningSessionResumable).length;
+
+  const resumeActions =
+    activeSession && activeResumable ? (
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          disabled={loading || !planningApi}
+          onClick={() => void handleResume(activeSession)}
+          title={planningResumeButtonTitle(activeSession.agentConversationId)}
+          className="rounded-md bg-emerald-900 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-800 disabled:opacity-50"
+        >
+          {loading ? 'Starting…' : 'Resume'}
+        </button>
+        <button
+          type="button"
+          disabled={loading || !planningApi}
+          onClick={() => void handleStart()}
+          title="Start a new planning session with the agent and model chosen in the header"
+          className="rounded-md border border-gray-700 bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-gray-800 disabled:opacity-50"
+        >
+          Start new
+        </button>
+      </div>
+    ) : null;
   const mk = agentModelUiKindForAgent(selectedAgent);
   const modelSummary =
     mk === 'claude-code' && !claudeModelId.trim()
@@ -455,7 +524,11 @@ export function PlanningPanel({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-              sessionRunning ? 'bg-green-500' : 'bg-gray-600'
+              sessionRunning
+                ? 'bg-green-500'
+                : activeResumable
+                  ? 'bg-amber-500'
+                  : 'bg-gray-600'
             }`}
             aria-hidden
           />
@@ -518,6 +591,7 @@ export function PlanningPanel({
         {sessions.map((s, i) => {
           const sel = s.id === activeSessionId;
           const running = s.status === 'running';
+          const resumable = isPlanningSessionResumable(s);
           return (
             <div
               key={s.id}
@@ -537,7 +611,11 @@ export function PlanningPanel({
                 <span
                   className={[
                     'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                    running ? 'bg-emerald-400' : 'bg-zinc-600',
+                    running
+                      ? 'bg-emerald-400'
+                      : resumable
+                        ? 'bg-amber-400'
+                        : 'bg-zinc-600',
                   ].join(' ')}
                   aria-hidden
                 />
@@ -558,7 +636,13 @@ export function PlanningPanel({
                 type="button"
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-red-950/50 hover:text-red-300"
                 aria-label={`Close ${planningTabLabel(s, i)}`}
-                title="Close tab and stop session"
+                title={
+                  resumable
+                    ? planningResumeDismissTitle()
+                    : running
+                      ? 'Close tab and stop session'
+                      : 'Close tab'
+                }
                 onClick={() => void handleStopOne(s.id)}
               >
                 <span className="text-[12px] leading-none" aria-hidden>
@@ -587,10 +671,10 @@ export function PlanningPanel({
               .
             </p>
           </div>
-        ) : sessionRunning && activeSession ? (
+        ) : activeSession && activeWarmTerminal ? (
           <div className="relative min-h-0 flex-1">
             {sessions
-              .filter((s) => s.status === 'running')
+              .filter((s) => planningSessionHasWarmTerminal(s))
               .map((s) => (
                 <PlanningTerminalPane
                   key={s.id}
@@ -601,8 +685,33 @@ export function PlanningPanel({
                   onDataChunk={appendOutputAndDetectNeedsInput}
                 />
               ))}
+            {activeResumable && !sessionRunning ? (
+              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-gray-800 bg-[#0a0a0a]/95 px-3 py-2.5 backdrop-blur-sm">
+                <p className="mb-0.5 text-center text-xs text-gray-300">
+                  {planningResumeStateHeading(activeSession)}
+                </p>
+                <p className="mb-2 text-center text-[10px] leading-relaxed text-gray-500">
+                  {planningResumeStateDetail(activeSession)}
+                  {resumableCount > 1
+                    ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
+                    : null}
+                </p>
+                {resumeActions}
+              </div>
+            ) : null}
           </div>
-        ) : activeSession && !sessionRunning ? (
+        ) : activeSession && activeResumable ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
+            <p className="text-xs text-gray-300">{planningResumeStateHeading(activeSession)}</p>
+            <p className="max-w-sm text-[10px] leading-relaxed text-gray-500">
+              {planningResumeStateDetail(activeSession)}
+              {resumableCount > 1
+                ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
+                : null}
+            </p>
+            {resumeActions}
+          </div>
+        ) : activeSession ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
             <p className="text-xs text-gray-500">This planning session has ended</p>
             <p className="text-[10px] text-gray-600">
@@ -613,7 +722,9 @@ export function PlanningPanel({
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
             <p className="text-xs text-gray-600">Select a session or start a new one</p>
             <p className="text-[10px] leading-relaxed text-gray-700">
-              Multiple assistants can run at once — switch tabs without stopping others.
+              {resumableCount > 0
+                ? `${resumableCount} session${resumableCount === 1 ? '' : 's'} can be resumed — pick a tab above.`
+                : 'Multiple assistants can run at once — switch tabs without stopping others.'}
             </p>
             <button
               type="button"

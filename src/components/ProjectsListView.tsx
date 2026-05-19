@@ -439,11 +439,10 @@ export function ProjectsListView({
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-y-auto bg-[#09090b] text-zinc-100">
-      <div className="pointer-events-none absolute inset-0">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#09090b] text-zinc-100">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-violet-600/[0.12] blur-[100px]" />
         <div className="absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-sky-600/[0.1] blur-[100px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
       </div>
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.4]"
@@ -455,8 +454,8 @@ export function ProjectsListView({
         }}
       />
 
-      <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
-        <div className="flex items-center gap-3">
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-2xl flex-1 flex-col overflow-hidden px-8 pb-8 pt-16">
+        <div className="flex shrink-0 items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
             <span className="text-base font-semibold tracking-tight text-white">F</span>
           </div>
@@ -466,7 +465,7 @@ export function ProjectsListView({
           </div>
         </div>
 
-        {authSlot ? <div className="mt-8">{authSlot}</div> : null}
+        {authSlot ? <div className="mt-8 shrink-0">{authSlot}</div> : null}
 
         {(() => {
           if (auth.status !== 'signedIn' || invites.status !== 'ready') return null;
@@ -482,7 +481,7 @@ export function ProjectsListView({
           );
           if (actionable.length === 0) return null;
           return (
-          <div className="mt-8">
+          <div className="mt-8 shrink-0">
             <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
               Invitations
             </h2>
@@ -520,13 +519,13 @@ export function ProjectsListView({
           );
         })()}
 
-        <div className="mt-8">
-          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+        <div className="mt-8 flex min-h-0 min-w-0 flex-1 flex-col">
+          <h2 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
             Projects
           </h2>
 
           {loading && !hasAnyPickerRows ? null : (
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex shrink-0 items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search
                   className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
@@ -627,6 +626,11 @@ export function ProjectsListView({
             </div>
           ) : null}
 
+          <div
+            className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+            role="region"
+            aria-label="Projects list"
+          >
           {loading && !hasAnyPickerRows ? (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
               Loading…
@@ -761,6 +765,7 @@ export function ProjectsListView({
               </ul>
             </>
           )}
+          </div>
         </div>
 
       </div>

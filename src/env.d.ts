@@ -409,9 +409,11 @@ declare global {
           payload:
             | Agent
             | {
-                agent: Agent;
+                agent?: Agent;
                 agentModel?: string;
                 agentYolo?: boolean;
+                resume?: boolean;
+                sessionId?: string;
                 initialPrompt?: string;
               },
         ) => Promise<PlanningStartResult>;

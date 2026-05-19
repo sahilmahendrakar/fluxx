@@ -74,8 +74,13 @@ import {
   agentNotFoundMessage,
   agentSpawnResumeSpec,
   agentSpawnSpec,
+  planningSpawnResumeSpec,
   planningSpawnSpec,
 } from './main/agentSpawn';
+import {
+  mergePlanningSessionsWithColdResume,
+  parsePlanningStartPayload,
+} from './main/planningColdRestore';
 import {
   addProjectMcpServersText,
   ensureProjectMcpConfig,
@@ -86,6 +91,7 @@ import {
   appendConversationParseBuffer,
   parseAgentConversationId,
 } from './main/agentConversationIdParse';
+import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
@@ -176,6 +182,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  PlanningAgentSessionRecord,
   TaskAgentSessionRecord,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
@@ -224,31 +231,6 @@ import type { AgentState, AttachResult, PlanningAttachResult } from './terminal-
 
 function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
-}
-
-function parsePlanningStartPayload(payload: unknown): {
-  agent: Agent;
-  agentModel?: string;
-  agentYolo?: boolean;
-  initialPrompt?: string;
-} | null {
-  if (isPlanningAgent(payload)) {
-    return { agent: payload };
-  }
-  if (!payload || typeof payload !== 'object') return null;
-  const o = payload as {
-    agent?: unknown;
-    agentModel?: unknown;
-    agentYolo?: unknown;
-    initialPrompt?: unknown;
-  };
-  if (!isPlanningAgent(o.agent)) return null;
-  const agentModel =
-    typeof o.agentModel === 'string' ? o.agentModel : undefined;
-  const agentYolo = typeof o.agentYolo === 'boolean' ? o.agentYolo : undefined;
-  const initialPrompt =
-    typeof o.initialPrompt === 'string' ? o.initialPrompt : undefined;
-  return { agent: o.agent, agentModel, agentYolo, initialPrompt };
 }
 
 function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch | null {
@@ -561,17 +543,37 @@ app.whenReady().then(async () => {
   const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: () => worktreeService.getProjectDir(),
   });
+  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+    getProjectDir: () => worktreeService.getProjectDir(),
+  });
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
-  terminalBackend.setSessionPtyDataHook?.((payload) => {
-    if (conversationCaptured.has(payload.sessionId)) return;
-    const prev = conversationParseTails.get(payload.sessionId) ?? '';
-    const next = appendConversationParseBuffer(prev, payload.data, 96 * 1024);
-    conversationParseTails.set(payload.sessionId, next);
-    const parsed = parseAgentConversationId(payload.agent, next);
+
+  function captureAgentConversationIdFromPty(
+    sessionId: string,
+    agent: Agent,
+    data: string,
+    onParsed: (id: string) => void,
+  ): void {
+    if (conversationCaptured.has(sessionId)) return;
+    const prev = conversationParseTails.get(sessionId) ?? '';
+    const next = appendConversationParseBuffer(prev, data, 96 * 1024);
+    conversationParseTails.set(sessionId, next);
+    const parsed = parseAgentConversationId(agent, next);
     if (!parsed) return;
-    conversationCaptured.add(payload.sessionId);
-    void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    conversationCaptured.add(sessionId);
+    onParsed(parsed);
+  }
+
+  terminalBackend.setSessionPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
+  });
+  terminalBackend.setPlanningPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void planningAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
   });
 
   // Map session ID → task ID for silence-based status transitions.
@@ -653,6 +655,16 @@ app.whenReady().then(async () => {
           sessionId: session.id,
         });
       }
+    },
+    onPlanningExit: (session) => {
+      const endReason = terminalQuitTeardownInProgress
+        ? ('app-quit' as const)
+        : session.status === 'stopped'
+          ? ('agent-exit-ok' as const)
+          : ('agent-exit-error' as const);
+      void planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      conversationParseTails.delete(session.id);
+      conversationCaptured.delete(session.id);
     },
   });
   terminalBackend.startSilenceSnapshotPolling();
@@ -3930,11 +3942,26 @@ app.whenReady().then(async () => {
     return activeKey.id;
   }
 
+  async function planningDirStillPresent(absPath: string): Promise<boolean> {
+    try {
+      await fs.access(absPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   ipcMain.handle('planning:list', async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return [];
-    const all = await terminalBackend.listPlanning();
-    return all.filter((s) => s.projectId === pid);
+    const live = (await terminalBackend.listPlanning()).filter((s) => s.projectId === pid);
+    const liveIds = new Set(live.map((s) => s.id));
+    const cold = await planningAgentSessionRecordStore.listColdResumePlanningSessions(
+      pid,
+      planningDirStillPresent,
+      { excludeFluxxSessionIds: liveIds },
+    );
+    return mergePlanningSessionsWithColdResume(live, cold);
   });
 
   ipcMain.handle(
@@ -3948,6 +3975,8 @@ app.whenReady().then(async () => {
         agent: requestedAgent,
         agentModel: requestedModel,
         agentYolo: requestedYolo,
+        resume: resumeRequested,
+        sessionId: resumeSessionId,
         initialPrompt: requestedInitialPrompt,
       } = parsed;
 
@@ -3966,14 +3995,18 @@ app.whenReady().then(async () => {
         if (!local || !projectDir) {
           return { error: 'No project open' };
         }
-        planningAgent = isPlanningAgent(requestedAgent)
-          ? requestedAgent
-          : local.planningAgent;
-        try {
-          await projectStore.setPlanningAgent(planningAgent);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          return { error: 'CONFIG_WRITE_FAILED', message };
+        if (!resumeRequested) {
+          planningAgent = isPlanningAgent(requestedAgent)
+            ? requestedAgent
+            : local.planningAgent;
+          try {
+            await projectStore.setPlanningAgent(planningAgent);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { error: 'CONFIG_WRITE_FAILED', message };
+          }
+        } else {
+          planningAgent = local.planningAgent;
         }
         const updated = projectStore.get();
         project = updated ?? local;
@@ -3984,14 +4017,18 @@ app.whenReady().then(async () => {
           return { error: 'No project open' };
         }
         const prefs = bindingStore.getPrefs(activeKey.id);
-        planningAgent = isPlanningAgent(requestedAgent)
-          ? requestedAgent
-          : prefs.planningAgent;
-        try {
-          await bindingStore.setPrefs(activeKey.id, { planningAgent });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          return { error: 'CONFIG_WRITE_FAILED', message };
+        if (!resumeRequested) {
+          planningAgent = isPlanningAgent(requestedAgent)
+            ? requestedAgent
+            : prefs.planningAgent;
+          try {
+            await bindingStore.setPrefs(activeKey.id, { planningAgent });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { error: 'CONFIG_WRITE_FAILED', message };
+          }
+        } else {
+          planningAgent = prefs.planningAgent;
         }
         binding = bindingStore.get(activeKey.id);
         if (!binding) {
@@ -4013,7 +4050,39 @@ app.whenReady().then(async () => {
         );
       }
 
-      const planningDir = path.join(projectDir, 'planning');
+      let resumeFromSessionId: string | undefined;
+      let resumeRecord: PlanningAgentSessionRecord | null = null;
+      let planningDir = path.join(projectDir, 'planning');
+
+      if (resumeRequested) {
+        const coldTarget = resumeSessionId
+          ? await planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+              project.id,
+              resumeSessionId,
+              planningDirStillPresent,
+            )
+          : await planningAgentSessionRecordStore.getColdResumePlanningSessionView(
+              project.id,
+              planningDirStillPresent,
+            );
+        if (!coldTarget) {
+          return {
+            error: 'NO_RESUMABLE_SESSION',
+            message: 'No interrupted planning session is available to resume.',
+          };
+        }
+        resumeFromSessionId = coldTarget.id;
+        resumeRecord = await planningAgentSessionRecordStore.getRecord(coldTarget.id);
+        if (!resumeRecord || resumeRecord.projectId !== project.id) {
+          return {
+            error: 'NO_RESUMABLE_SESSION',
+            message: 'Planning session record is missing or belongs to another project.',
+          };
+        }
+        planningAgent = isPlanningAgent(requestedAgent) ? requestedAgent : resumeRecord.agent;
+        planningDir = resumeRecord.planningDir;
+      }
+
       await fs.mkdir(planningDir, { recursive: true });
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
@@ -4024,18 +4093,23 @@ app.whenReady().then(async () => {
         project.rootPath,
       );
 
-      const spawnModel = resolvedPlanningModelForSpawn(
-        project,
-        planningAgent,
-        requestedModel,
-      );
-      const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
-      const { command, args } = planningSpawnSpec(
-        planningAgent,
-        spawnModel,
-        spawnYolo,
-        requestedInitialPrompt,
-      );
+      const spawnModel = resumeRecord?.agentModel?.trim()
+        ? resumeRecord.agentModel
+        : resolvedPlanningModelForSpawn(project, planningAgent, requestedModel);
+      const spawnYolo =
+        resumeRecord?.agentYolo !== undefined
+          ? resumeRecord.agentYolo
+          : resolvedPlanningYoloForSpawn(project, requestedYolo);
+      const { command, args } = resumeRequested
+        ? planningSpawnResumeSpec(planningAgent, spawnModel, spawnYolo, {
+            agentConversationId: resumeRecord?.agentConversationId,
+          })
+        : planningSpawnSpec(
+            planningAgent,
+            spawnModel,
+            spawnYolo,
+            requestedInitialPrompt,
+          );
       const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
       const trustAutorespondArg =
         project.autoRespondToTrustPrompts === true &&
@@ -4087,6 +4161,26 @@ app.whenReady().then(async () => {
         }
         return { error: result.error, message: result.message };
       }
+      if (resumeFromSessionId) {
+        const warmStale = await terminalBackend.getPlanning(resumeFromSessionId);
+        if (warmStale) {
+          conversationParseTails.delete(resumeFromSessionId);
+          conversationCaptured.delete(resumeFromSessionId);
+          await terminalBackend.stopPlanning(resumeFromSessionId);
+        }
+        void planningAgentSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
+      }
+      void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
+      const planningRow: PlanningAgentSessionRecord = {
+        fluxxSessionId: result.id,
+        projectId: project.id,
+        agent: planningAgent,
+        planningDir,
+        startedAt: result.startedAt,
+        ...(spawnModel ? { agentModel: spawnModel } : {}),
+        ...(spawnYolo ? { agentYolo: true } : {}),
+      };
+      void planningAgentSessionRecordStore.recordSessionStart(planningRow);
       return result;
     },
   );
@@ -4095,16 +4189,48 @@ app.whenReady().then(async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return;
     const s = await terminalBackend.getPlanning(sessionId);
-    if (!s || s.projectId !== pid) return;
-    await terminalBackend.stopPlanning(sessionId);
+    if (s && s.projectId === pid) {
+      void planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: sessionId,
+          status: 'stopped',
+          startedAt: s.startedAt,
+          stoppedAt: new Date().toISOString(),
+        },
+        { reason: 'user-archived' },
+      );
+      conversationParseTails.delete(sessionId);
+      conversationCaptured.delete(sessionId);
+      await terminalBackend.stopPlanning(sessionId);
+      return;
+    }
+    const cold = await planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+      pid,
+      sessionId,
+      planningDirStillPresent,
+    );
+    if (!cold) return;
+    void planningAgentSessionRecordStore.markSessionEnded(
+      {
+        id: sessionId,
+        status: 'stopped',
+        startedAt: cold.startedAt,
+        stoppedAt: cold.stoppedAt ?? new Date().toISOString(),
+      },
+      { reason: 'user-archived' },
+    );
   });
 
   ipcMain.handle('planning:get', async (_e, sessionId: string) => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return null;
     const s = await terminalBackend.getPlanning(sessionId);
-    if (!s || s.projectId !== pid) return null;
-    return s;
+    if (s && s.projectId === pid) return s;
+    return planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+      pid,
+      sessionId,
+      planningDirStillPresent,
+    );
   });
 
   ipcMain.handle(
