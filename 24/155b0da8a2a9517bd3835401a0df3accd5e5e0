@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_5483cdcbcbc0d1::t_0eb4a9044eb758 116-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "24155b0da8a2a9517bd3835401a0df3accd5e5e0",
+  "prompts": {},
+  "sessions": {
+    "s_5483cdcbcbc0d1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "89fcc8b6-a708-472b-aae1-34737a7007d7",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
