@@ -120,5 +120,6 @@ jobs:
           NOTES="$(sed "s/{{VERSION}}/${VERSION}/g" docs/github-release-notes-template.md)"
           gh release edit "$GITHUB_REF_NAME" \
             --repo "${{ github.repository }}" \
+            --draft=false \
             --title "Fluxx ${VERSION}" \
             --notes "$NOTES"

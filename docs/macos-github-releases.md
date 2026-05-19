@@ -40,7 +40,7 @@ pnpm run publish
 
 `pnpm run publish` invokes the package script (`electron-forge publish`). Do not use bare `pnpm publish` in CI or locally for releases, because that is pnpm's npm-registry publish command rather than the package script.
 
-After Forge uploads assets, CI sets the GitHub release **title** to `Fluxx X.Y.Z` and the **body** from `docs/github-release-notes-template.md` (substituting `{{VERSION}}`). Edit that template before tagging when you want curated release notes instead of an empty Highlights section.
+After Forge uploads assets, CI sets the GitHub release **title** to `Fluxx X.Y.Z`, the **body** from `docs/github-release-notes-template.md` (substituting `{{VERSION}}`), and **`--draft=false`** so the release is public (`GITHUB_TOKEN` / Forge often leave new releases as drafts until this step). Edit that template before tagging when you want curated release notes instead of an empty Highlights section.
 
 The workflow runs in **`sahilmahendrakar/fluxx`**, and Forge publishes to the same repository. The workflow grants the default `GITHUB_TOKEN` **Contents: write** and passes it into the publish step as `GITHUB_TOKEN` (required by `@electron-forge/publisher-github`). `gh release edit` uses the same token. No cross-repo PAT is required.
 
