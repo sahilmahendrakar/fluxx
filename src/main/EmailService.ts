@@ -6,13 +6,14 @@
  * to `projects/{pid}/invites/{email}` and keep the key server-side.
  */
 
+import { resolveFluxxInviteAppUrl } from './fluxxAppUrl';
+
 const RESEND_API = 'https://api.resend.com/emails';
 
 const API_KEY = process.env.RESEND_API_KEY ?? '';
 const FROM_DOMAIN = process.env.RESEND_FROM_DOMAIN ?? '';
 const FROM_NAME = process.env.RESEND_FROM_NAME ?? 'Fluxx';
-const APP_URL =
-  process.env.FLUXX_APP_URL || process.env.FLUX_APP_URL || 'http://localhost:5173';
+const APP_URL = resolveFluxxInviteAppUrl();
 
 export interface InviteEmailInput {
   to: string;
@@ -105,7 +106,8 @@ function renderInviteHtml(args: {
     <a href="${appUrl}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#ffffff;color:#09090b;font-size:13px;font-weight:600;text-decoration:none">Open Fluxx</a>
   </p>
   <p style="margin:0 0 16px;color:#71717a;font-size:12px;line-height:1.5">
-    Or paste this into your browser: <a href="${appUrl}" style="color:#a1a1aa">${appUrl}</a>
+    If the button does not work, open this link on a computer with Fluxx installed:
+    <a href="${appUrl}" style="color:#a1a1aa">${appUrl}</a>
   </p>
   <p style="margin:0;color:#71717a;font-size:12px;line-height:1.5">
     If you didn't expect this, you can safely ignore the email.

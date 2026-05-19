@@ -195,6 +195,12 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
 }
 const config: ForgeConfig = {
   packagerConfig: {
+    protocols: [
+      {
+        name: 'Fluxx',
+        schemes: ['fluxx'],
+      },
+    ],
     asar: {
       unpack: '**/node_modules/node-pty/build/Release/**',
     },
@@ -231,6 +237,8 @@ const config: ForgeConfig = {
     new MakerZIP({}, ['darwin']),
     new MakerDMG(
       {
+        // Stable basename (no version) for releases/latest/download/Fluxx.dmg on fluxx-web.
+        name: 'Fluxx',
         // electron-installer-dmg resolves relative paths against process.cwd(); Forge often
         // runs makers from out/, so use absolute paths or the background silently won't apply.
         // appdmg: if `<basename>@2x.png` sits next to the background PNG, it runs tiffutil → TIFF;

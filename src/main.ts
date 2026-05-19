@@ -119,6 +119,10 @@ import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
 import {
+  installFluxxDeepLinkEventHandlers,
+  registerFluxxProtocolClient,
+} from './main/fluxxDeepLink';
+import {
   createPlanningDocsWatcher,
   notifyPlanningDocsChanged,
 } from './main/PlanningDocsWatcher';
@@ -275,6 +279,13 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  registerFluxxProtocolClient();
 }
 
 function errnoCode(err: unknown): string | undefined {
@@ -442,6 +453,10 @@ function resolveWindowIconPath(): string | undefined {
 }
 
 let mainWindow: BrowserWindow | null = null;
+
+if (gotSingleInstanceLock) {
+  installFluxxDeepLinkEventHandlers(() => mainWindow);
+}
 
 let fluxAutomationServer: AutomationHttpServer | null = null;
 let fluxAutomationHostDeps: FluxAutomationHostDeps | null = null;
