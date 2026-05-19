@@ -60,6 +60,10 @@ import {
   trustPromptAutorespondRootsForProject,
 } from './main/trustPromptAutorespondRoots';
 import { removeFluxxOwnedLocalState } from './main/projectFluxxRemoval';
+import {
+  buildPickerLastOpenedAtMap,
+  touchPickerProjectLastOpened,
+} from './main/projectPickerLastOpened';
 import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
@@ -1714,6 +1718,14 @@ app.whenReady().then(async () => {
 
   // ---- Projects (multi-project API) ----
   ipcMain.handle('projects:listLocal', () => projectStore.listDiscovered());
+  ipcMain.handle('projects:getPickerLastOpenedAt', async () => {
+    const localProjects = await projectStore.listDiscovered();
+    return buildPickerLastOpenedAtMap({
+      appStateStore,
+      bindingStore,
+      localProjects,
+    });
+  });
   ipcMain.handle('projects:addLocal', async () => {
     const picked = await pickDirectory('Open project folder');
     if (!picked || 'error' in picked) return picked;
@@ -1797,6 +1809,10 @@ app.whenReady().then(async () => {
       await appStateStore.set({
         lastOpenedProjectDir: materialisedDir,
         activeProjectKey: { kind: 'local', id: project.id },
+      });
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'local',
+        id: project.id,
       });
       return project;
     },
@@ -1916,6 +1932,10 @@ app.whenReady().then(async () => {
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
+      });
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'cloud',
+        id: payload.id,
       });
       const sharedRepos = parseCloudSharedReposArg(payload.sharedRepos);
       if (sharedRepos.length > 0) {

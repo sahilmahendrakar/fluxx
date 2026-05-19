@@ -458,7 +458,7 @@ function TeamSyncSection(props: {
     : signedIn
       ? 'Keep this project on this device only.'
       : authStatus === 'unconfigured'
-        ? 'Team sync requires Firebase and Google sign-in in .env.local.'
+        ? 'Cloud sync requires Firebase and Google sign-in in .env.local.'
         : 'Sign in to share tasks and planning docs with teammates.';
 
   const toggleDisabled =
@@ -468,7 +468,7 @@ function TeamSyncSection(props: {
     <div className="mt-4 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-zinc-200">Team sync</div>
+          <div className="text-[12px] font-medium text-zinc-200">Cloud sync</div>
           <p className="mt-0.5 text-[11px] text-zinc-500">{helper}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -488,7 +488,7 @@ function TeamSyncSection(props: {
               type="button"
               role="switch"
               aria-checked={effectiveTeamSync}
-              aria-label={signedIn ? 'Team sync' : 'Enable team sync after sign-in'}
+              aria-label={signedIn ? 'Cloud sync' : 'Enable cloud sync after sign-in'}
               disabled={toggleDisabled}
               onClick={onToggle}
               className={`relative h-6 w-10 shrink-0 rounded-full transition disabled:opacity-40 ${

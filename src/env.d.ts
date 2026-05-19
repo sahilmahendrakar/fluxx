@@ -210,6 +210,7 @@ declare global {
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;
+        getPickerLastOpenedAt: () => Promise<Record<string, string>>;
         addLocal: () => Promise<LocalProject | { error: 'NOT_GIT_REPO' } | null>;
         create: (
           input:

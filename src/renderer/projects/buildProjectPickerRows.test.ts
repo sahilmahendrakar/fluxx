@@ -3,6 +3,7 @@ import type { LocalProject } from '../../types';
 import type { CloudProjectSummary } from './cloudProjects';
 import {
   buildProjectPickerRows,
+  filterProjectPickerRows,
   localProjectPickerSubtitle,
   teamProjectPickerSubtitle,
 } from './buildProjectPickerRows';
@@ -40,7 +41,6 @@ describe('buildProjectPickerRows', () => {
     const rows = buildProjectPickerRows({
       localProjects: [localStub({ id: sharedId, name: 'On disk' })],
       cloudProjects: [cloudStub({ id: sharedId, name: 'Team name' })],
-      cloudBindingsById: {},
       uid: 'owner-1',
     });
     expect(rows).toHaveLength(1);
@@ -55,7 +55,6 @@ describe('buildProjectPickerRows', () => {
     const rows = buildProjectPickerRows({
       localProjects: [localStub({ id: 'local-1', name: 'Alpha' })],
       cloudProjects: [],
-      cloudBindingsById: {},
       uid: null,
     });
     expect(rows).toHaveLength(1);
@@ -65,33 +64,30 @@ describe('buildProjectPickerRows', () => {
     }
   });
 
-  it('sorts rows by name case-insensitively', () => {
+  it('sorts rows by most recently opened (newest first)', () => {
     const rows = buildProjectPickerRows({
-      localProjects: [localStub({ id: 'z', name: 'zebra' })],
-      cloudProjects: [cloudStub({ id: 'a', name: 'Alpha' })],
-      cloudBindingsById: {},
+      localProjects: [localStub({ id: 'local-1', name: 'Local old' })],
+      cloudProjects: [cloudStub({ id: 'cloud-1', name: 'Cloud new' })],
       uid: null,
+      lastOpenedAtByKey: {
+        'local:local-1': '2026-01-01T00:00:00.000Z',
+        'cloud:cloud-1': '2026-06-01T00:00:00.000Z',
+      },
     });
-    expect(rows.map((r) => r.name)).toEqual(['Alpha', 'zebra']);
+    expect(rows.map((r) => r.name)).toEqual(['Cloud new', 'Local old']);
   });
 
-  it('flags needs-repo for team projects with shared repos but no binding', () => {
+  it('filters rows by name and subtitle', () => {
     const rows = buildProjectPickerRows({
-      localProjects: [],
-      cloudProjects: [
-        cloudStub({
-          id: 'p1',
-          name: 'Bound later',
-          repos: [{ id: 'repo-1', name: 'App', baseBranch: 'main' }],
-        }),
+      localProjects: [
+        localStub({ id: 'a', name: 'Alpha', rootPath: '/tmp/alpha' }),
+        localStub({ id: 'b', name: 'Beta', rootPath: '/tmp/beta' }),
       ],
-      cloudBindingsById: { p1: null },
-      uid: 'owner-1',
+      cloudProjects: [],
+      uid: null,
     });
-    expect(rows[0]?.variant).toBe('team-synced');
-    if (rows[0]?.variant === 'team-synced') {
-      expect(rows[0].needsRepo).toBe(true);
-    }
+    expect(filterProjectPickerRows(rows, 'beta').map((r) => r.name)).toEqual(['Beta']);
+    expect(filterProjectPickerRows(rows, '/tmp/alpha').map((r) => r.name)).toEqual(['Alpha']);
   });
 });
 

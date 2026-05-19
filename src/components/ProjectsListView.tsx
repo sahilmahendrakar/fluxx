@@ -1,3 +1,4 @@
+import { Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { hydrateCloudProject, primaryRootPathFromCloudBinding } from '../cloudBindingPrefs';
 import {
@@ -5,7 +6,7 @@ import {
   shellCloudBinding,
 } from '../cloudProjectActivation';
 import { buildCloudSharedReposAtCreate } from '../cloudProjectCreate';
-import type { CloudProject, CloudProjectLocalBinding, LocalProject } from '../types';
+import type { CloudProject, LocalProject } from '../types';
 import type { AuthState } from '../renderer/auth/useAuth';
 import type { CloudProjectsState } from '../renderer/projects/useCloudProjects';
 import type {
@@ -18,7 +19,10 @@ import {
 } from '../renderer/projects/cloudProjects';
 import type { InvitesState } from '../renderer/invites/useInvites';
 import { acceptInvite } from '../renderer/invites/invites';
-import { buildProjectPickerRows } from '../renderer/projects/buildProjectPickerRows';
+import {
+  buildProjectPickerRows,
+  filterProjectPickerRows,
+} from '../renderer/projects/buildProjectPickerRows';
 import { NewProjectModal } from './NewProjectModal';
 import { InviteTeammateModal } from './InviteTeammateModal';
 import { ProjectPickerSyncBadges } from './ProjectPickerSyncBadges';
@@ -31,16 +35,6 @@ import {
 type ActiveProject = LocalProject | CloudProject;
 
 const EMPTY_CLOUD_PROJECTS: CloudProjectSummary[] = [];
-
-function cloudBindingsRecordEqual(
-  a: Record<string, CloudProjectLocalBinding | null>,
-  b: Record<string, CloudProjectLocalBinding | null>,
-): boolean {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return bKeys.every((k) => a[k] === b[k]);
-}
 
 interface ProjectsListViewProps {
   onProjectActivated: (project: ActiveProject) => void;
@@ -69,11 +63,10 @@ export function ProjectsListView({
   const [cloudLocalCleanupError, setCloudLocalCleanupError] = useState<string | null>(null);
   const [cloudLocalCleanupId, setCloudLocalCleanupId] = useState<string | null>(null);
   const [cloudDeleteCleanupWarning, setCloudDeleteCleanupWarning] = useState<string | null>(null);
-  /** Local project id currently undergoing `Remove from Fluxx` cleanup. */
+  /** Local project id currently undergoing local Fluxx data removal. */
   const [localRemovalId, setLocalRemovalId] = useState<string | null>(null);
-  const [cloudBindingsById, setCloudBindingsById] = useState<
-    Record<string, CloudProjectLocalBinding | null>
-  >({});
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [lastOpenedAtByKey, setLastOpenedAtByKey] = useState<Record<string, string>>({});
 
   const uid = auth.user?.uid ?? null;
   const signedIn = auth.status === 'signedIn';
@@ -88,15 +81,31 @@ export function ProjectsListView({
     [cloudProjects.status, cloudProjects.projects],
   );
 
-  const pickerRows = useMemo(
+  const pickerRows = useMemo(() => {
+    const rows = buildProjectPickerRows({
+      localProjects: projects,
+      cloudProjects: readyCloudProjects,
+      uid,
+      lastOpenedAtByKey,
+    });
+    return filterProjectPickerRows(rows, projectSearchQuery);
+  }, [
+    projects,
+    readyCloudProjects,
+    uid,
+    lastOpenedAtByKey,
+    projectSearchQuery,
+  ]);
+
+  const hasAnyPickerRows = useMemo(
     () =>
       buildProjectPickerRows({
         localProjects: projects,
         cloudProjects: readyCloudProjects,
-        cloudBindingsById,
         uid,
-      }),
-    [projects, readyCloudProjects, cloudBindingsById, uid],
+        lastOpenedAtByKey,
+      }).length > 0,
+    [projects, readyCloudProjects, uid, lastOpenedAtByKey],
   );
 
   const refreshLocal = async () => {
@@ -108,34 +117,14 @@ export function ProjectsListView({
     }
   };
 
-  useEffect(() => {
-    if (cloudProjects.status !== 'ready' || readyCloudProjects.length === 0) {
-      setCloudBindingsById((prev) =>
-        Object.keys(prev).length === 0 ? prev : {},
-      );
-      return;
+  const refreshLastOpenedAt = async () => {
+    try {
+      const map = await window.electronAPI.projects.getPickerLastOpenedAt();
+      setLastOpenedAtByKey(map);
+    } catch (err) {
+      console.error('[projects.getPickerLastOpenedAt] failed', err);
     }
-    let cancelled = false;
-    const projectsSnapshot = readyCloudProjects;
-    void Promise.all(
-      projectsSnapshot.map(async (p) => {
-        const binding = await window.electronAPI.projects.getLocalBinding(p.id);
-        return [p.id, binding] as const;
-      }),
-    ).then((rows) => {
-      if (cancelled) return;
-      const next = Object.fromEntries(rows) as Record<
-        string,
-        CloudProjectLocalBinding | null
-      >;
-      setCloudBindingsById((prev) =>
-        cloudBindingsRecordEqual(prev, next) ? prev : next,
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cloudProjects.status, cloudProjectIdsKey, readyCloudProjects.length]);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +143,10 @@ export function ProjectsListView({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshLastOpenedAt();
+  }, [projects, cloudProjectIdsKey]);
 
   const handleOpenLocal = async (id: string) => {
     const active = await window.electronAPI.projects.activateLocal(id);
@@ -463,27 +456,14 @@ export function ProjectsListView({
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
-              <span className="text-base font-semibold tracking-tight text-white">
-                F
-              </span>
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-white">
-                Fluxx
-              </h1>
-              <p className="text-[13px] text-zinc-500">Projects</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
+            <span className="text-base font-semibold tracking-tight text-white">F</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setNewProjectOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98]"
-          >
-            New project
-          </button>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-white">Fluxx</h1>
+            <p className="text-[13px] text-zinc-500">Projects</p>
+          </div>
         </div>
 
         {authSlot ? <div className="mt-8">{authSlot}</div> : null}
@@ -541,11 +521,50 @@ export function ProjectsListView({
         })()}
 
         <div className="mt-8">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-              Projects
-            </h2>
-          </div>
+          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+            Projects
+          </h2>
+
+          {loading && !hasAnyPickerRows ? null : (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  role="searchbox"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  value={projectSearchQuery}
+                  onChange={(e) => setProjectSearchQuery(e.target.value)}
+                  placeholder="Search projects…"
+                  aria-label="Search projects"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={`w-full rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 pl-8 text-[13px] text-zinc-100 placeholder:text-zinc-500 focus:border-white/[0.14] focus:outline-none focus:ring-1 focus:ring-white/10 ${projectSearchQuery ? 'pr-8' : 'pr-3'}`}
+                />
+                {projectSearchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setProjectSearchQuery('')}
+                    className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                    aria-label="Clear project search"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  </button>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewProjectOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98]"
+              >
+                New project
+              </button>
+            </div>
+          )}
 
           {cloudError ? (
             <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95">
@@ -608,15 +627,19 @@ export function ProjectsListView({
             </div>
           ) : null}
 
-          {loading && pickerRows.length === 0 ? (
+          {loading && !hasAnyPickerRows ? (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
               Loading…
             </div>
-          ) : pickerRows.length === 0 ? (
+          ) : !hasAnyPickerRows ? (
             <EmptyProjectsState
               onNewProject={() => setNewProjectOpen(true)}
               teamSyncLoading={signedIn && cloudProjects.status === 'loading'}
             />
+          ) : pickerRows.length === 0 ? (
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
+              No projects match your search.
+            </div>
           ) : (
             <>
               {signedIn && cloudProjects.status === 'loading' ? (
@@ -643,10 +666,7 @@ export function ProjectsListView({
                                 <span className="truncate text-[13px] font-medium text-zinc-100">
                                   {p.name}
                                 </span>
-                                <ProjectPickerSyncBadges
-                                  syncBadge={row.syncBadge}
-                                  needsRepo={row.needsRepo}
-                                />
+                                <ProjectPickerSyncBadges syncBadge={row.syncBadge} />
                               </div>
                               <div className="truncate text-[11px] text-zinc-500">
                                 {row.subtitle}
@@ -660,27 +680,28 @@ export function ProjectsListView({
                             className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
                             title="Remove local Fluxx data and unbind this machine (does not delete the team project)"
                           >
-                            {cloudLocalCleanupId === p.id ? 'Removing…' : 'Local data'}
+                            {cloudLocalCleanupId === p.id ? 'Removing…' : 'Remove'}
                           </button>
                           {p.ownerId === uid ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setInviteFor(p)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100"
-                                title="Invite teammate"
-                              >
-                                Invite
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteCloud(p)}
-                                className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
-                                title="Delete team project for everyone (Firestore)"
-                              >
-                                Delete team
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => setInviteFor(p)}
+                              className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100"
+                              title="Invite teammate"
+                            >
+                              Invite
+                            </button>
+                          ) : null}
+                          {p.ownerId === uid ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteCloud(p)}
+                              className="rounded-md p-1.5 text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
+                              title="Delete team project for everyone (Firestore)"
+                              aria-label={`Delete ${p.name}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </button>
                           ) : null}
                         </div>
                       </li>
@@ -727,10 +748,11 @@ export function ProjectsListView({
                           type="button"
                           disabled={removing}
                           onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
-                          className={`rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-300'}`}
+                          className={`rounded-md p-1.5 transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-300'}`}
                           title="Remove from Fluxx (deletes ~/.fluxx workspace; keeps your git clone)"
+                          aria-label={removing ? `Removing ${p.name}` : `Remove ${p.name}`}
                         >
-                          {removing ? 'Removing…' : 'Remove from Fluxx'}
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       </div>
                     </li>
@@ -741,13 +763,6 @@ export function ProjectsListView({
           )}
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-white/[0.06] pt-8 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-600">
-          <span>Claude Code</span>
-          <span className="hidden text-zinc-700 sm:inline">·</span>
-          <span>Codex</span>
-          <span className="hidden text-zinc-700 sm:inline">·</span>
-          <span>Cursor</span>
-        </div>
       </div>
 
       {newProjectOpen ? (

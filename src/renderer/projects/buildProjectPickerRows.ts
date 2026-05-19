@@ -1,5 +1,5 @@
-import { cloudProjectNeedsRepoBinding } from '../../cloudProjectActivation';
-import type { CloudProjectLocalBinding, LocalProject } from '../../types';
+import type { LocalProject } from '../../types';
+import { activeProjectKeyString } from '../../projectTabRestore';
 import type { CloudProjectSummary } from './cloudProjects';
 
 export type ProjectPickerSyncBadge = 'local' | 'team-synced';
@@ -19,15 +19,15 @@ export type ProjectPickerRow =
       name: string;
       subtitle: string;
       syncBadge: 'team-synced';
-      needsRepo: boolean;
       cloud: CloudProjectSummary;
     };
 
 export interface BuildProjectPickerRowsInput {
   localProjects: LocalProject[];
   cloudProjects: CloudProjectSummary[];
-  cloudBindingsById: Record<string, CloudProjectLocalBinding | null | undefined>;
   uid: string | null;
+  /** ISO timestamps keyed by `local:<id>` / `cloud:<id>`. */
+  lastOpenedAtByKey?: Record<string, string | undefined>;
 }
 
 /** Secondary line for local-only picker rows. */
@@ -51,6 +51,51 @@ export function teamProjectPickerSubtitle(
   return `Member · ${n} ${members}`;
 }
 
+export function projectPickerRowStateKey(row: ProjectPickerRow): string {
+  return activeProjectKeyString(
+    row.variant === 'team-synced'
+      ? { kind: 'cloud', id: row.id }
+      : { kind: 'local', id: row.id },
+  );
+}
+
+function pickerRowLastOpenedAt(
+  row: ProjectPickerRow,
+  lastOpenedAtByKey: Record<string, string | undefined> | undefined,
+): string {
+  const fromMap = lastOpenedAtByKey?.[projectPickerRowStateKey(row)];
+  if (fromMap) return fromMap;
+  if (row.variant === 'local-only') return row.local.addedAt;
+  return row.cloud.createdAt;
+}
+
+export function sortProjectPickerRowsByLastOpened(
+  rows: ProjectPickerRow[],
+  lastOpenedAtByKey?: Record<string, string | undefined>,
+): ProjectPickerRow[] {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    const aTime = pickerRowLastOpenedAt(a, lastOpenedAtByKey);
+    const bTime = pickerRowLastOpenedAt(b, lastOpenedAtByKey);
+    const cmp = bTime.localeCompare(aTime);
+    if (cmp !== 0) return cmp;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  });
+  return sorted;
+}
+
+export function filterProjectPickerRows(
+  rows: ProjectPickerRow[],
+  query: string,
+): ProjectPickerRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (row) =>
+      row.name.toLowerCase().includes(q) || row.subtitle.toLowerCase().includes(q),
+  );
+}
+
 /**
  * One picker row per project: team-synced Firestore projects plus local-only
  * discoveries. Materialized team workspaces are deduped (same id as cloud).
@@ -66,11 +111,6 @@ export function buildProjectPickerRows(
     name: cloud.name,
     subtitle: teamProjectPickerSubtitle(cloud, input.uid),
     syncBadge: 'team-synced',
-    needsRepo: cloudProjectNeedsRepoBinding(
-      cloud.id,
-      cloud.repos,
-      input.cloudBindingsById[cloud.id],
-    ),
     cloud,
   }));
 
@@ -85,7 +125,8 @@ export function buildProjectPickerRows(
       local,
     }));
 
-  const rows = [...teamRows, ...localRows];
-  rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  return rows;
+  return sortProjectPickerRowsByLastOpened(
+    [...teamRows, ...localRows],
+    input.lastOpenedAtByKey,
+  );
 }
