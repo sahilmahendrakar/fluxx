@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { assertPackagedFluxCliContract } from './src/main/packagedFluxCliContract';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
-const githubUpdatesRepo = 'fluxx-web';
+const githubUpdatesRepo = 'fluxx';
 const appleAppSpecificPassword =
   process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_PASSWORD;
 const shouldSignAndNotarize = Boolean(
