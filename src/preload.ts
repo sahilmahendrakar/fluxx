@@ -27,6 +27,14 @@ import type {
   TaskRequestPullRequestFromAgentPayload,
   TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
+  CoordinationRegisterOverseerPayload,
+  CoordinationRegisterOverseerResult,
+  CoordinationInjectOverseerPromptPayload,
+  CoordinationInjectOverseerPromptResult,
+  CoordinationInjectPlanningPromptPayload,
+  CoordinationInjectPlanningPromptResult,
+  CoordinationInjectTaskPromptPayload,
+  CoordinationInjectTaskPromptResult,
 } from './types';
 import type {
   AgentState,
@@ -444,6 +452,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
           handler as Parameters<typeof ipcRenderer.removeListener>[1],
         );
     },
+  },
+  coordination: {
+    registerOverseer: (payload: CoordinationRegisterOverseerPayload) =>
+      ipcRenderer.invoke('coordination:registerOverseer', payload) as Promise<
+        CoordinationRegisterOverseerResult
+      >,
+    injectOverseerPrompt: (payload: CoordinationInjectOverseerPromptPayload) =>
+      ipcRenderer.invoke('coordination:injectOverseerPrompt', payload) as Promise<
+        CoordinationInjectOverseerPromptResult
+      >,
+    injectPlanningPrompt: (payload: CoordinationInjectPlanningPromptPayload) =>
+      ipcRenderer.invoke('coordination:injectPlanningPrompt', payload) as Promise<
+        CoordinationInjectPlanningPromptResult
+      >,
+    injectTaskPrompt: (payload: CoordinationInjectTaskPromptPayload) =>
+      ipcRenderer.invoke('coordination:injectTaskPrompt', payload) as Promise<
+        CoordinationInjectTaskPromptResult
+      >,
   },
   sessions: {
     start: (

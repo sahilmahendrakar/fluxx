@@ -102,6 +102,8 @@ export interface TerminalBackend {
   getPlanning(id: string): Promise<PlanningSession | null>;
   attachPlanning(id: string): Promise<PlanningAttachResult | null>;
   writePlanning(id: string, data: string): void;
+  /** Same ordering guarantee as {@link writeSessionAwait} for multiline prompt injection. */
+  writePlanningAwait(id: string, data: string): Promise<void>;
   resizePlanning(id: string, cols: number, rows: number): void;
   stopPlanning(id: string): Promise<void>;
 }
