@@ -228,6 +228,7 @@ export class TerminalRuntimeManager {
             HOME: process.env.HOME ?? os.homedir(),
             ...(params.ptyEnv ?? {}),
           },
+          termProgram: 'kitty',
         },
         {
           onData: (data, seq) => {
@@ -471,6 +472,7 @@ export class TerminalRuntimeManager {
             HOME: process.env.HOME ?? os.homedir(),
             ...(params.ptyEnv ?? {}),
           },
+          termProgram: 'kitty',
         },
         {
           onData: (data, seq) => {
