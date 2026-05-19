@@ -210,7 +210,13 @@ declare global {
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;
+        getPickerLastOpenedAt: () => Promise<Record<string, string>>;
         addLocal: () => Promise<LocalProject | { error: 'NOT_GIT_REPO' } | null>;
+        create: (
+          input:
+            | import('./projectCreate').ProjectCreateInput
+            | import('./projectCreate').ProjectCreateWizardPayload,
+        ) => Promise<import('./projectCreate').ProjectCreateResult>;
         activateLocal: (id: string | null) => Promise<LocalProject | null>;
         removeLocal: (id: string) => Promise<void>;
         removeFluxxOwnedLocalState: (key: ActiveProjectKey) => Promise<{
@@ -232,7 +238,35 @@ declare global {
           rootPath: string;
           sharedRepos?: CloudSharedRepo[];
         }) => Promise<ActivateCloudResult>;
+        resolveCloudMaterializationDir: (
+          cloudProjectId: string,
+        ) => Promise<{ projectDir: string } | { error: string }>;
+        applyCloudCreateBindings: (payload: {
+          cloudProjectId: string;
+          bindings: { repoId: string; rootPath: string }[];
+          primaryRepoId?: string;
+          sharedRepos?: CloudSharedRepo[];
+        }) => Promise<{ ok: true } | { error: string; code?: 'NOT_GIT_REPO' }>;
         clearLocalBinding: (cloudProjectId: string) => Promise<void>;
+      };
+      projectOnboarding: {
+        getState: () => Promise<
+          | {
+              status: import('./main/projectOnboarding').PlanningInitStatus;
+              docsInitialized: boolean;
+              showCallout: boolean;
+            }
+          | { error: 'NO_ACTIVE_PROJECT' }
+        >;
+        setStatus: (
+          status: import('./main/projectOnboarding').PlanningInitStatus,
+        ) => Promise<{ ok: true } | { error: 'INVALID_STATUS' | 'NO_ACTIVE_PROJECT' }>;
+        writePending: (
+          projectDir?: string,
+        ) => Promise<{ ok: true } | { error: 'NO_PROJECT_DIR' }>;
+        maybeCompleteAfterSession: () => Promise<
+          { ok: true; changed: boolean } | { error: 'NO_ACTIVE_PROJECT' }
+        >;
       };
       auth: {
         startGoogleLogin: () => Promise<{ idToken: string }>;
@@ -380,6 +414,7 @@ declare global {
                 agentYolo?: boolean;
                 resume?: boolean;
                 sessionId?: string;
+                initialPrompt?: string;
               },
         ) => Promise<PlanningStartResult>;
         stop: (sessionId: string) => Promise<void>;

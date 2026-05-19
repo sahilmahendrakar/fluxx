@@ -40,6 +40,7 @@ import {
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
 } from '../cloudBindingPrefs';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
+import type { ProjectPlanningDefaultsInput } from '../projectCreate';
 
 export { ensurePlanningAssistantMarkdownFiles };
 
@@ -237,17 +238,25 @@ function parseConfig(raw: string): ConfigFile | null {
   );
   const py = (p as { planningAgentYolo?: unknown }).planningAgentYolo;
   const ty = (p as { defaultTaskAgentYolo?: unknown }).defaultTaskAgentYolo;
-  const parsedRepos: ParsedRepoConfig[] = Array.isArray(p.repos)
-    ? p.repos.map(parseRepoConfig).filter((r): r is ParsedRepoConfig => r !== null)
+  const rawRepos = (p as { repos?: unknown }).repos;
+  const hasExplicitReposArray = Array.isArray(rawRepos);
+  const parsedRepos: ParsedRepoConfig[] = hasExplicitReposArray
+    ? rawRepos.map(parseRepoConfig).filter((r): r is ParsedRepoConfig => r !== null)
     : [];
-  if (parsedRepos.length === 0) {
-    parsedRepos.push({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
-  } else if (!parsedRepos.some((r) => r.rootPath === p.rootPath)) {
-    parsedRepos.unshift({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+  if (!hasExplicitReposArray) {
+    if (parsedRepos.length === 0) {
+      parsedRepos.push({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+    } else if (
+      !parsedRepos.some((r) => path.resolve(r.rootPath) === path.resolve(p.rootPath))
+    ) {
+      parsedRepos.unshift({ rootPath: p.rootPath, baseBranch: DEFAULT_BASE_BRANCH });
+    }
   }
+  const primaryRootPath =
+    parsedRepos.length > 0 ? parsedRepos[0].rootPath : p.rootPath;
   const { repos } = backfillRepoIdentities({
     projectId: p.id,
-    primaryRootPath: p.rootPath,
+    primaryRootPath,
     repos: parsedRepos,
   });
   return {
@@ -547,16 +556,22 @@ export class ProjectStore {
     if (parsed.repos.some((r) => path.resolve(r.rootPath) === resolved)) {
       throw new Error('That git repository is already part of this project');
     }
+    const isFirstRepo = parsed.repos.length === 0;
     const extra: ParsedRepoConfig = {
       rootPath: resolved,
       baseBranch: DEFAULT_BASE_BRANCH,
     };
+    const primaryRootPath = isFirstRepo ? resolved : parsed.rootPath;
     const { repos } = backfillRepoIdentities({
       projectId: parsed.id,
-      primaryRootPath: parsed.rootPath,
+      primaryRootPath,
       repos: [...parsed.repos, extra],
     });
-    const next: ConfigFile = { ...parsed, repos };
+    const next: ConfigFile = {
+      ...parsed,
+      rootPath: isFirstRepo ? resolved : parsed.rootPath,
+      repos,
+    };
     await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
     if (this.projectDir === projectDir && this.project) {
       this.project = configToLocalProject(next);
@@ -859,6 +874,131 @@ export class ProjectStore {
     this.projectDir = projectDir;
     this.project = project;
     return { project, projectDir };
+  }
+
+  /**
+   * Name-first local project creation with zero or more git repositories.
+   * Caller should validate input with {@link validateLocalProjectCreateInput} first.
+   */
+  async createFromInput(params: {
+    projectId: string;
+    name: string;
+    repos: RepoConfig[];
+    planningDefaults?: ProjectPlanningDefaultsInput;
+  }): Promise<{ project: LocalProject; projectDir: string }> {
+    const { projectId, name, repos, planningDefaults } = params;
+    const primaryRoot = repos[0]?.rootPath;
+    const projectDir =
+      primaryRoot != null
+        ? await this.resolveLocalMaterialisedProjectDir(path.resolve(primaryRoot))
+        : canonicalLocalProjectDir(this.fluxxBaseDir, projectId);
+    const rootPath = primaryRoot ?? projectDir;
+
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'planning'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'worktrees'), { recursive: true });
+
+    const configPath = path.join(projectDir, 'config.json');
+    let existing: ConfigFile | null = null;
+    try {
+      existing = parseConfig(await fs.readFile(configPath, 'utf8'));
+    } catch (err: unknown) {
+      if (errnoCode(err) !== 'ENOENT') throw err;
+    }
+
+    const now = new Date().toISOString();
+    const defaults = planningDefaults ?? {};
+    const config: ConfigFile = existing
+      ? {
+          ...existing,
+          id: projectId,
+          name,
+          rootPath,
+          repos,
+        }
+      : {
+          id: projectId,
+          name,
+          rootPath,
+          addedAt: now,
+          planningAgent: defaults.planningAgent ?? DEFAULT_AGENT,
+          defaultTaskAgent: defaults.defaultTaskAgent ?? DEFAULT_AGENT,
+          autoStartSessionOnInProgress:
+            defaults.autoStartSessionOnInProgress ?? DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
+          autoRespondToTrustPrompts:
+            defaults.autoRespondToTrustPrompts ?? DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS,
+          autoStartWhenUnblocked:
+            defaults.autoStartWhenUnblocked ?? DEFAULT_AUTO_START_WHEN_UNBLOCKED,
+          autoCleanupWorkspaceWhenDone:
+            defaults.autoCleanupWorkspaceWhenDone ?? DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE,
+          autoMarkDoneWhenPrMerged:
+            defaults.autoMarkDoneWhenPrMerged ?? DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
+          autoMoveToReviewWhenPrOpen:
+            defaults.autoMoveToReviewWhenPrOpen ?? DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+          repos,
+          ...(defaults.planningModels && Object.keys(defaults.planningModels).length > 0
+            ? { planningModels: defaults.planningModels }
+            : {}),
+          ...(defaults.planningAgentYolo === true ? { planningAgentYolo: true } : {}),
+          ...(defaults.taskDefaultModels && Object.keys(defaults.taskDefaultModels).length > 0
+            ? { taskDefaultModels: defaults.taskDefaultModels }
+            : {}),
+          ...(defaults.defaultTaskAgentYolo === true ? { defaultTaskAgentYolo: true } : {}),
+        };
+
+    await atomicWriteFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+    const planningContextRoot = primaryRoot ?? rootPath;
+    await ensurePlanningAssistantMarkdownFiles(
+      path.join(projectDir, 'planning'),
+      name,
+      planningContextRoot,
+      { multiRepoGuide: repos.length > 1 },
+    );
+
+    const project = configToLocalProject(config);
+    this.projectDir = projectDir;
+    this.project = project;
+    return { project, projectDir };
+  }
+
+  /**
+   * Ensures layout for a local project that may have zero repositories
+   * (materialisation dir is the workspace root).
+   */
+  async ensureLayoutForLocalProject(
+    project: LocalProject,
+    knownProjectDir: string,
+  ): Promise<{ projectDir: string; project: LocalProject }> {
+    if (project.repos.length > 0) {
+      return this.ensureLayoutForRoot(project.repos[0].rootPath);
+    }
+    return this.ensureLayoutAtMaterialisedDir(knownProjectDir);
+  }
+
+  /** Layout + planning files for an on-disk project dir without inferring repos from `rootPath`. */
+  async ensureLayoutAtMaterialisedDir(
+    projectDir: string,
+  ): Promise<{ projectDir: string; project: LocalProject }> {
+    const config = await this.readConfigAt(projectDir);
+    if (!config) {
+      throw new Error(`Invalid config.json at ${path.join(projectDir, 'config.json')}`);
+    }
+
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'planning'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'worktrees'), { recursive: true });
+
+    const planningRoot =
+      config.repos.length > 0 ? config.repos[0].rootPath : config.rootPath;
+    await ensurePlanningAssistantMarkdownFiles(
+      path.join(projectDir, 'planning'),
+      config.name,
+      planningRoot,
+      { multiRepoGuide: config.repos.length > 1 },
+    );
+
+    return { projectDir, project: configToLocalProject(config) };
   }
 
   /** Read `config.json` from a materialised Flux project directory (for removal, migration, etc.). */

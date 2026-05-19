@@ -178,7 +178,9 @@ export function planningSpawnSpec(
   agent: Agent,
   agentModel?: string,
   agentYolo?: boolean,
+  initialPrompt?: string,
 ): { command: string; args: string[] } {
+  const prompt = (initialPrompt ?? '').trim();
   switch (agent) {
     case 'claude-code': {
       const model = (agentModel ?? '').trim();
@@ -189,18 +191,24 @@ export function planningSpawnSpec(
       if (agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
+      if (prompt) {
+        args.push(prompt);
+      }
       return { command: 'claude', args };
     }
     case 'codex':
       return {
         command: 'codex',
-        args: [],
+        args: prompt ? [prompt] : [],
       };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
-      const args: string[] = ['--model', model];
+      const args: string[] = ['--model', model, '--approve-mcps'];
       if (agentYolo === true) {
         args.push('--yolo');
+      }
+      if (prompt) {
+        args.push(prompt);
       }
       return {
         command: 'agent',

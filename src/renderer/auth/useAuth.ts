@@ -28,6 +28,10 @@ export function useAuth(): AuthState {
     if (!configured) return;
     let unsub: (() => void) | undefined;
     let cancelled = false;
+    const loadingFallback = window.setTimeout(() => {
+      if (cancelled) return;
+      setStatus((prev) => (prev === 'loading' ? 'signedOut' : prev));
+    }, 8_000);
     whenAuthReady().then(() => {
       if (cancelled) return;
       const auth = getFirebaseAuth();
@@ -38,6 +42,7 @@ export function useAuth(): AuthState {
     });
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingFallback);
       unsub?.();
     };
   }, [configured]);

@@ -222,9 +222,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   projects: {
     listLocal: () =>
       ipcRenderer.invoke('projects:listLocal') as Promise<LocalProject[]>,
+    getPickerLastOpenedAt: () =>
+      ipcRenderer.invoke('projects:getPickerLastOpenedAt') as Promise<
+        Record<string, string>
+      >,
     addLocal: () =>
       ipcRenderer.invoke('projects:addLocal') as Promise<
         LocalProject | { error: 'NOT_GIT_REPO' } | null
+      >,
+    create: (
+      input:
+        | import('./projectCreate').ProjectCreateInput
+        | import('./projectCreate').ProjectCreateWizardPayload,
+    ) =>
+      ipcRenderer.invoke('projects:create', input) as Promise<
+        import('./projectCreate').ProjectCreateResult
       >,
     activateLocal: (id: string | null) =>
       ipcRenderer.invoke('projects:activateLocal', id) as Promise<LocalProject | null>,
@@ -260,8 +272,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
       sharedRepos?: CloudSharedRepo[];
     }) =>
       ipcRenderer.invoke('projects:activateCloud', payload) as Promise<ActivateCloudResult>,
+    resolveCloudMaterializationDir: (cloudProjectId: string) =>
+      ipcRenderer.invoke(
+        'projects:resolveCloudMaterializationDir',
+        cloudProjectId,
+      ) as Promise<{ projectDir: string } | { error: string }>,
+    applyCloudCreateBindings: (payload: {
+      cloudProjectId: string;
+      bindings: { repoId: string; rootPath: string }[];
+      primaryRepoId?: string;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('projects:applyCloudCreateBindings', payload) as Promise<
+        { ok: true } | { error: string; code?: 'NOT_GIT_REPO' }
+      >,
     clearLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:clearLocalBinding', cloudProjectId) as Promise<void>,
+  },
+  projectOnboarding: {
+    getState: () =>
+      ipcRenderer.invoke('projectOnboarding:getState') as Promise<
+        | {
+            status: import('./main/projectOnboarding').PlanningInitStatus;
+            docsInitialized: boolean;
+            showCallout: boolean;
+          }
+        | { error: 'NO_ACTIVE_PROJECT' }
+      >,
+    setStatus: (
+      status: import('./main/projectOnboarding').PlanningInitStatus,
+    ) =>
+      ipcRenderer.invoke('projectOnboarding:setStatus', status) as Promise<
+        { ok: true } | { error: 'INVALID_STATUS' | 'NO_ACTIVE_PROJECT' }
+      >,
+    writePending: (projectDir?: string) =>
+      ipcRenderer.invoke('projectOnboarding:writePending', projectDir) as Promise<
+        { ok: true } | { error: 'NO_PROJECT_DIR' }
+      >,
+    maybeCompleteAfterSession: () =>
+      ipcRenderer.invoke('projectOnboarding:maybeCompleteAfterSession') as Promise<
+        | { ok: true; changed: boolean }
+        | { error: 'NO_ACTIVE_PROJECT' }
+      >,
   },
   repo: {
     getBranchDiscovery: (arg?: string | RepoBranchDiscoveryRequest) =>
@@ -511,6 +563,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
             agentYolo?: boolean;
             resume?: boolean;
             sessionId?: string;
+            initialPrompt?: string;
           },
     ) =>
       ipcRenderer.invoke('planning:start', payload) as Promise<PlanningStartResult>,

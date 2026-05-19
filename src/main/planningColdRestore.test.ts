@@ -24,6 +24,18 @@ describe('parsePlanningStartPayload', () => {
     });
   });
 
+  it('accepts initial prompt on structured start payload', () => {
+    expect(
+      parsePlanningStartPayload({
+        agent: 'cursor',
+        initialPrompt: 'Plan the onboarding flow',
+      }),
+    ).toEqual({
+      agent: 'cursor',
+      initialPrompt: 'Plan the onboarding flow',
+    });
+  });
+
   it('accepts resume payload with session id only', () => {
     expect(
       parsePlanningStartPayload({ resume: true, sessionId: 'plan-old' }),

@@ -75,6 +75,11 @@ import {
   planTaskSourceBranchFieldsForCreate,
   taskSourceBranchPersistIsNoOp,
 } from '../taskBranches';
+import {
+  projectRepoActionsBlocked,
+  READY_PROJECT_REPO_READINESS,
+  type ProjectRepoReadiness,
+} from '../projectRepoReadiness';
 
 function taskAgentSupportsCliResume(agent: Agent | null): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
@@ -152,6 +157,8 @@ export interface TaskDetailPanelProps {
   planningDocFiles?: PlanningDocFileEntry[];
   /** Opens the Docs tab and selects `relativePath` (unsaved-doc confirm is handled by the host). */
   onOpenPlanningDoc?: (relativePath: string) => void;
+  projectRepoReadiness?: ProjectRepoReadiness;
+  onOpenProjectSettings?: () => void;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -253,6 +260,8 @@ export default function TaskDetailPanel({
   multiRepo2Enabled = false,
   planningDocFiles = [],
   onOpenPlanningDoc,
+  projectRepoReadiness = READY_PROJECT_REPO_READINESS,
+  onOpenProjectSettings,
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
   const asideRef = useRef<HTMLElement>(null);
@@ -988,7 +997,9 @@ export default function TaskDetailPanel({
     startInFlight || (sessionRunning && !sessionStreamReady);
   const blocked = isTaskBlocked(task, projectTasks);
   const noAgentForSession = task.agent == null;
-  const startSessionControlDisabled = startInFlight || blocked || noAgentForSession;
+  const repoBlocked = projectRepoActionsBlocked(projectRepoReadiness);
+  const startSessionControlDisabled =
+    startInFlight || blocked || noAgentForSession || repoBlocked;
   const blockingTasks = getBlockingTasks(task, projectTasks);
   const taskById = new Map(projectTasks.map((t) => [t.id, t]));
   const staleMissingIds = (task.blockedByTaskIds ?? []).filter((id) => !taskById.has(id));
@@ -1191,11 +1202,13 @@ export default function TaskDetailPanel({
                     onClick={() => void handleStartSession()}
                     disabled={startSessionControlDisabled}
                     title={
-                      blocked
-                        ? 'Blocked by incomplete dependencies'
-                        : noAgentForSession
-                          ? 'Choose an agent below before starting a session'
-                          : undefined
+                      repoBlocked
+                        ? projectRepoReadiness.message
+                        : blocked
+                          ? 'Blocked by incomplete dependencies'
+                          : noAgentForSession
+                            ? 'Choose an agent below before starting a session'
+                            : undefined
                     }
                     className={
                       startInFlight
@@ -2012,7 +2025,23 @@ export default function TaskDetailPanel({
                       <span className="font-medium text-zinc-300">Starting…</span>
                     </div>
                   ) : null}
-                  {blocked && !sessionRunning && !session ? (
+                  {repoBlocked && !sessionRunning && !session ? (
+                    <p
+                      className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
+                      role="status"
+                    >
+                      {projectRepoReadiness.message}{' '}
+                      {onOpenProjectSettings ? (
+                        <button
+                          type="button"
+                          onClick={onOpenProjectSettings}
+                          className="font-medium text-amber-50 underline decoration-amber-400/50 underline-offset-2 hover:decoration-amber-200/70"
+                        >
+                          {projectRepoReadiness.ctaLabel}
+                        </button>
+                      ) : null}
+                    </p>
+                  ) : blocked && !sessionRunning && !session ? (
                     <p
                       className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
                       role="status"

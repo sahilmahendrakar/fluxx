@@ -6,6 +6,7 @@ export type PlanningStartPayload = {
   agentYolo?: boolean;
   resume?: boolean;
   sessionId?: string;
+  initialPrompt?: string;
 };
 
 function isPlanningAgent(value: unknown): value is Agent {
@@ -24,6 +25,7 @@ export function parsePlanningStartPayload(payload: unknown): PlanningStartPayloa
     agentYolo?: unknown;
     resume?: unknown;
     sessionId?: unknown;
+    initialPrompt?: unknown;
   };
   const resume = o.resume === true;
   const sessionId =
@@ -32,6 +34,8 @@ export function parsePlanningStartPayload(payload: unknown): PlanningStartPayloa
       : undefined;
   const agentModel = typeof o.agentModel === 'string' ? o.agentModel : undefined;
   const agentYolo = typeof o.agentYolo === 'boolean' ? o.agentYolo : undefined;
+  const initialPrompt =
+    typeof o.initialPrompt === 'string' ? o.initialPrompt : undefined;
 
   if (resume) {
     if (isPlanningAgent(o.agent)) {
@@ -44,7 +48,7 @@ export function parsePlanningStartPayload(payload: unknown): PlanningStartPayloa
   }
 
   if (!isPlanningAgent(o.agent)) return null;
-  return { agent: o.agent, agentModel, agentYolo };
+  return { agent: o.agent, agentModel, agentYolo, initialPrompt };
 }
 
 /** Live planning rows first; append cold-resume synthetics not already live (stable order). */

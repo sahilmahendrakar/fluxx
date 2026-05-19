@@ -6,6 +6,20 @@ import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
 import {
+  getPlanningInitStatus,
+  planningDocsAreInitialized,
+  setPlanningInitStatus,
+  shouldShowPlanningInitCallout,
+  writeOnboardingPending,
+} from './main/projectOnboarding';
+import {
+  normalizeProjectCreateInput,
+  validateLocalProjectCreateInput,
+  type ProjectCreateInput,
+  type ProjectCreateResult,
+  type ProjectCreateWizardPayload,
+} from './projectCreate';
+import {
   effectiveTaskRepoId,
   nextPersistedRepoIdAfterPatch,
   persistedRepoIdsEqual,
@@ -29,11 +43,14 @@ import {
 } from './main/fluxAutomationBridge';
 import { AppStateStore } from './main/AppStateStore';
 import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
+import { parseFirestoreRepos } from './cloudFirestoreRepoParse';
+import { isCloudShellRootPath } from './cloudProjectActivation';
 import { hydrateCloudProject } from './cloudBindingPrefs';
 import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
+import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
@@ -42,6 +59,10 @@ import {
   trustPromptAutorespondRootsForProject,
 } from './main/trustPromptAutorespondRoots';
 import { removeFluxxOwnedLocalState } from './main/projectFluxxRemoval';
+import {
+  buildPickerLastOpenedAtMap,
+  touchPickerProjectLastOpened,
+} from './main/projectPickerLastOpened';
 import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
@@ -670,15 +691,16 @@ app.whenReady().then(async () => {
       await projectStore.init(lastOpenedProjectDir);
       const project = projectStore.get();
       if (project && project.id === activeProjectKey.id) {
-        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-          project.rootPath,
+        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+          project,
+          lastOpenedProjectDir,
         );
         if (materialisedDir !== lastOpenedProjectDir) {
           await projectStore.init(materialisedDir);
         }
         await taskStore.reinit(materialisedDir);
         await migrateTaskRepoIdsForProject(taskStore, project);
-        worktreeService.setRootPath(project.rootPath);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
         worktreeService.setProjectDir(materialisedDir);
         await appStateStore.set({
           lastOpenedProjectDir: materialisedDir,
@@ -707,15 +729,16 @@ app.whenReady().then(async () => {
       await projectStore.init(lastOpenedProjectDir);
       const project = projectStore.get();
       if (project) {
-        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-          project.rootPath,
+        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+          project,
+          lastOpenedProjectDir,
         );
         if (materialisedDir !== lastOpenedProjectDir) {
           await projectStore.init(materialisedDir);
         }
         await taskStore.reinit(materialisedDir);
         await migrateTaskRepoIdsForProject(taskStore, project);
-        worktreeService.setRootPath(project.rootPath);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
         worktreeService.setProjectDir(materialisedDir);
         await appStateStore.set({
           activeProjectKey: { kind: 'local', id: project.id },
@@ -747,6 +770,11 @@ app.whenReady().then(async () => {
           activeRootPath = '';
         }
       }
+    }
+    if (!activeRootPath) {
+      activeRootPath = path.resolve(
+        canonicalCloudProjectDir(fluxxBaseDir, activeProjectKey.id),
+      );
     }
   }
 
@@ -1062,29 +1090,7 @@ app.whenReady().then(async () => {
     'No local clone is bound for this repository. Open Project settings → Project Config and use “Bind local folder” for that repository.';
 
   function parseCloudSharedReposArg(raw: unknown): CloudSharedRepo[] {
-    if (!Array.isArray(raw)) return [];
-    const out: CloudSharedRepo[] = [];
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue;
-      const o = item as Record<string, unknown>;
-      if (
-        typeof o.id !== 'string' ||
-        typeof o.name !== 'string' ||
-        typeof o.baseBranch !== 'string'
-      ) {
-        continue;
-      }
-      const repo: CloudSharedRepo = {
-        id: o.id.trim(),
-        name: o.name,
-        baseBranch: o.baseBranch,
-      };
-      if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
-        repo.remoteUrl = o.remoteUrl.trim();
-      }
-      out.push(repo);
-    }
-    return out;
+    return parseFirestoreRepos(raw) ?? [];
   }
 
   async function syncCloudReposDiskFromBinding(params: {
@@ -1724,11 +1730,66 @@ app.whenReady().then(async () => {
 
   // ---- Projects (multi-project API) ----
   ipcMain.handle('projects:listLocal', () => projectStore.listDiscovered());
+  ipcMain.handle('projects:getPickerLastOpenedAt', async () => {
+    const localProjects = await projectStore.listDiscovered();
+    return buildPickerLastOpenedAtMap({
+      appStateStore,
+      bindingStore,
+      localProjects,
+    });
+  });
   ipcMain.handle('projects:addLocal', async () => {
     const picked = await pickDirectory('Open project folder');
     if (!picked || 'error' in picked) return picked;
     return openLocalProjectFromRoot(picked.rootPath);
   });
+  ipcMain.handle(
+    'projects:create',
+    async (
+      _e,
+      input: ProjectCreateInput | ProjectCreateWizardPayload,
+    ): Promise<ProjectCreateResult> => {
+      let normalized: ProjectCreateInput;
+      try {
+        normalized = normalizeProjectCreateInput(input);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: 'CREATE_FAILED', message };
+      }
+      const validated = await validateLocalProjectCreateInput(normalized, {
+        isGitRepo: async (rootPath) => {
+          try {
+            await fs.access(path.join(rootPath, '.git'));
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
+      if (!validated.ok) {
+        return { ok: false, error: validated.error };
+      }
+      try {
+        const { project, projectDir } = await projectStore.createFromInput(validated.value);
+        await writeOnboardingPending(projectDir);
+        await projectStore.init(projectDir);
+        await taskStore.reinit(projectDir);
+        await taskStore.migrateMissingProjectIds(project.id);
+        await migrateTaskRepoIdsForProject(taskStore, project);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
+        worktreeService.setProjectDir(projectDir);
+        await appStateStore.set({
+          lastOpenedProjectDir: projectDir,
+          activeProjectKey: { kind: 'local', id: project.id },
+        });
+        return { ok: true, project, projectDir };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[projects:create]', message);
+        return { ok: false, error: 'CREATE_FAILED', message };
+      }
+    },
+  );
   ipcMain.handle(
     'projects:activateLocal',
     async (_e, id: string | null): Promise<LocalProject | null> => {
@@ -1745,8 +1806,9 @@ app.whenReady().then(async () => {
       await projectStore.init(projectDir);
       const project = projectStore.get();
       if (!project) throw new Error(`Local project not found: ${id}`);
-      const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-        project.rootPath,
+      const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+        project,
+        projectDir,
       );
       if (materialisedDir !== projectDir) {
         await projectStore.init(materialisedDir);
@@ -1754,11 +1816,15 @@ app.whenReady().then(async () => {
       await taskStore.reinit(materialisedDir);
       await taskStore.migrateMissingProjectIds(project.id);
       await migrateTaskRepoIdsForProject(taskStore, project);
-      worktreeService.setRootPath(project.rootPath);
+      worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
       worktreeService.setProjectDir(materialisedDir);
       await appStateStore.set({
         lastOpenedProjectDir: materialisedDir,
         activeProjectKey: { kind: 'local', id: project.id },
+      });
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'local',
+        id: project.id,
       });
       return project;
     },
@@ -1856,35 +1922,172 @@ app.whenReady().then(async () => {
       _e,
       payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
     ) => {
-      try {
-        await fs.access(path.join(payload.rootPath, '.git'));
-      } catch {
-        return { error: 'NOT_GIT_REPO' as const };
+      const resolvedRoot = path.resolve(payload.rootPath);
+      const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
+      if (!shellOnly) {
+        try {
+          await fs.access(path.join(resolvedRoot, '.git'));
+        } catch {
+          return { error: 'NOT_GIT_REPO' as const };
+        }
+        await bindingStore.set(payload.id, resolvedRoot);
+      } else {
+        await bindingStore.touchShell(payload.id);
       }
-      await bindingStore.set(payload.id, payload.rootPath);
       await projectStore.clear();
       await taskStore.reinit('');
       const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
         payload.id,
-        payload.rootPath,
+        resolvedRoot,
       );
-      worktreeService.setRootPath(payload.rootPath);
+      worktreeService.setRootPath(resolvedRoot);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
       });
-      if (payload.sharedRepos && payload.sharedRepos.length > 0) {
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'cloud',
+        id: payload.id,
+      });
+      const sharedRepos = parseCloudSharedReposArg(payload.sharedRepos);
+      if (sharedRepos.length > 0) {
         await syncCloudReposDiskFromBinding({
           cloudProjectId: payload.id,
           projectDir,
-          sharedRepos: payload.sharedRepos,
+          sharedRepos,
         });
       }
       return { ok: true as const };
     },
   );
+  ipcMain.handle(
+    'projects:resolveCloudMaterializationDir',
+    async (_e, cloudProjectId: string) => {
+      if (typeof cloudProjectId !== 'string' || !cloudProjectId.trim()) {
+        return { error: 'cloudProjectId is required' };
+      }
+      return {
+        projectDir: path.resolve(
+          canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId.trim()),
+        ),
+      };
+    },
+  );
+  ipcMain.handle(
+    'projects:applyCloudCreateBindings',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true } | { error: string; code?: 'NOT_GIT_REPO' }> => {
+      if (!payload || typeof payload !== 'object') {
+        return { error: 'Invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      const cloudProjectId =
+        typeof p.cloudProjectId === 'string' ? p.cloudProjectId.trim() : '';
+      if (!cloudProjectId) return { error: 'cloudProjectId is required' };
+      const bindingsRaw = p.bindings;
+      if (!Array.isArray(bindingsRaw)) return { error: 'bindings array is required' };
+      const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+      const primaryRepoId =
+        typeof p.primaryRepoId === 'string' ? p.primaryRepoId.trim() : '';
+      for (const row of bindingsRaw) {
+        if (!row || typeof row !== 'object') continue;
+        const o = row as Record<string, unknown>;
+        const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
+        const rootPath = typeof o.rootPath === 'string' ? o.rootPath.trim() : '';
+        if (!repoId || !rootPath) continue;
+        try {
+          await fs.access(path.join(rootPath, '.git'));
+        } catch {
+          return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
+        }
+        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, rootPath);
+      }
+      if (primaryRepoId) {
+        await bindingStore.setPrimaryRepoId(cloudProjectId, primaryRepoId);
+      }
+      if (sharedRepos.length > 0) {
+        const matDir = path.resolve(canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId));
+        const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
+          cloudProjectId,
+          matDir,
+        );
+        await syncCloudReposDiskFromBinding({
+          cloudProjectId,
+          projectDir,
+          sharedRepos,
+        });
+      }
+      return { ok: true };
+    },
+  );
   ipcMain.handle('projects:clearLocalBinding', async (_e, cloudProjectId: string) => {
     await bindingStore.remove(cloudProjectId);
+  });
+
+  ipcMain.handle('projectOnboarding:getState', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    const status = await getPlanningInitStatus(projectDir);
+    const docsInitialized = await planningDocsAreInitialized(planningDir);
+    const showCallout = shouldShowPlanningInitCallout(status, docsInitialized);
+    return { status, docsInitialized, showCallout };
+  });
+
+  ipcMain.handle(
+    'projectOnboarding:setStatus',
+    async (_e, status: unknown) => {
+      if (
+        status !== 'pending' &&
+        status !== 'dismissed' &&
+        status !== 'started' &&
+        status !== 'completed'
+      ) {
+        return { error: 'INVALID_STATUS' as const };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_ACTIVE_PROJECT' as const };
+      }
+      await setPlanningInitStatus(projectDir, status);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    'projectOnboarding:writePending',
+    async (_e, projectDirArg: unknown) => {
+      const projectDir =
+        typeof projectDirArg === 'string' && projectDirArg.trim()
+          ? path.resolve(projectDirArg.trim())
+          : worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_PROJECT_DIR' as const };
+      }
+      await writeOnboardingPending(projectDir);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle('projectOnboarding:maybeCompleteAfterSession', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const status = await getPlanningInitStatus(projectDir);
+    if (status !== 'started') {
+      return { ok: true as const, changed: false as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    if (!(await planningDocsAreInitialized(planningDir))) {
+      return { ok: true as const, changed: false as const };
+    }
+    await setPlanningInitStatus(projectDir, 'completed');
+    return { ok: true as const, changed: true as const };
   });
 
   // ---- Auth ----
@@ -3774,6 +3977,7 @@ app.whenReady().then(async () => {
         agentYolo: requestedYolo,
         resume: resumeRequested,
         sessionId: resumeSessionId,
+        initialPrompt: requestedInitialPrompt,
       } = parsed;
 
       const activeKey = appStateStore.get().activeProjectKey;
@@ -3900,7 +4104,12 @@ app.whenReady().then(async () => {
         ? planningSpawnResumeSpec(planningAgent, spawnModel, spawnYolo, {
             agentConversationId: resumeRecord?.agentConversationId,
           })
-        : planningSpawnSpec(planningAgent, spawnModel, spawnYolo);
+        : planningSpawnSpec(
+            planningAgent,
+            spawnModel,
+            spawnYolo,
+            requestedInitialPrompt,
+          );
       const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
       const trustAutorespondArg =
         project.autoRespondToTrustPrompts === true &&

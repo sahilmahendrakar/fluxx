@@ -1,6 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { FolderGit2 } from 'lucide-react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import type { SidebarSessionLayout } from '../sidebarSessionGroups';
+import {
+  readCollapsedRepoIdsForProject,
+  writeCollapsedRepoIdsForProject,
+} from '../sidebarRepoSectionCollapse';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 
@@ -52,7 +58,7 @@ interface SidebarProps {
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
-  sessions: SessionTabMeta[];
+  sessionLayout: SidebarSessionLayout;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
@@ -169,7 +175,13 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
+function ChevronWorkspacesIcon({
+  expanded,
+  className,
+}: {
+  expanded: boolean;
+  className?: string;
+}) {
   return (
     <svg
       width={10}
@@ -180,6 +192,7 @@ function ChevronWorkspacesIcon({ expanded }: { expanded: boolean }) {
       className={[
         'shrink-0 text-zinc-600 transition-transform',
         expanded ? 'rotate-90' : '',
+        className ?? '',
       ].join(' ')}
       aria-hidden
     >
@@ -207,6 +220,168 @@ function MinimizeWorkspaceIcon({ className }: { className?: string }) {
     >
       <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function WorkspaceSidebarRow({
+  session,
+  title,
+  active,
+  onOpenSession,
+  onMinimizeSession,
+  onDeleteWorkspace,
+}: {
+  session: SessionTabMeta['session'];
+  title: string;
+  active: boolean;
+  onOpenSession: (sessionId: string) => void;
+  onMinimizeSession: (sessionId: string) => void;
+  onDeleteWorkspace: (sessionId: string) => void;
+}) {
+  const running = session.status === 'running';
+  return (
+    <div
+      className={[
+        'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
+        active
+          ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
+      ].join(' ')}
+    >
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 pr-11 text-left"
+        onClick={() => onOpenSession(session.id)}
+        title={title}
+      >
+        <span
+          className={[
+            'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+            running ? 'bg-emerald-400' : 'bg-zinc-600',
+          ].join(' ')}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+      </button>
+      <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMinimizeSession(session.id);
+          }}
+          aria-label={`Minimize ${title}`}
+          title="Minimize — hide from sidebar, keep agent running"
+          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
+        >
+          <MinimizeWorkspaceIcon />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteWorkspace(session.id);
+          }}
+          aria-label={`Delete workspace ${title}`}
+          title="Delete workspace — kill agent, terminals, and remove worktree"
+          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
+        >
+          <TrashIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TaskWorkspaceSidebarList({
+  projectId,
+  sessionLayout,
+  activeTabId,
+  settingsRouteActive,
+  onOpenSession,
+  onMinimizeSession,
+  onDeleteWorkspace,
+}: {
+  projectId: string;
+  sessionLayout: SidebarSessionLayout;
+  activeTabId: string;
+  settingsRouteActive: boolean;
+  onOpenSession: (sessionId: string) => void;
+  onMinimizeSession: (sessionId: string) => void;
+  onDeleteWorkspace: (sessionId: string) => void;
+}) {
+  const [collapsedRepoIds, setCollapsedRepoIds] = useState<Set<string>>(() =>
+    readCollapsedRepoIdsForProject(projectId),
+  );
+
+  useEffect(() => {
+    setCollapsedRepoIds(readCollapsedRepoIdsForProject(projectId));
+  }, [projectId]);
+
+  useEffect(() => {
+    writeCollapsedRepoIdsForProject(projectId, collapsedRepoIds);
+  }, [projectId, collapsedRepoIds]);
+
+  const toggleRepoSection = (repoId: string) => {
+    setCollapsedRepoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(repoId)) next.delete(repoId);
+      else next.add(repoId);
+      return next;
+    });
+  };
+
+  const renderItem = ({ session, title }: SessionTabMeta) => (
+    <WorkspaceSidebarRow
+      key={session.id}
+      session={session}
+      title={title}
+      active={activeTabId === session.id && !settingsRouteActive}
+      onOpenSession={onOpenSession}
+      onMinimizeSession={onMinimizeSession}
+      onDeleteWorkspace={onDeleteWorkspace}
+    />
+  );
+
+  if (sessionLayout.kind === 'flat') {
+    return <>{sessionLayout.items.map(renderItem)}</>;
+  }
+
+  return (
+    <>
+      {sessionLayout.groups.map((group, index) => {
+        const expanded = !collapsedRepoIds.has(group.repoId);
+        return (
+          <section key={group.repoId} aria-label={group.label}>
+            <button
+              type="button"
+              onClick={() => toggleRepoSection(group.repoId)}
+              aria-expanded={expanded}
+              title={group.label}
+              className={[
+                'group flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left transition-colors',
+                'text-[12px] font-semibold text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100',
+                index === 0 ? 'mt-0.5' : 'mt-2',
+              ].join(' ')}
+            >
+              <ChevronWorkspacesIcon
+                expanded={expanded}
+                className="text-zinc-500 transition-colors group-hover:text-zinc-200"
+              />
+              <FolderGit2
+                className="h-3.5 w-3.5 shrink-0 text-emerald-400/90 opacity-80"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate">{group.label}</span>
+            </button>
+            {expanded ? (
+              <div className="mt-0.5 flex flex-col gap-0.5">{group.items.map(renderItem)}</div>
+            ) : null}
+          </section>
+        );
+      })}
+    </>
   );
 }
 
@@ -245,7 +420,7 @@ export function Sidebar({
   planningDocsListError,
   selectedPlanningDocPath,
   onSelectPlanningDoc,
-  sessions,
+  sessionLayout,
   onOpenSession,
   onMinimizeSession,
   onDeleteWorkspace,
@@ -430,65 +605,15 @@ export function Sidebar({
             </button>
             {workspacesExpanded ? (
               <div className="flex flex-col gap-0.5 overflow-y-auto">
-                {sessions.length > 0
-                  ? sessions.map(({ session, title }) => {
-                    const active = activeTabId === session.id && !settingsRouteActive;
-                    const running = session.status === 'running';
-                    return (
-                      <div
-                        key={session.id}
-                        className={[
-                          'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
-                          active
-                            ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                            : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-                        ].join(' ')}
-                      >
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 pr-11 text-left"
-                          onClick={() => onOpenSession(session.id)}
-                          title={title}
-                        >
-                          <span
-                            className={[
-                              'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                              running ? 'bg-emerald-400' : 'bg-zinc-600',
-                            ].join(' ')}
-                            aria-hidden
-                          />
-                          <span className="min-w-0 flex-1 truncate">{title}</span>
-                        </button>
-                        <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMinimizeSession(session.id);
-                            }}
-                            aria-label={`Minimize ${title}`}
-                            title="Minimize — hide from sidebar, keep agent running"
-                            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
-                          >
-                            <MinimizeWorkspaceIcon />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteWorkspace(session.id);
-                            }}
-                            aria-label={`Delete workspace ${title}`}
-                            title="Delete workspace — kill agent, terminals, and remove worktree"
-                            className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
-                          >
-                            <TrashIcon />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                  : null}
+                <TaskWorkspaceSidebarList
+                  projectId={project.id}
+                  sessionLayout={sessionLayout}
+                  activeTabId={activeTabId}
+                  settingsRouteActive={settingsRouteActive}
+                  onOpenSession={onOpenSession}
+                  onMinimizeSession={onMinimizeSession}
+                  onDeleteWorkspace={onDeleteWorkspace}
+                />
               </div>
             ) : null}
           </div>
