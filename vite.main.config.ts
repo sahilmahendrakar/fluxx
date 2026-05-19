@@ -1,7 +1,8 @@
 import { copyFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { processEnvDefine } from './vite/inlineViteEnv';
 
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,12 +22,6 @@ function copyAppIconPngToMainOut(): Plugin {
 export default defineConfig(({ mode }) => {
   // Inline selected env vars into the main-process bundle at build time.
   // Only variables read here are available to main; nothing else leaks.
-  const env = loadEnv(mode, process.cwd(), '');
-  const inline = (name: string): [string, string] => [
-    `process.env.${name}`,
-    // Fall back to process.env so CI can inject secrets without writing a .env file.
-    JSON.stringify(env[name] ?? process.env[name] ?? ''),
-  ];
   return {
     plugins: [copyAppIconPngToMainOut()],
     resolve: {
@@ -43,14 +38,14 @@ export default defineConfig(({ mode }) => {
         external: ['electron', 'node-pty'],
       },
     },
-    define: Object.fromEntries([
-      inline('VITE_GOOGLE_DESKTOP_CLIENT_ID'),
-      inline('VITE_GOOGLE_DESKTOP_CLIENT_SECRET'),
-      inline('RESEND_API_KEY'),
-      inline('RESEND_FROM_DOMAIN'),
-      inline('RESEND_FROM_NAME'),
-      inline('FLUXX_APP_URL'),
-      inline('FLUX_APP_URL'),
+    define: processEnvDefine(mode, [
+      'VITE_GOOGLE_DESKTOP_CLIENT_ID',
+      'VITE_GOOGLE_DESKTOP_CLIENT_SECRET',
+      'RESEND_API_KEY',
+      'RESEND_FROM_DOMAIN',
+      'RESEND_FROM_NAME',
+      'FLUXX_APP_URL',
+      'FLUX_APP_URL',
     ]),
   };
 });

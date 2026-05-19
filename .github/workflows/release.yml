@@ -125,6 +125,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Write .env for Vite production build
+        run: |
+          cat > .env <<'ENVFILE'
+          VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID=${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_DOMAIN=${{ secrets.RESEND_FROM_DOMAIN }}
+          RESEND_FROM_NAME=${{ secrets.RESEND_FROM_NAME }}
+          ENVFILE
+
       - name: Build, sign, notarize, and publish
         env:
           # Forge publisher-github reads GITHUB_TOKEN (Actions provides this for in-repo releases).
