@@ -1,0 +1,24 @@
+docs/macos-github-releases.md
+  s_5483cdcbcbc0d1::t_d4273ae610b3fe 11,15-17
+  s_5483cdcbcbc0d1::t_1a754ae7df8b37 86
+docs/github-release-notes-template.md
+  s_5483cdcbcbc0d1::t_a9043796afbeec 3
+forge.config.ts
+  s_5483cdcbcbc0d1::t_96d0387bd06f85 240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "97db74d9ad74e9108a93d425fd7d10047ce8c1e7",
+  "prompts": {},
+  "sessions": {
+    "s_5483cdcbcbc0d1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "89fcc8b6-a708-472b-aae1-34737a7007d7",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
