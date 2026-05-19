@@ -172,6 +172,17 @@ export class LocalBindingStore {
     return this.bindings[projectId] ?? null;
   }
 
+  /** Cloud project id → binding `lastOpenedAt` for picker recency sorting. */
+  getLastOpenedAtByProjectId(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [id, binding] of Object.entries(this.bindings)) {
+      if (typeof binding?.lastOpenedAt === 'string') {
+        out[id] = binding.lastOpenedAt;
+      }
+    }
+    return out;
+  }
+
   getPrefs(projectId: string) {
     return resolvedPrefsFromBinding(this.bindings[projectId]);
   }

@@ -12,6 +12,8 @@ export interface AppState {
   activeProjectKey: ActiveProjectKey | null;
   /** Keyed by `${kind}:${id}` — see `projectStateKey`. */
   projectTabs: Record<string, ProjectTabState>;
+  /** ISO timestamps for project picker recency sort (`local:` / `cloud:` keys). */
+  projectLastOpenedAt: Record<string, string>;
 }
 
 export function projectStateKey(key: ActiveProjectKey): string {
@@ -30,6 +32,7 @@ export class AppStateStore {
     lastOpenedProjectDir: null,
     activeProjectKey: null,
     projectTabs: {},
+    projectLastOpenedAt: {},
   };
 
   constructor(opts?: { filePath?: string }) {
@@ -78,12 +81,22 @@ export class AppStateStore {
       }
       this.state.projectTabs = tabs;
     }
+    if (o.projectLastOpenedAt && typeof o.projectLastOpenedAt === 'object') {
+      const recents: Record<string, string> = {};
+      for (const [key, value] of Object.entries(
+        o.projectLastOpenedAt as Record<string, unknown>,
+      )) {
+        if (typeof value === 'string' && value) recents[key] = value;
+      }
+      this.state.projectLastOpenedAt = recents;
+    }
   }
 
   get(): AppState {
     return {
       ...this.state,
       projectTabs: { ...this.state.projectTabs },
+      projectLastOpenedAt: { ...this.state.projectLastOpenedAt },
     };
   }
 
@@ -116,7 +129,12 @@ export class AppStateStore {
     const sk = projectStateKey(key);
     const nextTabs = { ...this.state.projectTabs };
     delete nextTabs[sk];
-    const partial: Partial<AppState> = { projectTabs: nextTabs };
+    const nextLastOpened = { ...this.state.projectLastOpenedAt };
+    delete nextLastOpened[sk];
+    const partial: Partial<AppState> = {
+      projectTabs: nextTabs,
+      projectLastOpenedAt: nextLastOpened,
+    };
     if (options.clearActiveNavigation) {
       partial.activeProjectKey = null;
       partial.lastOpenedProjectDir = null;

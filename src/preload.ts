@@ -222,6 +222,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   projects: {
     listLocal: () =>
       ipcRenderer.invoke('projects:listLocal') as Promise<LocalProject[]>,
+    getPickerLastOpenedAt: () =>
+      ipcRenderer.invoke('projects:getPickerLastOpenedAt') as Promise<
+        Record<string, string>
+      >,
     addLocal: () =>
       ipcRenderer.invoke('projects:addLocal') as Promise<
         LocalProject | { error: 'NOT_GIT_REPO' } | null
