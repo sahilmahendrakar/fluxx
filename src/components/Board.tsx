@@ -22,6 +22,12 @@ import {
 import Column from './Column';
 import NewTaskModal from './NewTaskModal';
 import { BoardFilterBar } from './BoardFilterBar';
+import { BoardRepoOnboardingBanner } from './BoardRepoOnboardingBanner';
+import { BoardPlanningInitCallout } from './BoardPlanningInitCallout';
+import {
+  projectRepoActionsBlocked,
+  type ProjectRepoReadiness,
+} from '../projectRepoReadiness';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 
@@ -73,6 +79,12 @@ interface Props {
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
+  projectRepoReadiness: ProjectRepoReadiness;
+  onOpenProjectSettings: () => void;
+  showPlanningInitCallout?: boolean;
+  planningInitBusy?: boolean;
+  onPlanningInitStart?: () => void;
+  onPlanningInitSkip?: () => void;
 }
 
 export default function Board({
@@ -102,6 +114,12 @@ export default function Board({
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
   onOpenTaskWorkspaceTab,
+  projectRepoReadiness,
+  onOpenProjectSettings,
+  showPlanningInitCallout = false,
+  planningInitBusy = false,
+  onPlanningInitStart,
+  onPlanningInitSkip,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -174,6 +192,7 @@ export default function Board({
   const projectIsEmpty = allTasks.length === 0;
   const noMatches = !projectIsEmpty && visibleTasks.length === 0;
   const filtersActive = boardFiltersAreActive(boardFilter);
+  const repoActionsBlocked = projectRepoActionsBlocked(projectRepoReadiness);
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
@@ -203,12 +222,25 @@ export default function Board({
             <button
               type="button"
               onClick={() => setModalOpen(true)}
-              className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300"
+              disabled={repoActionsBlocked}
+              title={repoActionsBlocked ? projectRepoReadiness.message : undefined}
+              className="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-500 transition-colors hover:border-gray-600 hover:text-gray-300 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-gray-700 disabled:hover:text-gray-500"
             >
               + New task
             </button>
           </div>
         </div>
+        <BoardRepoOnboardingBanner
+          readiness={projectRepoReadiness}
+          onOpenProjectSettings={onOpenProjectSettings}
+        />
+        {showPlanningInitCallout && onPlanningInitStart && onPlanningInitSkip ? (
+          <BoardPlanningInitCallout
+            busy={planningInitBusy}
+            onStart={onPlanningInitStart}
+            onSkip={onPlanningInitSkip}
+          />
+        ) : null}
         {noMatches ? (
           <div
             className="shrink-0 border-b border-amber-500/15 bg-amber-500/[0.07] px-4 py-2 text-center text-[12px] text-amber-200/90"
@@ -234,7 +266,11 @@ export default function Board({
               label={col.label}
               tasks={tasksByStatus[col.id]}
               allTasks={allTasks}
-              onNewTask={col.id === 'backlog' ? () => setModalOpen(true) : undefined}
+              onNewTask={
+                col.id === 'backlog' && !repoActionsBlocked
+                  ? () => setModalOpen(true)
+                  : undefined
+              }
               onDeleteTask={onDeleteTask}
               onRequestCleanupTask={col.id === 'done' ? onRequestCleanupTask : undefined}
               cleanupLoadingTaskId={col.id === 'done' ? cleanupLoadingTaskId : null}
@@ -259,7 +295,9 @@ export default function Board({
               onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
-                  ? 'No tasks yet. Create one to get started.'
+                  ? repoActionsBlocked
+                    ? projectRepoReadiness.message
+                    : 'No tasks yet. Create one to get started.'
                   : filtersActive &&
                       !noMatches &&
                       tasksByStatus[col.id].length === 0
@@ -277,6 +315,8 @@ export default function Board({
           projectMembers={projectMembers}
           projectRepos={projectRepos}
           multiRepo2Enabled={multiRepo2Enabled}
+          projectRepoReadiness={projectRepoReadiness}
+          onOpenProjectSettings={onOpenProjectSettings}
           onClose={() => setModalOpen(false)}
           onCreate={(title, agent, labels, assigneeId, branch) => {
             onCreateTask(title, agent, labels, assigneeId, branch);

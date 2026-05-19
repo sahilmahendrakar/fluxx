@@ -1,22 +1,40 @@
-import { useEffect, useState } from 'react';
+import { Search, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { hydrateCloudProject, primaryRootPathFromCloudBinding } from '../cloudBindingPrefs';
 import {
-  hydrateCloudProject,
-  primaryRootPathFromCloudBinding,
-} from '../cloudBindingPrefs';
+  cloudProjectUsesLegacyFolderPicker,
+  shellCloudBinding,
+} from '../cloudProjectActivation';
+import { buildCloudSharedReposAtCreate } from '../cloudProjectCreate';
 import type { CloudProject, LocalProject } from '../types';
 import type { AuthState } from '../renderer/auth/useAuth';
 import type { CloudProjectsState } from '../renderer/projects/useCloudProjects';
-import type { CloudProjectSummary } from '../renderer/projects/cloudProjects';
+import type {
+  CloudProjectCreateRepoInput,
+  CloudProjectSummary,
+} from '../renderer/projects/cloudProjects';
 import {
   createCloudProject,
   deleteCloudProject,
 } from '../renderer/projects/cloudProjects';
 import type { InvitesState } from '../renderer/invites/useInvites';
 import { acceptInvite } from '../renderer/invites/invites';
-import { CreateCloudProjectModal } from './CreateCloudProjectModal';
+import {
+  buildProjectPickerRows,
+  filterProjectPickerRows,
+} from '../renderer/projects/buildProjectPickerRows';
+import { NewProjectModal } from './NewProjectModal';
 import { InviteTeammateModal } from './InviteTeammateModal';
+import { ProjectPickerSyncBadges } from './ProjectPickerSyncBadges';
+import { projectCreateErrorMessage } from '../projectCreate';
+import {
+  sendNewProjectTeamInvites,
+  summarizeNewProjectInviteOutcomes,
+} from './newProject/newProjectTeamInvites';
 
 type ActiveProject = LocalProject | CloudProject;
+
+const EMPTY_CLOUD_PROJECTS: CloudProjectSummary[] = [];
 
 interface ProjectsListViewProps {
   onProjectActivated: (project: ActiveProject) => void;
@@ -35,9 +53,7 @@ export function ProjectsListView({
 }: ProjectsListViewProps) {
   const [projects, setProjects] = useState<LocalProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
-  const [gitError, setGitError] = useState(false);
-  const [createCloudOpen, setCreateCloudOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [inviteFor, setInviteFor] = useState<CloudProjectSummary | null>(null);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
@@ -47,10 +63,50 @@ export function ProjectsListView({
   const [cloudLocalCleanupError, setCloudLocalCleanupError] = useState<string | null>(null);
   const [cloudLocalCleanupId, setCloudLocalCleanupId] = useState<string | null>(null);
   const [cloudDeleteCleanupWarning, setCloudDeleteCleanupWarning] = useState<string | null>(null);
-  /** Local project id currently undergoing `Remove from Fluxx` cleanup. */
+  /** Local project id currently undergoing local Fluxx data removal. */
   const [localRemovalId, setLocalRemovalId] = useState<string | null>(null);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [lastOpenedAtByKey, setLastOpenedAtByKey] = useState<Record<string, string>>({});
 
   const uid = auth.user?.uid ?? null;
+  const signedIn = auth.status === 'signedIn';
+  const readyCloudProjects =
+    cloudProjects.status === 'ready' ? cloudProjects.projects : EMPTY_CLOUD_PROJECTS;
+
+  const cloudProjectIdsKey = useMemo(
+    () =>
+      cloudProjects.status === 'ready'
+        ? cloudProjects.projects.map((p) => p.id).join('\0')
+        : '',
+    [cloudProjects.status, cloudProjects.projects],
+  );
+
+  const pickerRows = useMemo(() => {
+    const rows = buildProjectPickerRows({
+      localProjects: projects,
+      cloudProjects: readyCloudProjects,
+      uid,
+      lastOpenedAtByKey,
+    });
+    return filterProjectPickerRows(rows, projectSearchQuery);
+  }, [
+    projects,
+    readyCloudProjects,
+    uid,
+    lastOpenedAtByKey,
+    projectSearchQuery,
+  ]);
+
+  const hasAnyPickerRows = useMemo(
+    () =>
+      buildProjectPickerRows({
+        localProjects: projects,
+        cloudProjects: readyCloudProjects,
+        uid,
+        lastOpenedAtByKey,
+      }).length > 0,
+    [projects, readyCloudProjects, uid, lastOpenedAtByKey],
+  );
 
   const refreshLocal = async () => {
     try {
@@ -58,6 +114,15 @@ export function ProjectsListView({
       setProjects(list);
     } catch (err) {
       console.error('[projects.listLocal] failed', err);
+    }
+  };
+
+  const refreshLastOpenedAt = async () => {
+    try {
+      const map = await window.electronAPI.projects.getPickerLastOpenedAt();
+      setLastOpenedAtByKey(map);
+    } catch (err) {
+      console.error('[projects.getPickerLastOpenedAt] failed', err);
     }
   };
 
@@ -79,22 +144,9 @@ export function ProjectsListView({
     };
   }, []);
 
-  const handleAddLocal = async () => {
-    setGitError(false);
-    setAdding(true);
-    try {
-      const result = await window.electronAPI.projects.addLocal();
-      if (!result) return;
-      if ('error' in result) {
-        if (result.error === 'NOT_GIT_REPO') setGitError(true);
-        return;
-      }
-      const active = await window.electronAPI.projects.activateLocal(result.id);
-      if (active) onProjectActivated(active);
-    } finally {
-      setAdding(false);
-    }
-  };
+  useEffect(() => {
+    void refreshLastOpenedAt();
+  }, [projects, cloudProjectIdsKey]);
 
   const handleOpenLocal = async (id: string) => {
     const active = await window.electronAPI.projects.activateLocal(id);
@@ -173,10 +225,10 @@ export function ProjectsListView({
     setActivatingId(summary.id);
     try {
       let binding = await window.electronAPI.projects.getLocalBinding(summary.id);
-      if (!binding) {
-        const picked = await window.electronAPI.projects.pickDirectoryForCloud(
-          summary.id,
-        );
+      const legacyPicker = cloudProjectUsesLegacyFolderPicker(summary.repos);
+
+      if (!binding && legacyPicker) {
+        const picked = await window.electronAPI.projects.pickDirectoryForCloud(summary.id);
         if (!picked) return;
         if ('error' in picked) {
           setCloudError('That folder is not a git repository.');
@@ -184,52 +236,140 @@ export function ProjectsListView({
         }
         binding = await window.electronAPI.projects.getLocalBinding(summary.id);
       }
-      if (!binding) {
-        setCloudError('Could not read local project binding.');
+
+      const mat = await window.electronAPI.projects.resolveCloudMaterializationDir(summary.id);
+      if ('error' in mat) {
+        setCloudError(mat.error);
         return;
       }
-      const primaryPath = primaryRootPathFromCloudBinding(
-        summary.id,
-        binding,
-        summary.repos,
-      );
-      if (!primaryPath) {
-        setCloudError('Could not read local project binding.');
-        return;
-      }
+      const materializationRootPath = mat.projectDir;
+
+      const boundPrimary = binding
+        ? primaryRootPathFromCloudBinding(summary.id, binding, summary.repos)
+        : undefined;
+      const activationRootPath = boundPrimary ?? materializationRootPath;
+
       const result = await window.electronAPI.projects.activateCloud({
         id: summary.id,
-        rootPath: primaryPath,
-        ...(summary.repos?.length
-          ? { sharedRepos: summary.repos }
-          : {}),
+        rootPath: activationRootPath,
+        ...(summary.repos?.length ? { sharedRepos: summary.repos } : {}),
       });
       if (!result || 'error' in result) {
-        setCloudError(
-          result && 'error' in result
-            ? 'The bound folder is no longer a git repository. Pick a new one.'
-            : 'Could not activate project.',
-        );
-        await window.electronAPI.projects.clearLocalBinding(summary.id);
+        if (boundPrimary) {
+          setCloudError(
+            result && 'error' in result
+              ? 'The bound folder is no longer a git repository. Re-bind it in project settings.'
+              : 'Could not activate project.',
+          );
+          await window.electronAPI.projects.clearLocalBinding(summary.id);
+        } else {
+          setCloudError('Could not activate project.');
+        }
         return;
       }
-      onProjectActivated(hydrateCloudProject(summary, binding));
+
+      const refreshed =
+        (await window.electronAPI.projects.getLocalBinding(summary.id)) ??
+        binding ??
+        shellCloudBinding(new Date().toISOString());
+
+      onProjectActivated(
+        hydrateCloudProject(summary, refreshed, {
+          materializationRootPath: boundPrimary ? undefined : materializationRootPath,
+        }),
+      );
     } finally {
       setActivatingId(null);
     }
   };
 
-  const handleCreateCloud = async (name: string) => {
-    if (!uid) return;
-    const summary = await createCloudProject(
-      uid,
-      name,
-      auth.user?.displayName ?? undefined,
-      auth.user?.email ?? undefined,
-      auth.user?.photoURL ?? null,
+  const handleCreateLocalFromWizard = async (
+    input: import('../projectCreate').ProjectCreateWizardPayload,
+  ) => {
+    const result = await window.electronAPI.projects.create(input);
+    if (!result.ok) {
+      return {
+        ok: false as const,
+        error: result.error,
+        message: result.message,
+      };
+    }
+    const active = await window.electronAPI.projects.activateLocal(result.project.id);
+    if (active) {
+      await refreshLocal();
+      onProjectActivated(active);
+      return { ok: true as const, project: active };
+    }
+    return {
+      ok: false as const,
+      error: 'CREATE_FAILED' as const,
+      message: 'Project was created but could not be opened.',
+    };
+  };
+
+  const handleCreateTeamFromWizard = async (input: {
+    name: string;
+    repos: CloudProjectCreateRepoInput[];
+    primaryRootPath?: string;
+    teamInvites: string[];
+  }): Promise<{ inviteWarnings: string[] }> => {
+    if (!uid) {
+      throw new Error(projectCreateErrorMessage('AUTH_REQUIRED'));
+    }
+    setCloudError(null);
+    const summary = await createCloudProject(uid, input.name, {
+      displayName: auth.user?.displayName ?? undefined,
+      email: auth.user?.email ?? undefined,
+      photoURL: auth.user?.photoURL ?? null,
+      repos: input.repos.length > 0 ? input.repos : undefined,
+      primaryRootPath: input.primaryRootPath,
+    });
+
+    if (summary.repos && summary.repos.length > 0 && input.repos.length > 0) {
+      const { primaryRepoId } = buildCloudSharedReposAtCreate(
+        summary.id,
+        input.repos,
+        input.primaryRootPath,
+      );
+      const bindings = summary.repos.map((sr, i) => ({
+        repoId: sr.id,
+        rootPath: input.repos[i]?.rootPath ?? '',
+      }));
+      const bindResult = await window.electronAPI.projects.applyCloudCreateBindings({
+        cloudProjectId: summary.id,
+        bindings: bindings.filter((b) => b.rootPath),
+        primaryRepoId,
+        sharedRepos: summary.repos,
+      });
+      if ('error' in bindResult) {
+        throw new Error(bindResult.error);
+      }
+    }
+
+    let inviteWarnings: string[] = [];
+    if (input.teamInvites.length > 0) {
+      const outcomes = await sendNewProjectTeamInvites(
+        summary.id,
+        uid,
+        input.teamInvites,
+        {
+          projectName: summary.name,
+          inviterName: auth.user?.displayName ?? undefined,
+          inviterEmail: auth.user?.email ?? undefined,
+        },
+      );
+      inviteWarnings = summarizeNewProjectInviteOutcomes(outcomes);
+    }
+
+    const matDir = await window.electronAPI.projects.resolveCloudMaterializationDir(
+      summary.id,
     );
-    setCreateCloudOpen(false);
+    if (matDir && 'projectDir' in matDir) {
+      await window.electronAPI.projectOnboarding.writePending(matDir.projectDir);
+    }
+
     await handleOpenCloud(summary);
+    return { inviteWarnings };
   };
 
   const handleDeleteCloud = async (summary: CloudProjectSummary) => {
@@ -318,14 +458,10 @@ export function ProjectsListView({
       <div className="relative z-10 mx-auto flex w-full max-w-2xl flex-col px-8 py-16">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
-            <span className="text-base font-semibold tracking-tight text-white">
-              F
-            </span>
+            <span className="text-base font-semibold tracking-tight text-white">F</span>
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">
-              Fluxx
-            </h1>
+            <h1 className="text-xl font-semibold tracking-tight text-white">Fluxx</h1>
             <p className="text-[13px] text-zinc-500">Projects</p>
           </div>
         </div>
@@ -335,7 +471,7 @@ export function ProjectsListView({
         {(() => {
           if (auth.status !== 'signedIn' || invites.status !== 'ready') return null;
           // Hide invites for projects the user already belongs to — "Accept" is
-          // a no-op there. They show up under Team > Pending invites instead.
+          // a no-op there; those projects appear in the unified Projects list.
           const memberProjectIds = new Set(
             cloudProjects.status === 'ready'
               ? cloudProjects.projects.map((p) => p.id)
@@ -384,156 +520,96 @@ export function ProjectsListView({
           );
         })()}
 
-        {auth.status === 'signedIn' ? (
-          <div className="mt-8">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                Team projects
-              </h2>
+        <div className="mt-8">
+          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+            Projects
+          </h2>
+
+          {loading && !hasAnyPickerRows ? null : (
+            <div className="mb-3 flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  role="searchbox"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  value={projectSearchQuery}
+                  onChange={(e) => setProjectSearchQuery(e.target.value)}
+                  placeholder="Search projects…"
+                  aria-label="Search projects"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className={`w-full rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 pl-8 text-[13px] text-zinc-100 placeholder:text-zinc-500 focus:border-white/[0.14] focus:outline-none focus:ring-1 focus:ring-white/10 ${projectSearchQuery ? 'pr-8' : 'pr-3'}`}
+                />
+                {projectSearchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setProjectSearchQuery('')}
+                    className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                    aria-label="Clear project search"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                  </button>
+                ) : null}
+              </div>
               <button
                 type="button"
-                onClick={() => setCreateCloudOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.06] active:scale-[0.98]"
+                onClick={() => setNewProjectOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98]"
               >
-                + New team project
+                New project
               </button>
             </div>
+          )}
 
-            {cloudError ? (
-              <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95">
-                {cloudError}
-              </p>
-            ) : null}
+          {cloudError ? (
+            <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95">
+              {cloudError}
+            </p>
+          ) : null}
 
-            {cloudDeleteCleanupWarning ? (
-              <div
-                role="alert"
-                className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95"
-              >
-                <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudDeleteCleanupWarning}</p>
-                <button
-                  type="button"
-                  onClick={() => setCloudDeleteCleanupWarning(null)}
-                  className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-amber-200/90 hover:bg-amber-500/15"
-                >
-                  Dismiss
-                </button>
-              </div>
-            ) : null}
+          {signedIn && cloudProjects.status === 'error' ? (
+            <p className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95">
+              Couldn&apos;t load team projects: {cloudProjects.error}. Local projects
+              below are still available.
+            </p>
+          ) : null}
 
-            {cloudLocalCleanupError ? (
-              <div
-                className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
-                role="alert"
-              >
-                <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudLocalCleanupError}</p>
-                <button
-                  type="button"
-                  onClick={() => setCloudLocalCleanupError(null)}
-                  className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
-                >
-                  Dismiss
-                </button>
-              </div>
-            ) : null}
-
-            {cloudProjects.status === 'loading' ? (
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
-                Loading…
-              </div>
-            ) : cloudProjects.status === 'error' ? (
-              <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-[12px] text-red-300/95">
-                Couldn't load team projects: {cloudProjects.error}
-              </div>
-            ) : cloudProjects.projects.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-white/[0.08] bg-white/[0.015] px-6 py-8 text-center">
-                <p className="text-[13px] text-zinc-400">
-                  No team projects yet.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setCreateCloudOpen(true)}
-                  className="rounded-md bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100"
-                >
-                  Create team project
-                </button>
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {cloudProjects.projects.map((p) => (
-                  <li key={p.id}>
-                    <div className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04]">
-                      <button
-                        type="button"
-                        disabled={activatingId === p.id}
-                        onClick={() => void handleOpenCloud(p)}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-60"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[13px] font-medium text-sky-200/90">
-                          {p.name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium text-zinc-100">
-                            {p.name}
-                          </div>
-                          <div className="truncate text-[11px] text-zinc-500">
-                            {p.ownerId === uid
-                              ? `Owner · ${p.memberIds.length} member${p.memberIds.length === 1 ? '' : 's'}`
-                              : `Member · ${p.memberIds.length} members`}
-                          </div>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={cloudLocalCleanupId === p.id}
-                        onClick={() => void handleRemoveCloudLocalData(p)}
-                        className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
-                        title="Remove local Fluxx data and unbind this machine (does not delete the team project)"
-                      >
-                        {cloudLocalCleanupId === p.id ? 'Removing…' : 'Local data'}
-                      </button>
-                      {p.ownerId === uid ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setInviteFor(p)}
-                            className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100"
-                            title="Invite teammate"
-                          >
-                            Invite
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteCloud(p)}
-                            className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
-                            title="Delete team project for everyone (Firestore)"
-                          >
-                            Delete team
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : null}
-
-        <div className="mt-8">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-              Local projects
-            </h2>
-            <button
-              type="button"
-              disabled={adding}
-              onClick={() => void handleAddLocal()}
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
+          {cloudDeleteCleanupWarning ? (
+            <div
+              role="alert"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95"
             >
-              {adding ? 'Opening…' : '+ Add project'}
-            </button>
-          </div>
+              <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudDeleteCleanupWarning}</p>
+              <button
+                type="button"
+                onClick={() => setCloudDeleteCleanupWarning(null)}
+                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-amber-200/90 hover:bg-amber-500/15"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+
+          {cloudLocalCleanupError ? (
+            <div
+              className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
+              role="alert"
+            >
+              <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudLocalCleanupError}</p>
+              <button
+                type="button"
+                onClick={() => setCloudLocalCleanupError(null)}
+                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
 
           {localRemovalError ? (
             <div
@@ -551,87 +627,149 @@ export function ProjectsListView({
             </div>
           ) : null}
 
-          {gitError ? (
-            <p
-              className="mb-4 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95"
-              role="alert"
-            >
-              That folder isn&apos;t a git repository. Run{' '}
-              <code className="font-mono text-red-200">git init</code> first.
-            </p>
-          ) : null}
-
-          {loading ? (
+          {loading && !hasAnyPickerRows ? (
             <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
               Loading…
             </div>
-          ) : projects.length === 0 ? (
-            <EmptyLocalState onAdd={() => void handleAddLocal()} busy={adding} />
+          ) : !hasAnyPickerRows ? (
+            <EmptyProjectsState
+              onNewProject={() => setNewProjectOpen(true)}
+              teamSyncLoading={signedIn && cloudProjects.status === 'loading'}
+            />
+          ) : pickerRows.length === 0 ? (
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
+              No projects match your search.
+            </div>
           ) : (
-            <ul className="flex flex-col gap-1.5">
-              {projects.map((p) => {
-                const removing = localRemovalId === p.id;
-                return (
-                <li key={p.id}>
-                  <div
-                    className={`group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] ${removing ? 'border-white/[0.08] bg-white/[0.03]' : ''}`}
-                    aria-busy={removing}
-                  >
-                    <button
-                      type="button"
-                      disabled={removing}
-                      onClick={() => void handleOpenLocal(p.id)}
-                      className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[13px] font-medium text-zinc-300">
-                        {removing ? (
-                          <LocalRemovalSpinner aria-label="Removing project from Fluxx" />
-                        ) : (
-                          p.name.slice(0, 1).toUpperCase()
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-medium text-zinc-100">
-                          {p.name}
+            <>
+              {signedIn && cloudProjects.status === 'loading' ? (
+                <p className="mb-2 text-[12px] text-zinc-500">Loading team projects…</p>
+              ) : null}
+              <ul className="flex flex-col gap-1.5">
+                {pickerRows.map((row) => {
+                  if (row.variant === 'team-synced') {
+                    const p = row.cloud;
+                    return (
+                      <li key={row.id}>
+                        <div className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04]">
+                          <button
+                            type="button"
+                            disabled={activatingId === p.id}
+                            onClick={() => void handleOpenCloud(p)}
+                            className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-60"
+                          >
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[13px] font-medium text-sky-200/90">
+                              {p.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate text-[13px] font-medium text-zinc-100">
+                                  {p.name}
+                                </span>
+                                <ProjectPickerSyncBadges syncBadge={row.syncBadge} />
+                              </div>
+                              <div className="truncate text-[11px] text-zinc-500">
+                                {row.subtitle}
+                              </div>
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={cloudLocalCleanupId === p.id}
+                            onClick={() => void handleRemoveCloudLocalData(p)}
+                            className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
+                            title="Remove local Fluxx data and unbind this machine (does not delete the team project)"
+                          >
+                            {cloudLocalCleanupId === p.id ? 'Removing…' : 'Remove'}
+                          </button>
+                          {p.ownerId === uid ? (
+                            <button
+                              type="button"
+                              onClick={() => setInviteFor(p)}
+                              className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100"
+                              title="Invite teammate"
+                            >
+                              Invite
+                            </button>
+                          ) : null}
+                          {p.ownerId === uid ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteCloud(p)}
+                              className="rounded-md p-1.5 text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
+                              title="Delete team project for everyone (Firestore)"
+                              aria-label={`Delete ${p.name}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          ) : null}
                         </div>
-                        <div
-                          className="truncate font-mono text-[11px] text-zinc-500"
-                          title={p.rootPath}
+                      </li>
+                    );
+                  }
+
+                  const p = row.local;
+                  const removing = localRemovalId === p.id;
+                  return (
+                    <li key={row.id}>
+                      <div
+                        className={`group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] ${removing ? 'border-white/[0.08] bg-white/[0.03]' : ''}`}
+                        aria-busy={removing}
+                      >
+                        <button
+                          type="button"
+                          disabled={removing}
+                          onClick={() => void handleOpenLocal(p.id)}
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:pointer-events-none disabled:opacity-50"
                         >
-                          {p.rootPath}
-                        </div>
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[13px] font-medium text-zinc-300">
+                            {removing ? (
+                              <LocalRemovalSpinner aria-label="Removing project from Fluxx" />
+                            ) : (
+                              p.name.slice(0, 1).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-[13px] font-medium text-zinc-100">
+                                {p.name}
+                              </span>
+                              <ProjectPickerSyncBadges syncBadge={row.syncBadge} />
+                            </div>
+                            <div
+                              className={`truncate text-[11px] text-zinc-500 ${p.repos.length > 0 ? 'font-mono' : ''}`}
+                              title={p.repos.length > 0 ? row.subtitle : undefined}
+                            >
+                              {row.subtitle}
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={removing}
+                          onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
+                          className={`rounded-md p-1.5 transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-300'}`}
+                          title="Remove from Fluxx (deletes ~/.fluxx workspace; keeps your git clone)"
+                          aria-label={removing ? `Removing ${p.name}` : `Remove ${p.name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        </button>
                       </div>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={removing}
-                      onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
-                      className={`rounded-md px-2 py-1 text-[11px] font-medium transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-zinc-300'}`}
-                      title="Remove from Fluxx (deletes ~/.fluxx workspace; keeps your git clone)"
-                    >
-                      {removing ? 'Removing…' : 'Remove from Fluxx'}
-                    </button>
-                  </div>
-                </li>
-                );
-              })}
-            </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-white/[0.06] pt-8 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-600">
-          <span>Claude Code</span>
-          <span className="hidden text-zinc-700 sm:inline">·</span>
-          <span>Codex</span>
-          <span className="hidden text-zinc-700 sm:inline">·</span>
-          <span>Cursor</span>
-        </div>
       </div>
 
-      {createCloudOpen ? (
-        <CreateCloudProjectModal
-          onClose={() => setCreateCloudOpen(false)}
-          onCreate={handleCreateCloud}
+      {newProjectOpen ? (
+        <NewProjectModal
+          onClose={() => setNewProjectOpen(false)}
+          onCreateLocal={handleCreateLocalFromWizard}
+          onCreateTeam={handleCreateTeamFromWizard}
         />
       ) : null}
 
@@ -659,20 +797,27 @@ function LocalRemovalSpinner({ 'aria-label': ariaLabel }: { 'aria-label'?: strin
   );
 }
 
-function EmptyLocalState({ onAdd, busy }: { onAdd: () => void; busy: boolean }) {
+function EmptyProjectsState({
+  onNewProject,
+  teamSyncLoading,
+}: {
+  onNewProject: () => void;
+  teamSyncLoading: boolean;
+}) {
   return (
     <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-white/[0.08] bg-white/[0.015] px-6 py-10 text-center">
       <p className="max-w-sm text-[14px] leading-relaxed text-zinc-400">
-        No projects yet. Add a folder with a git repository to start running
-        agents on it.
+        {teamSyncLoading
+          ? 'Loading team projects…'
+          : 'No projects yet. Create a project to attach repositories and run agents.'}
       </p>
       <button
         type="button"
-        disabled={busy}
-        onClick={onAdd}
+        disabled={teamSyncLoading}
+        onClick={onNewProject}
         className="inline-flex min-h-[38px] min-w-[180px] items-center justify-center rounded-lg bg-white px-5 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
       >
-        {busy ? 'Opening…' : 'Add project'}
+        New project
       </button>
     </div>
   );

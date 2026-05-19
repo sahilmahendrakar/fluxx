@@ -26,11 +26,17 @@ describe('planningSpawnSpec', () => {
     expect(args).not.toContain('--append-system-prompt');
   });
 
-  it('cursor omits approve-mcps and mcp wiring', () => {
+  it('cursor includes approve-mcps for MCP servers', () => {
     const { command, args } = planningSpawnSpec('cursor', '', false);
     expect(command).toBe('agent');
-    expect(args).toEqual(['--model', 'auto']);
-    expect(args).not.toContain('--approve-mcps');
+    expect(args).toEqual(['--model', 'auto', '--approve-mcps']);
+  });
+
+  it('passes optional initial prompt for planning agents', () => {
+    expect(planningSpawnSpec('claude-code', '', false, 'init')).toEqual({
+      command: 'claude',
+      args: ['init'],
+    });
   });
 
   it('cursor passes yolo when enabled', () => {

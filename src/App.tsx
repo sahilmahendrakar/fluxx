@@ -20,9 +20,11 @@ import {
   Session,
   type ActiveProjectKey,
   type CloudRepoBindingOverview,
+  type CloudRepoMachineBinding,
   type PlanningSession,
   type ProjectTabState,
   type RepoConfig,
+  type RepoPathStatus,
   type TaskPrErrorCode,
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
@@ -98,6 +100,7 @@ import {
 } from './cloudBindingPrefs';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from './planningDocs/types';
 import { mergedTaskCreateAgentFields } from './projectAgentDefaults';
+import { startBoardPlanningInitSession } from './renderer/boardPlanningInitStart';
 import { mergeMemberPhotoURL } from './renderer/projects/cloudProjects';
 import {
   leaveSettingsIfActive,
@@ -107,6 +110,11 @@ import {
   useProjectHashRoute,
 } from './projectHashRoute';
 import { normalizeRestoredProjectTabState } from './projectTabRestore';
+import { cloudProjectNeedsRepoBinding } from './cloudProjectActivation';
+import {
+  READY_PROJECT_REPO_READINESS,
+  resolveProjectRepoReadiness,
+} from './projectRepoReadiness';
 
 type ActiveProject = LocalProject | CloudProject;
 
@@ -219,6 +227,8 @@ export default function App() {
   const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
+  const [showPlanningInitCallout, setShowPlanningInitCallout] = useState(false);
+  const [planningInitBusy, setPlanningInitBusy] = useState(false);
   const [planningSidebarActiveId, setPlanningSidebarActiveId] = useState<string | null>(
     null,
   );
@@ -282,6 +292,9 @@ export default function App() {
   /** Cloud multi-repo: local clone path/status per shared repo id for board tooltips. */
   const [cloudRepoBindingOverview, setCloudRepoBindingOverview] =
     useState<CloudRepoBindingOverview | null>(null);
+  const [repoPathById, setRepoPathById] = useState<Record<string, RepoPathStatus> | null>(
+    null,
+  );
 
   const auth = useAuth();
   const uid = auth.user?.uid ?? null;
@@ -365,36 +378,58 @@ export default function App() {
     };
   }, [refreshProjectRepos]);
 
+  const refreshCloudRepoBindingOverview = useCallback(async () => {
+    if (!project || project.kind !== 'cloud' || project.sharedRepos.length === 0) {
+      setCloudRepoBindingOverview(null);
+      return;
+    }
+    try {
+      const r = await window.electronAPI.project.getCloudRepoBindingOverview(
+        project.sharedRepos,
+      );
+      if (r && typeof r === 'object' && 'error' in r) {
+        setCloudRepoBindingOverview(null);
+        return;
+      }
+      setCloudRepoBindingOverview(r as CloudRepoBindingOverview);
+    } catch {
+      setCloudRepoBindingOverview(null);
+    }
+  }, [project]);
+
   useEffect(() => {
-    if (
-      !project ||
-      project.kind !== 'cloud'
-    ) {
-      setCloudRepoBindingOverview(null);
+    void refreshCloudRepoBindingOverview();
+  }, [refreshCloudRepoBindingOverview, cloudSharedRepoIdsKey]);
+
+  const refreshRepoPathStates = useCallback(async () => {
+    if (!project) {
+      setRepoPathById(null);
       return;
     }
-    if (project.sharedRepos.length <= 1) {
-      setCloudRepoBindingOverview(null);
+    const repos = projectRepos ?? [];
+    if (repos.length === 0) {
+      setRepoPathById({});
       return;
     }
-    let cancelled = false;
-    void window.electronAPI.project
-      .getCloudRepoBindingOverview(project.sharedRepos)
-      .then((r) => {
-        if (cancelled) return;
-        if (r && typeof r === 'object' && 'error' in r) {
-          setCloudRepoBindingOverview(null);
-          return;
-        }
-        setCloudRepoBindingOverview(r as CloudRepoBindingOverview);
-      })
-      .catch(() => {
-        if (!cancelled) setCloudRepoBindingOverview(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [project?.id, project?.kind, cloudSharedRepoIdsKey]);
+    try {
+      const result = await window.electronAPI.project.getRepoManagementStates();
+      if (result && typeof result === 'object' && 'error' in result) {
+        setRepoPathById({});
+        return;
+      }
+      const pathById: Record<string, RepoPathStatus> = {};
+      for (const [repoId, state] of Object.entries(result)) {
+        pathById[repoId] = state.pathStatus;
+      }
+      setRepoPathById(pathById);
+    } catch {
+      setRepoPathById({});
+    }
+  }, [project, projectRepos]);
+
+  useEffect(() => {
+    void refreshRepoPathStates();
+  }, [refreshRepoPathStates]);
 
   const membersState = useMembers(cloudProjectId);
   const { cloudPlanningDocsSeedModal } = useCloudPlanningDocsMigration(
@@ -425,31 +460,94 @@ export default function App() {
     }
   }, []);
 
+  const refreshPlanningInitCallout = useCallback(async () => {
+    const api = window.electronAPI.projectOnboarding;
+    if (!api?.getState) {
+      setShowPlanningInitCallout(false);
+      return;
+    }
+    try {
+      const state = await api.getState();
+      if ('error' in state) {
+        setShowPlanningInitCallout(false);
+        return;
+      }
+      setShowPlanningInitCallout(state.showCallout);
+    } catch (err) {
+      console.error('[App] projectOnboarding.getState failed', err);
+      setShowPlanningInitCallout(false);
+    }
+  }, []);
+
   const refreshPlanningRelatedProjectState = useCallback(async () => {
     if (!project) return;
     if (project.kind === 'local') {
       const p = await window.electronAPI.project.get();
       if (p) setProject(p);
-      return;
+    } else {
+      const binding = await window.electronAPI.projects.getLocalBinding(project.id);
+      if (binding) {
+        setProject((cur) =>
+          cur && cur.kind === 'cloud' && cur.id === project.id
+            ? hydrateCloudProject(
+                {
+                  id: cur.id,
+                  name: cur.name,
+                  ownerId: cur.ownerId,
+                  memberIds: cur.memberIds,
+                  createdAt: cur.createdAt,
+                  repos: cur.sharedRepos,
+                },
+                binding,
+              )
+            : cur,
+        );
+      }
     }
-    const binding = await window.electronAPI.projects.getLocalBinding(project.id);
-    if (!binding) return;
-    setProject((cur) =>
-      cur && cur.kind === 'cloud' && cur.id === project.id
-        ? hydrateCloudProject(
-            {
-              id: cur.id,
-              name: cur.name,
-              ownerId: cur.ownerId,
-              memberIds: cur.memberIds,
-              createdAt: cur.createdAt,
-              repos: cur.sharedRepos,
-            },
-            binding,
-          )
-        : cur,
-    );
+    await refreshProjectRepos();
+    await refreshCloudRepoBindingOverview();
+    await refreshRepoPathStates();
+  }, [
+    project,
+    refreshProjectRepos,
+    refreshCloudRepoBindingOverview,
+    refreshRepoPathStates,
+  ]);
+
+  const cloudNeedsPrimaryBinding = useMemo(() => {
+    if (!project || project.kind !== 'cloud') return false;
+    const rb = project.repoMachineBindings as Record<string, CloudRepoMachineBinding>;
+    return cloudProjectNeedsRepoBinding(project.id, project.sharedRepos, {
+      lastOpenedAt: new Date().toISOString(),
+      repoBindings: rb,
+    });
   }, [project]);
+
+  const projectRepoReadiness = useMemo(() => {
+    if (!project) return READY_PROJECT_REPO_READINESS;
+    const configuredRepos = projectRepos ?? [];
+    const sharedRepos = project.kind === 'cloud' ? project.sharedRepos : [];
+    return resolveProjectRepoReadiness({
+      projectKind: project.kind,
+      configuredRepos,
+      sharedRepos,
+      cloudBindingOverview: cloudRepoBindingOverview,
+      cloudNeedsPrimaryBinding,
+      repoPathById,
+    });
+  }, [
+    project,
+    projectRepos,
+    cloudRepoBindingOverview,
+    cloudNeedsPrimaryBinding,
+    repoPathById,
+  ]);
+
+  const handleOpenProjectSettings = useCallback(() => {
+    leaveSettingsIfActive();
+    setActiveTabId('board');
+    pushProjectSettingsRoute();
+  }, []);
 
   const refreshPlanningDocList = useCallback(async () => {
     const api = window.electronAPI.planningDocs;
@@ -746,8 +844,9 @@ export default function App() {
         setActivationLoading(false);
         return;
       }
-      // Cloud: wait for auth + Firestore snapshot in the effect below.
+      // Cloud: resolve in the effect below — do not block the picker on auth/Firestore.
       setPendingCloudActive(key.id);
+      setActivationLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -761,6 +860,19 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       if (auth.status !== 'signedIn') {
+        if (!cancelled) {
+          setPendingCloudActive(null);
+          setActivationLoading(false);
+        }
+        try {
+          await window.electronAPI.projects.clearActive();
+        } catch (err) {
+          console.error('[pendingCloudActive] clearActive failed', err);
+        }
+        return;
+      }
+      if (cloudProjectsState.status === 'loading') return;
+      if (cloudProjectsState.status === 'error') {
         await window.electronAPI.projects.clearActive();
         if (!cancelled) {
           setPendingCloudActive(null);
@@ -780,8 +892,9 @@ export default function App() {
         }
         return;
       }
-      const binding = await window.electronAPI.projects.getLocalBinding(match.id);
-      if (!binding) {
+      let binding = await window.electronAPI.projects.getLocalBinding(match.id);
+      const mat = await window.electronAPI.projects.resolveCloudMaterializationDir(match.id);
+      if ('error' in mat) {
         await window.electronAPI.projects.clearActive();
         if (!cancelled) {
           setPendingCloudActive(null);
@@ -789,35 +902,34 @@ export default function App() {
         }
         return;
       }
-      const primaryPath = primaryRootPathFromCloudBinding(
-        match.id,
-        binding,
-        match.repos,
-      );
-      if (!primaryPath) {
-        await window.electronAPI.projects.clearActive();
-        if (!cancelled) {
-          setPendingCloudActive(null);
-          setActivationLoading(false);
-        }
-        return;
-      }
+      const boundPrimary = binding
+        ? primaryRootPathFromCloudBinding(match.id, binding, match.repos)
+        : undefined;
+      const activationRootPath = boundPrimary ?? mat.projectDir;
       const result = await window.electronAPI.projects.activateCloud({
         id: match.id,
-        rootPath: primaryPath,
-        ...(match.repos?.length
-          ? { sharedRepos: match.repos }
-          : {}),
+        rootPath: activationRootPath,
+        ...(match.repos?.length ? { sharedRepos: match.repos } : {}),
       });
       if (cancelled) return;
       if (!result || 'error' in result) {
-        await window.electronAPI.projects.clearLocalBinding(match.id);
+        if (boundPrimary) {
+          await window.electronAPI.projects.clearLocalBinding(match.id);
+        }
         await window.electronAPI.projects.clearActive();
         setPendingCloudActive(null);
         setActivationLoading(false);
         return;
       }
-      setProject(hydrateCloudProject(match, binding));
+      binding =
+        (await window.electronAPI.projects.getLocalBinding(match.id)) ??
+        binding ??
+        { lastOpenedAt: new Date().toISOString() };
+      setProject(
+        hydrateCloudProject(match, binding, {
+          materializationRootPath: boundPrimary ? undefined : mat.projectDir,
+        }),
+      );
       setPendingCloudActive(null);
       setActivationLoading(false);
     })();
@@ -830,6 +942,18 @@ export default function App() {
     cloudProjectsState.status,
     cloudProjectsState.projects,
   ]);
+
+  // Don't block the whole app forever if Firestore stays on "loading" while resolving a saved cloud active key.
+  useEffect(() => {
+    if (!pendingCloudActive) return;
+    if (auth.status !== 'signedIn') return;
+    if (cloudProjectsState.status !== 'loading') return;
+    const timer = window.setTimeout(() => {
+      setPendingCloudActive(null);
+      setActivationLoading(false);
+    }, 15_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingCloudActive, auth.status, cloudProjectsState.status]);
 
   // Multi-repo2 cloud: keep ~/.fluxx/projects/<cloudId>/ workspace `repos[]` aligned with shared repo ids + bindings.
   useEffect(() => {
@@ -1165,15 +1289,28 @@ export default function App() {
   useEffect(() => {
     if (!project) return;
     void refreshPlanningSessions();
-  }, [project?.id, refreshPlanningSessions]);
+    void refreshPlanningInitCallout();
+  }, [project?.id, refreshPlanningSessions, refreshPlanningInitCallout]);
+
+  useEffect(() => {
+    if (!project || activeTabId !== 'board' || settingsRouteActive) return;
+    void refreshPlanningInitCallout();
+  }, [project?.id, activeTabId, settingsRouteActive, refreshPlanningInitCallout]);
 
   useEffect(() => {
     const api = window.electronAPI.planning;
     if (!api?.onExit) return;
     return api.onExit(() => {
       void refreshPlanningSessions();
+      void window.electronAPI.projectOnboarding?.maybeCompleteAfterSession?.().then(
+        (result) => {
+          if (result && 'ok' in result && result.changed) {
+            void refreshPlanningInitCallout();
+          }
+        },
+      );
     });
-  }, [refreshPlanningSessions]);
+  }, [refreshPlanningSessions, refreshPlanningInitCallout]);
 
   useEffect(() => {
     const sid = parsePlanTabId(activeTabId);
@@ -1213,6 +1350,8 @@ export default function App() {
       setOpenPlanningMainTabIds(new Set());
       setPlanningSidebarOpen(false);
       setPlanPanelOpen(false);
+      setShowPlanningInitCallout(false);
+      setPlanningInitBusy(false);
       return;
     }
     tabRestoreGenerationRef.current += 1;
@@ -2723,6 +2862,42 @@ export default function App() {
     [refreshPlanningSessions],
   );
 
+  const handlePlanningInitSkip = useCallback(async () => {
+    setPlanningInitBusy(true);
+    try {
+      await window.electronAPI.projectOnboarding?.setStatus?.('dismissed');
+      setShowPlanningInitCallout(false);
+    } finally {
+      setPlanningInitBusy(false);
+    }
+  }, []);
+
+  const handlePlanningInitStart = useCallback(async () => {
+    if (!project) return;
+    setPlanningInitBusy(true);
+    try {
+      await window.electronAPI.projectOnboarding?.setStatus?.('started');
+      setShowPlanningInitCallout(false);
+      leaveSettingsIfActive();
+      setActiveTabId('board');
+      setPlanningSidebarOpen(true);
+      const session = await startBoardPlanningInitSession(project);
+      if ('error' in session) {
+        console.error('[App] planning init session failed', session.error);
+        return;
+      }
+      await refreshPlanningSessions();
+      setPlanningSidebarActiveId(session.id);
+      await refreshPlanningRelatedProjectState();
+    } finally {
+      setPlanningInitBusy(false);
+    }
+  }, [
+    project,
+    refreshPlanningSessions,
+    refreshPlanningRelatedProjectState,
+  ]);
+
   const handlePlanningActiveSessionChange = useCallback(
     (id: string | null) => {
       if (activeTabId === 'board' || activeTabId === 'plan') {
@@ -2952,7 +3127,8 @@ export default function App() {
     [selectedTask, cloudProjectId, runners.byTask, uid, projectMembers],
   );
 
-  if (activationLoading || auth.status === 'loading') {
+  // Block the shell while hydrating a saved active project (local or cloud).
+  if (activationLoading || pendingCloudActive) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
         {isMac ? (
@@ -3182,6 +3358,8 @@ export default function App() {
                             multiRepo2Enabled: true,
                             planningDocFiles,
                             onOpenPlanningDoc: handleSelectPlanningDoc,
+                            projectRepoReadiness,
+                            onOpenProjectSettings: handleOpenProjectSettings,
                           }
                         : undefined
                     }
@@ -3272,6 +3450,16 @@ export default function App() {
                           void handleUpdateTask(id, patch)
                         }
                         onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
+                        projectRepoReadiness={projectRepoReadiness}
+                        onOpenProjectSettings={handleOpenProjectSettings}
+                        showPlanningInitCallout={
+                          activeTabId === 'board' &&
+                          !settingsRouteActive &&
+                          showPlanningInitCallout
+                        }
+                        planningInitBusy={planningInitBusy}
+                        onPlanningInitStart={() => void handlePlanningInitStart()}
+                        onPlanningInitSkip={() => void handlePlanningInitSkip()}
                       />
                       <TaskDetailPanel
                         task={selectedTask}
@@ -3317,6 +3505,8 @@ export default function App() {
                         multiRepo2Enabled
                         planningDocFiles={planningDocFiles}
                         onOpenPlanningDoc={handleSelectPlanningDoc}
+                        projectRepoReadiness={projectRepoReadiness}
+                        onOpenProjectSettings={handleOpenProjectSettings}
                       />
                     </div>
                     <div

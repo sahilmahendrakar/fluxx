@@ -119,6 +119,14 @@ export function repoRootBasename(rootPath: string): string {
 }
 
 /**
+ * Stable local project id from a repo root (SHA-256 of normalized path).
+ * Renderer-safe — use this instead of `main/projectDirLayout` in client code.
+ */
+export function stableLocalProjectIdForRoot(rootPath: string): string {
+  return sha256Hex(normalizeRepoRootPathForIdentity(rootPath));
+}
+
+/**
  * Deterministic stable id for the **primary** repo of a project that was
  * created before multi-repo2 — derived from the project id + resolved
  * rootPath so any two clients backfilling the same legacy config produce
