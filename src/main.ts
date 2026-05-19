@@ -92,6 +92,7 @@ import {
   parseAgentConversationId,
 } from './main/agentConversationIdParse';
 import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
+import { OverseerBindingStore } from './main/overseerBindingStore';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
@@ -186,7 +187,10 @@ import type {
   TaskAgentSessionRecord,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
   TaskPullRequestIpcResult,
+  TaskWorkerHandoff,
   TaskRequestPullRequestFromAgentResult,
   ResolveTaskWorktreeIpcResult,
 } from './types';
@@ -3470,6 +3474,9 @@ app.whenReady().then(async () => {
     autoStartOnUnblock?: boolean | null;
     /** `null` clears all attached planning docs. */
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    workerHandoff?: TaskWorkerHandoff | null;
+    overseerReview?: TaskOverseerReview | null;
+    handoffMergeState?: TaskHandoffMergeState | null;
   };
 
   const unblockAutostartInFlight = new Set<string>();
@@ -3894,11 +3901,20 @@ app.whenReady().then(async () => {
       worktreeService.getProjectDir(),
     );
 
+  const overseerBindingStore = new OverseerBindingStore(() => {
+    try {
+      return activeProjectDir();
+    } catch {
+      return '';
+    }
+  });
+
   fluxAutomationHostDeps = {
     taskStore,
     projectStore,
     appStateStore,
     bindingStore,
+    overseerBindingStore,
     bridge: automationRendererBridge,
     getMainWindow: () => mainWindow,
     taskActions: {

@@ -1910,6 +1910,9 @@ export default function App() {
         githubPr: patchGh,
         workspaceCleanedAt: patchWsc,
         attachedPlanningDocs: patchAttachedPlanningDocs,
+        workerHandoff: patchWorkerHandoff,
+        overseerReview: patchOverseerReview,
+        handoffMergeState: patchHandoffMergeState,
         ...patchRest
       } = patch;
       setTasks((prev) =>
@@ -1982,6 +1985,30 @@ export default function App() {
               }
             }
           }
+          if (patchWorkerHandoff !== undefined) {
+            if (patchWorkerHandoff === null) {
+              next = { ...next };
+              delete next.workerHandoff;
+            } else {
+              next = { ...next, workerHandoff: patchWorkerHandoff };
+            }
+          }
+          if (patchOverseerReview !== undefined) {
+            if (patchOverseerReview === null) {
+              next = { ...next };
+              delete next.overseerReview;
+            } else {
+              next = { ...next, overseerReview: patchOverseerReview };
+            }
+          }
+          if (patchHandoffMergeState !== undefined) {
+            if (patchHandoffMergeState === null) {
+              next = { ...next };
+              delete next.handoffMergeState;
+            } else {
+              next = { ...next, handoffMergeState: patchHandoffMergeState };
+            }
+          }
           next = {
             ...next,
             ...assigneePatchForCloudAutoStartOnUnblock({
@@ -2038,6 +2065,15 @@ export default function App() {
           patchAttachedPlanningDocs === null
             ? null
             : sanitizeTaskAttachedPlanningDocsInput(patchAttachedPlanningDocs);
+      }
+      if (patchWorkerHandoff !== undefined) {
+        persistable.workerHandoff = patchWorkerHandoff;
+      }
+      if (patchOverseerReview !== undefined) {
+        persistable.overseerReview = patchOverseerReview;
+      }
+      if (patchHandoffMergeState !== undefined) {
+        persistable.handoffMergeState = patchHandoffMergeState;
       }
       if (Object.keys(persistable).length === 0) return;
 

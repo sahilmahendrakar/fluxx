@@ -5,7 +5,10 @@ import type {
   Task,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
   TaskStatus,
+  TaskWorkerHandoff,
 } from './types';
 
 export const AUTOMATION_BRIDGE_REQUEST_CHANNEL = 'automation:rendererBridge:request';
@@ -17,6 +20,9 @@ export type AutomationBridgeOp =
   | 'tasks.create'
   | 'tasks.update'
   | 'tasks.delete'
+  | 'coordination.submitHandoff'
+  | 'coordination.approveHandoff'
+  | 'coordination.requestRework'
   | 'projectInfo'
   | 'repo.branchDiscovery'
   | 'members.list';
@@ -63,6 +69,31 @@ export interface AutomationBridgeTaskPatch {
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  workerHandoff?: TaskWorkerHandoff | null;
+  overseerReview?: TaskOverseerReview | null;
+  handoffMergeState?: TaskHandoffMergeState | null;
+}
+
+export interface AutomationBridgeCoordinationSubmitHandoffPayload {
+  taskId: string;
+  handoff: TaskWorkerHandoff;
+}
+
+export interface AutomationBridgeCoordinationApprovePayload {
+  taskId: string;
+  review: TaskOverseerReview;
+  handoffMergeState: TaskHandoffMergeState;
+}
+
+export interface AutomationBridgeCoordinationRequestReworkPayload {
+  taskId: string;
+  review: TaskOverseerReview;
+  handoffMergeState: TaskHandoffMergeState;
+  status: TaskStatus;
+}
+
+export interface AutomationBridgeCoordinationTaskResult {
+  task: Task;
 }
 
 export interface AutomationBridgeTasksCreatePayload {

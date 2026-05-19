@@ -281,6 +281,51 @@ export interface TaskGithubPr {
   updatedAt?: string;
 }
 
+/** Worker completion handoff outcome (agent-handoffs coordination). */
+export type TaskHandoffOutcome = 'complete' | 'blocked' | 'partial';
+
+export type TaskHandoffCheckStatus = 'passed' | 'failed' | 'skipped';
+
+export interface TaskHandoffCheck {
+  name: string;
+  status: TaskHandoffCheckStatus;
+  detail?: string;
+}
+
+/** Structured worker handoff persisted on a task for overseer review. */
+export interface TaskWorkerHandoff {
+  outcome: TaskHandoffOutcome;
+  summary: string;
+  filesChanged?: string[];
+  checks?: TaskHandoffCheck[];
+  blockers?: string[];
+  reviewNotes?: string;
+  submittedAt: string;
+}
+
+export type TaskOverseerDecisionKind = 'approved' | 'rework';
+
+/** Overseer review decision persisted on a task after handoff review. */
+export interface TaskOverseerReview {
+  decision: TaskOverseerDecisionKind;
+  /** Required when {@link TaskOverseerReview.decision} is `rework`. */
+  reworkInstructions?: string;
+  notes?: string;
+  reviewedAt: string;
+}
+
+/** Post-review merge/rework tracking on the task (agent-handoffs). */
+export type TaskHandoffMergeState = 'pending-merge' | 'merged' | 'rework-requested';
+
+/** Local binding from feature line to the planning session that owns overseer review. */
+export interface OverseerBinding {
+  projectId: string;
+  repoId: string;
+  sourceBranch: string;
+  planningSessionId: string;
+  registeredAt: string;
+}
+
 /** Structured errors from task PR IPC (`tasks:requestPullRequestFromAgent`, `tasks:refreshPullRequest`). */
 export type TaskPrErrorCode =
   | 'NO_PROJECT'
@@ -406,6 +451,12 @@ export interface Task {
    * Omitted when none; persisted locally and in Firestore for cloud tasks.
    */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  /** Latest worker completion handoff awaiting or following overseer review. */
+  workerHandoff?: TaskWorkerHandoff;
+  /** Latest overseer approve/rework decision for {@link Task.workerHandoff}. */
+  overseerReview?: TaskOverseerReview;
+  /** Merge/rework progress after overseer approval or rework request. */
+  handoffMergeState?: TaskHandoffMergeState;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error' | 'interrupted';

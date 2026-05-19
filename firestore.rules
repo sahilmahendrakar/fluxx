@@ -146,6 +146,51 @@ service cloud.firestore {
         || taskAttachedPlanningDocsFieldValid(data.attachedPlanningDocs);
     }
 
+    function taskWorkerHandoffFieldValid(h) {
+      return h is map
+        && h.keys().hasAll(['outcome', 'summary', 'submittedAt'])
+        && h.outcome in ['complete', 'blocked', 'partial']
+        && h.summary is string
+        && h.summary.size() > 0
+        && h.summary.size() <= 4000
+        && h.submittedAt is string
+        && h.submittedAt.size() > 0
+        && h.submittedAt.size() <= 64;
+    }
+
+    function taskOverseerReviewFieldValid(r) {
+      return r is map
+        && r.keys().hasAll(['decision', 'reviewedAt'])
+        && r.decision in ['approved', 'rework']
+        && r.reviewedAt is string
+        && r.reviewedAt.size() > 0
+        && r.reviewedAt.size() <= 64
+        && (
+          !r.keys().hasAny(['reworkInstructions'])
+          || (
+            r.reworkInstructions is string
+            && r.reworkInstructions.size() > 0
+            && r.reworkInstructions.size() <= 8000
+          )
+        )
+        && (
+          !r.keys().hasAny(['notes'])
+          || (r.notes is string && r.notes.size() > 0 && r.notes.size() <= 4000)
+        );
+    }
+
+    function taskHandoffCoordinationKeysValid(data) {
+      return (!data.keys().hasAny(['workerHandoff'])
+          || data.workerHandoff == null
+          || taskWorkerHandoffFieldValid(data.workerHandoff))
+        && (!data.keys().hasAny(['overseerReview'])
+          || data.overseerReview == null
+          || taskOverseerReviewFieldValid(data.overseerReview))
+        && (!data.keys().hasAny(['handoffMergeState'])
+          || data.handoffMergeState == null
+          || data.handoffMergeState in ['pending-merge', 'merged', 'rework-requested']);
+    }
+
     match /projects/{pid} {
       allow read: if isSignedIn() && request.auth.uid in resource.data.memberIds;
 
@@ -192,11 +237,13 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.updatedBy == request.auth.uid
           && taskRepoIdKeyAbsentOrValid(pid, request.resource.data)
-          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data);
+          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data)
+          && taskHandoffCoordinationKeysValid(request.resource.data);
         allow update: if isMember(pid)
           && request.resource.data.updatedBy == request.auth.uid
           && taskRepoIdKeyAbsentOrValid(pid, request.resource.data)
-          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data);
+          && taskAttachedPlanningDocsKeyAbsentOrValid(request.resource.data)
+          && taskHandoffCoordinationKeysValid(request.resource.data);
         allow delete: if isMember(pid);
 
         match /runners/{uid} {

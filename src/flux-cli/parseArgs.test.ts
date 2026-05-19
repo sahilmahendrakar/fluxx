@@ -160,4 +160,36 @@ describe('parseFluxCliArgs', () => {
       expect(r.command.confirm).toBe(true);
     }
   });
+
+  it('parses coordination submit-handoff', () => {
+    const r = parseFluxCliArgs([
+      'coordination',
+      'submit-handoff',
+      '--task-id',
+      't1',
+      '--handoff-json',
+      '{"outcome":"complete","summary":"Done"}',
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok && r.command.kind === 'coordination' && r.command.action === 'submit-handoff') {
+      expect(r.command.taskId).toBe('t1');
+      expect(r.command.handoffJson).toContain('complete');
+    }
+  });
+
+  it('parses coordination register-overseer', () => {
+    const r = parseFluxCliArgs([
+      'coordination',
+      'register-overseer',
+      '--source-branch',
+      'feature/auth',
+      '--planning-session-id',
+      'sess-1',
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok && r.command.kind === 'coordination' && r.command.action === 'register-overseer') {
+      expect(r.command.sourceBranch).toBe('feature/auth');
+      expect(r.command.planningSessionId).toBe('sess-1');
+    }
+  });
 });
