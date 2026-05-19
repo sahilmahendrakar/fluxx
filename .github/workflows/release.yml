@@ -113,6 +113,8 @@ jobs:
         run: pnpm run publish
 
       - name: Apply Fluxx release title and notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           NOTES="$(sed "s/{{VERSION}}/${VERSION}/g" docs/github-release-notes-template.md)"
