@@ -28,6 +28,14 @@ import type {
   TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
   TaskAttachedPlanningDoc,
+  CoordinationRegisterOverseerPayload,
+  CoordinationRegisterOverseerResult,
+  CoordinationInjectOverseerPromptPayload,
+  CoordinationInjectOverseerPromptResult,
+  CoordinationInjectPlanningPromptPayload,
+  CoordinationInjectPlanningPromptResult,
+  CoordinationInjectTaskPromptPayload,
+  CoordinationInjectTaskPromptResult,
 } from './types';
 import type {
   AgentState,
@@ -361,6 +369,20 @@ declare global {
         onPersistFluxxWorkBranch: (
           cb: (p: { taskId: string; fluxxWorkBranch: string }) => void,
         ) => () => void;
+      };
+      coordination: {
+        registerOverseer: (
+          payload: CoordinationRegisterOverseerPayload,
+        ) => Promise<CoordinationRegisterOverseerResult>;
+        injectOverseerPrompt: (
+          payload: CoordinationInjectOverseerPromptPayload,
+        ) => Promise<CoordinationInjectOverseerPromptResult>;
+        injectPlanningPrompt: (
+          payload: CoordinationInjectPlanningPromptPayload,
+        ) => Promise<CoordinationInjectPlanningPromptResult>;
+        injectTaskPrompt: (
+          payload: CoordinationInjectTaskPromptPayload,
+        ) => Promise<CoordinationInjectTaskPromptResult>;
       };
       sessions: {
         start: (

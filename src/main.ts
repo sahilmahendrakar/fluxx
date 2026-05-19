@@ -97,7 +97,7 @@ import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
-import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
+import { openWorkspacePath, resolveTaskWorktreePath } from './main/openWorkspacePath';
 import {
   discoverGithubPrForTaskWorktree,
   ghPrViewJson,
@@ -109,9 +109,15 @@ import {
 } from './main/githubTaskPr';
 import { resolveProjectRepoDefaultBranchShort } from './main/resolveProjectRepoDefaultBranch';
 import {
+  injectPromptIntoBoundOverseerSession,
+  injectPromptIntoPlanningSession,
+  injectPromptIntoTaskSession,
+  resolvePlanningSessionForInjection,
+  resolveRunningTaskSessionForPromptInjection,
+} from './main/fluxSessionPromptInjection';
+import {
   describeSessionInputForLog,
   isSessionInputDebugEnabled,
-  wrapAsXtermBracketedPaste,
 } from './main/sessionInputDebug';
 import { githubPrRefreshViewEqual } from './githubPrMetadata';
 import { shouldAutoMarkDoneAfterPrMergeRefresh } from './autoMarkDoneWhenPrMerged';
@@ -193,6 +199,14 @@ import type {
   TaskWorkerHandoff,
   TaskRequestPullRequestFromAgentResult,
   ResolveTaskWorktreeIpcResult,
+  CoordinationRegisterOverseerPayload,
+  CoordinationRegisterOverseerResult,
+  CoordinationInjectOverseerPromptPayload,
+  CoordinationInjectOverseerPromptResult,
+  CoordinationInjectPlanningPromptPayload,
+  CoordinationInjectPlanningPromptResult,
+  CoordinationInjectTaskPromptPayload,
+  CoordinationInjectTaskPromptResult,
 } from './types';
 import {
   mergeTaskRowWithPullRequestAgentPayload,
@@ -2573,28 +2587,22 @@ app.whenReady().then(async () => {
         };
       }
 
-      const sessions = await terminalBackend.listSessions();
-      const session = pickSessionForTaskWorktree(
-        sessions,
+      const sessionResolved = await resolveRunningTaskSessionForPromptInjection(
+        () => terminalBackend.listSessions(),
         taskId,
         mergedTaskFields.repoId?.trim() || undefined,
       );
-      if (!session) {
+      if (!sessionResolved.ok) {
         return {
           ok: false,
-          code: 'NO_AGENT_SESSION',
+          code: sessionResolved.code,
           message:
-            "Start this task's agent session first so it can commit and open the PR.",
+            sessionResolved.code === 'NO_AGENT_SESSION'
+              ? "Start this task's agent session first so it can commit and open the PR."
+              : sessionResolved.message,
         };
       }
-      if (session.status !== 'running') {
-        return {
-          ok: false,
-          code: 'AGENT_SESSION_NOT_RUNNING',
-          message:
-            "This task's agent session is not running. Start or resume the session, then try opening the PR again.",
-        };
-      }
+      const session = sessionResolved.session!;
 
       const wt = session.worktreePath?.trim() ?? '';
       if (!wt) {
@@ -2679,33 +2687,10 @@ app.whenReady().then(async () => {
         repoDisplayLabel: repoCfg ? repoDisplayLabel(repoCfg) : undefined,
         repoRootPath: repoCfg?.rootPath,
       });
-      // Bracketed paste + submit must be **two awaited daemon writes**. Reasons:
-      // - One chunk ending in `\x1b[201~\r` often leaves multiline text in the
-      //   agent input without submitting (Cursor agent CLI; others).
-      // - `terminalBackend.writeSession` is fire-and-forget; a lone `\r` after paste
-      //   can be dropped or reordered relative to PTY consumption without await.
-      // - Paste must not go through `sendTaskSessionTerminalInput` alone: the
-      //   prompt body contains `\n`, which would trigger false "submit" side effects.
-      const pasteInput = wrapAsXtermBracketedPaste(payload);
-      const submitInput = '\r';
-      if (isSessionInputDebugEnabled()) {
-        const tid = sessionTaskMap.get(session.id) ?? session.taskId;
-        console.log('[session:input]', {
-          sessionId: session.id,
-          taskId: tid,
-          codeUnits: pasteInput.length,
-          repr: describeSessionInputForLog(pasteInput),
-        });
-        console.log('[session:input]', {
-          sessionId: session.id,
-          taskId: tid,
-          codeUnits: submitInput.length,
-          repr: describeSessionInputForLog(submitInput),
-        });
-      }
-      await terminalBackend.writeSessionAwait(session.id, pasteInput);
-      await terminalBackend.writeSessionAwait(session.id, submitInput);
-      applyTaskSessionSubmitSideEffects(session.id);
+      await injectPromptIntoTaskSession(terminalBackend, session.id, payload, {
+        onTaskSubmit: applyTaskSessionSubmitSideEffects,
+        debug: { taskId },
+      });
       return { ok: true, sessionId: session.id };
     },
   );
@@ -3908,6 +3893,157 @@ app.whenReady().then(async () => {
       return '';
     }
   });
+
+  ipcMain.handle(
+    'coordination:registerOverseer',
+    async (_e, raw: unknown): Promise<CoordinationRegisterOverseerResult> => {
+      const project = projectStore.get();
+      const projectDir = worktreeService.getProjectDir();
+      if (!project || !projectDir) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No project open' };
+      }
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'Invalid payload' };
+      }
+      const o = raw as Partial<CoordinationRegisterOverseerPayload>;
+      const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
+      const sourceBranch = typeof o.sourceBranch === 'string' ? o.sourceBranch.trim() : '';
+      const planningSessionId =
+        typeof o.planningSessionId === 'string' ? o.planningSessionId.trim() : '';
+      if (!repoId || !sourceBranch || !planningSessionId) {
+        return {
+          ok: false,
+          code: 'INVALID_PAYLOAD',
+          message: 'repoId, sourceBranch, and planningSessionId are required',
+        };
+      }
+      const repos = await projectStore.getReposAt(projectDir);
+      if (!repos.some((r) => r.id === repoId)) {
+        return { ok: false, code: 'UNKNOWN_REPO', message: 'Unknown repository id for this project' };
+      }
+      try {
+        const binding = await overseerBindingStore.register({
+          projectId: project.id,
+          repoId,
+          sourceBranch,
+          planningSessionId,
+        });
+        return { ok: true, binding };
+      } catch (err) {
+        return {
+          ok: false,
+          code: 'INVALID_PAYLOAD',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'coordination:injectOverseerPrompt',
+    async (_e, raw: unknown): Promise<CoordinationInjectOverseerPromptResult> => {
+      const project = projectStore.get();
+      if (!project) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No project open' };
+      }
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'Invalid payload' };
+      }
+      const o = raw as Partial<CoordinationInjectOverseerPromptPayload>;
+      const prompt = typeof o.prompt === 'string' ? o.prompt : '';
+      const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
+      const sourceBranch = typeof o.sourceBranch === 'string' ? o.sourceBranch.trim() : '';
+      if (!prompt.trim()) {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'prompt is required' };
+      }
+      if (!repoId || !sourceBranch) {
+        return {
+          ok: false,
+          code: 'INVALID_PAYLOAD',
+          message: 'repoId and sourceBranch are required',
+        };
+      }
+      return injectPromptIntoBoundOverseerSession(
+        terminalBackend,
+        overseerBindingStore,
+        () => terminalBackend.listPlanning(),
+        project.id,
+        repoId,
+        sourceBranch,
+        prompt,
+      );
+    },
+  );
+
+  ipcMain.handle(
+    'coordination:injectPlanningPrompt',
+    async (_e, raw: unknown): Promise<CoordinationInjectPlanningPromptResult> => {
+      if (!projectStore.get()) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No project open' };
+      }
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'Invalid payload' };
+      }
+      const o = raw as Partial<CoordinationInjectPlanningPromptPayload>;
+      const prompt = typeof o.prompt === 'string' ? o.prompt : '';
+      const planningSessionId =
+        typeof o.planningSessionId === 'string' ? o.planningSessionId.trim() : '';
+      if (!prompt.trim()) {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'prompt is required' };
+      }
+      if (!planningSessionId) {
+        return {
+          ok: false,
+          code: 'INVALID_PAYLOAD',
+          message: 'planningSessionId is required',
+        };
+      }
+      const resolved = await resolvePlanningSessionForInjection(
+        () => terminalBackend.listPlanning(),
+        planningSessionId,
+      );
+      if (!resolved.ok) {
+        return resolved;
+      }
+      await injectPromptIntoPlanningSession(terminalBackend, resolved.session.id, prompt);
+      return { ok: true, sessionId: resolved.session.id };
+    },
+  );
+
+  ipcMain.handle(
+    'coordination:injectTaskPrompt',
+    async (_e, raw: unknown): Promise<CoordinationInjectTaskPromptResult> => {
+      if (!projectStore.get()) {
+        return { ok: false, code: 'NO_PROJECT', message: 'No project open' };
+      }
+      if (!raw || typeof raw !== 'object') {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'Invalid payload' };
+      }
+      const o = raw as Partial<CoordinationInjectTaskPromptPayload>;
+      const prompt = typeof o.prompt === 'string' ? o.prompt : '';
+      const taskId = typeof o.taskId === 'string' ? o.taskId.trim() : '';
+      const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : undefined;
+      if (!prompt.trim()) {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'prompt is required' };
+      }
+      if (!taskId) {
+        return { ok: false, code: 'INVALID_PAYLOAD', message: 'taskId is required' };
+      }
+      const sessionResolved = await resolveRunningTaskSessionForPromptInjection(
+        () => terminalBackend.listSessions(),
+        taskId,
+        repoId,
+      );
+      if (!sessionResolved.ok) {
+        return sessionResolved;
+      }
+      await injectPromptIntoTaskSession(terminalBackend, sessionResolved.sessionId, prompt, {
+        onTaskSubmit: applyTaskSessionSubmitSideEffects,
+        debug: { taskId },
+      });
+      return { ok: true, sessionId: sessionResolved.sessionId };
+    },
+  );
 
   fluxAutomationHostDeps = {
     taskStore,

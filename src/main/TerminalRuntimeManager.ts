@@ -557,6 +557,11 @@ export class TerminalRuntimeManager {
     this.planning.get(id)?.runtime.write(data);
   }
 
+  async writePlanningAwait(id: string, data: string): Promise<void> {
+    this.writePlanning(id, data);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
   resizePlanning(id: string, cols: number, rows: number): void {
     this.planning.get(id)?.runtime.resize(cols, rows);
   }

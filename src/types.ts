@@ -326,6 +326,65 @@ export interface OverseerBinding {
   registeredAt: string;
 }
 
+export type CoordinationRegisterOverseerPayload = {
+  repoId: string;
+  sourceBranch: string;
+  planningSessionId: string;
+};
+
+export type CoordinationRegisterOverseerResult =
+  | { ok: true; binding: OverseerBinding }
+  | { ok: false; code: 'NO_PROJECT' | 'INVALID_PAYLOAD' | 'UNKNOWN_REPO'; message: string };
+
+export type CoordinationInjectOverseerPromptPayload = {
+  prompt: string;
+  repoId: string;
+  sourceBranch: string;
+};
+
+export type CoordinationInjectOverseerPromptErrorCode =
+  | 'NO_PROJECT'
+  | 'INVALID_PAYLOAD'
+  | 'OVERSEER_BINDING_NOT_FOUND'
+  | 'OVERSEER_BINDING_PROJECT_MISMATCH'
+  | 'NO_PLANNING_SESSION'
+  | 'PLANNING_SESSION_NOT_RUNNING';
+
+export type CoordinationInjectOverseerPromptResult =
+  | { ok: true; sessionId: string; planningSessionId: string }
+  | { ok: false; code: CoordinationInjectOverseerPromptErrorCode; message: string };
+
+export type CoordinationInjectPlanningPromptPayload = {
+  prompt: string;
+  planningSessionId: string;
+};
+
+export type CoordinationInjectPlanningPromptResult =
+  | { ok: true; sessionId: string }
+  | {
+      ok: false;
+      code: 'NO_PROJECT' | 'INVALID_PAYLOAD' | 'NO_PLANNING_SESSION' | 'PLANNING_SESSION_NOT_RUNNING';
+      message: string;
+    };
+
+export type CoordinationInjectTaskPromptPayload = {
+  prompt: string;
+  taskId: string;
+  repoId?: string;
+};
+
+export type CoordinationInjectTaskPromptResult =
+  | { ok: true; sessionId: string }
+  | {
+      ok: false;
+      code:
+        | 'NO_PROJECT'
+        | 'INVALID_PAYLOAD'
+        | 'NO_AGENT_SESSION'
+        | 'AGENT_SESSION_NOT_RUNNING';
+      message: string;
+    };
+
 /** Structured errors from task PR IPC (`tasks:requestPullRequestFromAgent`, `tasks:refreshPullRequest`). */
 export type TaskPrErrorCode =
   | 'NO_PROJECT'

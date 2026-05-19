@@ -253,6 +253,10 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
     this.mgr.writePlanning(id, data);
   }
 
+  async writePlanningAwait(id: string, data: string): Promise<void> {
+    await this.mgr.writePlanningAwait(id, data);
+  }
+
   resizePlanning(id: string, cols: number, rows: number): void {
     this.mgr.resizePlanning(id, cols, rows);
   }
