@@ -59,11 +59,52 @@ const TASK_DELETE_FLAGS = `Usage: fluxx tasks delete [--json] --id <taskId> --co
   --confirm                      Required; only after explicit user intent to delete
   --json`;
 
+const COORDINATION_REGISTER_FLAGS = `Usage: fluxx coordination register-overseer [--json] --source-branch <branch> [options]
+
+Required:
+  --source-branch <branch>       Feature line for overseer review (alias: --feature-branch, --branch)
+
+Optional:
+  --repo-id <id>                 Multi-repo projects (alias: --repo); defaults to primary
+  --planning-session-id <id>     Flux planning session id (alias: --session-id)
+  --json`;
+
+const COORDINATION_SUBMIT_FLAGS = `Usage: fluxx coordination submit-handoff [--json] --task-id <id> --handoff-json <json>
+
+Required:
+  --task-id <id>                 Task to submit (alias: --id)
+  --handoff-json <json>          Worker handoff object (alias: --handoff)
+
+Handoff fields: outcome (complete|blocked|partial), summary, optional filesChanged[],
+checks[], blockers[], reviewNotes. Max ${32_768} bytes JSON.
+
+  --json`;
+
+const COORDINATION_APPROVE_FLAGS = `Usage: fluxx coordination approve-handoff [--json] --task-id <id> [options]
+
+Required:
+  --task-id <id>
+
+Optional:
+  --notes <text>
+  --json`;
+
+const COORDINATION_REWORK_FLAGS = `Usage: fluxx coordination request-rework [--json] --task-id <id> --instructions <text> [options]
+
+Required:
+  --task-id <id>
+  --instructions <text>          Rework instructions for the worker (alias: --rework-instructions)
+
+Optional:
+  --notes <text>
+  --json`;
+
 const TOP_LEVEL = `Fluxx CLI — board automation for planning sessions
 
 Usage:
   fluxx project info [--json]
   fluxx tasks list|create|update|start|delete [--json] ...
+  fluxx coordination register-overseer|submit-handoff|approve-handoff|request-rework [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
 
@@ -72,6 +113,31 @@ Global:
   -h, --help                     Show command help
 
 Run \`fluxx <command> --help\` for subcommand flags (e.g. fluxx tasks create --help).`;
+
+function helpForCoordinationAction(action: string | undefined): string | null {
+  switch (action) {
+    case 'register-overseer':
+      return COORDINATION_REGISTER_FLAGS;
+    case 'submit-handoff':
+      return COORDINATION_SUBMIT_FLAGS;
+    case 'approve-handoff':
+      return COORDINATION_APPROVE_FLAGS;
+    case 'request-rework':
+      return COORDINATION_REWORK_FLAGS;
+    case undefined:
+      return `Usage: fluxx coordination <register-overseer|submit-handoff|approve-handoff|request-rework> [options]
+
+Subcommands:
+  register-overseer   Bind a planning session as overseer for a feature branch
+  submit-handoff        Worker submits structured completion handoff (moves task to review)
+  approve-handoff       Overseer approves the handoff
+  request-rework        Overseer requests rework with instructions
+
+Run \`fluxx coordination <subcommand> --help\` for flags.`;
+    default:
+      return null;
+  }
+}
 
 function helpForTasksAction(action: string | undefined): string | null {
   switch (action) {
@@ -126,6 +192,9 @@ export function printFluxCliHelp(argv: string[]): boolean {
   } else if (domain === 'tasks') {
     const sub = helpForTasksAction(action);
     text = sub ?? `Unknown tasks subcommand. ${helpForTasksAction(undefined) ?? ''}`;
+  } else if (domain === 'coordination') {
+    const sub = helpForCoordinationAction(action);
+    text = sub ?? `Unknown coordination subcommand. ${helpForCoordinationAction(undefined) ?? ''}`;
   } else {
     text = TOP_LEVEL;
   }

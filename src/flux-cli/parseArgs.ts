@@ -6,7 +6,37 @@ export type FluxCliCommand =
   | { kind: 'tasks'; action: 'start'; json: boolean; id: string }
   | { kind: 'tasks'; action: 'delete'; json: boolean; id: string; confirm: boolean }
   | { kind: 'members'; action: 'list'; json: boolean }
-  | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string };
+  | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string }
+  | {
+      kind: 'coordination';
+      action: 'register-overseer';
+      json: boolean;
+      repoId?: string;
+      sourceBranch: string;
+      planningSessionId?: string;
+    }
+  | {
+      kind: 'coordination';
+      action: 'submit-handoff';
+      json: boolean;
+      taskId: string;
+      handoffJson: string;
+    }
+  | {
+      kind: 'coordination';
+      action: 'approve-handoff';
+      json: boolean;
+      taskId: string;
+      notes?: string;
+    }
+  | {
+      kind: 'coordination';
+      action: 'request-rework';
+      json: boolean;
+      taskId: string;
+      instructions: string;
+      notes?: string;
+    };
 
 export type FluxCliParseResult =
   | { ok: true; command: FluxCliCommand }
@@ -271,6 +301,108 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
     };
   }
 
+  if (domain === 'coordination') {
+    if (action === 'register-overseer') {
+      const { value: repoId, rest: r1 } = takeFlagAliases(rest, ['--repo-id', '--repo']);
+      const { value: sourceBranch, rest: r2 } = takeFlagAliases(r1, [
+        '--source-branch',
+        '--feature-branch',
+        '--branch',
+      ]);
+      const { value: planningSessionId, rest: r3 } = takeFlagAliases(r2, [
+        '--planning-session-id',
+        '--session-id',
+      ]);
+      if (!sourceBranch || r3.length > 0) {
+        return {
+          ok: false,
+          message:
+            'coordination register-overseer requires --source-branch [--repo-id] [--planning-session-id]',
+        };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'coordination',
+          action: 'register-overseer',
+          json,
+          sourceBranch,
+          ...(repoId !== undefined ? { repoId } : {}),
+          ...(planningSessionId !== undefined ? { planningSessionId } : {}),
+        },
+      };
+    }
+    if (action === 'submit-handoff') {
+      const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--id']);
+      const { value: handoffJson, rest: r2 } = takeFlagAliases(r1, [
+        '--handoff-json',
+        '--handoff',
+      ]);
+      if (!taskId || !handoffJson || r2.length > 0) {
+        return {
+          ok: false,
+          message: 'coordination submit-handoff requires --task-id and --handoff-json',
+        };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'coordination',
+          action: 'submit-handoff',
+          json,
+          taskId,
+          handoffJson,
+        },
+      };
+    }
+    if (action === 'approve-handoff') {
+      const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--id']);
+      const { value: notes, rest: r2 } = takeFlag(rest, '--notes');
+      if (!taskId || r2.length > 0) {
+        return {
+          ok: false,
+          message: 'coordination approve-handoff requires --task-id',
+        };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'coordination',
+          action: 'approve-handoff',
+          json,
+          taskId,
+          ...(notes !== undefined ? { notes } : {}),
+        },
+      };
+    }
+    if (action === 'request-rework') {
+      const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--id']);
+      const { value: instructions, rest: r2 } = takeFlagAliases(r1, [
+        '--instructions',
+        '--rework-instructions',
+      ]);
+      const { value: notes, rest: r3 } = takeFlag(r2, '--notes');
+      if (!taskId || !instructions || r3.length > 0) {
+        return {
+          ok: false,
+          message:
+            'coordination request-rework requires --task-id and --instructions',
+        };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'coordination',
+          action: 'request-rework',
+          json,
+          taskId,
+          instructions,
+          ...(notes !== undefined ? { notes } : {}),
+        },
+      };
+    }
+  }
+
   if (domain === 'tasks') {
     if (action === 'list') {
       const { values: excludeStatuses, rest: r } = collectRepeatedFlag(rest, '--exclude-status');
@@ -329,6 +461,6 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
   return {
     ok: false,
     message:
-      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx members list, fluxx repo branches',
+      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx coordination register-overseer|submit-handoff|approve-handoff|request-rework, fluxx members list, fluxx repo branches',
   };
 }

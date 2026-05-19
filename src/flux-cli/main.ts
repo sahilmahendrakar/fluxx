@@ -62,6 +62,35 @@ export async function runFluxCli(argv: string[]): Promise<number> {
         ...(command.classifyBranch !== undefined ? { classifyBranch: command.classifyBranch } : {}),
       };
       break;
+    case 'coordination': {
+      if (command.action === 'register-overseer') {
+        op = 'coordination.registerOverseer';
+        payload = {
+          ...(command.repoId !== undefined ? { repoId: command.repoId } : {}),
+          sourceBranch: command.sourceBranch,
+          ...(command.planningSessionId !== undefined
+            ? { planningSessionId: command.planningSessionId }
+            : {}),
+        };
+      } else if (command.action === 'submit-handoff') {
+        op = 'coordination.submitHandoff';
+        payload = { taskId: command.taskId, handoffJson: command.handoffJson };
+      } else if (command.action === 'approve-handoff') {
+        op = 'coordination.approveHandoff';
+        payload = {
+          taskId: command.taskId,
+          ...(command.notes !== undefined ? { notes: command.notes } : {}),
+        };
+      } else {
+        op = 'coordination.requestRework';
+        payload = {
+          taskId: command.taskId,
+          instructions: command.instructions,
+          ...(command.notes !== undefined ? { notes: command.notes } : {}),
+        };
+      }
+      break;
+    }
     case 'tasks':
       if (command.action === 'list') {
         op = 'tasks.list';

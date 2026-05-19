@@ -2,7 +2,15 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type {
+  Agent,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
+  TaskWorkerHandoff,
+} from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
@@ -303,6 +311,9 @@ export class TaskStore {
       githubPr?: TaskGithubPr | null;
       /** `null` clears stored attachments. */
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      workerHandoff?: TaskWorkerHandoff | null;
+      overseerReview?: TaskOverseerReview | null;
+      handoffMergeState?: TaskHandoffMergeState | null;
     },
   ): Promise<Task> {
     if (!this.filePath) {
@@ -318,6 +329,9 @@ export class TaskStore {
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
       attachedPlanningDocs: patchAttachedDocs,
+      workerHandoff: patchWorkerHandoff,
+      overseerReview: patchOverseerReview,
+      handoffMergeState: patchHandoffMergeState,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -363,6 +377,27 @@ export class TaskStore {
         } else {
           delete updated.attachedPlanningDocs;
         }
+      }
+    }
+    if (patchWorkerHandoff !== undefined) {
+      if (patchWorkerHandoff === null) {
+        delete updated.workerHandoff;
+      } else {
+        updated.workerHandoff = patchWorkerHandoff;
+      }
+    }
+    if (patchOverseerReview !== undefined) {
+      if (patchOverseerReview === null) {
+        delete updated.overseerReview;
+      } else {
+        updated.overseerReview = patchOverseerReview;
+      }
+    }
+    if (patchHandoffMergeState !== undefined) {
+      if (patchHandoffMergeState === null) {
+        delete updated.handoffMergeState;
+      } else {
+        updated.handoffMergeState = patchHandoffMergeState;
       }
     }
     if (patch.sourceBranch !== undefined) {

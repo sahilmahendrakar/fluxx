@@ -1,4 +1,13 @@
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskStatus } from '../../types';
+import type {
+  Agent,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
+  TaskStatus,
+  TaskWorkerHandoff,
+} from '../../types';
 
 export type TaskPatch = Partial<
   Pick<
@@ -26,6 +35,9 @@ export type TaskPatch = Partial<
   autoStartOnUnblock?: boolean | null;
   /** `null` clears all attached planning docs in Firestore. */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  workerHandoff?: TaskWorkerHandoff | null;
+  overseerReview?: TaskOverseerReview | null;
+  handoffMergeState?: TaskHandoffMergeState | null;
 };
 
 export type TaskCreateInput = {

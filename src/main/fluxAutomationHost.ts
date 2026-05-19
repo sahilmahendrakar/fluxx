@@ -3,7 +3,17 @@ import path from 'node:path';
 import type { BrowserWindow } from 'electron';
 import { primaryRootPathFromCloudBinding } from '../cloudLocalBindingMigration';
 import type { AutomationBridgeProjectInfoRepoSummary } from '../rendererAutomationBridge';
-import type { RepoConfig, RepoPathStatus, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type {
+  RepoConfig,
+  RepoPathStatus,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
+  TaskWorkerHandoff,
+} from '../types';
+import type { OverseerBindingStore } from './overseerBindingStore';
 import { collectRepoBranchDiscovery } from './repoGit';
 import type { AppStateStore } from './AppStateStore';
 import { automationBridgeFailureToInvoke } from './automationBridgeFailureMessage';
@@ -27,6 +37,7 @@ export type FluxAutomationHostDeps = {
   projectStore: ProjectStore;
   appStateStore: AppStateStore;
   bindingStore: LocalBindingStore;
+  overseerBindingStore: OverseerBindingStore;
   bridge: RendererAutomationBridge;
   getMainWindow: () => BrowserWindow | null;
   taskActions: {
@@ -49,6 +60,9 @@ export type FluxAutomationHostDeps = {
       > & {
         githubPr?: TaskGithubPr | null;
         attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+        workerHandoff?: TaskWorkerHandoff | null;
+        overseerReview?: TaskOverseerReview | null;
+        handoffMergeState?: TaskHandoffMergeState | null;
       },
     ) => Promise<Task>;
     startTask: (id: string) => Promise<Task>;
@@ -151,6 +165,7 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     taskStore: deps.taskStore,
     projectStore: deps.projectStore,
     bindingStore: deps.bindingStore,
+    overseerBindingStore: deps.overseerBindingStore,
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>
       automationBridgeFailureToInvoke(result),

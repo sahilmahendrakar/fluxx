@@ -3,7 +3,10 @@ import type { ActiveProjectKey } from '../types';
 import type { AutomationBridgeErrorCode, AutomationBridgeOp } from '../rendererAutomationBridge';
 import { activeProjectKeysEqual } from './activeProjectKey';
 
-export type FluxAutomationHttpOp = AutomationBridgeOp | 'tasks.start';
+export type FluxAutomationHttpOp =
+  | AutomationBridgeOp
+  | 'tasks.start'
+  | 'coordination.registerOverseer';
 
 export interface FluxAutomationInvokeBody {
   op: FluxAutomationHttpOp;

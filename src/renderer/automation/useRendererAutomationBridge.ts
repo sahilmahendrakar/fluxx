@@ -15,6 +15,10 @@ import type {
   AutomationBridgeRepoBranchDiscoveryPayload,
   AutomationBridgeRequest,
   AutomationBridgeResponse,
+  AutomationBridgeCoordinationApprovePayload,
+  AutomationBridgeCoordinationRequestReworkPayload,
+  AutomationBridgeCoordinationSubmitHandoffPayload,
+  AutomationBridgeCoordinationTaskResult,
   AutomationBridgeTasksCreatePayload,
   AutomationBridgeTasksDeletePayload,
   AutomationBridgeTasksUpdatePayload,
@@ -279,6 +283,102 @@ async function handleRequest(
         }
         await provider.delete(payload.taskId);
         return { id: req.id, ok: true, data: { deletedId: payload.taskId } };
+      }
+      case 'coordination.submitHandoff': {
+        const payload = req.payload as AutomationBridgeCoordinationSubmitHandoffPayload;
+        if (!payload?.taskId || !payload?.handoff) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'coordination.submitHandoff requires payload.taskId and payload.handoff',
+          };
+        }
+        if (!tasksSnapshot.some((t) => t.id === payload.taskId)) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Task not found or not part of the current project',
+          };
+        }
+        const updated = await provider.update(payload.taskId, {
+          workerHandoff: payload.handoff,
+          overseerReview: null,
+          handoffMergeState: null,
+          status: 'review',
+        });
+        const result: AutomationBridgeCoordinationTaskResult = { task: updated };
+        return { id: req.id, ok: true, data: result };
+      }
+      case 'coordination.approveHandoff': {
+        const payload = req.payload as AutomationBridgeCoordinationApprovePayload;
+        if (!payload?.taskId || !payload?.review) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'coordination.approveHandoff requires payload.taskId and payload.review',
+          };
+        }
+        const existing = tasksSnapshot.find((t) => t.id === payload.taskId);
+        if (!existing) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Task not found or not part of the current project',
+          };
+        }
+        if (!existing.workerHandoff) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Task has no worker handoff to approve',
+          };
+        }
+        const updated = await provider.update(payload.taskId, {
+          overseerReview: payload.review,
+          handoffMergeState: payload.handoffMergeState,
+        });
+        const result: AutomationBridgeCoordinationTaskResult = { task: updated };
+        return { id: req.id, ok: true, data: result };
+      }
+      case 'coordination.requestRework': {
+        const payload = req.payload as AutomationBridgeCoordinationRequestReworkPayload;
+        if (!payload?.taskId || !payload?.review) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'coordination.requestRework requires payload.taskId and payload.review',
+          };
+        }
+        const existing = tasksSnapshot.find((t) => t.id === payload.taskId);
+        if (!existing) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Task not found or not part of the current project',
+          };
+        }
+        if (!existing.workerHandoff) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Task has no worker handoff to send back for rework',
+          };
+        }
+        const updated = await provider.update(payload.taskId, {
+          overseerReview: payload.review,
+          handoffMergeState: payload.handoffMergeState,
+          status: payload.status,
+        });
+        const result: AutomationBridgeCoordinationTaskResult = { task: updated };
+        return { id: req.id, ok: true, data: result };
       }
       case 'members.list': {
         if (project.kind !== 'cloud') {

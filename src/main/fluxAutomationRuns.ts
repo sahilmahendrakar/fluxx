@@ -18,6 +18,9 @@ import type {
   Task,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
+  TaskHandoffMergeState,
+  TaskOverseerReview,
+  TaskWorkerHandoff,
 } from '../types';
 import { parseTaskAttachedPlanningDocsForMcp } from '../taskAttachedPlanningDocs';
 import {
@@ -38,6 +41,13 @@ import type { ProjectStore } from './ProjectStore';
 import type { TaskStore } from './TaskStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './AutomationHttpServer';
+import {
+  automationRunApproveHandoff,
+  automationRunRegisterOverseer,
+  automationRunRequestRework,
+  automationRunSubmitHandoff,
+} from './fluxAutomationCoordination';
+import type { OverseerBindingStore } from './overseerBindingStore';
 
 export type FluxAutomationResolvedActive =
   | { kind: 'none' }
@@ -57,6 +67,7 @@ export type FluxAutomationHost = {
   taskStore: TaskStore;
   projectStore: ProjectStore;
   bindingStore: LocalBindingStore;
+  overseerBindingStore: OverseerBindingStore;
   taskActions: {
     updateTask: (
       id: string,
@@ -77,6 +88,9 @@ export type FluxAutomationHost = {
       > & {
         githubPr?: TaskGithubPr | null;
         attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+        workerHandoff?: TaskWorkerHandoff | null;
+        overseerReview?: TaskOverseerReview | null;
+        handoffMergeState?: TaskHandoffMergeState | null;
       },
     ) => Promise<Task>;
     startTask: (id: string) => Promise<Task>;
@@ -673,6 +687,42 @@ export async function runFluxAutomationInvocation(
       return automationRunProjectInfo(h);
     case 'repo.branchDiscovery':
       return automationRunRepoBranches(h, (payload ?? {}) as { repoId?: string; classifyBranch?: string });
+    case 'coordination.registerOverseer': {
+      const p = (payload ?? {}) as {
+        repoId?: string;
+        sourceBranch?: string;
+        planningSessionId?: string;
+      };
+      if (typeof p.sourceBranch !== 'string') {
+        return { ok: false, error: 'coordination.registerOverseer requires sourceBranch' };
+      }
+      return automationRunRegisterOverseer(h, h.overseerBindingStore, p);
+    }
+    case 'coordination.submitHandoff': {
+      const p = (payload ?? {}) as { taskId?: string; handoff?: unknown; handoffJson?: string };
+      const taskId = p.taskId;
+      if (typeof taskId !== 'string') {
+        return { ok: false, error: 'coordination.submitHandoff requires taskId' };
+      }
+      return automationRunSubmitHandoff(h, { ...p, taskId });
+    }
+    case 'coordination.approveHandoff': {
+      const p = (payload ?? {}) as { taskId?: string; notes?: string };
+      if (typeof p.taskId !== 'string') {
+        return { ok: false, error: 'coordination.approveHandoff requires taskId' };
+      }
+      return automationRunApproveHandoff(h, p);
+    }
+    case 'coordination.requestRework': {
+      const p = (payload ?? {}) as { taskId?: string; instructions?: string; notes?: string };
+      if (typeof p.taskId !== 'string' || typeof p.instructions !== 'string') {
+        return {
+          ok: false,
+          error: 'coordination.requestRework requires taskId and instructions',
+        };
+      }
+      return automationRunRequestRework(h, p);
+    }
     default:
       return { ok: false, error: `Unknown op: ${String(op)}` };
   }

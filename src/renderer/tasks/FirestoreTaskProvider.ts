@@ -12,7 +12,21 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskGithubPr, type TaskStatus } from '../../types';
+import {
+  COLUMNS,
+  type Agent,
+  type Task,
+  type TaskAttachedPlanningDoc,
+  type TaskGithubPr,
+  type TaskHandoffMergeState,
+  type TaskStatus,
+} from '../../types';
+import {
+  overseerReviewToFirestore,
+  parsePersistedTaskOverseerReview,
+  parsePersistedTaskWorkerHandoff,
+  workerHandoffToFirestore,
+} from '../../taskAgentHandoff';
 import { parsePersistedTaskAttachedPlanningDocs, sanitizeTaskAttachedPlanningDocsInput } from '../../taskAttachedPlanningDocs';
 import { parseGithubPrField } from '../../githubPrMetadata';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
@@ -372,6 +386,27 @@ export class FirestoreTaskProvider implements TaskProvider {
         }
       }
     }
+    if (patch.workerHandoff !== undefined) {
+      if (patch.workerHandoff === null) {
+        updates.workerHandoff = deleteField();
+      } else {
+        updates.workerHandoff = workerHandoffToFirestore(patch.workerHandoff);
+      }
+    }
+    if (patch.overseerReview !== undefined) {
+      if (patch.overseerReview === null) {
+        updates.overseerReview = deleteField();
+      } else {
+        updates.overseerReview = overseerReviewToFirestore(patch.overseerReview);
+      }
+    }
+    if (patch.handoffMergeState !== undefined) {
+      if (patch.handoffMergeState === null) {
+        updates.handoffMergeState = deleteField();
+      } else {
+        updates.handoffMergeState = patch.handoffMergeState;
+      }
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
     return toTask(
@@ -436,7 +471,39 @@ function toTask(
     ...parseRepoIdField(data.repoId, primaryRepoId),
     ...parseFluxxWorkBranchField(data.fluxxWorkBranch ?? data.fluxWorkBranch),
     ...parseAttachedPlanningDocsField(data.attachedPlanningDocs),
+    ...parseWorkerHandoffField(data.workerHandoff),
+    ...parseOverseerReviewField(data.overseerReview),
+    ...parseHandoffMergeStateField(data.handoffMergeState),
   };
+}
+
+function parseWorkerHandoffField(
+  val: unknown,
+): { workerHandoff: NonNullable<Task['workerHandoff']> } | Record<string, never> {
+  const parsed = parsePersistedTaskWorkerHandoff(val);
+  return parsed ? { workerHandoff: parsed } : {};
+}
+
+function parseOverseerReviewField(
+  val: unknown,
+): { overseerReview: NonNullable<Task['overseerReview']> } | Record<string, never> {
+  const parsed = parsePersistedTaskOverseerReview(val);
+  return parsed ? { overseerReview: parsed } : {};
+}
+
+const HANDOFF_MERGE_STATES: TaskHandoffMergeState[] = [
+  'pending-merge',
+  'merged',
+  'rework-requested',
+];
+
+function parseHandoffMergeStateField(
+  val: unknown,
+): { handoffMergeState: TaskHandoffMergeState } | Record<string, never> {
+  if (typeof val === 'string' && (HANDOFF_MERGE_STATES as string[]).includes(val)) {
+    return { handoffMergeState: val as TaskHandoffMergeState };
+  }
+  return {};
 }
 
 function parseAttachedPlanningDocsField(
