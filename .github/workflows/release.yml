@@ -32,6 +32,16 @@ jobs:
           node-version: '22'
           cache: pnpm
 
+      # macos-latest may default to Homebrew Python 3.14+, which removed distutils.
+      # node-gyp (node-pty, fs-xattr, macos-alias) still needs distutils via Python ≤3.11.
+      - name: Setup Python for node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Pin PYTHON for native module builds
+        run: echo "PYTHON=${{ env.pythonLocation }}/bin/python" >> "$GITHUB_ENV"
+
       - name: Verify tag matches package version
         run: |
           node - <<'NODE'
