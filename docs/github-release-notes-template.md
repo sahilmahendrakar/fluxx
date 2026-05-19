@@ -1,6 +1,6 @@
 ## Fluxx {{VERSION}}
 
-Download for macOS (Apple Silicon): [Fluxx-{{VERSION}}-arm64.dmg](https://github.com/sahilmahendrakar/fluxx/releases/download/v{{VERSION}}/Fluxx-{{VERSION}}-arm64.dmg)
+Download for macOS (Apple Silicon): [Fluxx.dmg](https://github.com/sahilmahendrakar/fluxx/releases/latest/download/Fluxx.dmg)
 
 Auto-update builds fetch `Fluxx-darwin-arm64-{{VERSION}}.zip` via `latest-mac.yml` on this release.
 

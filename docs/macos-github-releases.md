@@ -8,11 +8,13 @@ Electron Forge / `electron-packager` use `package.json` **`productName`** (`Flux
 
 | Asset | Pattern | Example (v0.1.2, arm64) |
 |-------|---------|-------------------------|
-| DMG (first install) | `{productName}-{version}-{arch}.dmg` | `Fluxx-0.1.2-arm64.dmg` |
+| DMG (first install) | `{productName}.dmg` (stable across releases) | `Fluxx.dmg` |
 | Zip (auto-update) | `{productName}-darwin-{arch}-{version}.zip` | `Fluxx-darwin-arm64-0.1.2.zip` |
 | Updater manifest | `latest-mac.yml` | references the zip basename and checksum |
 
-Legacy releases may still list `Flux-*` assets; new tags after the Fluxx rebrand publish `Fluxx-*` names. Older `fluxx-web` release assets remain on that repo for historical installs; new tags publish to **`sahilmahendrakar/fluxx`**. Marketing download URLs on [fluxx.sh](https://fluxx.sh) may still point at `fluxx-web` until updated separately.
+The DMG uses a fixed basename via `MakerDMG` `name: 'Fluxx'` in `forge.config.ts`, so the latest install link stays stable: `https://github.com/sahilmahendrakar/fluxx/releases/latest/download/Fluxx.dmg`.
+
+Legacy releases may still list versioned `Fluxx-*-arm64.dmg` or `Flux-*` assets. Older **`sahilmahendrakar/fluxx-web`** release assets remain on that repo for historical installs; new tags publish to **`sahilmahendrakar/fluxx`**. Point [fluxx.sh](https://fluxx.sh) download links at the `fluxx` latest URL above.
 
 ## Developer release flow
 
@@ -81,7 +83,7 @@ If you ever need a PAT again (for example, publishing from a different workflow 
 1. In **`sahilmahendrakar/fluxx`**, open **Settings > Secrets and variables > Actions > Repository secrets** and add `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (or legacy `APPLE_PASSWORD`), `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and `APPLE_KEYCHAIN_PASSWORD`.
 2. Make sure GitHub Actions are enabled for `sahilmahendrakar/fluxx`. The release workflow needs **Contents: write** on the default `GITHUB_TOKEN` (configured in `.github/workflows/release.yml`).
 3. Create the next release by running `pnpm version patch` (or `minor` / `major`) and `git push --follow-tags`.
-4. Confirm the tag workflow succeeds and the matching **`sahilmahendrakar/fluxx`** GitHub Release contains `Fluxx-*` DMG and zip assets plus `latest-mac.yml`, with title **Fluxx X.Y.Z**.
+4. Confirm the tag workflow succeeds and the matching **`sahilmahendrakar/fluxx`** GitHub Release contains `Fluxx.dmg`, the versioned zip, and `latest-mac.yml`, with title **Fluxx X.Y.Z**.
 
 ## App runtime
 

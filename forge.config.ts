@@ -237,7 +237,7 @@ const config: ForgeConfig = {
     new MakerZIP({}, ['darwin']),
     new MakerDMG(
       {
-        // Stable basename (no version) for releases/latest/download/Fluxx.dmg on fluxx-web.
+        // Stable basename (no version) for releases/latest/download/Fluxx.dmg on fluxx.
         name: 'Fluxx',
         // electron-installer-dmg resolves relative paths against process.cwd(); Forge often
         // runs makers from out/, so use absolute paths or the background silently won't apply.
