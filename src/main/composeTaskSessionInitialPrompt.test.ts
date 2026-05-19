@@ -36,6 +36,18 @@ describe('composeTaskSessionInitialPrompt', () => {
     expect(await composeTaskSessionInitialPrompt(task, planningDir)).toBe(taskInitialPrompt(task));
   });
 
+  it('appends worker handoff instructions when provided', async () => {
+    const task = baseTask({ description: 'Slice' });
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'flux-plan-'));
+    const planningDir = path.join(dir, 'planning');
+    await mkdir(planningDir, { recursive: true });
+    const got = await composeTaskSessionInitialPrompt(task, planningDir, {
+      workerHandoffInstructions: '## Fluxx handoff block',
+    });
+    expect(got).toContain('## Fluxx handoff block');
+    expect(got.startsWith('Example\n\nSlice')).toBe(true);
+  });
+
   it('appends attached-doc section with path and file URL per attachment', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'flux-plan-'));
     const planningDir = path.join(dir, 'planning');

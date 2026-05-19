@@ -87,6 +87,7 @@ import {
   materializeCursorMcpConfig,
   writeProjectMcpConfigText,
 } from './main/mcpConfig';
+import { materializeCursorWorkerHandoffHooks } from './main/cursorWorkerHandoffHooks';
 import {
   appendConversationParseBuffer,
   parseAgentConversationId,
@@ -95,6 +96,7 @@ import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionReco
 import { OverseerBindingStore } from './main/overseerBindingStore';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
+import { buildTaskAgentWorkerHandoffInstructions } from './taskAgentWorkerHandoffPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
@@ -3312,6 +3314,45 @@ app.whenReady().then(async () => {
 
       await archiveNonRunningSessionsForTask(task.id);
 
+      let ptyEnv: Record<string, string> | undefined;
+      let workerHandoffHooksEnabled = false;
+      const activeKey = appStateStore.get().activeProjectKey;
+      if (fluxAutomationServer && fluxAutomationToken && activeKey) {
+        await fluxAutomationServer.whenReady();
+        const baseUrl = fluxAutomationServer.baseUrl;
+        await writeFluxCliBridgeConfig(projectDirForSession, {
+          url: baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+        });
+        const fluxCliBinDir = resolveFluxCliBinDir();
+        ptyEnv = fluxAutomationPtyEnv({
+          baseUrl,
+          token: fluxAutomationToken,
+          expectedActiveKey: activeKey,
+          fluxCliBinDir,
+        });
+        if (merged.agent === 'cursor') {
+          try {
+            await materializeCursorWorkerHandoffHooks({
+              worktreePath,
+              taskId: task.id,
+              projectDir: projectDirForSession,
+              fluxCliBinDir,
+              fluxElectronExe: app.isPackaged ? process.execPath : undefined,
+            });
+            workerHandoffHooksEnabled = true;
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error('[session:start] cursor worker handoff hook materialization failed', {
+              taskId: task.id,
+              projectId: project.id,
+              message,
+            });
+          }
+        }
+      }
+
       let resumeConversationId: string | undefined;
       if (options?.resume) {
         resumeConversationId = await taskAgentSessionRecordStore.getResumeConversationId(
@@ -3319,6 +3360,10 @@ app.whenReady().then(async () => {
           merged.agent,
         );
       }
+      const workerHandoffInstructions =
+        merged.agent === 'cursor' && ptyEnv
+          ? buildTaskAgentWorkerHandoffInstructions({ taskId: task.id })
+          : undefined;
       const { command, args } = options?.resume
         ? agentSpawnResumeSpec(merged, {
             agentConversationId: resumeConversationId,
@@ -3329,6 +3374,7 @@ app.whenReady().then(async () => {
             await composeTaskSessionInitialPrompt(
               merged,
               resolvePlanningDocsDir() ?? path.join(projectDirForSession, 'planning'),
+              { workerHandoffInstructions },
             ),
             { mcpConfigPath: projectMcpConfig.path },
           );
@@ -3337,6 +3383,7 @@ app.whenReady().then(async () => {
         command,
         args,
         resume: Boolean(options?.resume),
+        workerHandoffHooks: workerHandoffHooksEnabled,
       });
       const trustRoots = projectDirForSession
         ? trustPromptAutorespondRootsForProject(projectDirForSession)
@@ -3346,24 +3393,6 @@ app.whenReady().then(async () => {
         cwdUnderTrustPromptAutorespondRoots(worktreePath, trustRoots)
           ? { trustPromptAutorespond: true as const, trustPromptAutorespondRoots: trustRoots }
           : {};
-
-      let ptyEnv: Record<string, string> | undefined;
-      const activeKey = appStateStore.get().activeProjectKey;
-      if (fluxAutomationServer && fluxAutomationToken && activeKey) {
-        await fluxAutomationServer.whenReady();
-        const baseUrl = fluxAutomationServer.baseUrl;
-        await writeFluxCliBridgeConfig(projectDirForSession, {
-          url: baseUrl,
-          token: fluxAutomationToken,
-          expectedActiveKey: activeKey,
-        });
-        ptyEnv = fluxAutomationPtyEnv({
-          baseUrl,
-          token: fluxAutomationToken,
-          expectedActiveKey: activeKey,
-          fluxCliBinDir: resolveFluxCliBinDir(),
-        });
-      }
 
       const result = await terminalBackend.createSession({
         worktreePath,

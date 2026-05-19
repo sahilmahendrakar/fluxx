@@ -139,15 +139,20 @@ export function formatAttachedPlanningDocsSection(lines: AttachedPlanningDocProm
 export async function composeTaskSessionInitialPrompt(
   task: Task,
   planningDir: string,
+  options?: { workerHandoffInstructions?: string },
 ): Promise<string> {
   const base = taskInitialPrompt(task);
   const raw = task.attachedPlanningDocs;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return base;
+  const handoffBlock = options?.workerHandoffInstructions?.trim();
+  let body = base;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const lines = await collectAttachedPlanningDocPromptLines(raw, planningDir);
+    if (lines.length > 0) {
+      body = `${body}\n\n${formatAttachedPlanningDocsSection(lines)}`;
+    }
   }
-  const lines = await collectAttachedPlanningDocPromptLines(raw, planningDir);
-  if (lines.length === 0) {
-    return base;
+  if (handoffBlock) {
+    body = `${body}\n\n${handoffBlock}`;
   }
-  return `${base}\n\n${formatAttachedPlanningDocsSection(lines)}`;
+  return body;
 }
