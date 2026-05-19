@@ -1,0 +1,50 @@
+src/main/EmailService.ts
+  s_e186d0182998d1::t_0961077e485a3f 9-10,16
+  s_e186d0182998d1::t_ee33c704e93afd 109-110
+src/main/fluxxAppUrl.ts
+  s_e186d0182998d1::t_f41f365b4dc3a0 1-17
+src/main/fluxxDeepLink.ts
+  s_e186d0182998d1::t_11ad59c03cfcf7 1-19,35-58,61,63-91
+  s_e186d0182998d1::t_79d33a3381723c 20-34,59-60,62
+src/main.ts
+  s_e186d0182998d1::t_0de636c54eee96 122-124
+  s_e186d0182998d1::t_9d00c925dfe313 284-290
+  s_e186d0182998d1::t_189c0332481fd7 457-460
+.env.example
+  s_e186d0182998d1::t_f5d72014573fc1 29-31
+src/main/fluxxAppUrl.test.ts
+  s_e186d0182998d1::t_572f36b8e451cc 1-30
+forge.config.ts
+  s_e186d0182998d1::t_2e233504882aa7 198-203
+  s_5483cdcbcbc0d1::t_cb6af1b9bad4d9 240
+  h_e6d0d96fe8d12d 241
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "84c872cf5351cc3141110a3028b5083b26a88f6e",
+  "prompts": {},
+  "humans": {
+    "h_e6d0d96fe8d12d": {
+      "author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_5483cdcbcbc0d1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "89fcc8b6-a708-472b-aae1-34737a7007d7",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    },
+    "s_e186d0182998d1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0dd1dec8-afa4-4ae6-8e81-09867c78491d",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
