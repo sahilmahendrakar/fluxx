@@ -1,0 +1,27 @@
+src/components/ProjectsListView.tsx
+  s_44afe2fdb80c16::t_2bc9de435350d7 443
+  s_44afe2fdb80c16::t_1e8de84b67df2a 442
+  s_44afe2fdb80c16::t_6b6a3e6462897b 468
+  s_44afe2fdb80c16::t_7b2ff753a04833 484
+  s_44afe2fdb80c16::t_7ee3b0da437ea5 457-458
+  s_44afe2fdb80c16::t_a37f53a457d788 522-523,528
+  s_44afe2fdb80c16::t_eef094ea762186 630-633
+  s_44afe2fdb80c16::t_bf9e0a4c88afdc 768
+  s_44afe2fdb80c16::t_aa8d2460071364 629
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "7b1a16b1acad15e097eee179625c8b77e29d3681",
+  "prompts": {},
+  "sessions": {
+    "s_44afe2fdb80c16": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9e6367e5-2040-45eb-8c4d-50b2a0eb9c03",
+        "model": "default"
+      },
+      "human_author": "Sahil Mahendrakar <sahil.mahendrakar@gmail.com>"
+    }
+  }
+}
