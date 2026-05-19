@@ -56,9 +56,15 @@ export function normalizeUtf8Locale(
  *   Agent TUIs honor those over `COLORTERM`, which flattens Claude/Cursor
  *   branding to gray. PTYs in Fluxx are always color-capable, so strip the
  *   no-color hint and explicitly allow color.
+ *
+ * @param opts.termProgram — Override `TERM_PROGRAM`. Agent sessions pass
+ *   `'kitty'` so claude-code parses CSI-u Shift+Enter; user shell PTYs
+ *   should omit this so vim/neovim don't activate the kitty keyboard
+ *   protocol (which xterm.js does not implement).
  */
 export function buildPtyEnv(
   baseEnv: NodeJS.ProcessEnv | Record<string, string>,
+  opts?: { termProgram?: string },
 ): NodeJS.ProcessEnv {
   // Copy so we never mutate the caller's env. Keeps `process.env` intact
   // for any other concurrent spawn.
@@ -67,7 +73,9 @@ export function buildPtyEnv(
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
   env.LANG = normalizeUtf8Locale(baseEnv);
-  env.TERM_PROGRAM = 'kitty';
+  if (opts?.termProgram !== undefined) {
+    env.TERM_PROGRAM = opts.termProgram;
+  }
   env.COLORFGBG = '15;0';
   env.CLICOLOR = '1';
   env.FORCE_COLOR = '3';

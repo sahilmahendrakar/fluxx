@@ -32,22 +32,43 @@ describe('buildPtyEnv', () => {
     const env = buildPtyEnv({});
     expect(env.TERM).toBe('xterm-256color');
     expect(env.COLORTERM).toBe('truecolor');
-    expect(env.TERM_PROGRAM).toBe('kitty');
     expect(env.COLORFGBG).toBe('15;0');
     expect(env.CLICOLOR).toBe('1');
     expect(env.FORCE_COLOR).toBe('3');
     expect(env.LANG).toBe('en_US.UTF-8');
   });
 
-  it('overrides inherited TERM/COLORTERM/TERM_PROGRAM', () => {
+  it('does not set TERM_PROGRAM by default (safe for vim/neovim)', () => {
+    const env = buildPtyEnv({});
+    expect(env.TERM_PROGRAM).toBeUndefined();
+  });
+
+  it('does not set TERM_PROGRAM when base env has one and no override given', () => {
+    const env = buildPtyEnv({ TERM_PROGRAM: 'Apple_Terminal' });
+    // Inherited value is preserved when no explicit override is given.
+    expect(env.TERM_PROGRAM).toBe('Apple_Terminal');
+  });
+
+  it('sets TERM_PROGRAM when opts.termProgram is provided (agent sessions)', () => {
+    const env = buildPtyEnv({}, { termProgram: 'kitty' });
+    expect(env.TERM_PROGRAM).toBe('kitty');
+  });
+
+  it('overrides inherited TERM_PROGRAM when opts.termProgram is provided', () => {
+    const env = buildPtyEnv(
+      { TERM_PROGRAM: 'Apple_Terminal' },
+      { termProgram: 'kitty' },
+    );
+    expect(env.TERM_PROGRAM).toBe('kitty');
+  });
+
+  it('overrides inherited TERM/COLORTERM', () => {
     const env = buildPtyEnv({
       TERM: 'screen-256color',
       COLORTERM: '',
-      TERM_PROGRAM: 'Apple_Terminal',
     });
     expect(env.TERM).toBe('xterm-256color');
     expect(env.COLORTERM).toBe('truecolor');
-    expect(env.TERM_PROGRAM).toBe('kitty');
   });
 
   it('keeps base env values for non-terminal-shape keys', () => {
