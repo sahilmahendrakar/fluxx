@@ -1,12 +1,155 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type { Session } from '../types';
 import {
+  openWorkspacePath,
   pickSessionForTaskWorktree,
   resolveTaskWorktreePath,
 } from './openWorkspacePath';
+
+const { mockSpawn, mockExecFile, mockDiscoverMacEditor } = vi.hoisted(() => ({
+  mockSpawn: vi.fn(),
+  mockExecFile: vi.fn(),
+  mockDiscoverMacEditor: vi.fn(),
+}));
+
+vi.mock('node:child_process', () => ({
+  spawn: mockSpawn,
+  execFile: mockExecFile,
+}));
+
+vi.mock('electron', () => ({
+  shell: { openPath: vi.fn(async () => '') },
+}));
+
+vi.mock('./discoverMacEditor', () => ({
+  discoverMacEditor: mockDiscoverMacEditor,
+}));
+
+function mockSpawnSuccess() {
+  mockSpawn.mockImplementationOnce(() => {
+    const child = new EventEmitter() as EventEmitter & { unref: () => void };
+    child.unref = vi.fn();
+    queueMicrotask(() => child.emit('spawn'));
+    return child;
+  });
+}
+
+function mockSpawnQuickFailure() {
+  mockSpawn.mockImplementationOnce(() => {
+    const child = new EventEmitter() as EventEmitter & { unref: () => void };
+    child.unref = vi.fn();
+    queueMicrotask(() => {
+      child.emit('spawn');
+      child.emit('exit', 1);
+    });
+    return child;
+  });
+}
+
+describe('openWorkspacePath editors', () => {
+  let tmpDir = '';
+  const platform = process.platform;
+
+  beforeEach(async () => {
+    mockSpawn.mockReset();
+    mockExecFile.mockReset();
+    mockDiscoverMacEditor.mockReset();
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-open-wt-'));
+  });
+
+  afterEach(async () => {
+    if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true });
+    Object.defineProperty(process, 'platform', { value: platform });
+    vi.restoreAllMocks();
+  });
+
+  it('uses legacy PATH cursor on macOS without calling discovery', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    vi.spyOn(fs, 'access').mockRejectedValue(new Error('missing'));
+    mockSpawnSuccess();
+
+    const r = await openWorkspacePath(tmpDir, 'cursor');
+    expect(r).toEqual({ ok: true });
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'cursor',
+      [path.resolve(tmpDir)],
+      expect.objectContaining({ detached: true }),
+    );
+    expect(mockDiscoverMacEditor).not.toHaveBeenCalled();
+  });
+
+  it('falls back to discovery when legacy PATH shim exits immediately', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    vi.spyOn(fs, 'access').mockRejectedValue(new Error('missing'));
+    const cliPath = '/Applications/Cursor 2.app/Contents/Resources/app/bin/cursor';
+    mockDiscoverMacEditor.mockResolvedValue({
+      openAppName: 'Cursor 2',
+      cliPath,
+    });
+    mockSpawnQuickFailure();
+    mockSpawnSuccess();
+    mockExecFile.mockImplementation((_cmd, _args, cb) => {
+      (cb as (err: Error) => void)(new Error("Unable to find application named 'Cursor'"));
+    });
+
+    const r = await openWorkspacePath(tmpDir, 'cursor');
+    expect(r).toEqual({ ok: true });
+    expect(mockDiscoverMacEditor).toHaveBeenCalledWith('cursor');
+    expect(mockSpawn).toHaveBeenLastCalledWith(
+      cliPath,
+      [path.resolve(tmpDir)],
+      expect.objectContaining({ detached: true }),
+    );
+  });
+
+  it('falls back to discovery when legacy open -a also fails', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    vi.spyOn(fs, 'access').mockRejectedValue(new Error('missing'));
+    mockDiscoverMacEditor.mockResolvedValue({
+      openAppName: 'Cursor 2',
+      cliPath: '/Applications/Cursor 2.app/Contents/Resources/app/bin/cursor',
+    });
+    mockSpawnQuickFailure();
+    mockSpawnSuccess();
+    mockExecFile.mockImplementation((_cmd, _args, cb) => {
+      (cb as (err: Error) => void)(new Error("Unable to find application named 'Cursor'"));
+    });
+
+    const r = await openWorkspacePath(tmpDir, 'cursor');
+    expect(r).toEqual({ ok: true });
+    expect(mockDiscoverMacEditor).toHaveBeenCalledWith('cursor');
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'open',
+      ['-a', 'Cursor', path.resolve(tmpDir)],
+      expect.any(Function),
+    );
+  });
+
+  it('returns a short message when legacy and discovery both fail for VS Code', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    vi.spyOn(fs, 'access').mockRejectedValue(new Error('missing'));
+    mockSpawn.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & { unref: () => void };
+      child.unref = vi.fn();
+      queueMicrotask(() =>
+        child.emit('error', Object.assign(new Error('ENOENT'), { code: 'ENOENT' })),
+      );
+      return child;
+    });
+    mockExecFile.mockImplementation((_cmd, _args, cb) => {
+      (cb as (err: Error) => void)(new Error("Unable to find application named 'Visual Studio Code'"));
+    });
+    mockDiscoverMacEditor.mockResolvedValue(null);
+
+    const r = await openWorkspacePath(tmpDir, 'vscode');
+    expect(r).toEqual({ error: "VS Code isn't installed." });
+    expect(mockDiscoverMacEditor).toHaveBeenCalledWith('vscode');
+  });
+});
 
 describe('pickSessionForTaskWorktree', () => {
   const mk = (id: string, taskId: string, repoId?: string): Session => ({

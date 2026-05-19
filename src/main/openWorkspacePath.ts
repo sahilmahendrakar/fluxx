@@ -4,9 +4,18 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { shell } from 'electron';
 import type { OpenWorkspaceTarget, Session } from '../types';
+import { discoverMacEditor } from './discoverMacEditor';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 
 const execFile = promisify(execFileCallback);
+
+/** Default install locations tried before PATH / discovery (macOS). */
+const MAC_CURSOR_CLI = '/Applications/Cursor.app/Contents/Resources/app/bin/cursor';
+const MAC_VSCODE_CLI =
+  '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code';
+
+/** If a PATH shim exits immediately, treat it as failure and try discovery. */
+const EDITOR_CLI_QUICK_EXIT_MS = 400;
 
 const OPEN_TARGETS = new Set<OpenWorkspaceTarget>([
   'cursor',
@@ -36,6 +45,15 @@ async function resolveExistingDir(rawPath: string): Promise<{ ok: true; absPath:
   }
 }
 
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function spawnDetached(
   command: string,
   args: string[],
@@ -51,6 +69,7 @@ function spawnDetached(
     const child = spawn(command, args, {
       detached: true,
       stdio: 'ignore',
+      env: process.env,
       shell: options?.shell ?? false,
     });
     child.on('error', (err: NodeJS.ErrnoException) => {
@@ -66,6 +85,66 @@ function spawnDetached(
       finish({ ok: true });
     });
   });
+}
+
+/**
+ * Like {@link spawnDetached}, but fails when the child exits non-zero within
+ * {@link EDITOR_CLI_QUICK_EXIT_MS} (catches ~/.local/bin shims that spawn then exit).
+ */
+function spawnEditorCli(
+  command: string,
+  args: string[],
+): Promise<{ ok: true } | { error: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: { ok: true } | { error: string }) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    });
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      finish({
+        error:
+          err.code === 'ENOENT'
+            ? `Command not found: ${command}`
+            : err.message || String(err),
+      });
+    });
+    child.on('spawn', () => {
+      child.unref();
+      const timer = setTimeout(() => {
+        if (!settled) finish({ ok: true });
+      }, EDITOR_CLI_QUICK_EXIT_MS);
+      child.on('exit', (code) => {
+        clearTimeout(timer);
+        if (settled) return;
+        if (code === 0 || code === null) {
+          finish({ ok: true });
+        } else {
+          finish({ error: `Editor CLI exited with code ${code}` });
+        }
+      });
+    });
+  });
+}
+
+async function spawnFirstEditorCli(
+  commands: string[],
+  args: string[],
+): Promise<{ ok: true } | { error: string }> {
+  let lastError = 'Command not found';
+  for (const command of commands) {
+    const spawnFn = path.isAbsolute(command) ? spawnDetached : spawnEditorCli;
+    const r = await spawnFn(command, args);
+    if ('ok' in r) return r;
+    lastError = r.error;
+  }
+  return { error: lastError };
 }
 
 async function openFileManager(absPath: string): Promise<{ ok: true } | { error: string }> {
@@ -119,30 +198,85 @@ async function openTerminalAt(absPath: string): Promise<{ ok: true } | { error: 
   };
 }
 
+async function openMacApp(appName: string, absPath: string): Promise<{ ok: true } | { error: string }> {
+  try {
+    await execFile('open', ['-a', appName, absPath]);
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: msg };
+  }
+}
+
+async function openMacEditorDiscovered(
+  kind: 'cursor' | 'vscode',
+  absPath: string,
+): Promise<{ ok: true } | { error: string }> {
+  const install = await discoverMacEditor(kind);
+  const label = kind === 'cursor' ? 'Cursor' : 'VS Code';
+  if (!install) {
+    return { error: `${label} isn't installed.` };
+  }
+
+  const cli = await spawnDetached(install.cliPath, [absPath]);
+  if ('ok' in cli) return cli;
+
+  const app = await openMacApp(install.openAppName, absPath);
+  if ('ok' in app) return app;
+
+  return {
+    error: `Couldn't open ${label}. Use File → Open Folder in ${label}.`,
+  };
+}
+
+/** Original macOS open sequence: default .app CLI → PATH → `open -a`. */
+async function openCursorLegacyDarwin(
+  absPath: string,
+): Promise<{ ok: true } | { error: string }> {
+  const commands = ['cursor'];
+  if (await pathExists(MAC_CURSOR_CLI)) {
+    commands.unshift(MAC_CURSOR_CLI);
+  }
+  const cli = await spawnFirstEditorCli(commands, [absPath]);
+  if ('ok' in cli) return cli;
+  return openMacApp('Cursor', absPath);
+}
+
+async function openVscodeLegacyDarwin(
+  absPath: string,
+): Promise<{ ok: true } | { error: string }> {
+  const commands = ['code'];
+  if (await pathExists(MAC_VSCODE_CLI)) {
+    commands.unshift(MAC_VSCODE_CLI);
+  }
+  const cli = await spawnFirstEditorCli(commands, [absPath]);
+  if ('ok' in cli) return cli;
+  return openMacApp('Visual Studio Code', absPath);
+}
+
 async function openVscode(absPath: string): Promise<{ ok: true } | { error: string }> {
-  const r = await spawnDetached('code', [absPath]);
+  if (process.platform === 'darwin') {
+    const legacy = await openVscodeLegacyDarwin(absPath);
+    if ('ok' in legacy) return legacy;
+    return openMacEditorDiscovered('vscode', absPath);
+  }
+  const r = await spawnEditorCli('code', [absPath]);
   if ('ok' in r) return r;
   return {
-    error: `${r.error} Install VS Code and enable the \`code\` shell command (Command Palette: "Shell Command: Install 'code' command in PATH").`,
+    error: "VS Code isn't installed, or the `code` command isn't on your PATH.",
   };
 }
 
 async function openCursor(absPath: string): Promise<{ ok: true } | { error: string }> {
-  const cli = await spawnDetached('cursor', [absPath]);
-  if ('ok' in cli) return cli;
   if (process.platform === 'darwin') {
-    try {
-      await execFile('open', ['-a', 'Cursor', absPath]);
-      return { ok: true };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        error: `Could not open Cursor (${msg}). Install Cursor and add the \`cursor\` CLI to PATH, or install the Cursor app.`,
-      };
-    }
+    const legacy = await openCursorLegacyDarwin(absPath);
+    if ('ok' in legacy) return legacy;
+    return openMacEditorDiscovered('cursor', absPath);
   }
+  const cli = await spawnEditorCli('cursor', [absPath]);
+  if ('ok' in cli) return cli;
   return {
-    error: `${cli.error} Install Cursor and add the \`cursor\` CLI to PATH.`,
+    error: "Cursor isn't installed, or the `cursor` command isn't on your PATH.",
   };
 }
 
