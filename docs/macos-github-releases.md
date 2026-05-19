@@ -42,7 +42,7 @@ pnpm run publish
 
 After Forge uploads assets, CI sets the GitHub release **title** to `Fluxx X.Y.Z` and the **body** from `docs/github-release-notes-template.md` (substituting `{{VERSION}}`). Edit that template before tagging when you want curated release notes instead of an empty Highlights section.
 
-The workflow runs in **`sahilmahendrakar/fluxx`**, and Forge publishes to the same repository. The workflow grants the default `GITHUB_TOKEN` **Contents: write** so `electron-forge publish` and `gh release edit` can create and update releases in-repo. No cross-repo PAT is required.
+The workflow runs in **`sahilmahendrakar/fluxx`**, and Forge publishes to the same repository. The workflow grants the default `GITHUB_TOKEN` **Contents: write** and passes it into the publish step as `GITHUB_TOKEN` (required by `@electron-forge/publisher-github`). `gh release edit` uses the same token. No cross-repo PAT is required.
 
 ## Release assets
 

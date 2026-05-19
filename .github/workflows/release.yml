@@ -104,6 +104,8 @@ jobs:
 
       - name: Build, sign, notarize, and publish
         env:
+          # Forge publisher-github reads GITHUB_TOKEN (Actions provides this for in-repo releases).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
