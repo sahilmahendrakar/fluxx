@@ -24,7 +24,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const inline = (name: string): [string, string] => [
     `process.env.${name}`,
-    JSON.stringify(env[name] ?? ''),
+    // Fall back to process.env so CI can inject secrets without writing a .env file.
+    JSON.stringify(env[name] ?? process.env[name] ?? ''),
   ];
   return {
     plugins: [copyAppIconPngToMainOut()],

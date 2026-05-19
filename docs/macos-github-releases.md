@@ -70,6 +70,24 @@ Add these repository secrets in **`sahilmahendrakar/fluxx`** under **Settings > 
 | `APPLE_CERTIFICATE_PASSWORD` | Signing on GitHub-hosted macOS | Password for the `.p12` certificate. Required when `APPLE_CERTIFICATE_BASE64` is set. |
 | `APPLE_KEYCHAIN_PASSWORD` | Signing on GitHub-hosted macOS | Temporary CI keychain password. Required when `APPLE_CERTIFICATE_BASE64` is set. |
 
+### App build secrets (same names as local `.env`)
+
+Release builds inline these at compile time (renderer `VITE_*`, main process via `vite.main.config.ts`). Copy each value from your local `.env` into a GitHub secret with the **same name** — do not commit `.env`.
+
+| Secret | Required for |
+|--------|----------------|
+| `VITE_FIREBASE_API_KEY` | Firebase auth + Firestore in packaged app |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Firebase |
+| `VITE_FIREBASE_PROJECT_ID` | Firebase |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Firebase config parity with local `.env` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Firebase config parity with local `.env` |
+| `VITE_FIREBASE_APP_ID` | Firebase |
+| `VITE_GOOGLE_DESKTOP_CLIENT_ID` | Google sign-in (main process) |
+| `VITE_GOOGLE_DESKTOP_CLIENT_SECRET` | Google sign-in (main process) |
+| `RESEND_API_KEY` | Invite / transactional email (main process) |
+| `RESEND_FROM_DOMAIN` | Resend From domain |
+| `RESEND_FROM_NAME` | Resend From display name |
+
 Do not configure `CSC_LINK` or `CSC_KEY_PASSWORD` for this workflow. Those are electron-builder-style secrets, and this Forge/electron-packager signing path does not read them. The workflow imports the Developer ID certificate into a temporary macOS keychain so `osxSign: {}` can discover it normally.
 
 ### Deprecated: `RELEASE_GITHUB_TOKEN`
