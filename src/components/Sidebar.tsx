@@ -353,31 +353,34 @@ function TaskWorkspaceSidebarList({
         const expanded = !collapsedRepoIds.has(group.repoId);
         return (
           <section key={group.repoId} aria-label={group.label}>
-            <button
-              type="button"
-              onClick={() => toggleRepoSection(group.repoId)}
-              aria-expanded={expanded}
-              title={group.label}
-              className={[
-                'group flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left transition-colors',
-                'text-[12px] font-semibold text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100',
-                index === 0 ? 'mt-0.5' : 'mt-2',
-              ].join(' ')}
-            >
-              <ChevronWorkspacesIcon
-                expanded={expanded}
-                className="text-zinc-500 transition-colors group-hover:text-zinc-200"
-              />
-              <FolderGit2
-                className="h-3.5 w-3.5 shrink-0 text-emerald-400/90 opacity-80"
-                strokeWidth={2}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate">{group.label}</span>
-            </button>
-            {expanded ? (
-              <div className="mt-0.5 flex flex-col gap-0.5">{group.items.map(renderItem)}</div>
-            ) : null}
+            <div className={['ml-2', index === 0 ? 'mt-0.5' : 'mt-2'].join(' ')}>
+              <button
+                type="button"
+                onClick={() => toggleRepoSection(group.repoId)}
+                aria-expanded={expanded}
+                title={group.label}
+                className={[
+                  'group flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left transition-colors',
+                  'text-[12px] font-semibold text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100',
+                ].join(' ')}
+              >
+                <ChevronWorkspacesIcon
+                  expanded={expanded}
+                  className="text-zinc-500 transition-colors group-hover:text-zinc-200"
+                />
+                <FolderGit2
+                  className="h-3.5 w-3.5 shrink-0 text-emerald-400/90 opacity-80"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate">{group.label}</span>
+              </button>
+              {expanded ? (
+                <div className="ml-2 mt-0.5 flex flex-col gap-0.5 border-l border-white/[0.06] pl-2">
+                  {group.items.map(renderItem)}
+                </div>
+              ) : null}
+            </div>
           </section>
         );
       })}
