@@ -14,13 +14,21 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function macGithubUpdatesEligible(): boolean {
+export function macGithubUpdatesEligible(): boolean {
   return (
     process.platform === 'darwin' &&
     app.isPackaged &&
     process.env.FLUX_DISABLE_GITHUB_UPDATES !== '1'
   );
 }
+
+export type AppUpdaterHandle = {
+  isEligible: () => boolean;
+  getState: () => AppUpdateState;
+  /** Same path as IPC `app:updates:check`. */
+  triggerCheck: () => Promise<void>;
+  subscribe: (listener: (state: AppUpdateState) => void) => () => void;
+};
 
 function createInitialUpdateState(): AppUpdateState {
   if (process.platform !== 'darwin') {
@@ -52,8 +60,9 @@ function releaseNotesFromUpdateInfo(info: {
  * Registers IPC and starts periodic checks on eligible macOS builds.
  * Safe on all platforms; ineligible builds stay in static unsupported/development states.
  */
-export function registerAppUpdater(): void {
+export function registerAppUpdater(): AppUpdaterHandle {
   let state: AppUpdateState = createInitialUpdateState();
+  const stateListeners = new Set<(state: AppUpdateState) => void>();
 
   let feedConfigured = false;
   let listenersAttached = false;
@@ -77,6 +86,9 @@ export function registerAppUpdater(): void {
   function setState(next: AppUpdateState): void {
     state = next;
     broadcast();
+    for (const listener of stateListeners) {
+      listener(state);
+    }
   }
 
   function configureFeed(): void {
@@ -287,4 +299,17 @@ export function registerAppUpdater(): void {
       startInterval();
     });
   }
+
+  return {
+    isEligible: macGithubUpdatesEligible,
+    getState: () => state,
+    triggerCheck: runCheck,
+    subscribe: (listener) => {
+      stateListeners.add(listener);
+      listener(state);
+      return () => {
+        stateListeners.delete(listener);
+      };
+    },
+  };
 }
