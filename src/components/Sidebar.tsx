@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { FolderGit2 } from 'lucide-react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
+import { workspaceSessionStatusDotClass } from '../taskStatusDot';
 import type { SidebarSessionLayout } from '../sidebarSessionGroups';
 import {
   readCollapsedRepoIdsForProject,
@@ -226,6 +227,7 @@ function MinimizeWorkspaceIcon({ className }: { className?: string }) {
 function WorkspaceSidebarRow({
   session,
   title,
+  taskStatus,
   active,
   onOpenSession,
   onMinimizeSession,
@@ -233,6 +235,7 @@ function WorkspaceSidebarRow({
 }: {
   session: SessionTabMeta['session'];
   title: string;
+  taskStatus?: SessionTabMeta['taskStatus'];
   active: boolean;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
@@ -257,7 +260,7 @@ function WorkspaceSidebarRow({
         <span
           className={[
             'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-            running ? 'bg-emerald-400' : 'bg-zinc-600',
+            workspaceSessionStatusDotClass(taskStatus, running),
           ].join(' ')}
           aria-hidden
         />
@@ -331,11 +334,12 @@ function TaskWorkspaceSidebarList({
     });
   };
 
-  const renderItem = ({ session, title }: SessionTabMeta) => (
+  const renderItem = ({ session, title, taskStatus }: SessionTabMeta) => (
     <WorkspaceSidebarRow
       key={session.id}
       session={session}
       title={title}
+      taskStatus={taskStatus}
       active={activeTabId === session.id && !settingsRouteActive}
       onOpenSession={onOpenSession}
       onMinimizeSession={onMinimizeSession}

@@ -1,8 +1,10 @@
-import type { Session, Task } from '../types';
+import type { Session, Task, TaskStatus } from '../types';
+import { workspaceSessionStatusDotClass } from '../taskStatusDot';
 
 export interface SessionTabMeta {
   session: Session;
   title: string;
+  taskStatus?: TaskStatus;
 }
 
 export interface PlanningTabMeta {
@@ -29,7 +31,11 @@ export function buildSessionTabs(
 ): SessionTabMeta[] {
   return openSessions.map((session) => {
     const task = tasks.find((t) => t.id === session.taskId);
-    return { session, title: task?.title ?? 'Session' };
+    return {
+      session,
+      title: task?.title ?? 'Session',
+      taskStatus: task?.status,
+    };
   });
 }
 
@@ -90,7 +96,7 @@ export function TabBar({
       {openSessions.length > 0 ? (
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}
-      {openSessions.map(({ session, title }) => {
+      {openSessions.map(({ session, title, taskStatus }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
         const running = session.status === 'running';
         return (
@@ -103,7 +109,7 @@ export function TabBar({
               <span
                 className={[
                   'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  running ? 'bg-emerald-400' : 'bg-zinc-600',
+                  workspaceSessionStatusDotClass(taskStatus, running),
                 ].join(' ')}
                 aria-hidden
               />

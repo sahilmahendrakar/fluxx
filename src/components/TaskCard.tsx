@@ -26,6 +26,7 @@ import {
 } from '../unblockAutostart';
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
+import { TASK_STATUS_DOT as STATUS_DOT } from '../taskStatusDot';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
 
@@ -199,14 +200,6 @@ function TaskCardAssigneeFooter({
     </>
   );
 }
-
-const STATUS_DOT: Record<Task['status'], string> = {
-  'in-progress': 'bg-emerald-400/80',
-  'needs-input': 'bg-amber-400/80',
-  review: 'bg-sky-400/85',
-  backlog: 'bg-zinc-600',
-  done: 'bg-zinc-600',
-};
 
 interface Props {
   task: Task;
