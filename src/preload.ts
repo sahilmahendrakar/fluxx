@@ -218,6 +218,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setAutoMoveToReviewWhenPrOpen', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getTmuxAvailability: () =>
+      ipcRenderer.invoke('project:getTmuxAvailability') as Promise<
+        import('./types').TmuxAvailability
+      >,
+    getPersistTerminalsWithTmux: () =>
+      ipcRenderer.invoke('project:getPersistTerminalsWithTmux') as Promise<boolean>,
+    setPersistTerminalsWithTmux: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setPersistTerminalsWithTmux', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
+  },
+  terminal: {
+    inventorySnapshot: () =>
+      ipcRenderer.invoke('terminal:inventorySnapshot') as Promise<
+        import('./types').TerminalInventorySnapshot
+      >,
   },
   projects: {
     listLocal: () =>

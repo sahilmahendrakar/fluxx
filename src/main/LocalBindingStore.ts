@@ -122,6 +122,9 @@ function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): vo
   if (typeof v.autoMoveToReviewWhenPrOpen === 'boolean') {
     binding.autoMoveToReviewWhenPrOpen = v.autoMoveToReviewWhenPrOpen;
   }
+  if (typeof v.persistTerminalsWithTmux === 'boolean') {
+    binding.persistTerminalsWithTmux = v.persistTerminalsWithTmux;
+  }
   if (typeof v.autoDeleteTaskWhenDone === 'boolean') {
     binding.autoDeleteTaskWhenDone = v.autoDeleteTaskWhenDone;
   }
@@ -205,6 +208,7 @@ export class LocalBindingStore {
       autoCleanupWorkspaceWhenDone: boolean;
       autoMarkDoneWhenPrMerged: boolean;
       autoMoveToReviewWhenPrOpen: boolean;
+      persistTerminalsWithTmux: boolean;
     }>,
   ): Promise<void> {
     const existing = this.bindings[projectId];
@@ -256,6 +260,9 @@ export class LocalBindingStore {
     }
     if (prefs.autoMoveToReviewWhenPrOpen !== undefined) {
       existing.autoMoveToReviewWhenPrOpen = prefs.autoMoveToReviewWhenPrOpen;
+    }
+    if (prefs.persistTerminalsWithTmux !== undefined) {
+      existing.persistTerminalsWithTmux = prefs.persistTerminalsWithTmux;
     }
     await this.save();
   }

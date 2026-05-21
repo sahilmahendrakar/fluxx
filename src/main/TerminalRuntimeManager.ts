@@ -137,6 +137,7 @@ export interface TerminalRuntimeManagerOptions {
   /** Optional hooks for local task-store updates (see main-process terminal backend wiring). */
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
+  onShellExit?: (shell: Shell) => void;
   onPlanningExit?: (session: PlanningSession) => void;
   /** Raw PTY bytes for task agent sessions (conversation id capture, etc.). */
   onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
@@ -155,6 +156,7 @@ export class TerminalRuntimeManager {
   private readonly deliverStreamFrame: (frame: StreamFrame) => void;
   private readonly onAgentState?: (sessionId: string, state: AgentState) => void;
   private readonly onSessionExit?: (session: Session) => void;
+  private readonly onShellExit?: (shell: Shell) => void;
   private readonly onPlanningExit?: (session: PlanningSession) => void;
   private readonly onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
   private readonly onPlanningPtyData?: (payload: PlanningPtyDataPayload) => void;
@@ -163,6 +165,7 @@ export class TerminalRuntimeManager {
     this.deliverStreamFrame = opts.deliverStreamFrame ?? deliverTerminalStreamFrameToRenderers;
     this.onAgentState = opts.onAgentState;
     this.onSessionExit = opts.onSessionExit;
+    this.onShellExit = opts.onShellExit;
     this.onPlanningExit = opts.onPlanningExit;
     this.onSessionPtyData = opts.onSessionPtyData;
     this.onPlanningPtyData = opts.onPlanningPtyData;
@@ -174,6 +177,9 @@ export class TerminalRuntimeManager {
     }
     if (frame.kind === 'session-exit') {
       this.onSessionExit?.(frame.session);
+    }
+    if (frame.kind === 'shell-exit') {
+      this.onShellExit?.(frame.shell);
     }
     if (frame.kind === 'planning-exit') {
       this.onPlanningExit?.(frame.session);
