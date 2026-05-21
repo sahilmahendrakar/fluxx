@@ -161,7 +161,7 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_DOMAIN: ${{ secrets.RESEND_FROM_DOMAIN }}
           RESEND_FROM_NAME: ${{ secrets.RESEND_FROM_NAME }}
-        run: pnpm run publish
+        run: pnpm run publish:mac-dual
 
       - name: Apply Fluxx release title and notes
         env:

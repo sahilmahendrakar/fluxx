@@ -1,8 +1,4 @@
-import type {
-  ForgeConfig,
-  ForgeMakeResult,
-  ForgePackagerOptions,
-} from '@electron-forge/shared-types';
+import type { ForgeConfig, ForgePackagerOptions } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -13,11 +9,14 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  darwinDmgBasename,
+  postMakeWriteLatestMacYml,
+} from './src/build/macReleaseArtifacts';
 import { assertPackagedFluxCliContract } from './src/main/packagedFluxCliContract';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
@@ -27,88 +26,6 @@ const appleAppSpecificPassword =
 const shouldSignAndNotarize = Boolean(
   process.env.APPLE_ID && appleAppSpecificPassword && process.env.APPLE_TEAM_ID,
 );
-
-/** Zips produced by `@electron-forge/maker-zip` for Darwin (electron-updater needs these + `latest-mac.yml`). */
-function isDarwinMakerZipArtifact(artifactPath: string): boolean {
-  const n = artifactPath.split(path.sep).join('/');
-  return n.endsWith('.zip') && n.includes('/zip/darwin/');
-}
-
-async function summarizeZipForUpdaterMacYaml(zipPath: string): Promise<{
-  basename: string;
-  sha512: string;
-  size: number;
-}> {
-  const buf = await fsp.readFile(zipPath);
-  const sha512 = createHash('sha512').update(buf).digest('base64');
-  const stat = await fsp.stat(zipPath);
-  return { basename: path.basename(zipPath), sha512, size: stat.size };
-}
-
-/**
- * `electron-updater` GitHub provider reads `latest-mac.yml` from the **latest** release assets (see
- * electron-updater `GitHubProvider`). Forge’s zip maker doesn’t emit it, so we add it next to the
- * Darwin zip(s) before publish uploads them.
- */
-async function postMakeWriteLatestMacYml(
-  makeResults: ForgeMakeResult[],
-): Promise<ForgeMakeResult[]> {
-  const darwinZips = Array.from(
-    new Set(
-      makeResults.flatMap((r) =>
-        r.platform === 'darwin'
-          ? r.artifacts.filter(isDarwinMakerZipArtifact)
-          : [],
-      ),
-    ),
-  );
-  if (darwinZips.length === 0) {
-    return makeResults;
-  }
-
-  const withVersion = makeResults.find(
-    (r) =>
-      typeof (r.packageJSON as { version?: unknown } | undefined)?.version ===
-      'string',
-  );
-  const version =
-    (withVersion?.packageJSON as { version?: string } | undefined)?.version;
-  if (!version) return makeResults;
-
-  const summaries = [];
-  for (const z of darwinZips.sort((a, b) => path.basename(a).localeCompare(path.basename(b)))) {
-    summaries.push(await summarizeZipForUpdaterMacYaml(z));
-  }
-  const primary =
-    summaries.find((s) => s.basename.includes('arm64')) ?? summaries[0];
-  const releaseDate = new Date().toISOString();
-
-  let filesYaml = '';
-  for (const s of summaries) {
-    filesYaml += `  - url: ${s.basename}\n    sha512: ${s.sha512}\n    size: ${s.size}\n`;
-  }
-
-  const ymlBody =
-    `version: ${version}\n` +
-    `files:\n` +
-    `${filesYaml}` +
-    `path: ${primary.basename}\n` +
-    `sha512: ${primary.sha512}\n` +
-    `releaseDate: '${releaseDate}'\n`;
-
-  const ymlPath = path.join(path.dirname(darwinZips[0]), 'latest-mac.yml');
-  await fsp.writeFile(ymlPath, ymlBody, 'utf8');
-
-  const attachTo = makeResults.find(
-    (r) =>
-      r.platform === 'darwin' && r.artifacts.some(isDarwinMakerZipArtifact),
-  );
-  if (attachTo && !attachTo.artifacts.includes(ymlPath)) {
-    attachTo.artifacts.push(ymlPath);
-  }
-
-  return makeResults;
-}
 
 const dmgBackground = path.resolve(__dirname, 'assets', 'dmg_background3.png');
 const dmgIcon = path.resolve(__dirname, 'assets', 'app-icon.icns');
@@ -140,6 +57,8 @@ function packagerIgnore(file: string): boolean {
   if (file.startsWith('/.vite')) return false;
   if (file === '/node_modules') return false;
   if (file.startsWith('/node_modules/node-pty')) return false;
+  // node-pty's binding.gyp requires node-addon-api at electron-packager rebuild time (x64 cross-build).
+  if (file.startsWith('/node_modules/node-addon-api')) return false;
   return true;
 }
 
@@ -236,9 +155,9 @@ const config: ForgeConfig = {
     new MakerSquirrel({}),
     new MakerZIP({}, ['darwin']),
     new MakerDMG(
-      {
-        // Stable basename (no version) for releases/latest/download/Fluxx.dmg on fluxx.
-        name: 'Fluxx',
+      (targetArch) => ({
+        // Stable per-arch basenames (no version): Fluxx-arm64.dmg, Fluxx-x64.dmg
+        name: darwinDmgBasename(targetArch),
         // electron-installer-dmg resolves relative paths against process.cwd(); Forge often
         // runs makers from out/, so use absolute paths or the background silently won't apply.
         // appdmg: if `<basename>@2x.png` sits next to the background PNG, it runs tiffutil → TIFF;
@@ -247,7 +166,7 @@ const config: ForgeConfig = {
         background: dmgBackground,
         format: 'ULFO',
         contents: dmgContents,
-      },
+      }),
       ['darwin'],
     ),
     new MakerRpm({}),

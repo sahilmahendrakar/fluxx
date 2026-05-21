@@ -11,7 +11,9 @@
     "start:aux": "FLUX_AUX_DEV_SERVER_PORT=5180 electron-forge start -- --user-data-dir=.flux-test-userdata",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "make:mac-dual": "electron-forge make --arch=arm64,x64",
     "publish": "electron-forge publish",
+    "publish:mac-dual": "electron-forge publish --arch=arm64,x64",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run",
     "postinstall": "electron-rebuild -f -w node-pty && node scripts/rebuild-dmg-native-deps.cjs"
