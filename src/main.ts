@@ -213,6 +213,7 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
+import { installMacApplicationMenu } from './main/macApplicationMenu';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
   buildCreatePrInstructionsMarkdown,
@@ -883,7 +884,8 @@ app.whenReady().then(async () => {
     worktreeService.setProjectDir('');
   }
 
-  registerAppUpdater();
+  const appUpdater = registerAppUpdater();
+  installMacApplicationMenu(appUpdater);
 
   function parseActiveProjectKeyPayload(raw: unknown): ActiveProjectKey | null {
     if (!raw || typeof raw !== 'object') return null;
