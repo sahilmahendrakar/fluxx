@@ -38,6 +38,7 @@ import {
   DEFAULT_AUTO_RESPOND_TO_TRUST_PROMPTS,
   DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS,
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
+  DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
 } from '../cloudBindingPrefs';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
 import type { ProjectPlanningDefaultsInput } from '../projectCreate';
@@ -64,6 +65,7 @@ export interface ConfigFile {
   autoCleanupWorkspaceWhenDone: boolean;
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
+  persistTerminalsWithTmux?: boolean;
   repos: RepoConfig[];
 }
 
@@ -117,6 +119,7 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     autoCleanupWorkspaceWhenDone: c.autoCleanupWorkspaceWhenDone === true,
     autoMarkDoneWhenPrMerged: c.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: c.autoMoveToReviewWhenPrOpen === true,
+    persistTerminalsWithTmux: c.persistTerminalsWithTmux === true,
     repos: c.repos,
   };
   if (c.planningModels && Object.keys(c.planningModels).length > 0) {
@@ -284,6 +287,7 @@ function parseConfig(raw: string): ConfigFile | null {
       (p as { autoDeleteTaskWhenDone?: boolean }).autoDeleteTaskWhenDone === true,
     autoMarkDoneWhenPrMerged: p.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: p.autoMoveToReviewWhenPrOpen === true,
+    persistTerminalsWithTmux: p.persistTerminalsWithTmux === true,
     repos,
     ...(planningModels ? { planningModels } : {}),
     ...(py === true ? { planningAgentYolo: true } : {}),
@@ -803,6 +807,33 @@ export class ProjectStore {
     return next.autoMoveToReviewWhenPrOpen;
   }
 
+  async getPersistTerminalsWithTmuxAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.persistTerminalsWithTmux === true;
+  }
+
+  async setPersistTerminalsWithTmuxAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      persistTerminalsWithTmux: enabled === true,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return next.persistTerminalsWithTmux === true;
+  }
+
   private async mutateConfig(
     fn: (c: ConfigFile) => ConfigFile,
   ): Promise<void> {
@@ -935,6 +966,7 @@ export class ProjectStore {
             defaults.autoMarkDoneWhenPrMerged ?? DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
           autoMoveToReviewWhenPrOpen:
             defaults.autoMoveToReviewWhenPrOpen ?? DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+          persistTerminalsWithTmux: DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
           repos,
           ...(defaults.planningModels && Object.keys(defaults.planningModels).length > 0
             ? { planningModels: defaults.planningModels }
@@ -1154,6 +1186,7 @@ export class ProjectStore {
         autoCleanupWorkspaceWhenDone: DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE,
         autoMarkDoneWhenPrMerged: DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED,
         autoMoveToReviewWhenPrOpen: DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+        persistTerminalsWithTmux: DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
         repos: [
           {
             id: primaryRepoId,

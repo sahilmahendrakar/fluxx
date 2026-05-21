@@ -17,6 +17,7 @@ export type TerminalSilenceSnapshotReason = 'poll';
 export interface TerminalSessionLifecycleHooks {
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
+  onShellExit?: (shell: Shell) => void;
   onPlanningExit?: (session: PlanningSession) => void;
   onSilenceStatesSnapshot?: (
     states: { id: string; taskId?: string; state: AgentState }[],

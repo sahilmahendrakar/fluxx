@@ -30,6 +30,8 @@ export const DEFAULT_AUTO_START_WHEN_UNBLOCKED = false;
 export const DEFAULT_AUTO_CLEANUP_WORKSPACE_WHEN_DONE = false;
 export const DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED = true;
 export const DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN = true;
+/** Local tmux persistence is opt-in; see `docs/tmux-terminal-persistence-plan.md`. */
+export const DEFAULT_PERSIST_TERMINALS_WITH_TMUX = false;
 
 function automationPref(value: boolean | undefined, whenUnset: boolean): boolean {
   return typeof value === 'boolean' ? value : whenUnset;
@@ -48,6 +50,7 @@ export interface ResolvedCloudBindingPrefs {
   autoCleanupWorkspaceWhenDone: boolean;
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
+  persistTerminalsWithTmux: boolean;
 }
 
 function isAgent(value: unknown): value is Agent {
@@ -97,6 +100,10 @@ export function resolvedPrefsFromBinding(
     autoMoveToReviewWhenPrOpen: automationPref(
       binding?.autoMoveToReviewWhenPrOpen,
       DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
+    ),
+    persistTerminalsWithTmux: automationPref(
+      binding?.persistTerminalsWithTmux,
+      DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
     ),
   };
 }

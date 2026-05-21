@@ -17,6 +17,7 @@ function localStub(id: string, addedAt: string): LocalProject {
     autoCleanupWorkspaceWhenDone: false,
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
+    persistTerminalsWithTmux: false,
     repos: [],
   };
 }

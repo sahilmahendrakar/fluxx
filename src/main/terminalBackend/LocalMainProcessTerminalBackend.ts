@@ -66,6 +66,10 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
         opts.onSessionExit?.(session);
         this.hooks?.onSessionExit?.(session);
       },
+      onShellExit: (shell) => {
+        opts.onShellExit?.(shell);
+        this.hooks?.onShellExit?.(shell);
+      },
       onPlanningExit: (session) => {
         opts.onPlanningExit?.(session);
         this.hooks?.onPlanningExit?.(session);

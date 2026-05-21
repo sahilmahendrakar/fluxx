@@ -22,6 +22,7 @@ describe('resolvedPrefsFromBinding', () => {
     expect(prefs.autoCleanupWorkspaceWhenDone).toBe(false);
     expect(prefs.autoMarkDoneWhenPrMerged).toBe(DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED);
     expect(prefs.autoMoveToReviewWhenPrOpen).toBe(DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN);
+    expect(prefs.persistTerminalsWithTmux).toBe(false);
   });
 
   it('respects explicit false and true on the binding', () => {

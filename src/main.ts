@@ -93,6 +93,9 @@ import {
 } from './main/agentConversationIdParse';
 import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
+import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
+import { buildTerminalInventorySnapshot } from './main/terminalInventory';
+import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
@@ -187,7 +190,13 @@ import type {
   SessionStartResult,
   Task,
   PlanningAgentSessionRecord,
+  PlanningSession,
+  Shell,
   TaskAgentSessionRecord,
+  TerminalEndedReason,
+  TerminalInventorySnapshot,
+  TerminalSessionRecord,
+  TmuxAvailability,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskPullRequestIpcResult,
@@ -561,6 +570,50 @@ app.whenReady().then(async () => {
   const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
     getProjectDir: () => worktreeService.getProjectDir(),
   });
+  const terminalSessionRecordStore = new TerminalSessionRecordStore({
+    getProjectDir: () => worktreeService.getProjectDir(),
+  });
+
+  async function buildTerminalInventorySnapshotForActiveProject(): Promise<TerminalInventorySnapshot> {
+    const sessions = await terminalBackend.listSessions();
+    const planning = await terminalBackend.listPlanning();
+    const sessionById = new Map(sessions.map((s) => [s.id, s]));
+    const shells: Shell[] = [];
+    for (const s of sessions) {
+      const forSession = await terminalBackend.listShells(s.id);
+      shells.push(...forSession);
+    }
+    const persistedOpen = await terminalSessionRecordStore.listOpenRecords();
+    return buildTerminalInventorySnapshot(
+      { sessions, planning, shells, sessionById },
+      persistedOpen,
+      worktreeService.getProjectDir() || null,
+    );
+  }
+
+  function mapSessionExitToTerminalReason(
+    session: Session,
+    quitTeardown: boolean,
+  ): TerminalEndedReason {
+    if (quitTeardown) return 'app-quit';
+    return session.status === 'stopped' ? 'agent-exit-ok' : 'agent-exit-error';
+  }
+
+  function mapPlanningExitToTerminalReason(
+    session: PlanningSession,
+    quitTeardown: boolean,
+  ): TerminalEndedReason {
+    if (quitTeardown) return 'app-quit';
+    return session.status === 'stopped' ? 'agent-exit-ok' : 'agent-exit-error';
+  }
+
+  function mapShellExitToTerminalReason(
+    shell: Shell,
+    quitTeardown: boolean,
+  ): TerminalEndedReason {
+    if (quitTeardown) return 'app-quit';
+    return shell.status === 'stopped' ? 'shell-exit-ok' : 'shell-exit-error';
+  }
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
 
@@ -583,11 +636,13 @@ app.whenReady().then(async () => {
   terminalBackend.setSessionPtyDataHook?.((payload) => {
     captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
       void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+      void terminalSessionRecordStore.mergeTaskConversationId(payload.sessionId, parsed);
     });
   });
   terminalBackend.setPlanningPtyDataHook?.((payload) => {
     captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
       void planningAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+      void terminalSessionRecordStore.mergePlanningConversationId(payload.sessionId, parsed);
     });
   });
 
@@ -646,6 +701,10 @@ app.whenReady().then(async () => {
           ? ('agent-exit-ok' as const)
           : ('agent-exit-error' as const);
       void taskAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      void terminalSessionRecordStore.markTerminalEnded(session.id, {
+        reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
+        endedAt: session.stoppedAt,
+      });
       conversationParseTails.delete(session.id);
       conversationCaptured.delete(session.id);
 
@@ -671,6 +730,12 @@ app.whenReady().then(async () => {
         });
       }
     },
+    onShellExit: (shell) => {
+      void terminalSessionRecordStore.markTerminalEnded(shell.id, {
+        reason: mapShellExitToTerminalReason(shell, terminalQuitTeardownInProgress),
+        endedAt: shell.stoppedAt,
+      });
+    },
     onPlanningExit: (session) => {
       const endReason = terminalQuitTeardownInProgress
         ? ('app-quit' as const)
@@ -678,6 +743,10 @@ app.whenReady().then(async () => {
           ? ('agent-exit-ok' as const)
           : ('agent-exit-error' as const);
       void planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      void terminalSessionRecordStore.markTerminalEnded(session.id, {
+        reason: mapPlanningExitToTerminalReason(session, terminalQuitTeardownInProgress),
+        endedAt: session.stoppedAt,
+      });
       conversationParseTails.delete(session.id);
       conversationCaptured.delete(session.id);
     },
@@ -1680,6 +1749,51 @@ app.whenReady().then(async () => {
         return { error: message };
       }
     },
+  );
+  ipcMain.handle('project:getTmuxAvailability', async (): Promise<TmuxAvailability> =>
+    probeTmuxAvailability(),
+  );
+  ipcMain.handle('project:getPersistTerminalsWithTmux', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).persistTerminalsWithTmux;
+    }
+    return projectStore.getPersistTerminalsWithTmuxAt(activeProjectDir());
+  });
+  ipcMain.handle(
+    'project:setPersistTerminalsWithTmux',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        if (enabled === true) {
+          const availability = await probeTmuxAvailability();
+          if (!availability.available) {
+            return { error: tmuxUnavailableSaveError(availability) };
+          }
+        }
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            persistTerminalsWithTmux: enabled === true,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).persistTerminalsWithTmux,
+          };
+        }
+        const next = await projectStore.setPersistTerminalsWithTmuxAt(
+          activeProjectDir(),
+          enabled,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle(
+    'terminal:inventorySnapshot',
+    async (): Promise<TerminalInventorySnapshot> => buildTerminalInventorySnapshotForActiveProject(),
   );
   ipcMain.handle('project:getAutoMarkDoneWhenPrMerged', async () => {
     const key = appStateStore.get().activeProjectKey;
@@ -3416,6 +3530,7 @@ app.whenReady().then(async () => {
       }
       sessionTaskMap.set(result.id, task.id);
       void taskAgentSessionRecordStore.markReplacedSessions(merged.id, result.id);
+      void terminalSessionRecordStore.markReplacedTaskSessions(merged.id, result.id);
       const sourceBranchShort = (merged.sourceBranch ?? '').trim() || undefined;
       const row: TaskAgentSessionRecord = {
         fluxxSessionId: result.id,
@@ -3429,6 +3544,29 @@ app.whenReady().then(async () => {
         startedAt: result.startedAt,
       };
       void taskAgentSessionRecordStore.recordSessionStart(row);
+      const terminalRow: TerminalSessionRecord = {
+        id: result.id,
+        kind: 'task',
+        runtime: 'node-pty',
+        projectId: project.id,
+        ...(sessionRepoCfg.id != null && sessionRepoCfg.id.length > 0
+          ? { repoId: sessionRepoCfg.id }
+          : {}),
+        cwd: worktreePath,
+        command,
+        args,
+        cols: 80,
+        rows: 24,
+        startedAt: result.startedAt,
+        task: {
+          taskId: merged.id,
+          agent: merged.agent,
+          worktreePath,
+          fluxxWorkBranch: branch,
+          ...(sourceBranchShort ? { sourceBranchShort } : {}),
+        },
+      };
+      void terminalSessionRecordStore.recordTerminalStart(terminalRow);
       const priorFw = (merged.fluxxWorkBranch ?? '').trim();
       if (priorFw !== branch) {
         if (project.kind === 'local') {
@@ -3834,6 +3972,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:archive', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
     await terminalBackend.closeShellsForSession(sessionId);
+    void terminalSessionRecordStore.markTerminalEnded(sessionId, { reason: 'user-archived' });
     await terminalBackend.stopSession(sessionId);
   });
 
@@ -3846,6 +3985,7 @@ app.whenReady().then(async () => {
       gitRootForDaemonSession,
     );
     await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(sessionId);
+    void terminalSessionRecordStore.markWorkspaceDeleted(sessionId);
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
@@ -4184,8 +4324,10 @@ app.whenReady().then(async () => {
           await terminalBackend.stopPlanning(resumeFromSessionId);
         }
         void planningAgentSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
+        void terminalSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
       }
       void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
+      void terminalSessionRecordStore.markReplacedPlanningSessions(project.id, result.id);
       const planningRow: PlanningAgentSessionRecord = {
         fluxxSessionId: result.id,
         projectId: project.id,
@@ -4196,6 +4338,25 @@ app.whenReady().then(async () => {
         ...(spawnYolo ? { agentYolo: true } : {}),
       };
       void planningAgentSessionRecordStore.recordSessionStart(planningRow);
+      const planningTerminalRow: TerminalSessionRecord = {
+        id: result.id,
+        kind: 'planning',
+        runtime: 'node-pty',
+        projectId: project.id,
+        cwd: planningDir,
+        command,
+        args,
+        cols: 80,
+        rows: 24,
+        startedAt: result.startedAt,
+        planning: {
+          agent: planningAgent,
+          planningDir,
+          ...(spawnModel ? { agentModel: spawnModel } : {}),
+          ...(spawnYolo ? { agentYolo: true } : {}),
+        },
+      };
+      void terminalSessionRecordStore.recordTerminalStart(planningTerminalRow);
       return result;
     },
   );
@@ -4214,6 +4375,7 @@ app.whenReady().then(async () => {
         },
         { reason: 'user-archived' },
       );
+      void terminalSessionRecordStore.markTerminalEnded(sessionId, { reason: 'user-archived' });
       conversationParseTails.delete(sessionId);
       conversationCaptured.delete(sessionId);
       await terminalBackend.stopPlanning(sessionId);
@@ -4234,6 +4396,7 @@ app.whenReady().then(async () => {
       },
       { reason: 'user-archived' },
     );
+    void terminalSessionRecordStore.markTerminalEnded(sessionId, { reason: 'user-archived' });
   });
 
   ipcMain.handle('planning:get', async (_e, sessionId: string) => {
@@ -4547,15 +4710,37 @@ app.whenReady().then(async () => {
     if (!session) {
       throw new Error(`No session for id: ${sessionId}`);
     }
-    return terminalBackend.createShell({
+    const shell = await terminalBackend.createShell({
       sessionId: session.id,
       worktreePath: session.worktreePath,
       cols: 80,
       rows: 24,
     });
+    const sh = process.platform === 'win32'
+      ? { command: process.env.COMSPEC ?? 'cmd.exe', args: [] as string[] }
+      : { command: process.env.SHELL ?? '/bin/bash', args: ['-l'] as string[] };
+    const shellTerminalRow: TerminalSessionRecord = {
+      id: shell.id,
+      kind: 'shell',
+      runtime: 'node-pty',
+      projectId: session.projectId,
+      cwd: session.worktreePath,
+      command: sh.command,
+      args: sh.args,
+      cols: 80,
+      rows: 24,
+      startedAt: shell.startedAt,
+      shell: {
+        parentSessionId: session.id,
+        worktreePath: session.worktreePath,
+      },
+    };
+    void terminalSessionRecordStore.recordTerminalStart(shellTerminalRow);
+    return shell;
   });
 
   ipcMain.handle('shell:close', async (_e, shellId: string) => {
+    void terminalSessionRecordStore.markTerminalEnded(shellId, { reason: 'user-stopped' });
     await terminalBackend.closeShell(shellId);
   });
 

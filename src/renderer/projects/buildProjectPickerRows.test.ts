@@ -21,6 +21,7 @@ function localStub(overrides: Partial<LocalProject> & { id: string; name: string
     autoCleanupWorkspaceWhenDone: false,
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
+    persistTerminalsWithTmux: false,
     repos: [{ id: 'r1', rootPath: '/tmp/app', baseBranch: 'main' }],
     ...overrides,
   };
