@@ -124,11 +124,21 @@ export function agentSpawnResumeSpec(
  * @param agentModel — For `claude-code`, non-empty → `--model`; for `cursor`, passed to
  *   `--model` (default `auto` when blank). Ignored for `codex`.
  */
-export function planningSpawnSpec(
+export type PlanningSpawnResumeOptions = {
+  agentConversationId?: string;
+};
+
+/**
+ * Planning PTY resume argv: same model / yolo flags as {@link planningSpawnSpec}, then
+ * `--resume` or `--resume <id>` when captured from PTY output.
+ */
+export function planningSpawnResumeSpec(
   agent: Agent,
   agentModel?: string,
   agentYolo?: boolean,
+  options: PlanningSpawnResumeOptions = {},
 ): { command: string; args: string[] } {
+  const resumeId = options.agentConversationId?.trim();
   switch (agent) {
     case 'claude-code': {
       const model = (agentModel ?? '').trim();
@@ -139,18 +149,66 @@ export function planningSpawnSpec(
       if (agentYolo === true) {
         args.push('--dangerously-skip-permissions');
       }
+      if (resumeId) {
+        args.push('--resume', resumeId);
+      } else {
+        args.push('--resume');
+      }
       return { command: 'claude', args };
     }
     case 'codex':
-      return {
-        command: 'codex',
-        args: [],
-      };
+      return { command: 'codex', args: ['--resume'] };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
       const args: string[] = ['--model', model];
       if (agentYolo === true) {
         args.push('--yolo');
+      }
+      if (resumeId) {
+        args.push('--resume', resumeId);
+      } else {
+        args.push('--resume');
+      }
+      return { command: 'agent', args };
+    }
+  }
+}
+
+export function planningSpawnSpec(
+  agent: Agent,
+  agentModel?: string,
+  agentYolo?: boolean,
+  initialPrompt?: string,
+): { command: string; args: string[] } {
+  const prompt = (initialPrompt ?? '').trim();
+  switch (agent) {
+    case 'claude-code': {
+      const model = (agentModel ?? '').trim();
+      const args: string[] = [];
+      if (model) {
+        args.push('--model', model);
+      }
+      if (agentYolo === true) {
+        args.push('--dangerously-skip-permissions');
+      }
+      if (prompt) {
+        args.push(prompt);
+      }
+      return { command: 'claude', args };
+    }
+    case 'codex':
+      return {
+        command: 'codex',
+        args: prompt ? [prompt] : [],
+      };
+    case 'cursor': {
+      const model = (agentModel ?? '').trim() || 'auto';
+      const args: string[] = ['--model', model, '--approve-mcps'];
+      if (agentYolo === true) {
+        args.push('--yolo');
+      }
+      if (prompt) {
+        args.push(prompt);
       }
       return {
         command: 'agent',

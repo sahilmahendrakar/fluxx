@@ -1,5 +1,5 @@
 import type { PlanningSession, Session, Shell } from '../../types';
-import type { SessionPtyDataPayload } from '../TerminalRuntimeManager';
+import type { PlanningPtyDataPayload, SessionPtyDataPayload } from '../TerminalRuntimeManager';
 import type {
   AgentState,
   AttachResult,
@@ -17,6 +17,7 @@ export type TerminalSilenceSnapshotReason = 'poll';
 export interface TerminalSessionLifecycleHooks {
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
+  onPlanningExit?: (session: PlanningSession) => void;
   onSilenceStatesSnapshot?: (
     states: { id: string; taskId?: string; state: AgentState }[],
     meta: { reason: TerminalSilenceSnapshotReason },
@@ -51,6 +52,12 @@ export interface TerminalBackend {
    * Detached / remote backends omit this hook.
    */
   setSessionPtyDataHook?(hook: ((payload: SessionPtyDataPayload) => void) | null): void;
+
+  /**
+   * Local in-process PTYs only: stream raw planning-session PTY bytes (conversation id capture).
+   * Detached / remote backends omit this hook.
+   */
+  setPlanningPtyDataHook?(hook: ((payload: PlanningPtyDataPayload) => void) | null): void;
 
   /** Low-frequency silence reconciliation when {@link TerminalSessionLifecycleHooks.onSilenceStatesSnapshot} is set. */
   startSilenceSnapshotPolling(): void;

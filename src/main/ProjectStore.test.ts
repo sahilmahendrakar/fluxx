@@ -497,6 +497,159 @@ describe('ProjectStore repo-id operations', () => {
   });
 });
 
+describe('ProjectStore.createFromInput (name-first local)', () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-create-input-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  async function touchGitRepo(dir: string): Promise<void> {
+    await fs.mkdir(path.join(dir, '.git'), { recursive: true });
+  }
+
+  it('reloads zero-repo config without synthesizing a repository from rootPath', async () => {
+    const store = new ProjectStore(tmp);
+    const { projectDir } = await store.createFromInput({
+      projectId: '00000000-0000-4000-8000-000000000002',
+      name: 'Empty reload',
+      repos: [],
+    });
+
+    const reopened = new ProjectStore(tmp);
+    await reopened.init(projectDir);
+    const project = reopened.get();
+    if (!project) throw new Error('expected project');
+    expect(project.repos).toEqual([]);
+  });
+
+  it('creates a zero-repo project with planning layout and empty repos', async () => {
+    const store = new ProjectStore(tmp);
+    const { project, projectDir } = await store.createFromInput({
+      projectId: '00000000-0000-4000-8000-000000000001',
+      name: 'Planning only',
+      repos: [],
+    });
+
+    expect(project.name).toBe('Planning only');
+    expect(project.repos).toEqual([]);
+    expect(path.resolve(project.rootPath)).toBe(path.resolve(projectDir));
+    expect(projectDir).toBe(path.join(tmp, 'projects', '00000000-0000-4000-8000-000000000001'));
+
+    const onDisk = JSON.parse(
+      await fs.readFile(path.join(projectDir, 'config.json'), 'utf8'),
+    ) as { repos: unknown[]; name: string };
+    expect(onDisk.repos).toEqual([]);
+    expect(onDisk.name).toBe('Planning only');
+    await expect(fs.stat(path.join(projectDir, 'planning', 'CLAUDE.md'))).resolves.toBeTruthy();
+  });
+
+  it('creates a multi-repo project with primary first and stable ids', async () => {
+    const rootA = path.join(tmp, 'repo-a');
+    const rootB = path.join(tmp, 'repo-b');
+    await fs.mkdir(rootA, { recursive: true });
+    await fs.mkdir(rootB, { recursive: true });
+    await touchGitRepo(rootA);
+    await touchGitRepo(rootB);
+
+    const projectId = stableLocalProjectIdForRoot(rootA);
+    const primaryRepoId = deriveStablePrimaryRepoIdForProject({
+      projectId,
+      rootPath: rootA,
+    });
+
+    const store = new ProjectStore(tmp);
+    const { project, projectDir } = await store.createFromInput({
+      projectId,
+      name: 'Dual',
+      repos: [
+        { id: primaryRepoId, name: 'A', rootPath: rootA, baseBranch: 'main' },
+        { id: 'secondary-id', name: 'B', rootPath: rootB, baseBranch: 'develop' },
+      ],
+    });
+
+    expect(project.repos).toHaveLength(2);
+    expect(project.repos[0].rootPath).toBe(path.resolve(rootA));
+    expect(project.repos[0].id).toBe(primaryRepoId);
+    expect(project.rootPath).toBe(path.resolve(rootA));
+    expect(projectDir).toBe(path.join(tmp, 'projects', projectId));
+  });
+
+  it('rejects duplicate repos via addRepoAt after create', async () => {
+    const rootA = path.join(tmp, 'solo');
+    await fs.mkdir(rootA, { recursive: true });
+    await touchGitRepo(rootA);
+
+    const store = new ProjectStore(tmp);
+    const { projectDir } = await store.createFromInput({
+      projectId: stableLocalProjectIdForRoot(rootA),
+      name: 'Solo',
+      repos: [
+        {
+          id: deriveStablePrimaryRepoIdForProject({
+            projectId: stableLocalProjectIdForRoot(rootA),
+            rootPath: rootA,
+          }),
+          name: 'solo',
+          rootPath: rootA,
+          baseBranch: 'main',
+        },
+      ],
+    });
+
+    await expect(store.addRepoAt(projectDir, rootA)).rejects.toThrow(/already part of this project/);
+  });
+
+  it('adds the first repo to a zero-repo project and updates rootPath', async () => {
+    const store = new ProjectStore(tmp);
+    const { projectDir } = await store.createFromInput({
+      projectId: '00000000-0000-4000-8000-000000000099',
+      name: 'Empty then repo',
+      repos: [],
+    });
+
+    const rootA = path.join(tmp, 'later-repo');
+    await fs.mkdir(rootA, { recursive: true });
+    await touchGitRepo(rootA);
+
+    const repos = await store.addRepoAt(projectDir, rootA);
+    expect(repos).toHaveLength(1);
+    expect(repos[0].rootPath).toBe(path.resolve(rootA));
+
+    const onDisk = JSON.parse(
+      await fs.readFile(path.join(projectDir, 'config.json'), 'utf8'),
+    ) as { rootPath: string; repos: Array<{ rootPath: string }> };
+    expect(onDisk.rootPath).toBe(path.resolve(rootA));
+    expect(onDisk.repos).toHaveLength(1);
+  });
+
+  it('legacy folder-first create still activates via ensureLayoutForRoot', async () => {
+    const rootA = path.join(tmp, 'legacy-root');
+    await fs.mkdir(rootA, { recursive: true });
+    await touchGitRepo(rootA);
+
+    const store = new ProjectStore(tmp);
+    const { project, projectDir } = await store.create(rootA);
+    expect(project.name).toBe('legacy-root');
+    expect(project.repos).toHaveLength(1);
+
+    const reopened = new ProjectStore(tmp);
+    await reopened.init(projectDir);
+    const loaded = reopened.get();
+    if (!loaded) throw new Error('expected project');
+    const { projectDir: materialised } = await reopened.ensureLayoutForLocalProject(
+      loaded,
+      projectDir,
+    );
+    expect(materialised).toBe(projectDir);
+    expect(loaded.repos[0].rootPath).toBe(path.resolve(rootA));
+  });
+});
+
 describe('ProjectStore.listMaterializationDirsForProjectId', () => {
   let tmp: string;
 

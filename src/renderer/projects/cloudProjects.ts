@@ -16,7 +16,14 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import type { CloudSharedRepo } from '../../types';
+import { parseFirestoreRepos } from '../../cloudFirestoreRepoParse';
+import {
+  buildCloudSharedReposAtCreate,
+  type CloudProjectCreateRepoInput,
+} from '../../cloudProjectCreate';
 import { getFirebaseFirestore } from '../firebase';
+
+export type { CloudProjectCreateRepoInput };
 
 /**
  * A cloud project as seen in the renderer projects list (before activation).
@@ -54,32 +61,6 @@ export function subscribeToCloudProjects(
       onError?.(err);
     },
   );
-}
-
-function parseFirestoreRepos(raw: unknown): CloudSharedRepo[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out: CloudSharedRepo[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const o = item as Record<string, unknown>;
-    if (
-      typeof o.id !== 'string' ||
-      typeof o.name !== 'string' ||
-      typeof o.baseBranch !== 'string'
-    ) {
-      continue;
-    }
-    const repo: CloudSharedRepo = {
-      id: o.id,
-      name: o.name,
-      baseBranch: o.baseBranch,
-    };
-    if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
-      repo.remoteUrl = o.remoteUrl.trim();
-    }
-    out.push(repo);
-  }
-  return out.length > 0 ? out : undefined;
 }
 
 function toCloudProjectSummary(
@@ -128,12 +109,20 @@ export async function mergeMemberPhotoURL(
   );
 }
 
+export interface CreateCloudProjectOptions {
+  displayName?: string;
+  email?: string;
+  photoURL?: string | null;
+  /** Local git roots selected during creation; persisted as shared `repos` + machine bindings. */
+  repos?: CloudProjectCreateRepoInput[];
+  /** Resolved root path for the primary repo when multiple `repos` are provided. */
+  primaryRootPath?: string;
+}
+
 export async function createCloudProject(
   uid: string,
   name: string,
-  displayName?: string,
-  email?: string,
-  photoURL?: string | null,
+  options?: CreateCloudProjectOptions,
 ): Promise<CloudProjectSummary> {
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Project name required.');
@@ -146,22 +135,36 @@ export async function createCloudProject(
     memberIds: [uid],
     createdAt: serverTimestamp(),
   });
-  // Also write a members/{uid} doc with display metadata.
   const ownerPhoto =
-    photoURL != null && String(photoURL).trim() !== '' ? String(photoURL).trim() : null;
+    options?.photoURL != null && String(options.photoURL).trim() !== ''
+      ? String(options.photoURL).trim()
+      : null;
   await setDoc(doc(db, 'projects', ref.id, 'members', uid), {
     role: 'owner',
     joinedAt: serverTimestamp(),
-    displayName: displayName ?? '',
-    email: email ?? '',
+    displayName: options?.displayName ?? '',
+    email: options?.email ?? '',
     photoURL: ownerPhoto,
   });
+
+  let repos: CloudSharedRepo[] | undefined;
+  if (options?.repos && options.repos.length > 0) {
+    const built = buildCloudSharedReposAtCreate(
+      ref.id,
+      options.repos,
+      options.primaryRootPath,
+    );
+    repos = built.repos;
+    await updateDoc(doc(db, 'projects', ref.id), { repos: built.repos });
+  }
+
   return {
     id: ref.id,
     name: trimmed,
     ownerId: uid,
     memberIds: [uid],
     createdAt: new Date().toISOString(),
+    ...(repos ? { repos } : {}),
   };
 }
 

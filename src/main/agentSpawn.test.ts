@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '../types';
-import { agentSpawnResumeSpec, agentSpawnSpec, planningSpawnSpec } from './agentSpawn';
+import {
+  agentSpawnResumeSpec,
+  agentSpawnSpec,
+  planningSpawnResumeSpec,
+  planningSpawnSpec,
+} from './agentSpawn';
 
 function task(overrides: Pick<Task, 'agent'> & Partial<Task>): Task {
   return {
@@ -26,11 +31,17 @@ describe('planningSpawnSpec', () => {
     expect(args).not.toContain('--append-system-prompt');
   });
 
-  it('cursor omits approve-mcps and mcp wiring', () => {
+  it('cursor includes approve-mcps for MCP servers', () => {
     const { command, args } = planningSpawnSpec('cursor', '', false);
     expect(command).toBe('agent');
-    expect(args).toEqual(['--model', 'auto']);
-    expect(args).not.toContain('--approve-mcps');
+    expect(args).toEqual(['--model', 'auto', '--approve-mcps']);
+  });
+
+  it('passes optional initial prompt for planning agents', () => {
+    expect(planningSpawnSpec('claude-code', '', false, 'init')).toEqual({
+      command: 'claude',
+      args: ['init'],
+    });
   });
 
   it('cursor passes yolo when enabled', () => {
@@ -80,6 +91,45 @@ describe('agentSpawnSpec MCP args', () => {
       command: 'agent',
       args: ['--model', 'auto', '--approve-mcps', '--resume'],
     });
+  });
+});
+
+describe('planningSpawnResumeSpec', () => {
+  it('uses bare --resume when id omitted', () => {
+    const { command, args } = planningSpawnResumeSpec('claude-code', 'sonnet', true);
+    expect(command).toBe('claude');
+    expect(args).toEqual([
+      '--model',
+      'sonnet',
+      '--dangerously-skip-permissions',
+      '--resume',
+    ]);
+  });
+
+  it('passes conversation id for Claude and Cursor', () => {
+    expect(
+      planningSpawnResumeSpec('claude-code', '', false, {
+        agentConversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      }).args,
+    ).toEqual(['--resume', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']);
+
+    const cursor = planningSpawnResumeSpec('cursor', 'gpt-5', true, {
+      agentConversationId: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff',
+    });
+    expect(cursor.command).toBe('agent');
+    expect(cursor.args).toContain('--model');
+    expect(cursor.args).toContain('gpt-5');
+    expect(cursor.args).toContain('--yolo');
+    const i = cursor.args.indexOf('--resume');
+    expect(cursor.args[i + 1]).toBe('bbbbbbbb-cccc-dddd-eeee-ffffffffffff');
+  });
+
+  it('ignores conversation id for codex', () => {
+    expect(
+      planningSpawnResumeSpec('codex', undefined, undefined, {
+        agentConversationId: 'ignored',
+      }),
+    ).toEqual({ command: 'codex', args: ['--resume'] });
   });
 });
 

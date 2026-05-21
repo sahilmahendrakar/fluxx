@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { useAppUpdates } from '../renderer/useAppUpdates';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
-import type { SessionTabMeta } from './TabBar';
+import type { SidebarSessionLayout } from '../sidebarSessionGroups';
 
 interface AppShellProps {
   children: ReactNode;
@@ -30,7 +30,7 @@ interface AppShellProps {
   planningDocsListError: string | null;
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
-  sessions: SessionTabMeta[];
+  sessionLayout: SidebarSessionLayout;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
@@ -77,7 +77,7 @@ export function AppShell({
   planningDocsListError,
   selectedPlanningDocPath,
   onSelectPlanningDoc,
-  sessions,
+  sessionLayout,
   onOpenSession,
   onMinimizeSession,
   onDeleteWorkspace,
@@ -105,7 +105,7 @@ export function AppShell({
           planningDocsListError={planningDocsListError}
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={onSelectPlanningDoc}
-          sessions={sessions}
+          sessionLayout={sessionLayout}
           onOpenSession={onOpenSession}
           onMinimizeSession={onMinimizeSession}
           onDeleteWorkspace={onDeleteWorkspace}

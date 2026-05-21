@@ -1,8 +1,11 @@
 ## Fluxx {{VERSION}}
 
-Download for macOS (Apple Silicon): [Fluxx-{{VERSION}}-arm64.dmg](https://github.com/sahilmahendrakar/fluxx-web/releases/download/v{{VERSION}}/Fluxx-{{VERSION}}-arm64.dmg)
+Download for macOS:
 
-Auto-update builds fetch `Fluxx-darwin-arm64-{{VERSION}}.zip` via `latest-mac.yml` on this release.
+- **Apple Silicon (M1/M2/M3/M4):** [Fluxx-arm64.dmg](https://github.com/sahilmahendrakar/fluxx/releases/latest/download/Fluxx-arm64.dmg)
+- **Intel Mac:** [Fluxx-x64.dmg](https://github.com/sahilmahendrakar/fluxx/releases/latest/download/Fluxx-x64.dmg)
+
+Auto-update builds fetch the matching `Fluxx-darwin-{arch}-{{VERSION}}.zip` via `latest-mac.yml` on this release (Apple Silicon installs use the arm64 zip).
 
 ### Highlights
 
@@ -10,6 +13,6 @@ Auto-update builds fetch `Fluxx-darwin-arm64-{{VERSION}}.zip` via `latest-mac.ym
 
 ### Install
 
-1. Download and open the DMG.
+1. Download the DMG for your Mac’s chip (Apple Silicon or Intel).
 2. Drag **Fluxx** to Applications.
 3. Launch from Applications; approve in System Settings if macOS prompts.

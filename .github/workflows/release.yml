@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -32,6 +32,16 @@ jobs:
           node-version: '22'
           cache: pnpm
 
+      # macos-latest may default to Homebrew Python 3.14+, which removed distutils.
+      # node-gyp (node-pty, fs-xattr, macos-alias) still needs distutils via Python ≤3.11.
+      - name: Setup Python for node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Pin PYTHON for native module builds
+        run: echo "PYTHON=${{ env.pythonLocation }}/bin/python" >> "$GITHUB_ENV"
+
       - name: Verify tag matches package version
         run: |
           node - <<'NODE'
@@ -46,29 +56,50 @@ jobs:
 
       - name: Validate release secrets
         env:
-          RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_DOMAIN: ${{ secrets.RESEND_FROM_DOMAIN }}
+          RESEND_FROM_NAME: ${{ secrets.RESEND_FROM_NAME }}
         run: |
           missing=0
           require_secret() {
             if [ -z "${!1}" ]; then
-              echo "::error::$1 must be configured for signed and notarized macOS releases."
+              echo "::error::$1 must be configured for release builds."
               missing=1
             fi
           }
 
-          require_secret RELEASE_GITHUB_TOKEN
           require_secret APPLE_ID
           require_secret APPLE_PASSWORD
           require_secret APPLE_TEAM_ID
           require_secret APPLE_CERTIFICATE_BASE64
           require_secret APPLE_CERTIFICATE_PASSWORD
           require_secret APPLE_KEYCHAIN_PASSWORD
+
+          require_secret VITE_FIREBASE_API_KEY
+          require_secret VITE_FIREBASE_AUTH_DOMAIN
+          require_secret VITE_FIREBASE_PROJECT_ID
+          require_secret VITE_FIREBASE_STORAGE_BUCKET
+          require_secret VITE_FIREBASE_MESSAGING_SENDER_ID
+          require_secret VITE_FIREBASE_APP_ID
+          require_secret VITE_GOOGLE_DESKTOP_CLIENT_ID
+          require_secret VITE_GOOGLE_DESKTOP_CLIENT_SECRET
+          require_secret RESEND_API_KEY
+          require_secret RESEND_FROM_DOMAIN
+          require_secret RESEND_FROM_NAME
 
           exit "$missing"
 
@@ -94,23 +125,52 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Write .env for Vite production build
+        run: |
+          cat > .env <<'ENVFILE'
+          VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID=${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET=${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_DOMAIN=${{ secrets.RESEND_FROM_DOMAIN }}
+          RESEND_FROM_NAME=${{ secrets.RESEND_FROM_NAME }}
+          ENVFILE
+
       - name: Build, sign, notarize, and publish
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          # Forge publisher-github reads GITHUB_TOKEN (Actions provides this for in-repo releases).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm run publish
+          # Inlined into renderer (VITE_*) and main-process bundles at build time (see vite.main.config.ts).
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_DOMAIN: ${{ secrets.RESEND_FROM_DOMAIN }}
+          RESEND_FROM_NAME: ${{ secrets.RESEND_FROM_NAME }}
+        run: pnpm run publish:mac-dual
 
       - name: Apply Fluxx release title and notes
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          RELEASE_REPO="sahilmahendrakar/fluxx-web"
           NOTES="$(sed "s/{{VERSION}}/${VERSION}/g" docs/github-release-notes-template.md)"
           gh release edit "$GITHUB_REF_NAME" \
-            --repo "$RELEASE_REPO" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
             --title "Fluxx ${VERSION}" \
             --notes "$NOTES"

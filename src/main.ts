@@ -6,6 +6,20 @@ import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
 import { ProjectStore } from './main/ProjectStore';
 import {
+  getPlanningInitStatus,
+  planningDocsAreInitialized,
+  setPlanningInitStatus,
+  shouldShowPlanningInitCallout,
+  writeOnboardingPending,
+} from './main/projectOnboarding';
+import {
+  normalizeProjectCreateInput,
+  validateLocalProjectCreateInput,
+  type ProjectCreateInput,
+  type ProjectCreateResult,
+  type ProjectCreateWizardPayload,
+} from './projectCreate';
+import {
   effectiveTaskRepoId,
   nextPersistedRepoIdAfterPatch,
   persistedRepoIdsEqual,
@@ -29,11 +43,14 @@ import {
 } from './main/fluxAutomationBridge';
 import { AppStateStore } from './main/AppStateStore';
 import { repoConfigsFromCloudSharedAndBinding } from './cloudRepoDiskSync';
+import { parseFirestoreRepos } from './cloudFirestoreRepoParse';
+import { isCloudShellRootPath } from './cloudProjectActivation';
 import { hydrateCloudProject } from './cloudBindingPrefs';
 import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
+import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
@@ -42,6 +59,10 @@ import {
   trustPromptAutorespondRootsForProject,
 } from './main/trustPromptAutorespondRoots';
 import { removeFluxxOwnedLocalState } from './main/projectFluxxRemoval';
+import {
+  buildPickerLastOpenedAtMap,
+  touchPickerProjectLastOpened,
+} from './main/projectPickerLastOpened';
 import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
@@ -53,8 +74,13 @@ import {
   agentNotFoundMessage,
   agentSpawnResumeSpec,
   agentSpawnSpec,
+  planningSpawnResumeSpec,
   planningSpawnSpec,
 } from './main/agentSpawn';
+import {
+  mergePlanningSessionsWithColdResume,
+  parsePlanningStartPayload,
+} from './main/planningColdRestore';
 import {
   addProjectMcpServersText,
   ensureProjectMcpConfig,
@@ -65,6 +91,7 @@ import {
   appendConversationParseBuffer,
   parseAgentConversationId,
 } from './main/agentConversationIdParse';
+import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
@@ -91,6 +118,10 @@ import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAut
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
+import {
+  installFluxxDeepLinkEventHandlers,
+  registerFluxxProtocolClient,
+} from './main/fluxxDeepLink';
 import {
   createPlanningDocsWatcher,
   notifyPlanningDocsChanged,
@@ -155,6 +186,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  PlanningAgentSessionRecord,
   TaskAgentSessionRecord,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
@@ -205,23 +237,6 @@ function isPlanningAgent(value: unknown): value is Agent {
   return value === 'claude-code' || value === 'codex' || value === 'cursor';
 }
 
-function parsePlanningStartPayload(payload: unknown): {
-  agent: Agent;
-  agentModel?: string;
-  agentYolo?: boolean;
-} | null {
-  if (isPlanningAgent(payload)) {
-    return { agent: payload };
-  }
-  if (!payload || typeof payload !== 'object') return null;
-  const o = payload as { agent?: unknown; agentModel?: unknown; agentYolo?: unknown };
-  if (!isPlanningAgent(o.agent)) return null;
-  const agentModel =
-    typeof o.agentModel === 'string' ? o.agentModel : undefined;
-  const agentYolo = typeof o.agentYolo === 'boolean' ? o.agentYolo : undefined;
-  return { agent: o.agent, agentModel, agentYolo };
-}
-
 function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch | null {
   if (!payload || typeof payload !== 'object') return null;
   const o = payload as Record<string, unknown>;
@@ -264,6 +279,13 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  registerFluxxProtocolClient();
 }
 
 function errnoCode(err: unknown): string | undefined {
@@ -432,6 +454,10 @@ function resolveWindowIconPath(): string | undefined {
 
 let mainWindow: BrowserWindow | null = null;
 
+if (gotSingleInstanceLock) {
+  installFluxxDeepLinkEventHandlers(() => mainWindow);
+}
+
 let fluxAutomationServer: AutomationHttpServer | null = null;
 let fluxAutomationHostDeps: FluxAutomationHostDeps | null = null;
 let fluxAutomationToken: string | null = null;
@@ -532,17 +558,37 @@ app.whenReady().then(async () => {
   const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: () => worktreeService.getProjectDir(),
   });
+  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+    getProjectDir: () => worktreeService.getProjectDir(),
+  });
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
-  terminalBackend.setSessionPtyDataHook?.((payload) => {
-    if (conversationCaptured.has(payload.sessionId)) return;
-    const prev = conversationParseTails.get(payload.sessionId) ?? '';
-    const next = appendConversationParseBuffer(prev, payload.data, 96 * 1024);
-    conversationParseTails.set(payload.sessionId, next);
-    const parsed = parseAgentConversationId(payload.agent, next);
+
+  function captureAgentConversationIdFromPty(
+    sessionId: string,
+    agent: Agent,
+    data: string,
+    onParsed: (id: string) => void,
+  ): void {
+    if (conversationCaptured.has(sessionId)) return;
+    const prev = conversationParseTails.get(sessionId) ?? '';
+    const next = appendConversationParseBuffer(prev, data, 96 * 1024);
+    conversationParseTails.set(sessionId, next);
+    const parsed = parseAgentConversationId(agent, next);
     if (!parsed) return;
-    conversationCaptured.add(payload.sessionId);
-    void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    conversationCaptured.add(sessionId);
+    onParsed(parsed);
+  }
+
+  terminalBackend.setSessionPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
+  });
+  terminalBackend.setPlanningPtyDataHook?.((payload) => {
+    captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
+      void planningAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
+    });
   });
 
   // Map session ID → task ID for silence-based status transitions.
@@ -625,6 +671,16 @@ app.whenReady().then(async () => {
         });
       }
     },
+    onPlanningExit: (session) => {
+      const endReason = terminalQuitTeardownInProgress
+        ? ('app-quit' as const)
+        : session.status === 'stopped'
+          ? ('agent-exit-ok' as const)
+          : ('agent-exit-error' as const);
+      void planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+      conversationParseTails.delete(session.id);
+      conversationCaptured.delete(session.id);
+    },
   });
   terminalBackend.startSilenceSnapshotPolling();
 
@@ -650,15 +706,16 @@ app.whenReady().then(async () => {
       await projectStore.init(lastOpenedProjectDir);
       const project = projectStore.get();
       if (project && project.id === activeProjectKey.id) {
-        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-          project.rootPath,
+        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+          project,
+          lastOpenedProjectDir,
         );
         if (materialisedDir !== lastOpenedProjectDir) {
           await projectStore.init(materialisedDir);
         }
         await taskStore.reinit(materialisedDir);
         await migrateTaskRepoIdsForProject(taskStore, project);
-        worktreeService.setRootPath(project.rootPath);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
         worktreeService.setProjectDir(materialisedDir);
         await appStateStore.set({
           lastOpenedProjectDir: materialisedDir,
@@ -687,15 +744,16 @@ app.whenReady().then(async () => {
       await projectStore.init(lastOpenedProjectDir);
       const project = projectStore.get();
       if (project) {
-        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-          project.rootPath,
+        const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+          project,
+          lastOpenedProjectDir,
         );
         if (materialisedDir !== lastOpenedProjectDir) {
           await projectStore.init(materialisedDir);
         }
         await taskStore.reinit(materialisedDir);
         await migrateTaskRepoIdsForProject(taskStore, project);
-        worktreeService.setRootPath(project.rootPath);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
         worktreeService.setProjectDir(materialisedDir);
         await appStateStore.set({
           activeProjectKey: { kind: 'local', id: project.id },
@@ -727,6 +785,11 @@ app.whenReady().then(async () => {
           activeRootPath = '';
         }
       }
+    }
+    if (!activeRootPath) {
+      activeRootPath = path.resolve(
+        canonicalCloudProjectDir(fluxxBaseDir, activeProjectKey.id),
+      );
     }
   }
 
@@ -1042,29 +1105,7 @@ app.whenReady().then(async () => {
     'No local clone is bound for this repository. Open Project settings → Project Config and use “Bind local folder” for that repository.';
 
   function parseCloudSharedReposArg(raw: unknown): CloudSharedRepo[] {
-    if (!Array.isArray(raw)) return [];
-    const out: CloudSharedRepo[] = [];
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue;
-      const o = item as Record<string, unknown>;
-      if (
-        typeof o.id !== 'string' ||
-        typeof o.name !== 'string' ||
-        typeof o.baseBranch !== 'string'
-      ) {
-        continue;
-      }
-      const repo: CloudSharedRepo = {
-        id: o.id.trim(),
-        name: o.name,
-        baseBranch: o.baseBranch,
-      };
-      if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
-        repo.remoteUrl = o.remoteUrl.trim();
-      }
-      out.push(repo);
-    }
-    return out;
+    return parseFirestoreRepos(raw) ?? [];
   }
 
   async function syncCloudReposDiskFromBinding(params: {
@@ -1704,11 +1745,66 @@ app.whenReady().then(async () => {
 
   // ---- Projects (multi-project API) ----
   ipcMain.handle('projects:listLocal', () => projectStore.listDiscovered());
+  ipcMain.handle('projects:getPickerLastOpenedAt', async () => {
+    const localProjects = await projectStore.listDiscovered();
+    return buildPickerLastOpenedAtMap({
+      appStateStore,
+      bindingStore,
+      localProjects,
+    });
+  });
   ipcMain.handle('projects:addLocal', async () => {
     const picked = await pickDirectory('Open project folder');
     if (!picked || 'error' in picked) return picked;
     return openLocalProjectFromRoot(picked.rootPath);
   });
+  ipcMain.handle(
+    'projects:create',
+    async (
+      _e,
+      input: ProjectCreateInput | ProjectCreateWizardPayload,
+    ): Promise<ProjectCreateResult> => {
+      let normalized: ProjectCreateInput;
+      try {
+        normalized = normalizeProjectCreateInput(input);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: 'CREATE_FAILED', message };
+      }
+      const validated = await validateLocalProjectCreateInput(normalized, {
+        isGitRepo: async (rootPath) => {
+          try {
+            await fs.access(path.join(rootPath, '.git'));
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      });
+      if (!validated.ok) {
+        return { ok: false, error: validated.error };
+      }
+      try {
+        const { project, projectDir } = await projectStore.createFromInput(validated.value);
+        await writeOnboardingPending(projectDir);
+        await projectStore.init(projectDir);
+        await taskStore.reinit(projectDir);
+        await taskStore.migrateMissingProjectIds(project.id);
+        await migrateTaskRepoIdsForProject(taskStore, project);
+        worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
+        worktreeService.setProjectDir(projectDir);
+        await appStateStore.set({
+          lastOpenedProjectDir: projectDir,
+          activeProjectKey: { kind: 'local', id: project.id },
+        });
+        return { ok: true, project, projectDir };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[projects:create]', message);
+        return { ok: false, error: 'CREATE_FAILED', message };
+      }
+    },
+  );
   ipcMain.handle(
     'projects:activateLocal',
     async (_e, id: string | null): Promise<LocalProject | null> => {
@@ -1725,8 +1821,9 @@ app.whenReady().then(async () => {
       await projectStore.init(projectDir);
       const project = projectStore.get();
       if (!project) throw new Error(`Local project not found: ${id}`);
-      const { projectDir: materialisedDir } = await projectStore.ensureLayoutForRoot(
-        project.rootPath,
+      const { projectDir: materialisedDir } = await projectStore.ensureLayoutForLocalProject(
+        project,
+        projectDir,
       );
       if (materialisedDir !== projectDir) {
         await projectStore.init(materialisedDir);
@@ -1734,11 +1831,15 @@ app.whenReady().then(async () => {
       await taskStore.reinit(materialisedDir);
       await taskStore.migrateMissingProjectIds(project.id);
       await migrateTaskRepoIdsForProject(taskStore, project);
-      worktreeService.setRootPath(project.rootPath);
+      worktreeService.setRootPath(project.repos[0]?.rootPath ?? project.rootPath);
       worktreeService.setProjectDir(materialisedDir);
       await appStateStore.set({
         lastOpenedProjectDir: materialisedDir,
         activeProjectKey: { kind: 'local', id: project.id },
+      });
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'local',
+        id: project.id,
       });
       return project;
     },
@@ -1836,35 +1937,172 @@ app.whenReady().then(async () => {
       _e,
       payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
     ) => {
-      try {
-        await fs.access(path.join(payload.rootPath, '.git'));
-      } catch {
-        return { error: 'NOT_GIT_REPO' as const };
+      const resolvedRoot = path.resolve(payload.rootPath);
+      const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
+      if (!shellOnly) {
+        try {
+          await fs.access(path.join(resolvedRoot, '.git'));
+        } catch {
+          return { error: 'NOT_GIT_REPO' as const };
+        }
+        await bindingStore.set(payload.id, resolvedRoot);
+      } else {
+        await bindingStore.touchShell(payload.id);
       }
-      await bindingStore.set(payload.id, payload.rootPath);
       await projectStore.clear();
       await taskStore.reinit('');
       const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
         payload.id,
-        payload.rootPath,
+        resolvedRoot,
       );
-      worktreeService.setRootPath(payload.rootPath);
+      worktreeService.setRootPath(resolvedRoot);
       worktreeService.setProjectDir(projectDir);
       await appStateStore.set({
         activeProjectKey: { kind: 'cloud', id: payload.id },
       });
-      if (payload.sharedRepos && payload.sharedRepos.length > 0) {
+      await touchPickerProjectLastOpened(appStateStore, {
+        kind: 'cloud',
+        id: payload.id,
+      });
+      const sharedRepos = parseCloudSharedReposArg(payload.sharedRepos);
+      if (sharedRepos.length > 0) {
         await syncCloudReposDiskFromBinding({
           cloudProjectId: payload.id,
           projectDir,
-          sharedRepos: payload.sharedRepos,
+          sharedRepos,
         });
       }
       return { ok: true as const };
     },
   );
+  ipcMain.handle(
+    'projects:resolveCloudMaterializationDir',
+    async (_e, cloudProjectId: string) => {
+      if (typeof cloudProjectId !== 'string' || !cloudProjectId.trim()) {
+        return { error: 'cloudProjectId is required' };
+      }
+      return {
+        projectDir: path.resolve(
+          canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId.trim()),
+        ),
+      };
+    },
+  );
+  ipcMain.handle(
+    'projects:applyCloudCreateBindings',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true } | { error: string; code?: 'NOT_GIT_REPO' }> => {
+      if (!payload || typeof payload !== 'object') {
+        return { error: 'Invalid payload' };
+      }
+      const p = payload as Record<string, unknown>;
+      const cloudProjectId =
+        typeof p.cloudProjectId === 'string' ? p.cloudProjectId.trim() : '';
+      if (!cloudProjectId) return { error: 'cloudProjectId is required' };
+      const bindingsRaw = p.bindings;
+      if (!Array.isArray(bindingsRaw)) return { error: 'bindings array is required' };
+      const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+      const primaryRepoId =
+        typeof p.primaryRepoId === 'string' ? p.primaryRepoId.trim() : '';
+      for (const row of bindingsRaw) {
+        if (!row || typeof row !== 'object') continue;
+        const o = row as Record<string, unknown>;
+        const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
+        const rootPath = typeof o.rootPath === 'string' ? o.rootPath.trim() : '';
+        if (!repoId || !rootPath) continue;
+        try {
+          await fs.access(path.join(rootPath, '.git'));
+        } catch {
+          return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
+        }
+        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, rootPath);
+      }
+      if (primaryRepoId) {
+        await bindingStore.setPrimaryRepoId(cloudProjectId, primaryRepoId);
+      }
+      if (sharedRepos.length > 0) {
+        const matDir = path.resolve(canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId));
+        const { projectDir } = await projectStore.ensureCloudLayoutForRoot(
+          cloudProjectId,
+          matDir,
+        );
+        await syncCloudReposDiskFromBinding({
+          cloudProjectId,
+          projectDir,
+          sharedRepos,
+        });
+      }
+      return { ok: true };
+    },
+  );
   ipcMain.handle('projects:clearLocalBinding', async (_e, cloudProjectId: string) => {
     await bindingStore.remove(cloudProjectId);
+  });
+
+  ipcMain.handle('projectOnboarding:getState', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    const status = await getPlanningInitStatus(projectDir);
+    const docsInitialized = await planningDocsAreInitialized(planningDir);
+    const showCallout = shouldShowPlanningInitCallout(status, docsInitialized);
+    return { status, docsInitialized, showCallout };
+  });
+
+  ipcMain.handle(
+    'projectOnboarding:setStatus',
+    async (_e, status: unknown) => {
+      if (
+        status !== 'pending' &&
+        status !== 'dismissed' &&
+        status !== 'started' &&
+        status !== 'completed'
+      ) {
+        return { error: 'INVALID_STATUS' as const };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_ACTIVE_PROJECT' as const };
+      }
+      await setPlanningInitStatus(projectDir, status);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle(
+    'projectOnboarding:writePending',
+    async (_e, projectDirArg: unknown) => {
+      const projectDir =
+        typeof projectDirArg === 'string' && projectDirArg.trim()
+          ? path.resolve(projectDirArg.trim())
+          : worktreeService.getProjectDir();
+      if (!projectDir) {
+        return { error: 'NO_PROJECT_DIR' as const };
+      }
+      await writeOnboardingPending(projectDir);
+      return { ok: true as const };
+    },
+  );
+
+  ipcMain.handle('projectOnboarding:maybeCompleteAfterSession', async () => {
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) {
+      return { error: 'NO_ACTIVE_PROJECT' as const };
+    }
+    const status = await getPlanningInitStatus(projectDir);
+    if (status !== 'started') {
+      return { ok: true as const, changed: false as const };
+    }
+    const planningDir = path.join(projectDir, 'planning');
+    if (!(await planningDocsAreInitialized(planningDir))) {
+      return { ok: true as const, changed: false as const };
+    }
+    await setPlanningInitStatus(projectDir, 'completed');
+    return { ok: true as const, changed: true as const };
   });
 
   // ---- Auth ----
@@ -3719,11 +3957,26 @@ app.whenReady().then(async () => {
     return activeKey.id;
   }
 
+  async function planningDirStillPresent(absPath: string): Promise<boolean> {
+    try {
+      await fs.access(absPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   ipcMain.handle('planning:list', async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return [];
-    const all = await terminalBackend.listPlanning();
-    return all.filter((s) => s.projectId === pid);
+    const live = (await terminalBackend.listPlanning()).filter((s) => s.projectId === pid);
+    const liveIds = new Set(live.map((s) => s.id));
+    const cold = await planningAgentSessionRecordStore.listColdResumePlanningSessions(
+      pid,
+      planningDirStillPresent,
+      { excludeFluxxSessionIds: liveIds },
+    );
+    return mergePlanningSessionsWithColdResume(live, cold);
   });
 
   ipcMain.handle(
@@ -3737,6 +3990,9 @@ app.whenReady().then(async () => {
         agent: requestedAgent,
         agentModel: requestedModel,
         agentYolo: requestedYolo,
+        resume: resumeRequested,
+        sessionId: resumeSessionId,
+        initialPrompt: requestedInitialPrompt,
       } = parsed;
 
       const activeKey = appStateStore.get().activeProjectKey;
@@ -3754,14 +4010,18 @@ app.whenReady().then(async () => {
         if (!local || !projectDir) {
           return { error: 'No project open' };
         }
-        planningAgent = isPlanningAgent(requestedAgent)
-          ? requestedAgent
-          : local.planningAgent;
-        try {
-          await projectStore.setPlanningAgent(planningAgent);
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          return { error: 'CONFIG_WRITE_FAILED', message };
+        if (!resumeRequested) {
+          planningAgent = isPlanningAgent(requestedAgent)
+            ? requestedAgent
+            : local.planningAgent;
+          try {
+            await projectStore.setPlanningAgent(planningAgent);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { error: 'CONFIG_WRITE_FAILED', message };
+          }
+        } else {
+          planningAgent = local.planningAgent;
         }
         const updated = projectStore.get();
         project = updated ?? local;
@@ -3772,14 +4032,18 @@ app.whenReady().then(async () => {
           return { error: 'No project open' };
         }
         const prefs = bindingStore.getPrefs(activeKey.id);
-        planningAgent = isPlanningAgent(requestedAgent)
-          ? requestedAgent
-          : prefs.planningAgent;
-        try {
-          await bindingStore.setPrefs(activeKey.id, { planningAgent });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : String(err);
-          return { error: 'CONFIG_WRITE_FAILED', message };
+        if (!resumeRequested) {
+          planningAgent = isPlanningAgent(requestedAgent)
+            ? requestedAgent
+            : prefs.planningAgent;
+          try {
+            await bindingStore.setPrefs(activeKey.id, { planningAgent });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return { error: 'CONFIG_WRITE_FAILED', message };
+          }
+        } else {
+          planningAgent = prefs.planningAgent;
         }
         binding = bindingStore.get(activeKey.id);
         if (!binding) {
@@ -3801,7 +4065,39 @@ app.whenReady().then(async () => {
         );
       }
 
-      const planningDir = path.join(projectDir, 'planning');
+      let resumeFromSessionId: string | undefined;
+      let resumeRecord: PlanningAgentSessionRecord | null = null;
+      let planningDir = path.join(projectDir, 'planning');
+
+      if (resumeRequested) {
+        const coldTarget = resumeSessionId
+          ? await planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+              project.id,
+              resumeSessionId,
+              planningDirStillPresent,
+            )
+          : await planningAgentSessionRecordStore.getColdResumePlanningSessionView(
+              project.id,
+              planningDirStillPresent,
+            );
+        if (!coldTarget) {
+          return {
+            error: 'NO_RESUMABLE_SESSION',
+            message: 'No interrupted planning session is available to resume.',
+          };
+        }
+        resumeFromSessionId = coldTarget.id;
+        resumeRecord = await planningAgentSessionRecordStore.getRecord(coldTarget.id);
+        if (!resumeRecord || resumeRecord.projectId !== project.id) {
+          return {
+            error: 'NO_RESUMABLE_SESSION',
+            message: 'Planning session record is missing or belongs to another project.',
+          };
+        }
+        planningAgent = isPlanningAgent(requestedAgent) ? requestedAgent : resumeRecord.agent;
+        planningDir = resumeRecord.planningDir;
+      }
+
       await fs.mkdir(planningDir, { recursive: true });
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
@@ -3812,17 +4108,23 @@ app.whenReady().then(async () => {
         project.rootPath,
       );
 
-      const spawnModel = resolvedPlanningModelForSpawn(
-        project,
-        planningAgent,
-        requestedModel,
-      );
-      const spawnYolo = resolvedPlanningYoloForSpawn(project, requestedYolo);
-      const { command, args } = planningSpawnSpec(
-        planningAgent,
-        spawnModel,
-        spawnYolo,
-      );
+      const spawnModel = resumeRecord?.agentModel?.trim()
+        ? resumeRecord.agentModel
+        : resolvedPlanningModelForSpawn(project, planningAgent, requestedModel);
+      const spawnYolo =
+        resumeRecord?.agentYolo !== undefined
+          ? resumeRecord.agentYolo
+          : resolvedPlanningYoloForSpawn(project, requestedYolo);
+      const { command, args } = resumeRequested
+        ? planningSpawnResumeSpec(planningAgent, spawnModel, spawnYolo, {
+            agentConversationId: resumeRecord?.agentConversationId,
+          })
+        : planningSpawnSpec(
+            planningAgent,
+            spawnModel,
+            spawnYolo,
+            requestedInitialPrompt,
+          );
       const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
       const trustAutorespondArg =
         project.autoRespondToTrustPrompts === true &&
@@ -3874,6 +4176,26 @@ app.whenReady().then(async () => {
         }
         return { error: result.error, message: result.message };
       }
+      if (resumeFromSessionId) {
+        const warmStale = await terminalBackend.getPlanning(resumeFromSessionId);
+        if (warmStale) {
+          conversationParseTails.delete(resumeFromSessionId);
+          conversationCaptured.delete(resumeFromSessionId);
+          await terminalBackend.stopPlanning(resumeFromSessionId);
+        }
+        void planningAgentSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
+      }
+      void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
+      const planningRow: PlanningAgentSessionRecord = {
+        fluxxSessionId: result.id,
+        projectId: project.id,
+        agent: planningAgent,
+        planningDir,
+        startedAt: result.startedAt,
+        ...(spawnModel ? { agentModel: spawnModel } : {}),
+        ...(spawnYolo ? { agentYolo: true } : {}),
+      };
+      void planningAgentSessionRecordStore.recordSessionStart(planningRow);
       return result;
     },
   );
@@ -3882,16 +4204,48 @@ app.whenReady().then(async () => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return;
     const s = await terminalBackend.getPlanning(sessionId);
-    if (!s || s.projectId !== pid) return;
-    await terminalBackend.stopPlanning(sessionId);
+    if (s && s.projectId === pid) {
+      void planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: sessionId,
+          status: 'stopped',
+          startedAt: s.startedAt,
+          stoppedAt: new Date().toISOString(),
+        },
+        { reason: 'user-archived' },
+      );
+      conversationParseTails.delete(sessionId);
+      conversationCaptured.delete(sessionId);
+      await terminalBackend.stopPlanning(sessionId);
+      return;
+    }
+    const cold = await planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+      pid,
+      sessionId,
+      planningDirStillPresent,
+    );
+    if (!cold) return;
+    void planningAgentSessionRecordStore.markSessionEnded(
+      {
+        id: sessionId,
+        status: 'stopped',
+        startedAt: cold.startedAt,
+        stoppedAt: cold.stoppedAt ?? new Date().toISOString(),
+      },
+      { reason: 'user-archived' },
+    );
   });
 
   ipcMain.handle('planning:get', async (_e, sessionId: string) => {
     const pid = await activeProjectIdForPlanning();
     if (!pid) return null;
     const s = await terminalBackend.getPlanning(sessionId);
-    if (!s || s.projectId !== pid) return null;
-    return s;
+    if (s && s.projectId === pid) return s;
+    return planningAgentSessionRecordStore.getColdResumePlanningSessionById(
+      pid,
+      sessionId,
+      planningDirStillPresent,
+    );
   });
 
   ipcMain.handle(

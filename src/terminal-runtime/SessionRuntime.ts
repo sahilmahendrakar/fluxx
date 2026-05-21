@@ -24,6 +24,13 @@ export interface SessionRuntimeSpawnSpec {
   cols: number;
   rows: number;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Value for `TERM_PROGRAM` in the PTY env. Agent sessions should pass
+   * `'kitty'` so claude-code / cursor parse CSI-u Shift+Enter. User shell
+   * PTYs should omit this so vim/neovim don't activate the kitty keyboard
+   * protocol (which xterm.js does not implement).
+   */
+  termProgram?: string;
 }
 
 export interface SessionRuntimeCallbacks {
@@ -81,7 +88,9 @@ export class SessionRuntime {
       cols: spec.cols,
       rows: spec.rows,
       cwd: spec.cwd,
-      env: buildPtyEnv(spec.env ?? process.env),
+      env: buildPtyEnv(spec.env ?? process.env, {
+        termProgram: spec.termProgram,
+      }),
     });
 
     this.headless = new HeadlessTerminal({
