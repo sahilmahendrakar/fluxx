@@ -94,6 +94,12 @@ import {
 } from './main/agentConversationIdParse';
 import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
+import { ValidationRunStore } from './main/ValidationRunStore';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
@@ -583,6 +589,9 @@ app.whenReady().then(async () => {
     getProjectDir: resolveRecordProjectDir,
   });
   const terminalSessionRecordStore = new TerminalSessionRecordStore({
+    getProjectDir: resolveRecordProjectDir,
+  });
+  const validationRunStore = new ValidationRunStore({
     getProjectDir: resolveRecordProjectDir,
   });
 
@@ -4859,6 +4868,74 @@ app.whenReady().then(async () => {
     },
   );
 
+  ipcMain.handle(
+    'validationRuns:create',
+    async (_e, input: ValidationRunCreateInput) => {
+      try {
+        return { ok: true as const, run: await validationRunStore.create(input) };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:updateStatus',
+    async (_e, patch: ValidationRunStatusUpdate) => {
+      try {
+        return { ok: true as const, run: await validationRunStore.updateStatus(patch) };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('validationRuns:listForTask', async (_e, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.trim().length === 0) {
+      return { error: 'Invalid task id' };
+    }
+    try {
+      const runs = await validationRunStore.listForTask(taskId.trim());
+      return { ok: true as const, runs };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle('validationRuns:get', async (_e, runId: string) => {
+    if (typeof runId !== 'string' || runId.trim().length === 0) {
+      return { error: 'Invalid run id' };
+    }
+    try {
+      const run = await validationRunStore.get(runId.trim());
+      if (!run) return { error: 'Validation run not found' };
+      return { ok: true as const, run };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle(
+    'validationRuns:registerArtifact',
+    async (_e, input: ValidationArtifactRegisterInput) => {
+      try {
+        return { ok: true as const, run: await validationRunStore.registerArtifact(input) };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
   const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 
   function activePlanningDocsProvider(): PlanningDocsProvider {
@@ -5279,6 +5356,7 @@ app.on('before-quit', (e) => {
       }
       await taskAgentSessionRecordStore.whenWriteIdle();
       await planningAgentSessionRecordStore.whenWriteIdle();
+      await validationRunStore.whenWriteIdle();
 
       appQuitTeardownComplete = true;
       app.quit();

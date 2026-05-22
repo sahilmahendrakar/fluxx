@@ -56,6 +56,12 @@ import type {
   PlanningDocsWriteResult,
 } from './planningDocs/types';
 import type { AppUpdateState } from './appUpdateState';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRun,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -442,6 +448,23 @@ declare global {
       };
       cursorAgent: {
         listModels: () => Promise<ListCursorAgentModelsResult>;
+      };
+      validationRuns: {
+        create: (
+          input: ValidationRunCreateInput,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        updateStatus: (
+          patch: ValidationRunStatusUpdate,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        listForTask: (
+          taskId: string,
+        ) => Promise<{ ok: true; runs: ValidationRun[] } | { error: string }>;
+        get: (
+          runId: string,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        registerArtifact: (
+          input: ValidationArtifactRegisterInput,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
       };
       planningDocs: {
         list: () => Promise<PlanningDocsListResult>;
