@@ -8,6 +8,7 @@ const MAX_RECORDS = 500;
 
 const COLD_RESUMABLE_END_REASONS: TaskAgentSessionEndedReason[] = [
   'app-quit',
+  'tmux-missing',
   'agent-exit-ok',
   'agent-exit-error',
 ];
@@ -253,6 +254,11 @@ export class TaskAgentSessionRecordStore {
   /**
    * Latest persisted conversation id for `--resume <id>` when resuming this task.
    */
+  async hasFluxxSessionId(fluxxSessionId: string): Promise<boolean> {
+    await this.ensureLoaded();
+    return this.cache.some((r) => r.fluxxSessionId === fluxxSessionId);
+  }
+
   async getResumeConversationId(taskId: string, agent: Agent): Promise<string | undefined> {
     if (agent === 'codex') return undefined;
     await this.ensureLoaded();

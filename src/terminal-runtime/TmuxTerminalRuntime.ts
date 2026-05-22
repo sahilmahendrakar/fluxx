@@ -111,6 +111,40 @@ export class TmuxTerminalRuntime {
     return runtime;
   }
 
+  /**
+   * Reattach to an existing Fluxx-owned tmux session on app relaunch (no `new-session`).
+   */
+  static async attachExisting(
+    spec: {
+      tmuxSessionName: string;
+      cwd: string;
+      cols: number;
+      rows: number;
+      env?: NodeJS.ProcessEnv;
+      termProgram?: string;
+    },
+    callbacks: SessionRuntimeCallbacks,
+    opts: { replayCapBytes?: number } = {},
+  ): Promise<TmuxTerminalRuntime> {
+    const bridgeSpec: SessionRuntimeSpawnSpec = {
+      command: '',
+      args: [],
+      cwd: spec.cwd,
+      cols: spec.cols,
+      rows: spec.rows,
+      env: spec.env,
+      termProgram: spec.termProgram,
+    };
+    const runtime = new TmuxTerminalRuntime(
+      spec.tmuxSessionName,
+      bridgeSpec,
+      callbacks,
+      opts.replayCapBytes ?? DEFAULT_REPLAY_BYTES,
+    );
+    runtime.startAttachBridge(bridgeSpec);
+    return runtime;
+  }
+
   private startAttachBridge(spec: SessionRuntimeSpawnSpec): void {
     if (this.attachPty) return;
     this.attachPty = pty.spawn('tmux', ['attach-session', '-t', this.tmuxSessionName], {

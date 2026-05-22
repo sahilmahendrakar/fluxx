@@ -101,6 +101,27 @@ describe('TaskAgentSessionRecordStore', () => {
     expect(listed[0]?.status).toBe('interrupted');
   });
 
+  it('listColdResumeTaskSessions includes tmux-missing ended rows', async () => {
+    const store = new TaskAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        fluxxSessionId: 's-tmux',
+        taskId: 't1',
+        projectId: 'p1',
+        agent: 'claude-code',
+        worktreePath: '/wt',
+        fluxxWorkBranch: 'b',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        endedAt: '2026-01-02T00:00:00.000Z',
+        endedReason: 'tmux-missing',
+      },
+    ]);
+    const listed = await store.listColdResumeTaskSessions('p1', async () => true);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.status).toBe('interrupted');
+    expect(listed[0]?.id).toBe('s-tmux');
+  });
+
   it('markSessionEnded with user-archived prevents future cold restore', async () => {
     const store = new TaskAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
