@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '../../types';
+import { linkedAgentSessionStateForTask } from '../../githubPrReviewWhenOpenAutomation';
 import { buildCloudGithubPrRefreshPatch } from './cloudGithubPrRefreshReconcile';
 import type { TaskProvider } from './TaskProvider';
 
@@ -160,12 +161,21 @@ export function useGithubPrBoardRefresh(input: {
           return;
         }
 
+        let linkedAgentSessionState = linkedAgentSessionStateForTask(task.id, []);
+        try {
+          const silenceStates = await window.electronAPI.sessions.getSilenceStates();
+          linkedAgentSessionState = linkedAgentSessionStateForTask(task.id, silenceStates);
+        } catch (err) {
+          console.warn('[githubPrRefresh] getSilenceStates failed', task.id, err);
+        }
+
         const patch = buildCloudGithubPrRefreshPatch({
           live,
           refreshed,
           snapshot,
           autoMarkDoneWhenPrMerged: autoMarkDoneRef.current,
           autoMoveToReviewWhenPrOpen: autoMoveReviewRef.current,
+          linkedAgentSessionState,
         });
         if (patch) {
           const updated = await prov.update(task.id, patch);

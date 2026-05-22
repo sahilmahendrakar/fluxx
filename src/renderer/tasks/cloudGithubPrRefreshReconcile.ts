@@ -1,7 +1,11 @@
 import type { Task, TaskGithubPr } from '../../types';
 import { githubPrRefreshViewEqual } from '../../githubPrMetadata';
 import { shouldAutoMarkDoneAfterPrMergeRefresh } from '../../autoMarkDoneWhenPrMerged';
-import { shouldAutoMoveTaskToReviewForOpenPr } from '../../githubPrReviewWhenOpenAutomation';
+import type { LinkedAgentSessionState } from '../../githubPrReviewWhenOpenAutomation';
+import {
+  shouldAutoMoveTaskToInProgressForOpenPrWhenAgentActive,
+  shouldAutoMoveTaskToReviewForOpenPr,
+} from '../../githubPrReviewWhenOpenAutomation';
 import { keyForInsert, sortColumn } from './orderKey';
 import type { TaskPatch } from './TaskProvider';
 
@@ -15,8 +19,16 @@ export function buildCloudGithubPrRefreshPatch(input: {
   snapshot: Task[];
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
+  linkedAgentSessionState?: LinkedAgentSessionState;
 }): TaskPatch | null {
-  const { live, refreshed, snapshot, autoMarkDoneWhenPrMerged, autoMoveToReviewWhenPrOpen } = input;
+  const {
+    live,
+    refreshed,
+    snapshot,
+    autoMarkDoneWhenPrMerged,
+    autoMoveToReviewWhenPrOpen,
+    linkedAgentSessionState,
+  } = input;
   const prViewEqual = githubPrRefreshViewEqual(live.githubPr, refreshed);
 
   const patch: TaskPatch = {};
@@ -48,11 +60,23 @@ export function buildCloudGithubPrRefreshPatch(input: {
     patch.orderKey = nextOrderKey;
     automation = true;
   } else if (
+    shouldAutoMoveTaskToInProgressForOpenPrWhenAgentActive({
+      enabled: autoMoveToReviewWhenPrOpen,
+      taskStatus: live.status,
+      githubPr: refreshed,
+      task: live,
+      linkedAgentSessionState,
+    })
+  ) {
+    patch.status = 'in-progress';
+    automation = true;
+  } else if (
     shouldAutoMoveTaskToReviewForOpenPr({
       enabled: autoMoveToReviewWhenPrOpen,
       taskStatus: live.status,
       githubPr: refreshed,
       task: live,
+      linkedAgentSessionState,
     })
   ) {
     patch.status = 'review';
