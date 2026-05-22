@@ -28,6 +28,8 @@ import type {
   TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
   TaskAttachedPlanningDoc,
+  TaskExecutionDeviceRef,
+  ExecutionDeviceConfig,
 } from './types';
 import type {
   AgentState,
@@ -212,6 +214,8 @@ declare global {
         setPersistTerminalsWithTmux: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getDefaultDeviceId: () => Promise<string | null>;
+        setDefaultDeviceId: (deviceId: string | null) => Promise<string | null>;
       };
       terminal: {
         inventorySnapshot: () => Promise<import('./types').TerminalInventorySnapshot>;
@@ -293,6 +297,31 @@ declare global {
           arg?: string | RepoBranchDiscoveryRequest,
         ) => Promise<RepoBranchDiscoveryResponse | { error: string }>;
       };
+      executionDevices: {
+        list: () => Promise<ExecutionDeviceConfig[]>;
+        getGlobalDefault: () => Promise<string | null>;
+        setGlobalDefault: (deviceId: string | null) => Promise<string | null>;
+        resolveDefaultForNewTask: () => Promise<TaskExecutionDeviceRef>;
+      };
+      cloudBindings: {
+        getPerTaskDeviceOverrides: (
+          projectId: string,
+        ) => Promise<Record<string, TaskExecutionDeviceRef>>;
+        getPerTaskDeviceOverride: (
+          projectId: string,
+          taskId: string,
+        ) => Promise<TaskExecutionDeviceRef | null>;
+        setPerTaskDeviceOverride: (
+          projectId: string,
+          taskId: string,
+          ref: TaskExecutionDeviceRef | null,
+        ) => Promise<TaskExecutionDeviceRef | null>;
+        getProjectDefaultDeviceId: (projectId: string) => Promise<string | null>;
+        setProjectDefaultDeviceId: (
+          projectId: string,
+          deviceId: string | null,
+        ) => Promise<string | null>;
+      };
       tasks: {
         getAll: () => Promise<Task[]>;
         create: (input: {
@@ -306,7 +335,9 @@ declare global {
           agentYolo?: boolean;
           repoId?: string;
           attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+          executionDevice?: TaskExecutionDeviceRef;
         }) => Promise<Task>;
+        resolveEffectiveExecutionDevice: (task: Task) => Promise<TaskExecutionDeviceRef>;
         update: (
           id: string,
           patch: Partial<
@@ -326,11 +357,13 @@ declare global {
               | 'createSourceBranchIfMissing'
               | 'repoId'
               | 'fluxxWorkBranch'
+              | 'executionDevice'
             >
           > & {
             githubPr?: TaskGithubPr | null;
             autoStartOnUnblock?: boolean | null;
             attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+            executionDevice?: TaskExecutionDeviceRef | null;
           },
         ) => Promise<Task>;
         assertSourceBranchEditable: (

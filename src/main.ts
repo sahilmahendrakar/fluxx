@@ -52,6 +52,16 @@ import {
 } from './cloudLocalBindingMigration';
 import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
+import { DeviceStore } from './main/DeviceStore';
+import {
+  type ExecutionDeviceHostContext,
+  inferLegacyLocalTmuxForDeviceBootstrap,
+  parseAndValidateExecutionDeviceInput,
+  resolveDefaultExecutionDeviceForNewTaskInContext,
+  resolveEffectiveExecutionDeviceForTaskInContext,
+  validateExecutionDeviceRefForStore,
+} from './main/executionDeviceContext';
+import type { TaskExecutionDeviceRef } from './types';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
 import {
@@ -904,6 +914,24 @@ app.whenReady().then(async () => {
 
   const bindingStore = new LocalBindingStore();
   await bindingStore.init();
+
+  const deviceStore = new DeviceStore();
+  await deviceStore.init({
+    legacyLocalTmuxEnabled: await inferLegacyLocalTmuxForDeviceBootstrap(
+      projectStore,
+      bindingStore,
+      appStateStore.get().activeProjectKey,
+    ),
+  });
+
+  function executionDeviceHostContext(): ExecutionDeviceHostContext {
+    return {
+      deviceStore,
+      projectStore,
+      bindingStore,
+      activeKey: appStateStore.get().activeProjectKey,
+    };
+  }
 
   let activeRootPath = projectStore.get()?.rootPath ?? '';
   if (activeProjectKey?.kind === 'cloud') {
@@ -2585,6 +2613,90 @@ app.whenReady().then(async () => {
     },
   );
 
+  // ---- Execution devices (global registry + cloud local overrides) ----
+  ipcMain.handle('executionDevices:list', async () => deviceStore.listDevices());
+
+  ipcMain.handle('executionDevices:getGlobalDefault', async () =>
+    deviceStore.getGlobalDefaultDeviceId() ?? null,
+  );
+
+  ipcMain.handle(
+    'executionDevices:setGlobalDefault',
+    async (_e, deviceId: string | null) => {
+      await deviceStore.setGlobalDefaultDeviceId(deviceId);
+      return deviceStore.getGlobalDefaultDeviceId() ?? null;
+    },
+  );
+
+  ipcMain.handle('executionDevices:resolveDefaultForNewTask', async () =>
+    resolveDefaultExecutionDeviceForNewTaskInContext(executionDeviceHostContext()),
+  );
+
+  ipcMain.handle('tasks:resolveEffectiveExecutionDevice', async (_e, task: Task) =>
+    resolveEffectiveExecutionDeviceForTaskInContext(executionDeviceHostContext(), task),
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getPerTaskDeviceOverrides',
+    async (_e, projectId: string) =>
+      bindingStore.getPerTaskDeviceOverrides(projectId) ?? {},
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getPerTaskDeviceOverride',
+    async (_e, projectId: string, taskId: string) =>
+      bindingStore.getPerTaskDeviceOverride(projectId, taskId) ?? null,
+  );
+
+  ipcMain.handle(
+    'cloudBindings:setPerTaskDeviceOverride',
+    async (
+      _e,
+      projectId: string,
+      taskId: string,
+      ref: TaskExecutionDeviceRef | null,
+    ) => {
+      if (ref !== null) {
+        const parsed = parseAndValidateExecutionDeviceInput(deviceStore, ref);
+        if (!parsed.ok) {
+          throw new Error(parsed.message);
+        }
+        await bindingStore.setPerTaskDeviceOverride(projectId, taskId, parsed.ref);
+        return parsed.ref;
+      }
+      await bindingStore.setPerTaskDeviceOverride(projectId, taskId, null);
+      return null;
+    },
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getProjectDefaultDeviceId',
+    async (_e, projectId: string) => bindingStore.getDefaultDeviceId(projectId) ?? null,
+  );
+
+  ipcMain.handle(
+    'cloudBindings:setProjectDefaultDeviceId',
+    async (_e, projectId: string, deviceId: string | null) => {
+      await bindingStore.setDefaultDeviceId(projectId, deviceId);
+      return bindingStore.getDefaultDeviceId(projectId) ?? null;
+    },
+  );
+
+  ipcMain.handle('project:getDefaultDeviceId', async () => {
+    const project = projectStore.get();
+    if (!project || project.kind !== 'local') return null;
+    return project.defaultDeviceId ?? null;
+  });
+
+  ipcMain.handle(
+    'project:setDefaultDeviceId',
+    async (_e, deviceId: string | null) => {
+      const projectDir = activeProjectDir();
+      if (!projectDir) throw new Error('No local project open');
+      return projectStore.setDefaultDeviceIdAt(projectDir, deviceId) ?? null;
+    },
+  );
+
   // ---- Tasks (local-only; cloud tasks live in Firestore in the renderer) ----
   ipcMain.handle('tasks:getAll', async () => {
     const project = projectStore.get();
@@ -2606,6 +2718,7 @@ app.whenReady().then(async () => {
         agentModel?: string;
         agentYolo?: boolean;
         repoId?: string;
+        executionDevice?: TaskExecutionDeviceRef;
       },
     ) => {
       const project = projectStore.get();
@@ -2635,6 +2748,15 @@ app.whenReady().then(async () => {
         input.agent != null
           ? mergedTaskCreateAgentFields(project, input.agent, input.agentModel, input.agentYolo)
           : {};
+      let executionDevice = input.executionDevice;
+      if (executionDevice) {
+        const v = validateExecutionDeviceRefForStore(deviceStore, executionDevice);
+        if (!v.ok) throw new Error(v.message);
+      } else {
+        executionDevice = resolveDefaultExecutionDeviceForNewTaskInContext(
+          executionDeviceHostContext(),
+        );
+      }
       return taskStore.create({
         ...input,
         ...extra,
@@ -2642,6 +2764,7 @@ app.whenReady().then(async () => {
         repoId: repoResolved.repoId,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+        executionDevice,
       });
     },
   );
@@ -3609,6 +3732,8 @@ app.whenReady().then(async () => {
       };
     }
 
+    resolveEffectiveExecutionDeviceForTaskInContext(executionDeviceHostContext(), merged);
+
     const projectDirForSession = activeProjectDir();
     let projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
     try {
@@ -3923,6 +4048,7 @@ app.whenReady().then(async () => {
       | 'createSourceBranchIfMissing'
       | 'repoId'
       | 'fluxxWorkBranch'
+      | 'executionDevice'
     >
   > & {
     githubPr?: TaskGithubPr | null;
@@ -3930,6 +4056,7 @@ app.whenReady().then(async () => {
     autoStartOnUnblock?: boolean | null;
     /** `null` clears all attached planning docs. */
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    executionDevice?: TaskExecutionDeviceRef | null;
   };
 
   const unblockAutostartInFlight = new Set<string>();
@@ -4077,6 +4204,14 @@ app.whenReady().then(async () => {
       throw new Error(`Task not found: ${id}`);
     }
     let patchToApply = patch;
+    if (patch.executionDevice !== undefined) {
+      if (patch.executionDevice !== null) {
+        const v = validateExecutionDeviceRefForStore(deviceStore, patch.executionDevice);
+        if (!v.ok) {
+          throw new Error(v.message);
+        }
+      }
+    }
     if (patch.blockedByTaskIds !== undefined) {
       const all = taskStore.getAll(project.id);
       const v = validateBlockedByTaskIds(id, patch.blockedByTaskIds, all, false);
@@ -4407,6 +4542,7 @@ app.whenReady().then(async () => {
     projectStore,
     appStateStore,
     bindingStore,
+    deviceStore,
     bridge: automationRendererBridge,
     getMainWindow: () => mainWindow,
     taskActions: {

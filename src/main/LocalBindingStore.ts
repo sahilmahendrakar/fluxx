@@ -1,7 +1,13 @@
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, AgentSessionModelDefaults, CloudProjectLocalBinding } from '../types';
+import type {
+  Agent,
+  AgentSessionModelDefaults,
+  CloudProjectLocalBinding,
+  TaskExecutionDeviceRef,
+} from '../types';
+import { parsePerTaskDeviceOverridesRecord, parseTaskExecutionDeviceRef } from '../executionDevices/parse';
 import {
   migrateLegacyCloudBinding,
   parseRepoBindingsRecord,
@@ -95,6 +101,18 @@ function parseBindingEntry(_id: string, value: unknown): LocalBinding | null {
   return binding;
 }
 
+function copyBindingDevicePrefs(from: LocalBinding, to: LocalBinding): void {
+  if (from.defaultDeviceId !== undefined) {
+    to.defaultDeviceId = from.defaultDeviceId;
+  }
+  if (from.perTaskDeviceOverrides) {
+    to.perTaskDeviceOverrides = { ...from.perTaskDeviceOverrides };
+  }
+  if (from.persistTerminalsWithTmux !== undefined) {
+    to.persistTerminalsWithTmux = from.persistTerminalsWithTmux;
+  }
+}
+
 function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): void {
   if (isAgent(v.planningAgent)) binding.planningAgent = v.planningAgent;
   if (isAgent(v.defaultTaskAgent)) binding.defaultTaskAgent = v.defaultTaskAgent;
@@ -124,6 +142,13 @@ function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): vo
   }
   if (typeof v.persistTerminalsWithTmux === 'boolean') {
     binding.persistTerminalsWithTmux = v.persistTerminalsWithTmux;
+  }
+  if (typeof v.defaultDeviceId === 'string' && v.defaultDeviceId.trim()) {
+    binding.defaultDeviceId = v.defaultDeviceId.trim();
+  }
+  const overrides = parsePerTaskDeviceOverridesRecord(v.perTaskDeviceOverrides);
+  if (overrides) {
+    binding.perTaskDeviceOverrides = overrides;
   }
   if (typeof v.autoDeleteTaskWhenDone === 'boolean') {
     binding.autoDeleteTaskWhenDone = v.autoDeleteTaskWhenDone;
@@ -190,6 +215,67 @@ export class LocalBindingStore {
     return resolvedPrefsFromBinding(this.bindings[projectId]);
   }
 
+  getDefaultDeviceId(projectId: string): string | undefined {
+    return this.bindings[projectId]?.defaultDeviceId;
+  }
+
+  async setDefaultDeviceId(
+    projectId: string,
+    deviceId: string | null | undefined,
+  ): Promise<void> {
+    const existing = this.bindings[projectId];
+    if (!existing) return;
+    const trimmed = deviceId?.trim();
+    if (!trimmed) {
+      delete existing.defaultDeviceId;
+    } else {
+      existing.defaultDeviceId = trimmed;
+    }
+    await this.save();
+  }
+
+  getPerTaskDeviceOverrides(
+    projectId: string,
+  ): Record<string, TaskExecutionDeviceRef> | undefined {
+    const overrides = this.bindings[projectId]?.perTaskDeviceOverrides;
+    if (!overrides) return undefined;
+    return { ...overrides };
+  }
+
+  getPerTaskDeviceOverride(
+    projectId: string,
+    taskId: string,
+  ): TaskExecutionDeviceRef | undefined {
+    return this.bindings[projectId]?.perTaskDeviceOverrides?.[taskId];
+  }
+
+  async setPerTaskDeviceOverride(
+    projectId: string,
+    taskId: string,
+    ref: TaskExecutionDeviceRef | null,
+  ): Promise<void> {
+    const existing = this.bindings[projectId];
+    if (!existing) return;
+    const tid = taskId.trim();
+    if (!tid) return;
+    if (!existing.perTaskDeviceOverrides) {
+      existing.perTaskDeviceOverrides = {};
+    }
+    if (ref === null) {
+      delete existing.perTaskDeviceOverrides[tid];
+      if (Object.keys(existing.perTaskDeviceOverrides).length === 0) {
+        delete existing.perTaskDeviceOverrides;
+      }
+    } else {
+      const parsed = parseTaskExecutionDeviceRef(ref);
+      if (!parsed) {
+        throw new Error('Invalid per-task execution device override');
+      }
+      existing.perTaskDeviceOverrides[tid] = parsed;
+    }
+    await this.save();
+  }
+
   /**
    * Merge preference fields into an existing binding. No-op if there is no binding for `projectId`.
    */
@@ -209,6 +295,7 @@ export class LocalBindingStore {
       autoMarkDoneWhenPrMerged: boolean;
       autoMoveToReviewWhenPrOpen: boolean;
       persistTerminalsWithTmux: boolean;
+      defaultDeviceId: string | null;
     }>,
   ): Promise<void> {
     const existing = this.bindings[projectId];
@@ -263,6 +350,13 @@ export class LocalBindingStore {
     }
     if (prefs.persistTerminalsWithTmux !== undefined) {
       existing.persistTerminalsWithTmux = prefs.persistTerminalsWithTmux;
+    }
+    if (prefs.defaultDeviceId !== undefined) {
+      if (prefs.defaultDeviceId === null || prefs.defaultDeviceId === '') {
+        delete existing.defaultDeviceId;
+      } else {
+        existing.defaultDeviceId = prefs.defaultDeviceId;
+      }
     }
     await this.save();
   }
@@ -322,6 +416,7 @@ export class LocalBindingStore {
       if (prevM.autoMoveToReviewWhenPrOpen !== undefined) {
         binding.autoMoveToReviewWhenPrOpen = prevM.autoMoveToReviewWhenPrOpen;
       }
+      copyBindingDevicePrefs(prevM, binding);
     }
     const normalized = stripLegacyRootPathForPersistence(binding);
     this.bindings[projectId] = normalized;
@@ -389,6 +484,7 @@ export class LocalBindingStore {
       if (prev.autoMoveToReviewWhenPrOpen !== undefined) {
         binding.autoMoveToReviewWhenPrOpen = prev.autoMoveToReviewWhenPrOpen;
       }
+      copyBindingDevicePrefs(prev, binding);
     }
     const normalized = stripLegacyRootPathForPersistence(binding);
     this.bindings[projectId] = normalized;

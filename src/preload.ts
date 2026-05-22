@@ -22,6 +22,8 @@ import type {
   SessionStartResult,
   Shell,
   Task,
+  TaskExecutionDeviceRef,
+  ExecutionDeviceConfig,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentPayload,
@@ -228,6 +230,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setPersistTerminalsWithTmux', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getDefaultDeviceId: () =>
+      ipcRenderer.invoke('project:getDefaultDeviceId') as Promise<string | null>,
+    setDefaultDeviceId: (deviceId: string | null) =>
+      ipcRenderer.invoke('project:setDefaultDeviceId', deviceId) as Promise<string | null>,
   },
   terminal: {
     inventorySnapshot: () =>
@@ -341,6 +347,55 @@ contextBridge.exposeInMainWorld('electronAPI', {
         RepoBranchDiscoveryResponse | { error: string }
       >,
   },
+  executionDevices: {
+    list: () =>
+      ipcRenderer.invoke('executionDevices:list') as Promise<ExecutionDeviceConfig[]>,
+    getGlobalDefault: () =>
+      ipcRenderer.invoke('executionDevices:getGlobalDefault') as Promise<string | null>,
+    setGlobalDefault: (deviceId: string | null) =>
+      ipcRenderer.invoke('executionDevices:setGlobalDefault', deviceId) as Promise<
+        string | null
+      >,
+    resolveDefaultForNewTask: () =>
+      ipcRenderer.invoke(
+        'executionDevices:resolveDefaultForNewTask',
+      ) as Promise<TaskExecutionDeviceRef>,
+  },
+  cloudBindings: {
+    getPerTaskDeviceOverrides: (projectId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getPerTaskDeviceOverrides',
+        projectId,
+      ) as Promise<Record<string, TaskExecutionDeviceRef>>,
+    getPerTaskDeviceOverride: (projectId: string, taskId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getPerTaskDeviceOverride',
+        projectId,
+        taskId,
+      ) as Promise<TaskExecutionDeviceRef | null>,
+    setPerTaskDeviceOverride: (
+      projectId: string,
+      taskId: string,
+      ref: TaskExecutionDeviceRef | null,
+    ) =>
+      ipcRenderer.invoke(
+        'cloudBindings:setPerTaskDeviceOverride',
+        projectId,
+        taskId,
+        ref,
+      ) as Promise<TaskExecutionDeviceRef | null>,
+    getProjectDefaultDeviceId: (projectId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getProjectDefaultDeviceId',
+        projectId,
+      ) as Promise<string | null>,
+    setProjectDefaultDeviceId: (projectId: string, deviceId: string | null) =>
+      ipcRenderer.invoke(
+        'cloudBindings:setProjectDefaultDeviceId',
+        projectId,
+        deviceId,
+      ) as Promise<string | null>,
+  },
   auth: {
     startGoogleLogin: () =>
       ipcRenderer.invoke('auth:startGoogleLogin') as Promise<{
@@ -372,7 +427,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agentModel?: string;
       agentYolo?: boolean;
       repoId?: string;
+      executionDevice?: TaskExecutionDeviceRef;
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
+    resolveEffectiveExecutionDevice: (task: Task) =>
+      ipcRenderer.invoke(
+        'tasks:resolveEffectiveExecutionDevice',
+        task,
+      ) as Promise<TaskExecutionDeviceRef>,
     update: (
       id: string,
       patch: Partial<
@@ -392,10 +453,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'createSourceBranchIfMissing'
           | 'repoId'
           | 'fluxxWorkBranch'
+          | 'executionDevice'
         >
       > & {
         githubPr?: TaskGithubPr | null;
         autoStartOnUnblock?: boolean | null;
+        executionDevice?: TaskExecutionDeviceRef | null;
       },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (

@@ -66,6 +66,7 @@ export interface ConfigFile {
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
   persistTerminalsWithTmux?: boolean;
+  defaultDeviceId?: string;
   repos: RepoConfig[];
 }
 
@@ -122,6 +123,9 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     persistTerminalsWithTmux: c.persistTerminalsWithTmux === true,
     repos: c.repos,
   };
+  if (typeof c.defaultDeviceId === 'string' && c.defaultDeviceId.trim()) {
+    lp.defaultDeviceId = c.defaultDeviceId.trim();
+  }
   if (c.planningModels && Object.keys(c.planningModels).length > 0) {
     lp.planningModels = { ...c.planningModels };
   }
@@ -289,6 +293,9 @@ function parseConfig(raw: string): ConfigFile | null {
     autoMoveToReviewWhenPrOpen: p.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: p.persistTerminalsWithTmux === true,
     repos,
+    ...(typeof p.defaultDeviceId === 'string' && p.defaultDeviceId.trim()
+      ? { defaultDeviceId: p.defaultDeviceId.trim() }
+      : {}),
     ...(planningModels ? { planningModels } : {}),
     ...(py === true ? { planningAgentYolo: true } : {}),
     ...(taskDefaultModels ? { taskDefaultModels } : {}),
@@ -832,6 +839,36 @@ export class ProjectStore {
       this.project = configToLocalProject(next);
     }
     return next.persistTerminalsWithTmux === true;
+  }
+
+  async getDefaultDeviceIdAt(projectDir: string): Promise<string | undefined> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.defaultDeviceId;
+  }
+
+  async setDefaultDeviceIdAt(
+    projectDir: string,
+    deviceId: string | null | undefined,
+  ): Promise<string | undefined> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const trimmed = deviceId?.trim();
+    const next: ConfigFile = { ...parsed };
+    if (!trimmed) {
+      delete next.defaultDeviceId;
+    } else {
+      next.defaultDeviceId = trimmed;
+    }
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return next.defaultDeviceId;
   }
 
   private async mutateConfig(

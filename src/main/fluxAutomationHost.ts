@@ -16,6 +16,7 @@ import {
   runFluxAutomationInvocation,
   type FluxAutomationHost,
 } from './fluxAutomationRuns';
+import type { DeviceStore } from './DeviceStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { ProjectStore } from './ProjectStore';
 import type { RendererAutomationBridge, AutomationBridgeResult } from './RendererAutomationBridge';
@@ -27,6 +28,7 @@ export type FluxAutomationHostDeps = {
   projectStore: ProjectStore;
   appStateStore: AppStateStore;
   bindingStore: LocalBindingStore;
+  deviceStore: DeviceStore;
   bridge: RendererAutomationBridge;
   getMainWindow: () => BrowserWindow | null;
   taskActions: {
@@ -45,10 +47,12 @@ export type FluxAutomationHostDeps = {
           | 'sourceBranch'
           | 'createSourceBranchIfMissing'
           | 'repoId'
+          | 'executionDevice'
         >
       > & {
         githubPr?: TaskGithubPr | null;
         attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+        executionDevice?: import('../types').TaskExecutionDeviceRef | null;
       },
     ) => Promise<Task>;
     startTask: (id: string) => Promise<Task>;
@@ -151,6 +155,8 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     taskStore: deps.taskStore,
     projectStore: deps.projectStore,
     bindingStore: deps.bindingStore,
+    deviceStore: deps.deviceStore,
+    getActiveProjectKey: () => deps.appStateStore.get().activeProjectKey,
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>
       automationBridgeFailureToInvoke(result),

@@ -12,7 +12,13 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskGithubPr, type TaskStatus } from '../../types';
+import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskExecutionDeviceRef, type TaskGithubPr, type TaskStatus } from '../../types';
+import { mergeCloudTasksWithLocalDeviceOverrides } from '../../executionDevices/mergeCloudTaskDevices';
+import {
+  parseSharedExecutionDeviceFromFirestore,
+  shouldPersistExecutionDeviceToFirestore,
+} from '../../executionDevices/firestoreTaskDevice';
+import { isPrivateDirectExecutionDeviceKind } from '../../executionDevices/parse';
 import { parsePersistedTaskAttachedPlanningDocs, sanitizeTaskAttachedPlanningDocsInput } from '../../taskAttachedPlanningDocs';
 import { parseGithubPrField } from '../../githubPrMetadata';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
@@ -78,9 +84,18 @@ export class FirestoreTaskProvider implements TaskProvider {
     const col = collection(db, 'projects', this.projectId, 'tasks');
     this.unsubSnapshot = onSnapshot(
       col,
-      (snap) => {
+      async (snap) => {
         const primaryRepoId = resolvePrimaryRepoIdFromList(this.getSharedRepos());
-        this.tasks = snap.docs.map((d) => toTask(d, this.projectId, primaryRepoId));
+        const base = snap.docs.map((d) => toTask(d, this.projectId, primaryRepoId));
+        let overrides: Record<string, TaskExecutionDeviceRef> | undefined;
+        try {
+          overrides = await window.electronAPI.cloudBindings.getPerTaskDeviceOverrides(
+            this.projectId,
+          );
+        } catch (err) {
+          console.warn('[FirestoreTaskProvider] failed to load device overrides', err);
+        }
+        this.tasks = mergeCloudTasksWithLocalDeviceOverrides(base, overrides);
         const out = this.tasks.slice();
         for (const cb of this.subscribers) cb(out);
       },
@@ -147,6 +162,21 @@ export class FirestoreTaskProvider implements TaskProvider {
         : {}),
     };
     const ref = await addDoc(col, data);
+    let executionDeviceForView: TaskExecutionDeviceRef | undefined;
+    if (input.executionDevice && shouldPersistExecutionDeviceToFirestore(input.executionDevice)) {
+      await updateDoc(ref, { executionDevice: input.executionDevice });
+      executionDeviceForView = input.executionDevice;
+    } else {
+      const deviceRef =
+        input.executionDevice ??
+        (await window.electronAPI.executionDevices.resolveDefaultForNewTask());
+      await window.electronAPI.cloudBindings.setPerTaskDeviceOverride(
+        this.projectId,
+        ref.id,
+        deviceRef,
+      );
+      executionDeviceForView = deviceRef;
+    }
     let normalizedDeps: string[] | undefined;
     try {
       if (input.blockedByTaskIds != null && input.blockedByTaskIds.length > 0) {
@@ -203,6 +233,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         : {}),
       ...(input.agent != null && input.agentYolo === true ? { agentYolo: true } : {}),
       repoId: repoResolved.repoId,
+      ...(executionDeviceForView ? { executionDevice: executionDeviceForView } : {}),
       ...(() => {
         if (input.attachedPlanningDocs === undefined) return {};
         const s = sanitizeTaskAttachedPlanningDocsInput(input.attachedPlanningDocs);
@@ -258,6 +289,32 @@ export class FirestoreTaskProvider implements TaskProvider {
         throw new Error(gate.message);
       }
     }
+    if (patch.executionDevice !== undefined) {
+      if (patch.executionDevice === null) {
+        await window.electronAPI.cloudBindings.setPerTaskDeviceOverride(
+          this.projectId,
+          id,
+          null,
+        );
+      } else if (shouldPersistExecutionDeviceToFirestore(patch.executionDevice)) {
+        // fall through to Firestore update below
+      } else if (isPrivateDirectExecutionDeviceKind(patch.executionDevice.kind)) {
+        await window.electronAPI.cloudBindings.setPerTaskDeviceOverride(
+          this.projectId,
+          id,
+          patch.executionDevice,
+        );
+        const merged = {
+          ...previous,
+          executionDevice: patch.executionDevice,
+        };
+        this.tasks = this.tasks.map((t) => (t.id === id ? merged : t));
+        const out = this.tasks.slice();
+        for (const cb of this.subscribers) cb(out);
+        return merged;
+      }
+    }
+
     const db = getFirebaseFirestore();
     const ref = doc(db, 'projects', this.projectId, 'tasks', id);
     const updates: DocumentData = {
@@ -372,13 +429,24 @@ export class FirestoreTaskProvider implements TaskProvider {
         }
       }
     }
+    if (
+      patch.executionDevice !== undefined &&
+      shouldPersistExecutionDeviceToFirestore(patch.executionDevice ?? undefined)
+    ) {
+      updates.executionDevice = patch.executionDevice;
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
-    return toTask(
+    const parsed = toTask(
       after as unknown as QueryDocumentSnapshot<DocumentData>,
       this.projectId,
       resolvePrimaryRepoIdFromList(this.getSharedRepos()),
     );
+    const override = await window.electronAPI.cloudBindings.getPerTaskDeviceOverride(
+      this.projectId,
+      id,
+    );
+    return override ? { ...parsed, executionDevice: override } : parsed;
   }
 
   async delete(id: string): Promise<void> {
@@ -436,6 +504,7 @@ function toTask(
     ...parseRepoIdField(data.repoId, primaryRepoId),
     ...parseFluxxWorkBranchField(data.fluxxWorkBranch ?? data.fluxWorkBranch),
     ...parseAttachedPlanningDocsField(data.attachedPlanningDocs),
+    ...parseSharedExecutionDeviceFromFirestore(data.executionDevice),
   };
 }
 

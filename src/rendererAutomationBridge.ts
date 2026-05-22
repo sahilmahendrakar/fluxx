@@ -4,6 +4,7 @@ import type {
   RepoPathStatus,
   Task,
   TaskAttachedPlanningDoc,
+  TaskExecutionDeviceRef,
   TaskGithubPr,
   TaskStatus,
 } from './types';
@@ -47,6 +48,7 @@ export interface AutomationBridgeTaskCreateInput {
   /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  executionDevice?: TaskExecutionDeviceRef;
 }
 
 export interface AutomationBridgeTaskPatch {
@@ -63,6 +65,7 @@ export interface AutomationBridgeTaskPatch {
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  executionDevice?: TaskExecutionDeviceRef | null;
 }
 
 export interface AutomationBridgeTasksCreatePayload {
