@@ -47,6 +47,10 @@ import {
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
 import { taskDeleteNeedsWorkspaceConfirmation } from './taskDeleteWorkspaceConfirmation';
+import {
+  readTaskCleanupSkipConfirmation,
+  writeTaskCleanupSkipConfirmation,
+} from './taskCleanupConfirmationPrefs';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
 import { useMembers } from './renderer/projects/useMembers';
@@ -223,6 +227,7 @@ export default function App() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [taskDeleteConfirmId, setTaskDeleteConfirmId] = useState<string | null>(null);
   const [cleanupConfirmTaskId, setCleanupConfirmTaskId] = useState<string | null>(null);
+  const [cleanupDontShowAgain, setCleanupDontShowAgain] = useState(false);
   const [cleanupLoadingTaskId, setCleanupLoadingTaskId] = useState<string | null>(null);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [prLoadingTaskId, setPrLoadingTaskId] = useState<string | null>(null);
@@ -2606,14 +2611,49 @@ export default function App() {
     void handleDeleteTask(id);
   }, [taskDeleteConfirmId, handleDeleteTask]);
 
+  const runCleanupTask = useCallback(
+    async (taskId: string) => {
+      setCleanupLoadingTaskId(taskId);
+      setCleanupError(null);
+      try {
+        const { errors } = await window.electronAPI.tasks.cleanupResources(taskId);
+        stripLocalSessionStateForTask(taskId);
+        if (errors.length > 0) {
+          setCleanupError(errors.join('\n'));
+        } else if (provider) {
+          try {
+            const updated = await provider.update(taskId, {
+              workspaceCleanedAt: new Date().toISOString(),
+            });
+            setTasks((prev) =>
+              prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
+            );
+          } catch (err) {
+            console.error('[tasks.update] workspaceCleanedAt failed', err);
+          }
+        }
+      } catch (err) {
+        setCleanupError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCleanupLoadingTaskId(null);
+      }
+    },
+    [provider, stripLocalSessionStateForTask],
+  );
+
   const requestCleanupTask = useCallback(
     (taskId: string) => {
       const task = tasks.find((t) => t.id === taskId);
       if (!task || task.status !== 'done' || task.workspaceCleanedAt) return;
       setCleanupError(null);
+      if (readTaskCleanupSkipConfirmation()) {
+        void runCleanupTask(taskId);
+        return;
+      }
+      setCleanupDontShowAgain(false);
       setCleanupConfirmTaskId(taskId);
     },
-    [tasks],
+    [tasks, runCleanupTask],
   );
 
   const handleTaskPrClick = useCallback(
@@ -2668,43 +2708,26 @@ export default function App() {
 
   const cancelCleanupTask = useCallback(() => {
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
   }, []);
 
-  const confirmCleanupTask = useCallback(async () => {
+  const confirmCleanupTask = useCallback(() => {
     const taskId = cleanupConfirmTaskId;
     if (!taskId) return;
     setCleanupConfirmTaskId(null);
-    setCleanupLoadingTaskId(taskId);
-    setCleanupError(null);
-    try {
-      const { errors } = await window.electronAPI.tasks.cleanupResources(taskId);
-      stripLocalSessionStateForTask(taskId);
-      if (errors.length > 0) {
-        setCleanupError(errors.join('\n'));
-      } else if (provider) {
-        try {
-          const updated = await provider.update(taskId, {
-            workspaceCleanedAt: new Date().toISOString(),
-          });
-          setTasks((prev) =>
-            prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
-          );
-        } catch (err) {
-          console.error('[tasks.update] workspaceCleanedAt failed', err);
-        }
-      }
-    } catch (err) {
-      setCleanupError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCleanupLoadingTaskId(null);
+    if (cleanupDontShowAgain) {
+      writeTaskCleanupSkipConfirmation(true);
     }
-  }, [cleanupConfirmTaskId, provider, stripLocalSessionStateForTask]);
+    setCleanupDontShowAgain(false);
+    void runCleanupTask(taskId);
+  }, [cleanupConfirmTaskId, cleanupDontShowAgain, runCleanupTask]);
 
   const handleProjectActivated = useCallback((p: ActiveProject) => {
     setProject(p);
     setSelectedTaskId(null);
     setTaskDeleteConfirmId(null);
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPrLoadingTaskId(null);
@@ -2736,6 +2759,7 @@ export default function App() {
     setSelectedTaskId(null);
     setTaskDeleteConfirmId(null);
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPrLoadingTaskId(null);
@@ -3487,6 +3511,14 @@ export default function App() {
                         ? () => void handleMarkTaskDone(item.session.taskId, { goToBoard: true })
                         : undefined
                     }
+                    onRequestCleanupTask={
+                      tabTask &&
+                      tabTask.status === 'done' &&
+                      !tabTask.workspaceCleanedAt
+                        ? () => requestCleanupTask(item.session.taskId)
+                        : undefined
+                    }
+                    cleanupLoading={cleanupLoadingTaskId === item.session.taskId}
                     onTaskPrClick={(id) => void handleTaskPrClick(id)}
                     prLoading={prLoadingTaskId === item.session.taskId}
                     prAgentAwaiting={Boolean(prAgentAwaitingByTaskId[item.session.taskId])}
@@ -3527,6 +3559,11 @@ export default function App() {
                                     })
                                 : undefined,
                             markAsDoneBlocked: tabTaskBlocked,
+                            onRequestCleanupTask:
+                              tabTask.status === 'done' && !tabTask.workspaceCleanedAt
+                                ? () => requestCleanupTask(item.session.taskId)
+                                : undefined,
+                            cleanupLoading: cleanupLoadingTaskId === item.session.taskId,
                             autoStartWhenUnblockedProject,
                             projectMembers,
                             cloudActiveRunnerSession:
@@ -3825,7 +3862,12 @@ export default function App() {
           ]}
           confirmLabel="Clean up"
           destructive={false}
-          onConfirm={() => void confirmCleanupTask()}
+          dontShowAgain={{
+            label: "Don't show this again",
+            checked: cleanupDontShowAgain,
+            onChange: setCleanupDontShowAgain,
+          }}
+          onConfirm={confirmCleanupTask}
           onCancel={cancelCleanupTask}
         />
       ) : null}
