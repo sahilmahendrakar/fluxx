@@ -40,7 +40,7 @@ interface Props {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type Category = 'project' | 'team';
+type Category = 'project' | 'global' | 'team';
 
 function isRepoManagementStatesError(
   result:
@@ -249,8 +249,13 @@ export function ProjectSettingsView({
       >
         <CategoryButton
           active={category === 'project'}
-          label="Project Config"
+          label="Project"
           onClick={() => setCategory('project')}
+        />
+        <CategoryButton
+          active={category === 'global'}
+          label="Global"
+          onClick={() => setCategory('global')}
         />
         {teamAvailable ? (
           <CategoryButton
@@ -268,6 +273,8 @@ export function ProjectSettingsView({
             onProjectAgentPrefsRefresh={onProjectAgentPrefsRefresh}
             onCloudSharedReposChanged={onCloudSharedReposChanged}
           />
+        ) : category === 'global' ? (
+          <GlobalSettingsPane />
         ) : teamAvailable && project.kind === 'cloud' && currentUid ? (
           <TeamView
             project={project}
@@ -304,6 +311,152 @@ function CategoryButton({
     >
       {label}
     </button>
+  );
+}
+
+function GlobalSettingsPane() {
+  const [autoNotifyPrefs, setAutoNotifyPrefs] = useState<AutoTransitionNotificationPrefs>(
+    DEFAULT_AUTO_TRANSITION_NOTIFICATION_PREFS,
+  );
+  const [autoNotifyLoading, setAutoNotifyLoading] = useState(true);
+  const [autoNotifySaveState, setAutoNotifySaveState] = useState<SaveState>('idle');
+  const [autoNotifyError, setAutoNotifyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAutoNotifyLoading(true);
+    setAutoNotifyError(null);
+    void window.electronAPI.notifications
+      .getAutoTransitionPrefs()
+      .then((prefs) => {
+        if (!cancelled) {
+          setAutoNotifyPrefs(prefs);
+          setAutoNotifySaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAutoNotifyError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAutoNotifyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistAutoNotifyPrefs = useCallback(async (next: AutoTransitionNotificationPrefs) => {
+    setAutoNotifyPrefs(next);
+    setAutoNotifySaveState('saving');
+    setAutoNotifyError(null);
+    try {
+      const result = await window.electronAPI.notifications.setAutoTransitionPrefs(next);
+      setAutoNotifyPrefs(result.prefs);
+      setAutoNotifySaveState('saved');
+      window.setTimeout(() => {
+        setAutoNotifySaveState((state) => (state === 'saved' ? 'idle' : state));
+      }, 1500);
+    } catch (err) {
+      setAutoNotifySaveState('error');
+      setAutoNotifyError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  const handleAutoNotifyEnabledChange = useCallback(
+    (enabled: boolean) => {
+      void persistAutoNotifyPrefs({
+        ...autoNotifyPrefs,
+        enabled,
+      });
+    },
+    [autoNotifyPrefs, persistAutoNotifyPrefs],
+  );
+
+  const handleAutoNotifyDestinationChange = useCallback(
+    (dest: AutoTransitionNotificationDestination, enabled: boolean) => {
+      void persistAutoNotifyPrefs({
+        ...autoNotifyPrefs,
+        destinations: {
+          ...autoNotifyPrefs.destinations,
+          [dest]: enabled,
+        },
+      });
+    },
+    [autoNotifyPrefs, persistAutoNotifyPrefs],
+  );
+
+  const autoNotifyDestinationLabel = (dest: AutoTransitionNotificationDestination): string =>
+    COLUMNS.find((c) => c.id === dest)?.label ?? dest;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto w-full max-w-2xl px-8 py-10">
+        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">Global</h1>
+        <p className="mt-1 text-[13px] text-zinc-500">
+          Preferences stored for Fluxx on this Mac. They apply across all projects.
+        </p>
+
+        <section
+          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="global-settings-notifications-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="global-settings-notifications-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Notifications
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              macOS alerts when Fluxx moves a task automatically (not when you drag cards or submit
+              queries).
+            </p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key="global-auto-notify-enabled"
+              title="Automatic task status notifications"
+              description={
+                <>
+                  When off, Fluxx will not show desktop notifications for automation-driven board
+                  moves. Manual status changes never trigger these alerts.
+                </>
+              }
+              checked={autoNotifyPrefs.enabled}
+              onCheckedChange={(next) => void handleAutoNotifyEnabledChange(next)}
+              switchDisabled={autoNotifyLoading || autoNotifySaveState === 'saving'}
+              loading={autoNotifyLoading}
+              saveState={autoNotifySaveState}
+              error={autoNotifyError}
+            />
+            {AUTO_TRANSITION_NOTIFICATION_DESTINATIONS.map((dest) => (
+              <AutomationSettingRow
+                key={`global-auto-notify-${dest}`}
+                title={`Notify when moved to ${autoNotifyDestinationLabel(dest)}`}
+                description={
+                  <>
+                    Includes automatic moves into {autoNotifyDestinationLabel(dest)} from dependency
+                    unblock, agent silence, PR refresh, and related automations.
+                  </>
+                }
+                checked={autoNotifyPrefs.destinations[dest]}
+                onCheckedChange={(next) => void handleAutoNotifyDestinationChange(dest, next)}
+                switchDisabled={
+                  !autoNotifyPrefs.enabled ||
+                  autoNotifyLoading ||
+                  autoNotifySaveState === 'saving'
+                }
+                loading={autoNotifyLoading}
+                saveState={autoNotifySaveState}
+                error={null}
+              />
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -352,12 +505,6 @@ function ProjectConfigPane({
   const [autoReviewOnOpenPrLoading, setAutoReviewOnOpenPrLoading] = useState(true);
   const [autoReviewOnOpenPrSaveState, setAutoReviewOnOpenPrSaveState] = useState<SaveState>('idle');
   const [autoReviewOnOpenPrError, setAutoReviewOnOpenPrError] = useState<string | null>(null);
-  const [autoNotifyPrefs, setAutoNotifyPrefs] = useState<AutoTransitionNotificationPrefs>(
-    DEFAULT_AUTO_TRANSITION_NOTIFICATION_PREFS,
-  );
-  const [autoNotifyLoading, setAutoNotifyLoading] = useState(true);
-  const [autoNotifySaveState, setAutoNotifySaveState] = useState<SaveState>('idle');
-  const [autoNotifyError, setAutoNotifyError] = useState<string | null>(null);
   const [persistTmuxEnabled, setPersistTmuxEnabled] = useState(false);
   const [persistTmuxLoading, setPersistTmuxLoading] = useState(true);
   const [persistTmuxSaveState, setPersistTmuxSaveState] = useState<SaveState>('idle');
@@ -622,31 +769,6 @@ function ProjectConfigPane({
       })
       .finally(() => {
         if (!cancelled) setAutoReviewOnOpenPrLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [project.id]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setAutoNotifyLoading(true);
-    setAutoNotifyError(null);
-    void window.electronAPI.notifications
-      .getAutoTransitionPrefs()
-      .then((prefs) => {
-        if (!cancelled) {
-          setAutoNotifyPrefs(prefs);
-          setAutoNotifySaveState('idle');
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setAutoNotifyError(err instanceof Error ? err.message : String(err));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAutoNotifyLoading(false);
       });
     return () => {
       cancelled = true;
@@ -974,49 +1096,6 @@ function ProjectConfigPane({
     }, 1500);
   }, []);
 
-  const persistAutoNotifyPrefs = useCallback(async (next: AutoTransitionNotificationPrefs) => {
-    setAutoNotifyPrefs(next);
-    setAutoNotifySaveState('saving');
-    setAutoNotifyError(null);
-    try {
-      const result = await window.electronAPI.notifications.setAutoTransitionPrefs(next);
-      setAutoNotifyPrefs(result.prefs);
-      setAutoNotifySaveState('saved');
-      window.setTimeout(() => {
-        setAutoNotifySaveState((state) => (state === 'saved' ? 'idle' : state));
-      }, 1500);
-    } catch (err) {
-      setAutoNotifySaveState('error');
-      setAutoNotifyError(err instanceof Error ? err.message : String(err));
-    }
-  }, []);
-
-  const handleAutoNotifyEnabledChange = useCallback(
-    (enabled: boolean) => {
-      void persistAutoNotifyPrefs({
-        ...autoNotifyPrefs,
-        enabled,
-      });
-    },
-    [autoNotifyPrefs, persistAutoNotifyPrefs],
-  );
-
-  const handleAutoNotifyDestinationChange = useCallback(
-    (dest: AutoTransitionNotificationDestination, enabled: boolean) => {
-      void persistAutoNotifyPrefs({
-        ...autoNotifyPrefs,
-        destinations: {
-          ...autoNotifyPrefs.destinations,
-          [dest]: enabled,
-        },
-      });
-    },
-    [autoNotifyPrefs, persistAutoNotifyPrefs],
-  );
-
-  const autoNotifyDestinationLabel = (dest: AutoTransitionNotificationDestination): string =>
-    COLUMNS.find((c) => c.id === dest)?.label ?? dest;
-
   const handleAddRepo = useCallback(async () => {
     if (!multiRepoLocalManagementEnabled) return;
     setAddRepoState('saving');
@@ -1150,7 +1229,7 @@ function ProjectConfigPane({
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
         <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">
-          Project Config
+          Project
         </h1>
         <p className="mt-1 text-[13px] text-zinc-500">
           Configure how new task workspaces are created for {project.name}.
@@ -1291,64 +1370,6 @@ function ProjectConfigPane({
               saveState={autoReviewOnOpenPrSaveState}
               error={autoReviewOnOpenPrError}
             />
-          </div>
-        </section>
-
-        <section
-          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
-          aria-labelledby="project-settings-notifications-heading"
-        >
-          <div className="border-b border-white/[0.06] py-4">
-            <h2
-              id="project-settings-notifications-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
-            >
-              Notifications
-            </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
-              macOS alerts when Fluxx moves a task automatically (not when you drag cards or submit
-              queries). Stored for this app on your Mac.
-            </p>
-          </div>
-          <div className="divide-y divide-white/[0.06]">
-            <AutomationSettingRow
-              key={`${project.id}-auto-notify-enabled`}
-              title="Automatic task status notifications"
-              description={
-                <>
-                  When off, Fluxx will not show desktop notifications for automation-driven board
-                  moves. Manual status changes never trigger these alerts.
-                </>
-              }
-              checked={autoNotifyPrefs.enabled}
-              onCheckedChange={(next) => void handleAutoNotifyEnabledChange(next)}
-              switchDisabled={autoNotifyLoading || autoNotifySaveState === 'saving'}
-              loading={autoNotifyLoading}
-              saveState={autoNotifySaveState}
-              error={autoNotifyError}
-            />
-            {AUTO_TRANSITION_NOTIFICATION_DESTINATIONS.map((dest) => (
-              <AutomationSettingRow
-                key={`${project.id}-auto-notify-${dest}`}
-                title={`Notify when moved to ${autoNotifyDestinationLabel(dest)}`}
-                description={
-                  <>
-                    Includes automatic moves into {autoNotifyDestinationLabel(dest)} from dependency
-                    unblock, agent silence, PR refresh, and related automations.
-                  </>
-                }
-                checked={autoNotifyPrefs.destinations[dest]}
-                onCheckedChange={(next) => void handleAutoNotifyDestinationChange(dest, next)}
-                switchDisabled={
-                  !autoNotifyPrefs.enabled ||
-                  autoNotifyLoading ||
-                  autoNotifySaveState === 'saving'
-                }
-                loading={autoNotifyLoading}
-                saveState={autoNotifySaveState}
-                error={null}
-              />
-            ))}
           </div>
         </section>
 
