@@ -168,4 +168,42 @@ describe('runFluxCli', () => {
     delete process.env.FLUX_AUTOMATION_TOKEN;
     delete process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY;
   });
+
+  it('sends validation.run payload with task and pack ids', async () => {
+    process.env.FLUX_AUTOMATION_URL = 'http://127.0.0.1:9';
+    process.env.FLUX_AUTOMATION_TOKEN = 'tok';
+    process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY = JSON.stringify({
+      kind: 'local',
+      id: 'p1',
+    });
+    const fetchMock = vi.fn(async () => ({
+      status: 200,
+      json: async () => ({
+        ok: true,
+        data: { runId: 'run-1', artifactDir: '/tmp/validation-runs/run-1', run: { id: 'run-1' } },
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const code = await runFluxCli([
+      'validation',
+      'run',
+      '--json',
+      '--task-id',
+      'task-1',
+      '--pack',
+      'electron-playwright',
+    ]);
+
+    delete process.env.FLUX_AUTOMATION_URL;
+    delete process.env.FLUX_AUTOMATION_TOKEN;
+    delete process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY;
+    expect(code).toBe(EXIT_OK);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      op: string;
+      payload: Record<string, unknown>;
+    };
+    expect(body.op).toBe('validation.run');
+    expect(body.payload).toEqual({ taskId: 'task-1', packId: 'electron-playwright' });
+  });
 });

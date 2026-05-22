@@ -4423,6 +4423,9 @@ app.whenReady().then(async () => {
     appStateStore,
     bindingStore,
     bridge: automationRendererBridge,
+    validationRunStore,
+    listTerminalSessions: () => terminalBackend.listSessions(),
+    getRecordProjectDir: resolveRecordProjectDir,
     getMainWindow: () => mainWindow,
     taskActions: {
       updateTask: (id, patch) =>

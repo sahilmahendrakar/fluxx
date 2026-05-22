@@ -38,6 +38,15 @@ import type { ProjectStore } from './ProjectStore';
 import type { TaskStore } from './TaskStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './AutomationHttpServer';
+import {
+  automationRunValidationArtifacts,
+  automationRunValidationIngest,
+  automationRunValidationList,
+  automationRunValidationRun,
+  automationRunValidationShow,
+  type FluxAutomationValidationHost,
+} from './fluxAutomationValidation';
+import type { ValidationRunStore } from './ValidationRunStore';
 
 export type FluxAutomationResolvedActive =
   | { kind: 'none' }
@@ -57,6 +66,9 @@ export type FluxAutomationHost = {
   taskStore: TaskStore;
   projectStore: ProjectStore;
   bindingStore: LocalBindingStore;
+  validationRunStore: ValidationRunStore;
+  listTerminalSessions: () => Promise<import('../types').Session[]>;
+  getRecordProjectDir: () => string;
   taskActions: {
     updateTask: (
       id: string,
@@ -618,6 +630,10 @@ export async function automationRunRepoBranches(
   return { ok: true, data: result.data };
 }
 
+function asValidationHost(h: FluxAutomationHost): FluxAutomationValidationHost {
+  return h;
+}
+
 export async function runFluxAutomationInvocation(
   h: FluxAutomationHost,
   op: FluxAutomationHttpOp,
@@ -673,6 +689,50 @@ export async function runFluxAutomationInvocation(
       return automationRunProjectInfo(h);
     case 'repo.branchDiscovery':
       return automationRunRepoBranches(h, (payload ?? {}) as { repoId?: string; classifyBranch?: string });
+    case 'validation.run': {
+      const vh = asValidationHost(h);
+      const p = payload as { taskId?: string; packId?: string; validatorAgent?: Agent };
+      if (typeof p?.taskId !== 'string') {
+        return { ok: false, error: 'validation.run requires taskId' };
+      }
+      return automationRunValidationRun(vh, {
+        taskId: p.taskId,
+        ...(p.packId !== undefined ? { packId: p.packId } : {}),
+        ...(p.validatorAgent !== undefined ? { validatorAgent: p.validatorAgent } : {}),
+      });
+    }
+    case 'validation.list': {
+      const vh = asValidationHost(h);
+      const p = payload as { taskId?: string };
+      if (typeof p?.taskId !== 'string') {
+        return { ok: false, error: 'validation.list requires taskId' };
+      }
+      return automationRunValidationList(vh, { taskId: p.taskId });
+    }
+    case 'validation.show': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.show requires runId' };
+      }
+      return automationRunValidationShow(vh, { runId: p.runId });
+    }
+    case 'validation.artifacts': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.artifacts requires runId' };
+      }
+      return automationRunValidationArtifacts(vh, { runId: p.runId });
+    }
+    case 'validation.ingest': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.ingest requires runId' };
+      }
+      return automationRunValidationIngest(vh, { runId: p.runId });
+    }
     default:
       return { ok: false, error: `Unknown op: ${String(op)}` };
   }
