@@ -7,7 +7,10 @@ import {
   resolveLocalOrOriginRefWithAmbiguity,
 } from './repoGit';
 import { WorktreeCreateError } from './worktreeCreateError';
-import { resolveLocalBranchShortForWorktreePath, readHeadBranchShortAtPath } from './gitWorktreeBranch';
+import {
+  resolveLocalBranchShortForWorktreePath,
+  readHeadBranchShortAtPath,
+} from './gitWorktreeBranch';
 import {
   chooseFluxxTaskWorkBranchName,
   collectTakenFluxxWorkBranchNames,
@@ -127,7 +130,10 @@ export class WorktreeService {
       worktreePath = path.join(worktreesRoot, ...branchSegments);
     }
 
-    await this.reclaimStaleWorktree(worktreePath, gitRootResolved);
+    const prep = await this.prepareWorktreePath(worktreePath, gitRootResolved, branch);
+    if (prep === 'healthy') {
+      return { worktreePath, branch };
+    }
 
     let branchExists = false;
     try {
@@ -443,11 +449,15 @@ export class WorktreeService {
   }
 
   /**
-   * If a previous session left a stale worktree at the target path (e.g. from a
-   * hard crash where onExit cleanup never ran), reclaim it so `git worktree add`
-   * can succeed. Clears both the on-disk directory and git's worktree metadata.
+   * Decides whether an on-disk path is a healthy Flux task checkout to reuse, or
+   * must be reclaimed before `git worktree add`. Healthy paths (e.g. after Ctrl+C
+   * or a stopped session) are left untouched.
    */
-  private async reclaimStaleWorktree(worktreePath: string, gitRootResolved: string): Promise<void> {
+  private async prepareWorktreePath(
+    worktreePath: string,
+    gitRootResolved: string,
+    expectedBranch: string,
+  ): Promise<'absent' | 'healthy'> {
     let exists = false;
     try {
       await fs.access(worktreePath);
@@ -462,9 +472,50 @@ export class WorktreeService {
       } catch {
         // best-effort
       }
-      return;
+      return 'absent';
     }
 
+    const registeredBranch = await resolveLocalBranchShortForWorktreePath(
+      gitRootResolved,
+      worktreePath,
+    );
+    if (registeredBranch === expectedBranch) {
+      return 'healthy';
+    }
+
+    const headBranch = await readHeadBranchShortAtPath(worktreePath);
+    if (
+      registeredBranch == null &&
+      headBranch === expectedBranch &&
+      (await this.isGitWorktreeCheckout(worktreePath))
+    ) {
+      return 'healthy';
+    }
+
+    await this.forceReclaimWorktreePath(worktreePath, gitRootResolved);
+    return 'absent';
+  }
+
+  private async isGitWorktreeCheckout(dir: string): Promise<boolean> {
+    try {
+      const { stdout } = await execFile('git', ['rev-parse', '--is-inside-work-tree'], {
+        cwd: dir,
+        encoding: 'utf8',
+      });
+      return stdout.trim() === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Removes a broken or orphan directory at the target path so `git worktree add`
+   * can succeed. Not used for healthy post-interrupt checkouts.
+   */
+  private async forceReclaimWorktreePath(
+    worktreePath: string,
+    gitRootResolved: string,
+  ): Promise<void> {
     console.warn(
       `[WorktreeService.create] reclaiming stale worktree: ${worktreePath}`,
     );
