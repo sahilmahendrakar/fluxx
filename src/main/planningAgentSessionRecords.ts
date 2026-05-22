@@ -79,18 +79,21 @@ export class PlanningAgentSessionRecordStore {
   private async ensureLoaded(): Promise<void> {
     const dir = this.getProjectDir()?.trim() ?? null;
     if (!dir) {
-      this.cache = [];
-      this.loadedForDir = null;
+      // Project dir not ready yet — do not treat as "loaded empty" so a later call can read disk.
       return;
     }
-    if (this.loadedForDir === dir) return;
-    this.loadedForDir = dir;
     const fp = path.join(dir, FILE_NAME);
+    const fileExists = await pathExists(fp);
+    if (this.loadedForDir === dir) {
+      if (this.cache.length > 0 || !fileExists) return;
+      // File appeared after an earlier miss — fall through and reload.
+    }
+    if (!fileExists) {
+      this.cache = [];
+      return;
+    }
+    this.loadedForDir = dir;
     try {
-      if (!(await pathExists(fp))) {
-        this.cache = [];
-        return;
-      }
       const raw = await fs.readFile(fp, 'utf8');
       const parsed = JSON.parse(raw) as unknown;
       if (
@@ -107,6 +110,7 @@ export class PlanningAgentSessionRecordStore {
       }
     } catch {
       this.cache = [];
+      this.loadedForDir = null;
     }
   }
 
@@ -215,7 +219,11 @@ export class PlanningAgentSessionRecordStore {
     });
   }
 
-  async markReplacedSessions(projectId: string, keepFluxxSessionId: string): Promise<void> {
+  async markReplacedSessions(
+    projectId: string,
+    keepFluxxSessionId: string,
+    liveFluxxSessionIds: ReadonlySet<string>,
+  ): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();
       let changed = false;
@@ -223,6 +231,7 @@ export class PlanningAgentSessionRecordStore {
         if (r.projectId !== projectId) return r;
         if (r.fluxxSessionId === keepFluxxSessionId) return r;
         if (r.endedAt) return r;
+        if (!liveFluxxSessionIds.has(r.fluxxSessionId)) return r;
         changed = true;
         return {
           ...r,
@@ -253,6 +262,13 @@ export class PlanningAgentSessionRecordStore {
   }
 
   private isColdResumableRecord(r: PlanningAgentSessionRecord): boolean {
+    if (
+      r.endedReason === 'user-archived' ||
+      r.endedReason === 'replaced-by-new-session'
+    ) {
+      return false;
+    }
+    if (!r.endedAt) return true;
     return COLD_RESUMABLE_END_REASONS.includes(
       r.endedReason as PlanningAgentSessionEndedReason,
     );
@@ -329,6 +345,7 @@ export class PlanningAgentSessionRecordStore {
       seen.add(r.fluxxSessionId);
       rows.push(this.recordToInterruptedView(r));
     }
+
     return rows;
   }
 

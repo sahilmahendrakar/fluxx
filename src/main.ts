@@ -79,6 +79,7 @@ import {
 } from './main/agentSpawn';
 import {
   mergePlanningSessionsWithColdResume,
+  mergeTaskSessionsWithColdResume,
   parsePlanningStartPayload,
 } from './main/planningColdRestore';
 import {
@@ -177,6 +178,7 @@ import type {
   CloudRepoBindingOverview,
   CloudSharedRepo,
   ProjectTabState,
+  RestorableSessionIds,
   LocalProject,
   Project,
   RepoBranchDiscovery,
@@ -564,14 +566,16 @@ app.whenReady().then(async () => {
     console.error('[main] failed to start terminal backend', err);
   }
 
+  const resolveRecordProjectDir = (): string =>
+    worktreeService.getProjectDir()?.trim() || projectStore.getProjectDir()?.trim() || '';
   const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
-    getProjectDir: () => worktreeService.getProjectDir(),
+    getProjectDir: resolveRecordProjectDir,
   });
   const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
-    getProjectDir: () => worktreeService.getProjectDir(),
+    getProjectDir: resolveRecordProjectDir,
   });
   const terminalSessionRecordStore = new TerminalSessionRecordStore({
-    getProjectDir: () => worktreeService.getProjectDir(),
+    getProjectDir: resolveRecordProjectDir,
   });
 
   async function buildTerminalInventorySnapshotForActiveProject(): Promise<TerminalInventorySnapshot> {
@@ -3529,7 +3533,16 @@ app.whenReady().then(async () => {
         return finish({ error: 'AGENT_NOT_FOUND', message: result.message });
       }
       sessionTaskMap.set(result.id, task.id);
-      void taskAgentSessionRecordStore.markReplacedSessions(merged.id, result.id);
+      const liveTaskSessionIds = new Set(
+        (await terminalBackend.listSessions())
+          .filter((s) => s.taskId === merged.id)
+          .map((s) => s.id),
+      );
+      void taskAgentSessionRecordStore.markReplacedSessions(
+        merged.id,
+        result.id,
+        liveTaskSessionIds,
+      );
       void terminalSessionRecordStore.markReplacedTaskSessions(merged.id, result.id);
       const sourceBranchShort = (merged.sourceBranch ?? '').trim() || undefined;
       const row: TaskAgentSessionRecord = {
@@ -3973,7 +3986,33 @@ app.whenReady().then(async () => {
     sessionTaskMap.delete(sessionId);
     await terminalBackend.closeShellsForSession(sessionId);
     void terminalSessionRecordStore.markTerminalEnded(sessionId, { reason: 'user-archived' });
-    await terminalBackend.stopSession(sessionId);
+
+    const project = projectStore.get();
+    const liveSessions = await terminalBackend.listSessions();
+    const live = liveSessions.find((s) => s.id === sessionId);
+    if (live) {
+      void taskAgentSessionRecordStore.markSessionEnded(live, { reason: 'user-archived' });
+      await terminalBackend.stopSession(sessionId);
+      return;
+    }
+
+    if (project) {
+      const cold = await taskAgentSessionRecordStore.getColdResumeSessionById(
+        project.id,
+        sessionId,
+        async (p) => {
+          try {
+            await fs.access(p);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      );
+      if (cold) {
+        void taskAgentSessionRecordStore.markSessionEnded(cold, { reason: 'user-archived' });
+      }
+    }
   });
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
@@ -4015,7 +4054,27 @@ app.whenReady().then(async () => {
     });
   });
 
-  ipcMain.handle('session:getAll', async () => terminalBackend.listSessions());
+  ipcMain.handle('session:getAll', async () => {
+    const project = projectStore.get();
+    const live = await terminalBackend.listSessions();
+    if (!project) return live;
+    const forProject = live.filter((s) => s.projectId === project.id);
+    const liveIds = new Set(forProject.map((s) => s.id));
+    const cold = await taskAgentSessionRecordStore.listColdResumeTaskSessions(
+      project.id,
+      async (p) => {
+        try {
+          await fs.access(p);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { excludeFluxxSessionIds: liveIds },
+    );
+    const otherProjects = live.filter((s) => s.projectId !== project.id);
+    return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+  });
 
   ipcMain.handle(
     'session:attach',
@@ -4105,6 +4164,51 @@ app.whenReady().then(async () => {
       return false;
     }
   }
+
+  async function worktreePathStillPresent(absPath: string): Promise<boolean> {
+    try {
+      await fs.access(absPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function collectRestorableSessionIds(): Promise<RestorableSessionIds> {
+    const project = projectStore.get();
+    if (!project) {
+      return { taskSessionIds: [], planningSessionIds: [] };
+    }
+    const liveTask = (await terminalBackend.listSessions()).filter(
+      (s) => s.projectId === project.id,
+    );
+    const liveTaskIds = new Set(liveTask.map((s) => s.id));
+    const coldTask = await taskAgentSessionRecordStore.listColdResumeTaskSessions(
+      project.id,
+      worktreePathStillPresent,
+      { excludeFluxxSessionIds: liveTaskIds },
+    );
+    const taskSessionIds = [
+      ...new Set([...liveTask.map((s) => s.id), ...coldTask.map((s) => s.id)]),
+    ];
+
+    const livePlanning = (await terminalBackend.listPlanning()).filter(
+      (s) => s.projectId === project.id,
+    );
+    const livePlanningIds = new Set(livePlanning.map((s) => s.id));
+    const coldPlanning = await planningAgentSessionRecordStore.listColdResumePlanningSessions(
+      project.id,
+      planningDirStillPresent,
+      { excludeFluxxSessionIds: livePlanningIds },
+    );
+    const planningSessionIds = [
+      ...new Set([...livePlanning.map((s) => s.id), ...coldPlanning.map((s) => s.id)]),
+    ];
+
+    return { taskSessionIds, planningSessionIds };
+  }
+
+  ipcMain.handle('projects:getRestorableSessionIds', async () => collectRestorableSessionIds());
 
   ipcMain.handle('planning:list', async () => {
     const pid = await activeProjectIdForPlanning();
@@ -4289,14 +4393,16 @@ app.whenReady().then(async () => {
         });
       }
 
+      const planningCols = 220;
+      const planningRows = 50;
       const result = await terminalBackend.startPlanning({
         projectId: project.id,
         agent: planningAgent,
         planningDir,
         command,
         args,
-        cols: 220,
-        rows: 50,
+        cols: planningCols,
+        rows: planningRows,
         ...trustAutorespondArg,
         ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
@@ -4326,7 +4432,16 @@ app.whenReady().then(async () => {
         void planningAgentSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
         void terminalSessionRecordStore.markColdResumeReplaced(resumeFromSessionId);
       }
-      void planningAgentSessionRecordStore.markReplacedSessions(project.id, result.id);
+      const livePlanningSessionIds = new Set(
+        (await terminalBackend.listPlanning())
+          .filter((s) => s.projectId === project.id)
+          .map((s) => s.id),
+      );
+      void planningAgentSessionRecordStore.markReplacedSessions(
+        project.id,
+        result.id,
+        livePlanningSessionIds,
+      );
       void terminalSessionRecordStore.markReplacedPlanningSessions(project.id, result.id);
       const planningRow: PlanningAgentSessionRecord = {
         fluxxSessionId: result.id,
@@ -4346,8 +4461,8 @@ app.whenReady().then(async () => {
         cwd: planningDir,
         command,
         args,
-        cols: 80,
-        rows: 24,
+        cols: planningCols,
+        rows: planningRows,
         startedAt: result.startedAt,
         planning: {
           agent: planningAgent,
