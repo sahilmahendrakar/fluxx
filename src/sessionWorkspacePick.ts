@@ -14,8 +14,9 @@ export function selectSessionForTaskWorkspace(
   if (list.length === 1) return list[0];
 
   const priority = (s: Session) => {
-    if (s.status === 'running') return 3;
-    if (s.status === 'idle') return 2;
+    if (s.status === 'running') return 4;
+    if (s.status === 'idle') return 3;
+    if (s.status === 'interrupted') return 2;
     if (s.status === 'error') return 1;
     return 0;
   };

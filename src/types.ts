@@ -50,6 +50,12 @@ export interface ProjectTabState {
   minimizedTaskWorkspaceIds?: string[];
 }
 
+/** Live plus cold-resumable session ids for tab-strip restore (per active project). */
+export interface RestorableSessionIds {
+  taskSessionIds: string[];
+  planningSessionIds: string[];
+}
+
 /**
  * Main → renderer: branch names for the active repo (short names; `remoteBranches`
  * entries may be `origin/foo` — normalizers strip the prefix).

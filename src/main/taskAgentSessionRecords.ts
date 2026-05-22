@@ -6,6 +6,12 @@ const FILE_NAME = 'task-agent-sessions.json';
 const SCHEMA_VERSION = 1;
 const MAX_RECORDS = 500;
 
+const COLD_RESUMABLE_END_REASONS: TaskAgentSessionEndedReason[] = [
+  'app-quit',
+  'agent-exit-ok',
+  'agent-exit-error',
+];
+
 type PersistedFileV1 = {
   version: typeof SCHEMA_VERSION;
   records: TaskAgentSessionRecord[];
@@ -73,18 +79,19 @@ export class TaskAgentSessionRecordStore {
   private async ensureLoaded(): Promise<void> {
     const dir = this.getProjectDir()?.trim() ?? null;
     if (!dir) {
-      this.cache = [];
-      this.loadedForDir = null;
       return;
     }
-    if (this.loadedForDir === dir) return;
-    this.loadedForDir = dir;
     const fp = path.join(dir, FILE_NAME);
+    const fileExists = await pathExists(fp);
+    if (this.loadedForDir === dir) {
+      if (this.cache.length > 0 || !fileExists) return;
+    }
+    if (!fileExists) {
+      this.cache = [];
+      return;
+    }
+    this.loadedForDir = dir;
     try {
-      if (!(await pathExists(fp))) {
-        this.cache = [];
-        return;
-      }
       const raw = await fs.readFile(fp, 'utf8');
       const parsed = JSON.parse(raw) as unknown;
       if (
@@ -111,6 +118,7 @@ export class TaskAgentSessionRecordStore {
       }
     } catch {
       this.cache = [];
+      this.loadedForDir = null;
     }
   }
 
@@ -129,6 +137,11 @@ export class TaskAgentSessionRecordStore {
     const next = this.writeChain.then(fn, fn);
     this.writeChain = next.catch(() => undefined);
     return next;
+  }
+
+  /** Wait until queued disk writes for this store have finished. */
+  whenWriteIdle(): Promise<void> {
+    return this.writeChain;
   }
 
   async recordSessionStart(row: TaskAgentSessionRecord): Promise<void> {
@@ -165,6 +178,21 @@ export class TaskAgentSessionRecordStore {
       let changed = false;
       this.cache = this.cache.map((r) => {
         if (r.fluxxSessionId !== session.id) return r;
+        if (opts.reason === 'user-archived') {
+          if (
+            r.endedReason === 'user-archived' ||
+            r.endedReason === 'replaced-by-new-session' ||
+            r.endedReason === 'workspace-deleted'
+          ) {
+            return r;
+          }
+          changed = true;
+          return {
+            ...r,
+            endedAt,
+            endedReason: 'user-archived',
+          };
+        }
         if (opts.reason === 'workspace-deleted') {
           changed = true;
           return {
@@ -186,7 +214,11 @@ export class TaskAgentSessionRecordStore {
     });
   }
 
-  async markReplacedSessions(taskId: string, keepFluxxSessionId: string): Promise<void> {
+  async markReplacedSessions(
+    taskId: string,
+    keepFluxxSessionId: string,
+    liveFluxxSessionIds: ReadonlySet<string>,
+  ): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();
       let changed = false;
@@ -194,6 +226,7 @@ export class TaskAgentSessionRecordStore {
         if (r.taskId !== taskId) return r;
         if (r.fluxxSessionId === keepFluxxSessionId) return r;
         if (r.endedAt) return r;
+        if (!liveFluxxSessionIds.has(r.fluxxSessionId)) return r;
         changed = true;
         return {
           ...r,
@@ -230,6 +263,51 @@ export class TaskAgentSessionRecordStore {
     return id || undefined;
   }
 
+  private isColdResumableRecord(r: TaskAgentSessionRecord): boolean {
+    if (
+      r.endedReason === 'user-archived' ||
+      r.endedReason === 'replaced-by-new-session' ||
+      r.endedReason === 'workspace-deleted'
+    ) {
+      return false;
+    }
+    // Force quit / crash: row never got markSessionEnded — still offer cold restore.
+    if (!r.endedAt) return true;
+    return COLD_RESUMABLE_END_REASONS.includes(r.endedReason as TaskAgentSessionEndedReason);
+  }
+
+  private recordToInterruptedView(r: TaskAgentSessionRecord): Session {
+    const stoppedAt = r.endedAt ?? r.startedAt;
+    return {
+      id: r.fluxxSessionId,
+      taskId: r.taskId,
+      projectId: r.projectId,
+      ...(r.repoId != null && r.repoId.length > 0 ? { repoId: r.repoId } : {}),
+      worktreePath: r.worktreePath,
+      branch: r.fluxxWorkBranch,
+      status: 'interrupted',
+      startedAt: r.startedAt,
+      stoppedAt,
+      ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
+    };
+  }
+
+  async getColdResumeSessionById(
+    projectId: string,
+    fluxxSessionId: string,
+    worktreeStillPresent: (absPath: string) => Promise<boolean>,
+  ): Promise<Session | null> {
+    await this.ensureLoaded();
+    const r = this.cache.find(
+      (row) => row.projectId === projectId && row.fluxxSessionId === fluxxSessionId,
+    );
+    if (!r || !this.isColdResumableRecord(r)) return null;
+    const wt = r.worktreePath?.trim();
+    if (!wt) return null;
+    if (!(await worktreeStillPresent(wt))) return null;
+    return this.recordToInterruptedView(r);
+  }
+
   /**
    * Synthetic session for UI when no live PTY exists but the last session ended in a
    * resumable way and the worktree folder is still present.
@@ -242,9 +320,7 @@ export class TaskAgentSessionRecordStore {
     await this.ensureLoaded();
     const candidates = this.cache
       .filter((r) => r.taskId === taskId && r.projectId === projectId)
-      .filter((r) =>
-        ['app-quit', 'agent-exit-ok', 'agent-exit-error'].includes(r.endedReason ?? ''),
-      )
+      .filter((r) => this.isColdResumableRecord(r))
       .sort((a, b) => {
         const ea = a.endedAt ?? a.startedAt;
         const eb = b.endedAt ?? b.startedAt;
@@ -255,21 +331,47 @@ export class TaskAgentSessionRecordStore {
       const wt = r.worktreePath?.trim();
       if (!wt) continue;
       if (!(await worktreeStillPresent(wt))) continue;
-      const stoppedAt = r.endedAt ?? r.startedAt;
-      return {
-        id: r.fluxxSessionId,
-        taskId: r.taskId,
-        projectId: r.projectId,
-        ...(r.repoId != null && r.repoId.length > 0 ? { repoId: r.repoId } : {}),
-        worktreePath: r.worktreePath,
-        branch: r.fluxxWorkBranch,
-        status: 'interrupted',
-        startedAt: r.startedAt,
-        stoppedAt,
-        ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
-      };
+      return this.recordToInterruptedView(r);
     }
     return null;
+  }
+
+  /** All cold-resumable synthetic rows for a project (newest first). */
+  async listColdResumeTaskSessions(
+    projectId: string,
+    worktreeStillPresent: (absPath: string) => Promise<boolean>,
+    opts?: { excludeFluxxSessionIds?: Set<string> },
+  ): Promise<Session[]> {
+    await this.ensureLoaded();
+    const exclude = opts?.excludeFluxxSessionIds ?? new Set<string>();
+    const rows: Session[] = [];
+    const seen = new Set<string>();
+
+    const candidates = this.cache
+      .filter((r) => r.projectId === projectId)
+      .filter((r) => !exclude.has(r.fluxxSessionId))
+      .filter((r) => this.isColdResumableRecord(r))
+      .sort((a, b) => {
+        const ea = a.endedAt ?? a.startedAt;
+        const eb = b.endedAt ?? b.startedAt;
+        return eb.localeCompare(ea);
+      });
+
+    const newestPerTask = new Map<string, TaskAgentSessionRecord>();
+    for (const r of candidates) {
+      if (!newestPerTask.has(r.taskId)) newestPerTask.set(r.taskId, r);
+    }
+
+    for (const r of newestPerTask.values()) {
+      if (seen.has(r.fluxxSessionId)) continue;
+      const wt = r.worktreePath?.trim();
+      if (!wt) continue;
+      if (!(await worktreeStillPresent(wt))) continue;
+      seen.add(r.fluxxSessionId);
+      rows.push(this.recordToInterruptedView(r));
+    }
+
+    return rows;
   }
 
   /** Test hook: replace in-memory state. */

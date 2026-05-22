@@ -126,6 +126,41 @@ describe('TerminalRuntimeManager', () => {
     expect(env?.PATH).toBe('/fluxx-cli:/usr/bin');
   });
 
+  it('gracefulShutdownForAppQuit interrupts resumable agents before kill', async () => {
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+
+    const sess = mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'p1',
+      agent: 'claude-code',
+      command: 'sleep',
+      args: ['9'],
+      cols: 40,
+      rows: 12,
+    });
+    if (!('id' in sess)) throw new Error('expected session');
+    const pty = ptyState.instances[ptyState.instances.length - 1];
+
+    let interruptWrites = 0;
+    pty.write.mockImplementation((data: string) => {
+      if (data === '\x03') {
+        interruptWrites += 1;
+        if (interruptWrites >= 2) pty.emitExit(0);
+      }
+    });
+
+    const shutdown = mgr.gracefulShutdownForAppQuit(800);
+    await shutdown;
+
+    expect(interruptWrites).toBeGreaterThanOrEqual(2);
+    expect(pty.write).toHaveBeenCalledWith('\x03');
+
+    expect(mgr.listSessions()).toEqual([]);
+  });
+
   it('shutdownAllPtys stops sessions, shells, and planning', async () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });

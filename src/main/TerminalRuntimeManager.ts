@@ -1,6 +1,12 @@
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import {
+  agentSupportsGracefulQuitCapture,
+  GRACEFUL_QUIT_AGENT_INTERRUPT_COUNT,
+  GRACEFUL_QUIT_INTERRUPT_GAP_MS,
+  sleepMs,
+} from './gracefulAgentExit';
 import type { Agent, PlanningSession, Session, Shell } from '../types';
 import type {
   AgentState,
@@ -149,10 +155,13 @@ export interface TerminalRuntimeManagerOptions {
  * Main-process owner of local PTYs (task sessions, shells, planning). Registry
  * semantics match the historical detached-daemon core, without a separate process.
  */
+type PtyExitTarget = { kind: 'session' | 'planning'; id: string };
+
 export class TerminalRuntimeManager {
   private sessions = new Map<string, SessionEntry>();
   private shells = new Map<string, ShellEntry>();
   private planning = new Map<string, PlanningEntry>();
+  private readonly exitWaiters = new Map<string, Array<() => void>>();
   private readonly deliverStreamFrame: (frame: StreamFrame) => void;
   private readonly onAgentState?: (sessionId: string, state: AgentState) => void;
   private readonly onSessionExit?: (session: Session) => void;
@@ -171,17 +180,91 @@ export class TerminalRuntimeManager {
     this.onPlanningPtyData = opts.onPlanningPtyData;
   }
 
+  private exitWaiterKey(target: PtyExitTarget): string {
+    return `${target.kind}:${target.id}`;
+  }
+
+  private notifyExitWaiters(target: PtyExitTarget): void {
+    const key = this.exitWaiterKey(target);
+    const waiters = this.exitWaiters.get(key);
+    if (!waiters) return;
+    this.exitWaiters.delete(key);
+    for (const resolve of waiters) resolve();
+  }
+
+  private waitForPtyExit(target: PtyExitTarget, timeoutMs: number): Promise<void> {
+    const entry =
+      target.kind === 'session' ? this.sessions.get(target.id) : this.planning.get(target.id);
+    if (!entry) return Promise.resolve();
+    const status =
+      target.kind === 'session'
+        ? (entry as SessionEntry).session.status
+        : (entry as PlanningEntry).session.status;
+    if (status !== 'running' || entry.runtime.isExited) return Promise.resolve();
+
+    return Promise.race([
+      new Promise<void>((resolve) => {
+        const key = this.exitWaiterKey(target);
+        const list = this.exitWaiters.get(key) ?? [];
+        list.push(resolve);
+        this.exitWaiters.set(key, list);
+      }),
+      sleepMs(timeoutMs),
+    ]);
+  }
+
+  private requestGracefulAgentExit(target: PtyExitTarget): void {
+    const entry =
+      target.kind === 'session' ? this.sessions.get(target.id) : this.planning.get(target.id);
+    if (!entry) return;
+    entry.runtime.interrupt();
+  }
+
+  private ptyTargetStillRunning(target: PtyExitTarget): boolean {
+    const entry =
+      target.kind === 'session' ? this.sessions.get(target.id) : this.planning.get(target.id);
+    if (!entry) return false;
+    const status =
+      target.kind === 'session'
+        ? (entry as SessionEntry).session.status
+        : (entry as PlanningEntry).session.status;
+    return status === 'running' && !entry.runtime.isExited;
+  }
+
+  /** Send up to two Ctrl+C bursts; first often cancels the turn, second exits and prints resume id. */
+  private async gracefulAgentExitTarget(target: PtyExitTarget, timeoutMs: number): Promise<void> {
+    if (timeoutMs <= 0) return;
+    const deadline = Date.now() + timeoutMs;
+
+    for (let i = 0; i < GRACEFUL_QUIT_AGENT_INTERRUPT_COUNT; i++) {
+      if (!this.ptyTargetStillRunning(target) || Date.now() >= deadline) return;
+
+      this.requestGracefulAgentExit(target);
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return;
+
+      const waitMs =
+        i < GRACEFUL_QUIT_AGENT_INTERRUPT_COUNT - 1
+          ? Math.min(GRACEFUL_QUIT_INTERRUPT_GAP_MS, remaining)
+          : remaining;
+      await this.waitForPtyExit(target, waitMs);
+    }
+  }
+
   private emitFrame(frame: StreamFrame): void {
     if (frame.kind === 'agent-state') {
       this.onAgentState?.(frame.id, frame.state);
     }
     if (frame.kind === 'session-exit') {
+      this.notifyExitWaiters({ kind: 'session', id: frame.id });
       this.onSessionExit?.(frame.session);
     }
     if (frame.kind === 'shell-exit') {
       this.onShellExit?.(frame.shell);
     }
     if (frame.kind === 'planning-exit') {
+      this.notifyExitWaiters({ kind: 'planning', id: frame.id });
       this.onPlanningExit?.(frame.session);
     }
     this.deliverStreamFrame(frame);
@@ -567,6 +650,43 @@ export class TerminalRuntimeManager {
 
   resizePlanning(id: string, cols: number, rows: number): void {
     this.planning.get(id)?.runtime.resize(cols, rows);
+  }
+
+  /**
+   * App quit: interrupt resumable agent PTYs, wait briefly for exit + final output,
+   * then hard-kill anything still running.
+   */
+  async gracefulShutdownForAppQuit(deadlineMs: number): Promise<void> {
+    const started = Date.now();
+    const remainingMs = () => Math.max(0, deadlineMs - (Date.now() - started));
+
+    const targets: PtyExitTarget[] = [];
+    for (const [id, entry] of this.sessions) {
+      if (entry.session.status !== 'running') continue;
+      if (!agentSupportsGracefulQuitCapture(entry.agent)) continue;
+      targets.push({ kind: 'session', id });
+    }
+    for (const [id, entry] of this.planning) {
+      if (entry.session.status !== 'running') continue;
+      if (!agentSupportsGracefulQuitCapture(entry.session.agent)) continue;
+      targets.push({ kind: 'planning', id });
+    }
+
+    if (targets.length > 0 && remainingMs() > 0) {
+      const perTargetMs = Math.min(800, Math.floor(remainingMs() / targets.length));
+      await Promise.allSettled(
+        targets.map(async (target) => {
+          const budget = Math.min(perTargetMs, remainingMs());
+          if (budget <= 0) return;
+          await this.gracefulAgentExitTarget(target, budget);
+        }),
+      );
+    }
+
+    const drainMs = Math.min(250, remainingMs());
+    if (drainMs > 0) await sleepMs(drainMs);
+
+    this.shutdownAllPtys();
   }
 
   /**
