@@ -177,6 +177,12 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
     }
   }
 
+  const tmuxConfSrc = path.resolve(__dirname, 'resources', 'fluxx-tmux.conf');
+  if (!fs.existsSync(tmuxConfSrc)) {
+    throw new Error(`[forge.config] expected fluxx tmux config at ${tmuxConfSrc}`);
+  }
+  await fsp.cp(tmuxConfSrc, path.join(cliDir, 'fluxx-tmux.conf'));
+
   for (const [shimName, dstName] of [
     ['fluxx-shim', 'fluxx'],
     ['flux-shim', 'flux'],

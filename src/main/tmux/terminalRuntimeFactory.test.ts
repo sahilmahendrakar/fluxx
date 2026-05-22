@@ -33,9 +33,12 @@ vi.mock('node-pty', () => ({
     };
     ptyState.instances.push(fake);
     if (command === 'tmux') {
-      expect(args[0]).toBe('attach-session');
-      expect(args[1]).toBe('-t');
-      expect(args[2]).toMatch(/^fluxx-/);
+      expect(args[0]).toBe('-L');
+      expect(args[1]).toBe('fluxx');
+      expect(args[2]).toBe('-f');
+      expect(args[4]).toBe('attach-session');
+      expect(args[5]).toBe('-t');
+      expect(args[6]).toMatch(/^fluxx-/);
     }
     return fake;
   }),
