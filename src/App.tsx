@@ -246,6 +246,8 @@ export default function App() {
   const [planningDocsCloudListMeta, setPlanningDocsCloudListMeta] =
     useState<PlanningDocsCloudListMeta | null>(null);
   const [planningDocsListLoading, setPlanningDocsListLoading] = useState(false);
+  /** True after the first list fetch for the current project (see refreshPlanningDocList). */
+  const [planningDocsListFetched, setPlanningDocsListFetched] = useState(false);
   const [planningDocsListError, setPlanningDocsListError] = useState<string | null>(
     null,
   );
@@ -584,10 +586,33 @@ export default function App() {
       setPlanningDocsListError('Failed to load documents.');
     } finally {
       setPlanningDocsListLoading(false);
+      setPlanningDocsListFetched(true);
     }
   }, [project?.kind]);
 
-  const shouldLoadPlanningDocs = docsSidebarExpanded || activeTabId === 'docs';
+  useEffect(() => {
+    setPlanningDocsListFetched(false);
+    setPlanningDocFiles([]);
+    setPlanningDocsCloudListMeta(null);
+    setPlanningDocsListError(null);
+  }, [project?.id]);
+
+  const selectedTaskHasAttachedPlanningDocs = Boolean(
+    selectedTask?.attachedPlanningDocs?.length,
+  );
+  const activeSessionTaskHasAttachedPlanningDocs = useMemo(() => {
+    if (!isWorkspaceSessionTabId(activeTabId)) return false;
+    const session = sessions.find((s) => s.id === activeTabId);
+    if (!session) return false;
+    const task = tasks.find((t) => t.id === session.taskId);
+    return Boolean(task?.attachedPlanningDocs?.length);
+  }, [activeTabId, sessions, tasks]);
+
+  const shouldLoadPlanningDocs =
+    docsSidebarExpanded ||
+    activeTabId === 'docs' ||
+    selectedTaskHasAttachedPlanningDocs ||
+    activeSessionTaskHasAttachedPlanningDocs;
 
   useEffect(() => {
     if (!project || !shouldLoadPlanningDocs) return;
@@ -616,7 +641,7 @@ export default function App() {
 
   useEffect(() => {
     if (!project) return;
-    if (!docsSidebarExpanded && activeTabId !== 'docs') return;
+    if (!shouldLoadPlanningDocs) return;
     const unsub = window.electronAPI.planningDocs.onChanged(() => {
       void refreshPlanningDocList();
       if (activeTabId === 'docs') {
@@ -624,12 +649,7 @@ export default function App() {
       }
     });
     return unsub;
-  }, [
-    project?.id,
-    docsSidebarExpanded,
-    activeTabId,
-    refreshPlanningDocList,
-  ]);
+  }, [project?.id, shouldLoadPlanningDocs, activeTabId, refreshPlanningDocList]);
 
   // Stable ref for cloud sharedRepos + membership checks (avoid stale closures).
   const projectRef = useRef(project);
@@ -3490,6 +3510,8 @@ export default function App() {
                             projectRepos: projectRepos ?? undefined,
                             multiRepo2Enabled: true,
                             planningDocFiles,
+                            planningDocsListLoading,
+                            planningDocsListFetched,
                             onOpenPlanningDoc: handleSelectPlanningDoc,
                             projectRepoReadiness,
                             onOpenProjectSettings: handleOpenProjectSettings,
@@ -3637,6 +3659,8 @@ export default function App() {
                         projectRepos={projectRepos ?? undefined}
                         multiRepo2Enabled
                         planningDocFiles={planningDocFiles}
+                        planningDocsListLoading={planningDocsListLoading}
+                        planningDocsListFetched={planningDocsListFetched}
                         onOpenPlanningDoc={handleSelectPlanningDoc}
                         projectRepoReadiness={projectRepoReadiness}
                         onOpenProjectSettings={handleOpenProjectSettings}
