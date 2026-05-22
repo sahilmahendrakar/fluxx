@@ -139,6 +139,11 @@ export class TaskAgentSessionRecordStore {
     return next;
   }
 
+  /** Wait until queued disk writes for this store have finished. */
+  whenWriteIdle(): Promise<void> {
+    return this.writeChain;
+  }
+
   async recordSessionStart(row: TaskAgentSessionRecord): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();

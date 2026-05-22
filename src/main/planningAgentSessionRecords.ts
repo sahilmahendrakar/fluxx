@@ -131,6 +131,10 @@ export class PlanningAgentSessionRecordStore {
     return next;
   }
 
+  whenWriteIdle(): Promise<void> {
+    return this.writeChain;
+  }
+
   async recordSessionStart(row: PlanningAgentSessionRecord): Promise<void> {
     await this.enqueueWrite(async () => {
       await this.ensureLoaded();

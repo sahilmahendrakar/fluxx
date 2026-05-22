@@ -203,10 +203,20 @@ export class SessionRuntime {
     }
   }
 
-  kill(): void {
+  /** Send terminal interrupt (Ctrl+C) so interactive CLIs can shut down cleanly. */
+  interrupt(): void {
+    if (this.exited) return;
+    this.write('\x03');
+  }
+
+  kill(signal?: string): void {
     if (this.exited) return;
     try {
-      this.pty.kill();
+      if (signal) {
+        this.pty.kill(signal);
+      } else {
+        this.pty.kill();
+      }
     } catch {
       // PTY already gone.
     }

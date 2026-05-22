@@ -485,7 +485,7 @@ let appQuitTeardownComplete = false;
 /** When true, PTY exits during `teardownForAppQuit` are recorded as app-quit (cold resume). */
 let terminalQuitTeardownInProgress = false;
 
-const APP_QUIT_TERMINAL_TEARDOWN_MS = 5000;
+const APP_QUIT_TERMINAL_TEARDOWN_MS = 3000;
 
 const createWindow = () => {
   const windowIcon = resolveWindowIconPath();
@@ -620,6 +620,15 @@ app.whenReady().then(async () => {
   }
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
+  const conversationAgentBySessionId = new Map<string, Agent>();
+  const pendingSessionExitWork = new Set<Promise<void>>();
+
+  function trackSessionExitWork(work: Promise<void>): void {
+    pendingSessionExitWork.add(work);
+    void work.finally(() => {
+      pendingSessionExitWork.delete(work);
+    });
+  }
 
   function captureAgentConversationIdFromPty(
     sessionId: string,
@@ -627,6 +636,7 @@ app.whenReady().then(async () => {
     data: string,
     onParsed: (id: string) => void,
   ): void {
+    conversationAgentBySessionId.set(sessionId, agent);
     if (conversationCaptured.has(sessionId)) return;
     const prev = conversationParseTails.get(sessionId) ?? '';
     const next = appendConversationParseBuffer(prev, data, 96 * 1024);
@@ -635,6 +645,44 @@ app.whenReady().then(async () => {
     if (!parsed) return;
     conversationCaptured.add(sessionId);
     onParsed(parsed);
+  }
+
+  async function flushTaskConversationCaptureFromTail(
+    sessionId: string,
+  ): Promise<string | undefined> {
+    if (conversationCaptured.has(sessionId)) return undefined;
+    const agent = conversationAgentBySessionId.get(sessionId);
+    const tail = conversationParseTails.get(sessionId);
+    if (!agent || !tail) return undefined;
+    const parsed = parseAgentConversationId(agent, tail);
+    if (!parsed) return undefined;
+    conversationCaptured.add(sessionId);
+    await taskAgentSessionRecordStore.mergeConversationId(sessionId, parsed);
+    await terminalSessionRecordStore.mergeTaskConversationId(sessionId, parsed);
+    return parsed;
+  }
+
+  async function flushPlanningConversationCaptureFromTail(
+    sessionId: string,
+  ): Promise<string | undefined> {
+    if (conversationCaptured.has(sessionId)) return undefined;
+    const agent = conversationAgentBySessionId.get(sessionId);
+    const tail = conversationParseTails.get(sessionId);
+    if (!agent || !tail) return undefined;
+    const parsed = parseAgentConversationId(agent, tail);
+    if (!parsed) return undefined;
+    conversationCaptured.add(sessionId);
+    await planningAgentSessionRecordStore.mergeConversationId(sessionId, parsed);
+    await terminalSessionRecordStore.mergePlanningConversationId(sessionId, parsed);
+    return parsed;
+  }
+
+  function scheduleConversationCaptureCleanup(sessionId: string): void {
+    setTimeout(() => {
+      conversationParseTails.delete(sessionId);
+      conversationCaptured.delete(sessionId);
+      conversationAgentBySessionId.delete(sessionId);
+    }, 250);
   }
 
   terminalBackend.setSessionPtyDataHook?.((payload) => {
@@ -699,40 +747,42 @@ app.whenReady().then(async () => {
     onAgentState: applyAgentState,
     onSilenceStatesSnapshot: reconcileSilenceStatesFromTerminal,
     onSessionExit: (session) => {
-      const endReason = terminalQuitTeardownInProgress
-        ? ('app-quit' as const)
-        : session.status === 'stopped'
-          ? ('agent-exit-ok' as const)
-          : ('agent-exit-error' as const);
-      void taskAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
-      void terminalSessionRecordStore.markTerminalEnded(session.id, {
-        reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
-        endedAt: session.stoppedAt,
-      });
-      conversationParseTails.delete(session.id);
-      conversationCaptured.delete(session.id);
+      trackSessionExitWork((async () => {
+        const endReason = terminalQuitTeardownInProgress
+          ? ('app-quit' as const)
+          : session.status === 'stopped'
+            ? ('agent-exit-ok' as const)
+            : ('agent-exit-error' as const);
+        await flushTaskConversationCaptureFromTail(session.id);
+        await taskAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+        await terminalSessionRecordStore.markTerminalEnded(session.id, {
+          reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
+          endedAt: session.stoppedAt,
+        });
+        scheduleConversationCaptureCleanup(session.id);
 
-      const taskId = sessionTaskMap.get(session.id) ?? session.taskId;
-      if (!taskId) return;
+        const taskId = sessionTaskMap.get(session.id) ?? session.taskId;
+        if (!taskId) return;
 
-      const project = projectStore.get();
-      // Cloud projects handled in renderer.
-      if (!project) return;
+        const project = projectStore.get();
+        if (!project) return;
 
-      if (session.status === 'stopped') {
-        const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-        if (task && task.status === 'in-progress') {
-          console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', { taskId });
-          void taskStore.update(taskId, { status: 'needs-input' }).then(() => {
+        if (session.status === 'stopped') {
+          const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
+          if (task && task.status === 'in-progress') {
+            console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
+              taskId,
+            });
+            await taskStore.update(taskId, { status: 'needs-input' });
             broadcastLocalTasksChanged();
+          }
+        } else if (session.status === 'error') {
+          console.warn('[task:status] agent exited with error, not transitioning task', {
+            taskId,
+            sessionId: session.id,
           });
         }
-      } else if (session.status === 'error') {
-        console.warn('[task:status] agent exited with error, not transitioning task', {
-          taskId,
-          sessionId: session.id,
-        });
-      }
+      })());
     },
     onShellExit: (shell) => {
       void terminalSessionRecordStore.markTerminalEnded(shell.id, {
@@ -741,18 +791,20 @@ app.whenReady().then(async () => {
       });
     },
     onPlanningExit: (session) => {
-      const endReason = terminalQuitTeardownInProgress
-        ? ('app-quit' as const)
-        : session.status === 'stopped'
-          ? ('agent-exit-ok' as const)
-          : ('agent-exit-error' as const);
-      void planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
-      void terminalSessionRecordStore.markTerminalEnded(session.id, {
-        reason: mapPlanningExitToTerminalReason(session, terminalQuitTeardownInProgress),
-        endedAt: session.stoppedAt,
-      });
-      conversationParseTails.delete(session.id);
-      conversationCaptured.delete(session.id);
+      trackSessionExitWork((async () => {
+        const endReason = terminalQuitTeardownInProgress
+          ? ('app-quit' as const)
+          : session.status === 'stopped'
+            ? ('agent-exit-ok' as const)
+            : ('agent-exit-error' as const);
+        await flushPlanningConversationCaptureFromTail(session.id);
+        await planningAgentSessionRecordStore.markSessionEnded(session, { reason: endReason });
+        await terminalSessionRecordStore.markTerminalEnded(session.id, {
+          reason: mapPlanningExitToTerminalReason(session, terminalQuitTeardownInProgress),
+          endedAt: session.stoppedAt,
+        });
+        scheduleConversationCaptureCleanup(session.id);
+      })());
     },
   });
   terminalBackend.startSilenceSnapshotPolling();
@@ -4947,7 +4999,7 @@ app.on('before-quit', (e) => {
         try {
           terminalQuitTeardownInProgress = true;
           await Promise.race([
-            backend.teardownForAppQuit(),
+            backend.teardownForAppQuit(APP_QUIT_TERMINAL_TEARDOWN_MS),
             new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
           ]);
         } catch (err) {
@@ -4956,6 +5008,12 @@ app.on('before-quit', (e) => {
           terminalQuitTeardownInProgress = false;
         }
       }
+
+      if (pendingSessionExitWork.size > 0) {
+        await Promise.allSettled([...pendingSessionExitWork]);
+      }
+      await taskAgentSessionRecordStore.whenWriteIdle();
+      await planningAgentSessionRecordStore.whenWriteIdle();
 
       appQuitTeardownComplete = true;
       app.quit();
