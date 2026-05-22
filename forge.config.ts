@@ -84,6 +84,24 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
     await fsp.cp(cliMapSrc, path.join(cliDir, 'flux-cli.js.map'));
   }
 
+  for (const name of ['fluxx-tmux-spawn.cjs', 'fluxx-tmux-spawn.sh'] as const) {
+    const src = path.resolve(__dirname, 'scripts', name);
+    if (!fs.existsSync(src)) {
+      throw new Error(`[forge.config] expected tmux spawn launcher at ${src}`);
+    }
+    const dst = path.join(cliDir, name);
+    await fsp.cp(src, dst);
+    if (name.endsWith('.sh')) {
+      await fsp.chmod(dst, 0o755);
+    }
+  }
+
+  const tmuxConfSrc = path.resolve(__dirname, 'resources', 'fluxx-tmux.conf');
+  if (!fs.existsSync(tmuxConfSrc)) {
+    throw new Error(`[forge.config] expected fluxx tmux config at ${tmuxConfSrc}`);
+  }
+  await fsp.cp(tmuxConfSrc, path.join(cliDir, 'fluxx-tmux.conf'));
+
   for (const [shimName, dstName] of [
     ['fluxx-shim', 'fluxx'],
     ['flux-shim', 'flux'],

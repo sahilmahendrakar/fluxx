@@ -12,6 +12,7 @@ const MAX_RECORDS = 500;
 
 const COLD_RESUMABLE_END_REASONS: PlanningAgentSessionEndedReason[] = [
   'app-quit',
+  'tmux-missing',
   'agent-exit-ok',
   'agent-exit-error',
 ];
@@ -194,6 +195,11 @@ export class PlanningAgentSessionRecordStore {
       });
       if (changed) await this.persist();
     });
+  }
+
+  async hasFluxxSessionId(fluxxSessionId: string): Promise<boolean> {
+    await this.ensureLoaded();
+    return this.cache.some((r) => r.fluxxSessionId === fluxxSessionId);
   }
 
   async getRecord(fluxxSessionId: string): Promise<PlanningAgentSessionRecord | null> {

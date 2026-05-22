@@ -592,6 +592,7 @@ export type TaskAgentSessionEndedReason =
   | 'agent-exit-ok'
   | 'agent-exit-error'
   | 'app-quit'
+  | 'tmux-missing'
   | 'workspace-deleted'
   | 'replaced-by-new-session'
   | 'user-archived';
@@ -618,6 +619,7 @@ export type PlanningAgentSessionEndedReason =
   | 'agent-exit-ok'
   | 'agent-exit-error'
   | 'app-quit'
+  | 'tmux-missing'
   | 'replaced-by-new-session'
   | 'user-archived';
 

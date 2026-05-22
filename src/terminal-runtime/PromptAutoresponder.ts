@@ -1,5 +1,10 @@
 import type { Agent } from '../types';
 import type { SessionRuntime } from './SessionRuntime';
+
+type PromptAutoresponderRuntime = Pick<
+  SessionRuntime,
+  'flushHeadlessParser' | 'getCollapsedBottomScreenText' | 'write'
+>;
 import type { AutoresponderRule } from './trustPromptAutoresponderRules';
 const OUTPUT_SETTLE_MS = 150;
 
@@ -24,7 +29,7 @@ export class PromptAutoresponder {
     private readonly agent: Agent,
     private readonly enabled: boolean,
     private readonly rules: AutoresponderRule[],
-    private readonly runtime: SessionRuntime,
+    private readonly runtime: PromptAutoresponderRuntime,
     private readonly onFire: (payload: PromptAutoresponderFirePayload) => void,
     spawnedAtMs: number = Date.now(),
   ) {

@@ -7,7 +7,7 @@ import {
   GRACEFUL_QUIT_INTERRUPT_GAP_MS,
   sleepMs,
 } from './gracefulAgentExit';
-import type { Agent, PlanningSession, Session, Shell } from '../types';
+import type { Agent, PlanningSession, Session, Shell, TerminalSessionRecord } from '../types';
 import type {
   AgentState,
   AttachResult,
@@ -20,13 +20,32 @@ import type {
   StreamFrame,
 } from '../terminal-runtime/protocol';
 import { SessionRuntime } from '../terminal-runtime/SessionRuntime';
+import { TmuxTerminalRuntime } from '../terminal-runtime/TmuxTerminalRuntime';
 import { SilenceDetector } from '../terminal-runtime/SilenceDetector';
 import { PromptAutoresponder } from '../terminal-runtime/PromptAutoresponder';
 import { buildTrustPromptAutoresponderRules } from '../terminal-runtime/trustPromptAutoresponderRules';
 import type { SilenceState } from '../terminal-runtime/SilenceDetector';
+import type { TerminalKind, TerminalRuntime } from '../types';
+import {
+  createTerminalRuntime,
+  type AnyTerminalRuntime,
+} from './tmux/terminalRuntimeFactory';
+import { resolveFluxxTmuxSpawnLauncherPath } from './tmux/resolveFluxxTmuxSpawnLauncherPath';
+import { tmuxHasSession, tmuxListSessionNames } from './tmux/tmuxCommands';
+import {
+  emptyTmuxReconcileCounts,
+  findUntrackedFluxxTmuxSessions,
+  sortOpenTmuxRowsForRestore,
+  type TmuxTerminalReconcileResult,
+} from './tmux/tmuxTerminalReconcile';
+
+function isTmuxRuntime(runtime: AnyTerminalRuntime): runtime is TmuxTerminalRuntime {
+  return runtime.isTmuxBacked;
+}
 
 interface SessionEntry {
-  runtime: SessionRuntime;
+  runtime: AnyTerminalRuntime;
+  tmuxSessionName?: string;
   session: Session;
   detector: SilenceDetector;
   autoresponder: PromptAutoresponder | null;
@@ -34,14 +53,33 @@ interface SessionEntry {
 }
 
 interface ShellEntry {
-  runtime: SessionRuntime;
+  runtime: AnyTerminalRuntime;
+  tmuxSessionName?: string;
   shell: Shell;
 }
 
 interface PlanningEntry {
-  runtime: SessionRuntime;
+  runtime: AnyTerminalRuntime;
+  tmuxSessionName?: string;
   session: PlanningSession;
   autoresponder: PromptAutoresponder | null;
+}
+
+export interface TerminalRuntimeContext {
+  persistTerminalsWithTmux: boolean;
+  projectSlugSource: string;
+}
+
+export interface AppQuitConfirmInfo {
+  needsConfirm: boolean;
+  persistTmuxEnabled: boolean;
+  directPtyCount: number;
+  tmuxBackedCount: number;
+}
+
+export interface TerminalRuntimeMeta {
+  runtime: TerminalRuntime;
+  tmuxSessionName?: string;
 }
 
 function defaultShellCommand(): { command: string; args: string[] } {
@@ -134,6 +172,23 @@ export interface PlanningPtyDataPayload {
   data: string;
 }
 
+export type TmuxPersistedRestoreParams = {
+  projectId: string;
+  records: TerminalSessionRecord[];
+  pathStillPresent: (absPath: string) => Promise<boolean>;
+  trustPromptAutorespond?: boolean;
+  trustPromptAutorespondRoots?: string[];
+};
+
+export type TmuxPersistedReconcileOutput = TmuxTerminalReconcileResult & {
+  /** Task session ids restored from tmux (for silence / status wiring). */
+  restoredSessionTaskPairs: Array<{ sessionId: string; taskId: string }>;
+  /** Terminal ids whose tmux session is gone (caller marks ended + cold resume). */
+  missingTerminalRecords: TerminalSessionRecord[];
+  /** Terminal ids whose workspace path is gone (caller marks workspace-deleted). */
+  workspaceMissingTerminalRecords: TerminalSessionRecord[];
+};
+
 export interface TerminalRuntimeManagerOptions {
   /**
    * Deliver stream/control frames (tests inject this). Defaults to
@@ -149,6 +204,10 @@ export interface TerminalRuntimeManagerOptions {
   onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
   /** Raw PTY bytes for planning agent sessions (conversation id capture, etc.). */
   onPlanningPtyData?: (payload: PlanningPtyDataPayload) => void;
+  /** Per-call tmux persistence + naming (main process supplies active project). */
+  resolveTerminalRuntimeContext?: () => TerminalRuntimeContext | null;
+  /** Override launcher path (tests). */
+  tmuxSpawnLauncherPath?: string;
 }
 
 /**
@@ -169,6 +228,8 @@ export class TerminalRuntimeManager {
   private readonly onPlanningExit?: (session: PlanningSession) => void;
   private readonly onSessionPtyData?: (payload: SessionPtyDataPayload) => void;
   private readonly onPlanningPtyData?: (payload: PlanningPtyDataPayload) => void;
+  private resolveTerminalRuntimeContext?: () => TerminalRuntimeContext | null;
+  private readonly tmuxSpawnLauncherPath: string;
 
   constructor(opts: TerminalRuntimeManagerOptions = {}) {
     this.deliverStreamFrame = opts.deliverStreamFrame ?? deliverTerminalStreamFrameToRenderers;
@@ -178,6 +239,88 @@ export class TerminalRuntimeManager {
     this.onPlanningExit = opts.onPlanningExit;
     this.onSessionPtyData = opts.onSessionPtyData;
     this.onPlanningPtyData = opts.onPlanningPtyData;
+    this.resolveTerminalRuntimeContext = opts.resolveTerminalRuntimeContext;
+    this.tmuxSpawnLauncherPath =
+      opts.tmuxSpawnLauncherPath ?? resolveFluxxTmuxSpawnLauncherPath();
+  }
+
+  setResolveTerminalRuntimeContext(
+    resolver: (() => TerminalRuntimeContext | null) | undefined,
+  ): void {
+    this.resolveTerminalRuntimeContext = resolver;
+  }
+
+  private factoryContext(
+    kind: TerminalKind,
+    terminalId: string,
+    projectSlugSource: string,
+  ) {
+    const ctx = this.resolveTerminalRuntimeContext?.();
+    return {
+      kind,
+      terminalId,
+      projectSlugSource: ctx?.projectSlugSource ?? projectSlugSource,
+      persistTerminalsWithTmux: ctx?.persistTerminalsWithTmux === true,
+      tmuxSpawnLauncherPath: this.tmuxSpawnLauncherPath,
+    };
+  }
+
+  getTerminalRuntimeMeta(
+    terminalId: string,
+    kind: 'session' | 'shell' | 'planning',
+  ): TerminalRuntimeMeta | null {
+    if (kind === 'session') {
+      const entry = this.sessions.get(terminalId);
+      if (!entry) return null;
+      return {
+        runtime: isTmuxRuntime(entry.runtime) ? 'tmux' : 'node-pty',
+        tmuxSessionName: entry.tmuxSessionName,
+      };
+    }
+    if (kind === 'shell') {
+      const entry = this.shells.get(terminalId);
+      if (!entry) return null;
+      return {
+        runtime: isTmuxRuntime(entry.runtime) ? 'tmux' : 'node-pty',
+        tmuxSessionName: entry.tmuxSessionName,
+      };
+    }
+    const entry = this.planning.get(terminalId);
+    if (!entry) return null;
+    return {
+      runtime: isTmuxRuntime(entry.runtime) ? 'tmux' : 'node-pty',
+      tmuxSessionName: entry.tmuxSessionName,
+    };
+  }
+
+  getAppQuitConfirmInfo(): AppQuitConfirmInfo {
+    let directPtyCount = 0;
+    let tmuxBackedCount = 0;
+    const ctx = this.resolveTerminalRuntimeContext?.();
+    const persistTmuxEnabled = ctx?.persistTerminalsWithTmux === true;
+
+    for (const entry of this.sessions.values()) {
+      if (entry.session.status !== 'running') continue;
+      if (isTmuxRuntime(entry.runtime)) tmuxBackedCount += 1;
+      else directPtyCount += 1;
+    }
+    for (const entry of this.shells.values()) {
+      if (entry.shell.status !== 'running') continue;
+      if (isTmuxRuntime(entry.runtime)) tmuxBackedCount += 1;
+      else directPtyCount += 1;
+    }
+    for (const entry of this.planning.values()) {
+      if (entry.session.status !== 'running') continue;
+      if (isTmuxRuntime(entry.runtime)) tmuxBackedCount += 1;
+      else directPtyCount += 1;
+    }
+
+    return {
+      needsConfirm: directPtyCount + tmuxBackedCount > 0,
+      persistTmuxEnabled,
+      directPtyCount,
+      tmuxBackedCount,
+    };
   }
 
   private exitWaiterKey(target: PtyExitTarget): string {
@@ -272,7 +415,7 @@ export class TerminalRuntimeManager {
 
   // ------------------------------------------------------------------- sessions
 
-  createSession(params: CreateSessionParams): CreateSessionResult {
+  async createSession(params: CreateSessionParams): Promise<CreateSessionResult> {
     const id = randomUUID();
     const session: Session = {
       id,
@@ -303,9 +446,11 @@ export class TerminalRuntimeManager {
 
     let autoresponder: PromptAutoresponder | null = null;
 
-    let runtime: SessionRuntime;
+    let runtime: AnyTerminalRuntime;
+    let tmuxSessionName: string | undefined;
     try {
-      runtime = new SessionRuntime(
+      const spawned = await createTerminalRuntime(
+        this.factoryContext('task', id, params.projectId),
         {
           command: params.command,
           args: params.args,
@@ -347,6 +492,8 @@ export class TerminalRuntimeManager {
           },
         },
       );
+      runtime = spawned.runtime;
+      tmuxSessionName = spawned.tmuxSessionName;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return { error: 'AGENT_NOT_FOUND', message };
@@ -371,7 +518,14 @@ export class TerminalRuntimeManager {
       );
     }
 
-    this.sessions.set(id, { runtime, session, detector, autoresponder, agent: params.agent });
+    this.sessions.set(id, {
+      runtime,
+      tmuxSessionName,
+      session,
+      detector,
+      autoresponder,
+      agent: params.agent,
+    });
     return session;
   }
 
@@ -441,7 +595,7 @@ export class TerminalRuntimeManager {
 
   // --------------------------------------------------------------------- shells
 
-  createShell(params: CreateShellParams): Shell {
+  async createShell(params: CreateShellParams): Promise<Shell> {
     const id = randomUUID();
     const { command, args } = defaultShellCommand();
     const shell: Shell = {
@@ -452,7 +606,11 @@ export class TerminalRuntimeManager {
       startedAt: new Date().toISOString(),
     };
 
-    const runtime = new SessionRuntime(
+    const parent = this.sessions.get(params.sessionId);
+    const projectSlugSource = parent?.session.projectId ?? 'project';
+
+    const { runtime, tmuxSessionName } = await createTerminalRuntime(
+      this.factoryContext('shell', id, projectSlugSource),
       {
         command,
         args,
@@ -481,7 +639,7 @@ export class TerminalRuntimeManager {
       },
     );
 
-    this.shells.set(id, { runtime, shell });
+    this.shells.set(id, { runtime, tmuxSessionName, shell });
     return shell;
   }
 
@@ -524,7 +682,7 @@ export class TerminalRuntimeManager {
 
   // ------------------------------------------------------------------- planning
 
-  startPlanning(params: StartPlanningParams): StartPlanningResult {
+  async startPlanning(params: StartPlanningParams): Promise<StartPlanningResult> {
     const id = randomUUID();
     const session: PlanningSession = {
       id,
@@ -547,9 +705,11 @@ export class TerminalRuntimeManager {
 
     let autoresponder: PromptAutoresponder | null = null;
 
-    let runtime: SessionRuntime;
+    let runtime: AnyTerminalRuntime;
+    let tmuxSessionName: string | undefined;
     try {
-      runtime = new SessionRuntime(
+      const spawned = await createTerminalRuntime(
+        this.factoryContext('planning', id, params.projectId),
         {
           command: params.command,
           args: params.args,
@@ -588,6 +748,8 @@ export class TerminalRuntimeManager {
           },
         },
       );
+      runtime = spawned.runtime;
+      tmuxSessionName = spawned.tmuxSessionName;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return { error: 'AGENT_NOT_FOUND', message };
@@ -612,7 +774,7 @@ export class TerminalRuntimeManager {
       );
     }
 
-    this.planning.set(id, { runtime, session, autoresponder });
+    this.planning.set(id, { runtime, tmuxSessionName, session, autoresponder });
     return { ...session };
   }
 
@@ -653,23 +815,29 @@ export class TerminalRuntimeManager {
   }
 
   /**
-   * App quit: interrupt resumable agent PTYs, wait briefly for exit + final output,
-   * then hard-kill anything still running.
+   * App quit: when tmux persistence is off, interrupt resumable direct agent PTYs
+   * (double Ctrl+C) before teardown. When tmux persistence is on, skip interrupts —
+   * agents keep running in tmux or legacy direct PTYs are released without capture.
    */
   async gracefulShutdownForAppQuit(deadlineMs: number): Promise<void> {
     const started = Date.now();
     const remainingMs = () => Math.max(0, deadlineMs - (Date.now() - started));
 
+    const persistTmuxEnabled =
+      this.resolveTerminalRuntimeContext?.()?.persistTerminalsWithTmux === true;
+
     const targets: PtyExitTarget[] = [];
-    for (const [id, entry] of this.sessions) {
-      if (entry.session.status !== 'running') continue;
-      if (!agentSupportsGracefulQuitCapture(entry.agent)) continue;
-      targets.push({ kind: 'session', id });
-    }
-    for (const [id, entry] of this.planning) {
-      if (entry.session.status !== 'running') continue;
-      if (!agentSupportsGracefulQuitCapture(entry.session.agent)) continue;
-      targets.push({ kind: 'planning', id });
+    if (!persistTmuxEnabled) {
+      for (const [id, entry] of this.sessions) {
+        if (entry.session.status !== 'running') continue;
+        if (!agentSupportsGracefulQuitCapture(entry.agent)) continue;
+        targets.push({ kind: 'session', id });
+      }
+      for (const [id, entry] of this.planning) {
+        if (entry.session.status !== 'running') continue;
+        if (!agentSupportsGracefulQuitCapture(entry.session.agent)) continue;
+        targets.push({ kind: 'planning', id });
+      }
     }
 
     if (targets.length > 0 && remainingMs() > 0) {
@@ -686,12 +854,446 @@ export class TerminalRuntimeManager {
     const drainMs = Math.min(250, remainingMs());
     if (drainMs > 0) await sleepMs(drainMs);
 
-    this.shutdownAllPtys();
+    this.releaseRegistriesForAppQuit();
   }
 
   /**
-   * Kill and dispose every registered PTY (shells, planning, and any in-process
-   * task sessions). Used on full app quit so no child processes remain.
+   * Full app quit: graceful-stop direct agent PTYs, detach tmux attach bridges
+   * without killing Fluxx-owned tmux sessions, then clear registries.
+   */
+  releaseRegistriesForAppQuit(): void {
+    for (const entry of [...this.sessions.values()]) {
+      entry.detector.dispose();
+      entry.autoresponder?.dispose();
+      if (isTmuxRuntime(entry.runtime)) entry.runtime.detachAttachBridgeForAppQuit();
+      else entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.sessions.clear();
+    for (const entry of [...this.shells.values()]) {
+      if (isTmuxRuntime(entry.runtime)) entry.runtime.detachAttachBridgeForAppQuit();
+      else entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.shells.clear();
+    for (const entry of [...this.planning.values()]) {
+      entry.autoresponder?.dispose();
+      if (isTmuxRuntime(entry.runtime)) entry.runtime.detachAttachBridgeForAppQuit();
+      else entry.runtime.kill();
+      entry.runtime.dispose();
+    }
+    this.planning.clear();
+  }
+
+  /**
+   * On relaunch: reattach open tmux manifest rows for the active project, classify
+   * missing/workspace-missing rows, and log untracked `fluxx-` sessions (never killed).
+   */
+  async reconcileTmuxPersistedTerminals(
+    params: TmuxPersistedRestoreParams,
+  ): Promise<TmuxPersistedReconcileOutput> {
+    const counts = emptyTmuxReconcileCounts();
+    const restoredSessionTaskPairs: Array<{ sessionId: string; taskId: string }> = [];
+    const missingTerminalRecords: TerminalSessionRecord[] = [];
+    const workspaceMissingTerminalRecords: TerminalSessionRecord[] = [];
+
+    const rows = sortOpenTmuxRowsForRestore(params.records, params.projectId);
+    const trackedTmuxNames = new Set(
+      rows.map((r) => r.tmuxSessionName?.trim()).filter((n): n is string => Boolean(n)),
+    );
+    const allTmuxNames = await tmuxListSessionNames();
+    const untrackedFluxxSessions = findUntrackedFluxxTmuxSessions(allTmuxNames, trackedTmuxNames);
+
+    const trustAutorespondEnabled =
+      params.trustPromptAutorespond === true &&
+      Array.isArray(params.trustPromptAutorespondRoots) &&
+      params.trustPromptAutorespondRoots.length > 0;
+    const trustRoots = trustAutorespondEnabled
+      ? params.trustPromptAutorespondRoots!.map((r) => path.resolve(r))
+      : [];
+    const trustRules = trustAutorespondEnabled
+      ? buildTrustPromptAutoresponderRules(trustRoots)
+      : [];
+
+    for (const record of rows) {
+      const tmuxName = record.tmuxSessionName?.trim();
+      if (!tmuxName) {
+        counts.skipped += 1;
+        continue;
+      }
+
+      if (record.kind === 'task') {
+        if (this.sessions.has(record.id)) {
+          counts.skipped += 1;
+          continue;
+        }
+        const taskMeta = record.task;
+        if (!taskMeta) {
+          counts.skipped += 1;
+          continue;
+        }
+        const wt = taskMeta.worktreePath?.trim();
+        if (!wt || !(await params.pathStillPresent(wt))) {
+          counts.workspaceMissing.task += 1;
+          workspaceMissingTerminalRecords.push(record);
+          continue;
+        }
+        if (!(await tmuxHasSession(tmuxName))) {
+          counts.missing.task += 1;
+          missingTerminalRecords.push(record);
+          continue;
+        }
+        const restored = await this.restoreTaskTmuxRecord(record, taskMeta, tmuxName, {
+          trustRules,
+          agent: taskMeta.agent,
+        });
+        if (!restored) {
+          counts.skipped += 1;
+          continue;
+        }
+        counts.restored.task += 1;
+        restoredSessionTaskPairs.push({ sessionId: record.id, taskId: taskMeta.taskId });
+        continue;
+      }
+
+      if (record.kind === 'planning') {
+        if (this.planning.has(record.id)) {
+          counts.skipped += 1;
+          continue;
+        }
+        const planningMeta = record.planning;
+        if (!planningMeta) {
+          counts.skipped += 1;
+          continue;
+        }
+        const dir = planningMeta.planningDir?.trim();
+        if (!dir || !(await params.pathStillPresent(dir))) {
+          counts.workspaceMissing.planning += 1;
+          workspaceMissingTerminalRecords.push(record);
+          continue;
+        }
+        if (!(await tmuxHasSession(tmuxName))) {
+          counts.missing.planning += 1;
+          missingTerminalRecords.push(record);
+          continue;
+        }
+        const restored = await this.restorePlanningTmuxRecord(
+          record,
+          planningMeta,
+          tmuxName,
+          trustRules,
+        );
+        if (!restored) {
+          counts.skipped += 1;
+          continue;
+        }
+        counts.restored.planning += 1;
+        continue;
+      }
+
+      if (record.kind === 'shell') {
+        if (this.shells.has(record.id)) {
+          counts.skipped += 1;
+          continue;
+        }
+        const shellMeta = record.shell;
+        if (!shellMeta) {
+          counts.skipped += 1;
+          continue;
+        }
+        if (!this.sessions.has(shellMeta.parentSessionId)) {
+          counts.skipped += 1;
+          continue;
+        }
+        const wt = shellMeta.worktreePath?.trim();
+        if (!wt || !(await params.pathStillPresent(wt))) {
+          counts.workspaceMissing.shell += 1;
+          workspaceMissingTerminalRecords.push(record);
+          continue;
+        }
+        if (!(await tmuxHasSession(tmuxName))) {
+          counts.missing.shell += 1;
+          missingTerminalRecords.push(record);
+          continue;
+        }
+        const restored = await this.restoreShellTmuxRecord(record, shellMeta, tmuxName);
+        if (!restored) {
+          counts.skipped += 1;
+          continue;
+        }
+        counts.restored.shell += 1;
+      }
+    }
+
+    return {
+      ...counts,
+      untrackedFluxxSessions,
+      restoredSessionTaskPairs,
+      missingTerminalRecords,
+      workspaceMissingTerminalRecords,
+    };
+  }
+
+  private async restoreTaskTmuxRecord(
+    record: TerminalSessionRecord,
+    taskMeta: NonNullable<TerminalSessionRecord['task']>,
+    tmuxSessionName: string,
+    ctx: { trustRules: ReturnType<typeof buildTrustPromptAutoresponderRules>; agent: Agent },
+  ): Promise<boolean> {
+    try {
+      const session: Session = {
+        id: record.id,
+        taskId: taskMeta.taskId,
+        projectId: record.projectId,
+        ...(record.repoId != null && record.repoId.length > 0 ? { repoId: record.repoId } : {}),
+        worktreePath: taskMeta.worktreePath,
+        branch: taskMeta.fluxxWorkBranch,
+        status: 'running',
+        startedAt: record.startedAt,
+        ...(taskMeta.agentConversationId
+          ? { agentConversationId: taskMeta.agentConversationId }
+          : {}),
+      };
+
+      const detector = new SilenceDetector(
+        (state) => this.emitFrame({ kind: 'agent-state', id: record.id, state }),
+        undefined,
+        record.id,
+      );
+
+      const autoresponderRef: { current: PromptAutoresponder | null } = { current: null };
+      const runtime = await TmuxTerminalRuntime.attachExisting(
+        {
+          tmuxSessionName,
+          cwd: record.cwd,
+          cols: record.cols,
+          rows: record.rows,
+          env: {
+            ...process.env,
+            HOME: process.env.HOME ?? os.homedir(),
+          },
+          termProgram: 'kitty',
+        },
+        {
+          onData: (data, seq) => {
+            this.emitFrame({ kind: 'data', target: 'session', id: record.id, data, seq });
+            detector.onData();
+            autoresponderRef.current?.notifyPtyData();
+            this.onSessionPtyData?.({
+              sessionId: record.id,
+              taskId: taskMeta.taskId,
+              projectId: record.projectId,
+              agent: ctx.agent,
+              data,
+            });
+          },
+          onExit: ({ exitCode }) => {
+            const entry = this.sessions.get(record.id);
+            if (!entry) return;
+            entry.detector.dispose();
+            entry.autoresponder?.dispose();
+            entry.session.status = exitCode === 0 ? 'stopped' : 'error';
+            entry.session.stoppedAt = new Date().toISOString();
+            this.emitFrame({
+              kind: 'session-exit',
+              id: record.id,
+              session: { ...entry.session },
+            });
+          },
+        },
+      );
+
+      let autoresponder: PromptAutoresponder | null = null;
+      if (ctx.trustRules.length > 0) {
+        autoresponder = new PromptAutoresponder(
+          record.id,
+          ctx.agent,
+          true,
+          ctx.trustRules,
+          runtime,
+          (payload) =>
+            this.emitFrame({
+              kind: 'auto-responded',
+              target: 'session',
+              id: record.id,
+              sessionId: payload.sessionId,
+              ruleId: payload.ruleId,
+              agent: payload.agent,
+            }),
+        );
+        autoresponderRef.current = autoresponder;
+      }
+
+      this.sessions.set(record.id, {
+        runtime,
+        tmuxSessionName,
+        session,
+        detector,
+        autoresponder,
+        agent: ctx.agent,
+      });
+      return true;
+    } catch (err: unknown) {
+      console.warn('[TerminalRuntimeManager] restore task tmux failed', {
+        sessionId: record.id,
+        tmuxSessionName,
+        err,
+      });
+      return false;
+    }
+  }
+
+  private async restorePlanningTmuxRecord(
+    record: TerminalSessionRecord,
+    planningMeta: NonNullable<TerminalSessionRecord['planning']>,
+    tmuxSessionName: string,
+    trustRules: ReturnType<typeof buildTrustPromptAutoresponderRules>,
+  ): Promise<boolean> {
+    try {
+      const session: PlanningSession = {
+        id: record.id,
+        projectId: record.projectId,
+        agent: planningMeta.agent,
+        planningDir: planningMeta.planningDir,
+        status: 'running',
+        startedAt: record.startedAt,
+        ...(planningMeta.agentConversationId
+          ? { agentConversationId: planningMeta.agentConversationId }
+          : {}),
+      };
+
+      const autoresponderRef: { current: PromptAutoresponder | null } = { current: null };
+      const runtime = await TmuxTerminalRuntime.attachExisting(
+        {
+          tmuxSessionName,
+          cwd: record.cwd,
+          cols: record.cols,
+          rows: record.rows,
+          env: {
+            ...process.env,
+            HOME: process.env.HOME ?? os.homedir(),
+          },
+          termProgram: 'kitty',
+        },
+        {
+          onData: (data, seq) => {
+            this.emitFrame({ kind: 'data', target: 'planning', id: record.id, data, seq });
+            autoresponderRef.current?.notifyPtyData();
+            this.onPlanningPtyData?.({
+              sessionId: record.id,
+              projectId: record.projectId,
+              agent: planningMeta.agent,
+              data,
+            });
+          },
+          onExit: ({ exitCode }) => {
+            const entry = this.planning.get(record.id);
+            if (!entry) return;
+            entry.autoresponder?.dispose();
+            entry.session.status = exitCode === 0 ? 'stopped' : 'error';
+            entry.session.stoppedAt = new Date().toISOString();
+            this.emitFrame({
+              kind: 'planning-exit',
+              id: record.id,
+              session: { ...entry.session },
+            });
+          },
+        },
+      );
+
+      let autoresponder: PromptAutoresponder | null = null;
+      if (trustRules.length > 0) {
+        autoresponder = new PromptAutoresponder(
+          record.id,
+          planningMeta.agent,
+          true,
+          trustRules,
+          runtime,
+          (payload) =>
+            this.emitFrame({
+              kind: 'auto-responded',
+              target: 'planning',
+              id: record.id,
+              sessionId: payload.sessionId,
+              ruleId: payload.ruleId,
+              agent: payload.agent,
+            }),
+        );
+        autoresponderRef.current = autoresponder;
+      }
+
+      this.planning.set(record.id, { runtime, tmuxSessionName, session, autoresponder });
+      return true;
+    } catch (err: unknown) {
+      console.warn('[TerminalRuntimeManager] restore planning tmux failed', {
+        sessionId: record.id,
+        tmuxSessionName,
+        err,
+      });
+      return false;
+    }
+  }
+
+  private async restoreShellTmuxRecord(
+    record: TerminalSessionRecord,
+    shellMeta: NonNullable<TerminalSessionRecord['shell']>,
+    tmuxSessionName: string,
+  ): Promise<boolean> {
+    try {
+      const shell: Shell = {
+        id: record.id,
+        sessionId: shellMeta.parentSessionId,
+        worktreePath: shellMeta.worktreePath,
+        status: 'running',
+        startedAt: record.startedAt,
+      };
+
+      const runtime = await TmuxTerminalRuntime.attachExisting(
+        {
+          tmuxSessionName,
+          cwd: record.cwd,
+          cols: record.cols,
+          rows: record.rows,
+          env: {
+            ...process.env,
+            HOME: process.env.HOME ?? os.homedir(),
+          },
+        },
+        {
+          onData: (data, seq) => {
+            this.emitFrame({ kind: 'data', target: 'shell', id: record.id, data, seq });
+          },
+          onExit: ({ exitCode }) => {
+            const entry = this.shells.get(record.id);
+            if (!entry) return;
+            entry.shell.status = exitCode === 0 ? 'stopped' : 'error';
+            entry.shell.stoppedAt = new Date().toISOString();
+            this.emitFrame({
+              kind: 'shell-exit',
+              id: record.id,
+              shell: { ...entry.shell },
+            });
+            entry.runtime.dispose();
+            this.shells.delete(record.id);
+          },
+        },
+      );
+
+      this.shells.set(record.id, { runtime, tmuxSessionName, shell });
+      return true;
+    } catch (err: unknown) {
+      console.warn('[TerminalRuntimeManager] restore shell tmux failed', {
+        shellId: record.id,
+        tmuxSessionName,
+        err,
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Kill and dispose every registered PTY (shells, planning, and task sessions),
+   * including tmux sessions. Used for explicit stop/delete — not app quit.
    */
   shutdownAllPtys(): void {
     for (const entry of [...this.sessions.values()]) {

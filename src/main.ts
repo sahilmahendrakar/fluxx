@@ -97,6 +97,11 @@ import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
+import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
+import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
+import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
+import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
+import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
@@ -559,7 +564,9 @@ app.whenReady().then(async () => {
   // corrected env without per-call wiring. See `src/main/userShellEnv.ts`.
   await applyShellEnvToProcess();
 
-  const terminalBackend = createMainTerminalBackend();
+  const terminalBackend = createMainTerminalBackend({
+    tmuxSpawnLauncherPath: resolveFluxxTmuxSpawnLauncherPath(app.getAppPath(), process.execPath),
+  });
   mainProcessTerminalBackend = terminalBackend;
   try {
     await terminalBackend.ensureReady();
@@ -933,6 +940,190 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function activeProjectIdForTmuxRestore(): Promise<string | null> {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) return null;
+    if (key.kind === 'local') {
+      return projectStore.get()?.id ?? key.id;
+    }
+    return key.id;
+  }
+
+  async function markTmuxWorkspaceMissingTerminal(record: TerminalSessionRecord): Promise<void> {
+    const endedAt = new Date().toISOString();
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: 'workspace-deleted',
+      endedAt,
+    });
+    if (record.kind === 'task') {
+      await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(record.id);
+    } else if (record.kind === 'planning') {
+      await planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          status: 'stopped',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+        },
+        { reason: 'user-archived' },
+      );
+    }
+  }
+
+  async function markTmuxMissingTerminal(record: TerminalSessionRecord): Promise<void> {
+    const endedAt = new Date().toISOString();
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: 'tmux-missing',
+      endedAt,
+    });
+
+    if (record.kind === 'task' && record.task) {
+      if (!(await taskAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+        await taskAgentSessionRecordStore.recordSessionStart({
+          fluxxSessionId: record.id,
+          taskId: record.task.taskId,
+          projectId: record.projectId,
+          ...(record.repoId != null && record.repoId.length > 0 ? { repoId: record.repoId } : {}),
+          agent: record.task.agent,
+          worktreePath: record.task.worktreePath,
+          fluxxWorkBranch: record.task.fluxxWorkBranch,
+          ...(record.task.sourceBranchShort
+            ? { sourceBranchShort: record.task.sourceBranchShort }
+            : {}),
+          startedAt: record.startedAt,
+          ...(record.task.agentConversationId
+            ? { agentConversationId: record.task.agentConversationId }
+            : {}),
+        });
+      }
+      await taskAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          taskId: record.task.taskId,
+          projectId: record.projectId,
+          worktreePath: record.task.worktreePath,
+          branch: record.task.fluxxWorkBranch,
+          status: 'interrupted',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+          ...(record.task.agentConversationId
+            ? { agentConversationId: record.task.agentConversationId }
+            : {}),
+        },
+        { reason: 'tmux-missing' },
+      );
+      return;
+    }
+
+    if (record.kind === 'planning' && record.planning) {
+      if (!(await planningAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+        await planningAgentSessionRecordStore.recordSessionStart({
+          fluxxSessionId: record.id,
+          projectId: record.projectId,
+          agent: record.planning.agent,
+          planningDir: record.planning.planningDir,
+          startedAt: record.startedAt,
+          ...(record.planning.agentModel ? { agentModel: record.planning.agentModel } : {}),
+          ...(typeof record.planning.agentYolo === 'boolean'
+            ? { agentYolo: record.planning.agentYolo }
+            : {}),
+          ...(record.planning.agentConversationId
+            ? { agentConversationId: record.planning.agentConversationId }
+            : {}),
+        });
+      }
+      await planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          projectId: record.projectId,
+          agent: record.planning.agent,
+          planningDir: record.planning.planningDir,
+          status: 'interrupted',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+          ...(record.planning.agentConversationId
+            ? { agentConversationId: record.planning.agentConversationId }
+            : {}),
+        },
+        { reason: 'tmux-missing' },
+      );
+    }
+  }
+
+  async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
+    if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    await syncTerminalRuntimeContext();
+    if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
+
+    const projectId = await activeProjectIdForTmuxRestore();
+    const projectDir = resolveRecordProjectDir();
+    if (!projectId || !projectDir) return;
+
+    const tmuxProbe = await probeTmuxAvailability();
+    if (!tmuxProbe.available) {
+      console.warn('[tmux-reconcile] tmux unavailable; skipping restore', tmuxProbe);
+      return;
+    }
+
+    const openRecords = await terminalSessionRecordStore.listOpenRecords(projectId);
+    const project = projectStore.get();
+    const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
+    const trustAutorespond =
+      project?.autoRespondToTrustPrompts === true && trustRoots.length > 0;
+
+    const output = await terminalBackend.reconcileTmuxPersistedTerminals({
+      projectId,
+      records: openRecords,
+      pathStillPresent: async (absPath) => {
+        try {
+          await fs.access(absPath);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      trustPromptAutorespond: trustAutorespond,
+      trustPromptAutorespondRoots: trustAutorespond ? trustRoots : undefined,
+    });
+
+    for (const { sessionId, taskId } of output.restoredSessionTaskPairs) {
+      sessionTaskMap.set(sessionId, taskId);
+    }
+
+    for (const record of output.workspaceMissingTerminalRecords) {
+      await markTmuxWorkspaceMissingTerminal(record);
+    }
+
+    for (const record of output.missingTerminalRecords) {
+      if (record.kind === 'shell') {
+        await terminalSessionRecordStore.markTerminalEnded(record.id, {
+          reason: 'tmux-missing',
+          endedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      const hasResumeMetadata =
+        (record.kind === 'task' && record.task) || (record.kind === 'planning' && record.planning);
+      if (hasResumeMetadata) {
+        await markTmuxMissingTerminal(record);
+      } else {
+        await terminalSessionRecordStore.markTerminalEnded(record.id, {
+          reason: 'tmux-missing',
+          endedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    console.log(formatTmuxReconcileLogLine(output));
+
+    try {
+      const snapshot = await buildTerminalInventorySnapshotForActiveProject();
+      console.log('[tmux-reconcile] inventory', JSON.stringify(snapshot));
+    } catch (err) {
+      console.warn('[tmux-reconcile] inventory snapshot failed', err);
+    }
+  }
+
   // Catchup: for sessions already silent (or already exited) when this process
   // starts, no stream event will fire until the next PTY output tick.
   async function runSilenceCatchup(): Promise<void> {
@@ -1136,6 +1327,41 @@ app.whenReady().then(async () => {
     if (fromWorktree) return fromWorktree;
     throw new Error('No active project');
   }
+
+  const terminalRuntimeContext: TerminalRuntimeContext = {
+    persistTerminalsWithTmux: false,
+    projectSlugSource: '',
+  };
+
+  async function syncTerminalRuntimeContext(): Promise<void> {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) {
+      terminalRuntimeContext.persistTerminalsWithTmux = false;
+      terminalRuntimeContext.projectSlugSource = '';
+      return;
+    }
+    const project = projectStore.get();
+    terminalRuntimeContext.projectSlugSource =
+      project?.name?.trim() || project?.id || key.id;
+    if (key.kind === 'cloud') {
+      terminalRuntimeContext.persistTerminalsWithTmux =
+        bindingStore.getPrefs(key.id).persistTerminalsWithTmux === true;
+      return;
+    }
+    try {
+      terminalRuntimeContext.persistTerminalsWithTmux =
+        await projectStore.getPersistTerminalsWithTmuxAt(activeProjectDir());
+    } catch {
+      terminalRuntimeContext.persistTerminalsWithTmux = false;
+    }
+  }
+
+  if (terminalBackend instanceof LocalMainProcessTerminalBackend) {
+    terminalBackend.setResolveTerminalRuntimeContext(() => terminalRuntimeContext);
+  }
+  await syncTerminalRuntimeContext();
+  await reconcileTmuxTerminalsForActiveProject();
+  await runSilenceCatchup();
 
   ipcMain.handle(
     'project:getMcpConfig',
@@ -1833,6 +2059,7 @@ app.whenReady().then(async () => {
           await bindingStore.setPrefs(key.id, {
             persistTerminalsWithTmux: enabled === true,
           });
+          await syncTerminalRuntimeContext();
           return {
             ok: true,
             enabled: bindingStore.getPrefs(key.id).persistTerminalsWithTmux,
@@ -1842,6 +2069,7 @@ app.whenReady().then(async () => {
           activeProjectDir(),
           enabled,
         );
+        await syncTerminalRuntimeContext();
         return { ok: true, enabled: next };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1969,6 +2197,7 @@ app.whenReady().then(async () => {
           lastOpenedProjectDir: projectDir,
           activeProjectKey: { kind: 'local', id: project.id },
         });
+        await syncTerminalRuntimeContext();
         return { ok: true, project, projectDir };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -2013,6 +2242,9 @@ app.whenReady().then(async () => {
         kind: 'local',
         id: project.id,
       });
+      await syncTerminalRuntimeContext();
+      await reconcileTmuxTerminalsForActiveProject();
+      await runSilenceCatchup();
       return project;
     },
   );
@@ -2144,6 +2376,9 @@ app.whenReady().then(async () => {
           sharedRepos,
         });
       }
+      await syncTerminalRuntimeContext();
+      await reconcileTmuxTerminalsForActiveProject();
+      await runSilenceCatchup();
       return { ok: true as const };
     },
   );
@@ -3611,28 +3846,33 @@ app.whenReady().then(async () => {
         startedAt: result.startedAt,
       };
       void taskAgentSessionRecordStore.recordSessionStart(row);
-      const terminalRow: TerminalSessionRecord = {
-        id: result.id,
-        kind: 'task',
-        runtime: 'node-pty',
-        projectId: project.id,
-        ...(sessionRepoCfg.id != null && sessionRepoCfg.id.length > 0
-          ? { repoId: sessionRepoCfg.id }
-          : {}),
-        cwd: worktreePath,
-        command,
-        args,
-        cols: 80,
-        rows: 24,
-        startedAt: result.startedAt,
-        task: {
-          taskId: merged.id,
-          agent: merged.agent,
-          worktreePath,
-          fluxxWorkBranch: branch,
-          ...(sourceBranchShort ? { sourceBranchShort } : {}),
+      const terminalRow = withTerminalRuntimeMeta(
+        terminalBackend,
+        result.id,
+        'session',
+        {
+          id: result.id,
+          kind: 'task',
+          runtime: 'node-pty',
+          projectId: project.id,
+          ...(sessionRepoCfg.id != null && sessionRepoCfg.id.length > 0
+            ? { repoId: sessionRepoCfg.id }
+            : {}),
+          cwd: worktreePath,
+          command,
+          args,
+          cols: 80,
+          rows: 24,
+          startedAt: result.startedAt,
+          task: {
+            taskId: merged.id,
+            agent: merged.agent,
+            worktreePath,
+            fluxxWorkBranch: branch,
+            ...(sourceBranchShort ? { sourceBranchShort } : {}),
+          },
         },
-      };
+      );
       void terminalSessionRecordStore.recordTerminalStart(terminalRow);
       const priorFw = (merged.fluxxWorkBranch ?? '').trim();
       if (priorFw !== branch) {
@@ -4507,24 +4747,29 @@ app.whenReady().then(async () => {
         ...(spawnYolo ? { agentYolo: true } : {}),
       };
       void planningAgentSessionRecordStore.recordSessionStart(planningRow);
-      const planningTerminalRow: TerminalSessionRecord = {
-        id: result.id,
-        kind: 'planning',
-        runtime: 'node-pty',
-        projectId: project.id,
-        cwd: planningDir,
-        command,
-        args,
-        cols: planningCols,
-        rows: planningRows,
-        startedAt: result.startedAt,
-        planning: {
-          agent: planningAgent,
-          planningDir,
-          ...(spawnModel ? { agentModel: spawnModel } : {}),
-          ...(spawnYolo ? { agentYolo: true } : {}),
+      const planningTerminalRow = withTerminalRuntimeMeta(
+        terminalBackend,
+        result.id,
+        'planning',
+        {
+          id: result.id,
+          kind: 'planning',
+          runtime: 'node-pty',
+          projectId: project.id,
+          cwd: planningDir,
+          command,
+          args,
+          cols: planningCols,
+          rows: planningRows,
+          startedAt: result.startedAt,
+          planning: {
+            agent: planningAgent,
+            planningDir,
+            ...(spawnModel ? { agentModel: spawnModel } : {}),
+            ...(spawnYolo ? { agentYolo: true } : {}),
+          },
         },
-      };
+      );
       void terminalSessionRecordStore.recordTerminalStart(planningTerminalRow);
       return result;
     },
@@ -4888,7 +5133,7 @@ app.whenReady().then(async () => {
     const sh = process.platform === 'win32'
       ? { command: process.env.COMSPEC ?? 'cmd.exe', args: [] as string[] }
       : { command: process.env.SHELL ?? '/bin/bash', args: ['-l'] as string[] };
-    const shellTerminalRow: TerminalSessionRecord = {
+    const shellTerminalRow = withTerminalRuntimeMeta(terminalBackend, shell.id, 'shell', {
       id: shell.id,
       kind: 'shell',
       runtime: 'node-pty',
@@ -4903,7 +5148,7 @@ app.whenReady().then(async () => {
         parentSessionId: session.id,
         worktreePath: session.worktreePath,
       },
-    };
+    });
     void terminalSessionRecordStore.recordTerminalStart(shellTerminalRow);
     return shell;
   });
@@ -4966,18 +5211,36 @@ app.on('before-quit', (e) => {
       const backend = mainProcessTerminalBackend;
       if (backend) {
         try {
-          if (await backend.shouldConfirmAppQuit()) {
+          const quitConfirm = backend.getAppQuitConfirmInfo?.() ?? {
+            needsConfirm: await backend.shouldConfirmAppQuit(),
+            persistTmuxEnabled: false,
+            directPtyCount: 0,
+            tmuxBackedCount: 0,
+          };
+          if (quitConfirm.needsConfirm) {
             const focused = BrowserWindow.getFocusedWindow();
+            let quitMessage = 'Quit Fluxx and stop local agents?';
+            let quitDetail =
+              'Running task agents, terminal panes, and planning sessions in this app will end. ' +
+              'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).';
+            if (quitConfirm.persistTmuxEnabled && quitConfirm.tmuxBackedCount > 0) {
+              quitMessage = 'Quit Fluxx?';
+              if (quitConfirm.directPtyCount > 0) {
+                quitDetail =
+                  'In-app terminals without tmux will stop. Fluxx-owned tmux sessions for task agents, planning assistants, and shell panes will keep running until you stop them from Fluxx or tmux.';
+              } else {
+                quitDetail =
+                  'Task agents, planning assistants, and terminal panes running in Fluxx-owned tmux sessions will continue. Reopen Fluxx to reattach. Closing only the Fluxx window leaves them running until you fully quit.';
+              }
+            }
             const messageOpts = {
               type: 'warning' as const,
               buttons: ['Quit', 'Cancel'],
               defaultId: 1,
               cancelId: 1,
               title: 'Quit Fluxx?',
-              message: 'Quit Fluxx and stop local agents?',
-              detail:
-                'Running task agents, terminal panes, and planning sessions in this app will end. ' +
-                'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).',
+              message: quitMessage,
+              detail: quitDetail,
             };
             const { response } =
               focused && !focused.isDestroyed()

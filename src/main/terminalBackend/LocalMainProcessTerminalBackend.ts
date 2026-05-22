@@ -15,7 +15,10 @@ import {
   TerminalRuntimeManager,
   type PlanningPtyDataPayload,
   type SessionPtyDataPayload,
+  type TerminalRuntimeContext,
   type TerminalRuntimeManagerOptions,
+  type TmuxPersistedReconcileOutput,
+  type TmuxPersistedRestoreParams,
 } from '../TerminalRuntimeManager';
 import type {
   TerminalBackend,
@@ -93,6 +96,12 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
     this.planningPtyDataHook = hook;
   }
 
+  setResolveTerminalRuntimeContext(
+    resolver: (() => TerminalRuntimeContext | null) | undefined,
+  ): void {
+    this.mgr.setResolveTerminalRuntimeContext(resolver);
+  }
+
   ensureReady(): Promise<void> {
     return Promise.resolve();
   }
@@ -108,11 +117,22 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
 
   onMainProcessBeforeQuit(): void {
     this.clearSilencePoll();
-    this.mgr.shutdownAllPtys();
+    this.mgr.releaseRegistriesForAppQuit();
   }
 
   async shouldConfirmAppQuit(): Promise<boolean> {
-    return this.mgr.liveMainProcessPtyCount() > 0;
+    return this.mgr.getAppQuitConfirmInfo().needsConfirm;
+  }
+
+  getAppQuitConfirmInfo() {
+    return this.mgr.getAppQuitConfirmInfo();
+  }
+
+  getTerminalRuntimeMeta(
+    terminalId: string,
+    kind: 'session' | 'shell' | 'planning',
+  ) {
+    return this.mgr.getTerminalRuntimeMeta(terminalId, kind);
   }
 
   async teardownForAppQuit(deadlineMs = 3000): Promise<void> {
@@ -167,7 +187,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
   }
 
   createSession(params: CreateSessionParams): Promise<CreateSessionResult> {
-    return Promise.resolve(this.mgr.createSession(params));
+    return this.mgr.createSession(params);
   }
 
   listSessions(): Promise<Session[]> {
@@ -211,7 +231,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
   }
 
   createShell(params: CreateShellParams): Promise<Shell> {
-    return Promise.resolve(this.mgr.createShell(params));
+    return this.mgr.createShell(params);
   }
 
   listShells(sessionId: string): Promise<Shell[]> {
@@ -239,7 +259,7 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
   }
 
   startPlanning(params: StartPlanningParams): Promise<StartPlanningResult> {
-    return Promise.resolve(this.mgr.startPlanning(params));
+    return this.mgr.startPlanning(params);
   }
 
   listPlanning(): Promise<PlanningSession[]> {
@@ -264,5 +284,11 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
 
   async stopPlanning(id: string): Promise<void> {
     this.mgr.stopPlanning(id);
+  }
+
+  reconcileTmuxPersistedTerminals(
+    params: TmuxPersistedRestoreParams,
+  ): Promise<TmuxPersistedReconcileOutput> {
+    return this.mgr.reconcileTmuxPersistedTerminals(params);
   }
 }
