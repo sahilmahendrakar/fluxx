@@ -74,6 +74,15 @@ export interface TerminalBackend {
   /** True when quitting would stop visible in-flight local work (optional confirmation). */
   shouldConfirmAppQuit(): Promise<boolean>;
 
+  /** Quit dialog copy inputs (in-process backend only). */
+  getAppQuitConfirmInfo?(): import('../TerminalRuntimeManager').AppQuitConfirmInfo;
+
+  /** Runtime kind + tmux name for durable terminal inventory rows. */
+  getTerminalRuntimeMeta?(
+    terminalId: string,
+    kind: 'session' | 'shell' | 'planning',
+  ): import('../TerminalRuntimeManager').TerminalRuntimeMeta | null;
+
   /**
    * Full app quit: gracefully stop resumable agent PTYs, then kill stragglers.
    * The caller should still enforce an overall deadline (e.g. 3s).

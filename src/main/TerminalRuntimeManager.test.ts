@@ -55,7 +55,7 @@ describe('TerminalRuntimeManager', () => {
       deliverStreamFrame: (f) => frames.push(f),
     });
 
-    const created = mgr.createSession({
+    const created = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -102,7 +102,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
 
-    const created = mgr.createSession({
+    const created = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -130,7 +130,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
 
-    const sess = mgr.createSession({
+    const sess = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -161,11 +161,17 @@ describe('TerminalRuntimeManager', () => {
     expect(mgr.listSessions()).toEqual([]);
   });
 
-  it('shutdownAllPtys stops sessions, shells, and planning', async () => {
+  it('gracefulShutdownForAppQuit skips Ctrl+C when persistTerminalsWithTmux is enabled', async () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
-    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+    const mgr = new TerminalRuntimeManager({
+      deliverStreamFrame: vi.fn(),
+      resolveTerminalRuntimeContext: () => ({
+        persistTerminalsWithTmux: true,
+        projectSlugSource: 'p1',
+      }),
+    });
 
-    const sess = mgr.createSession({
+    const sess = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -177,13 +183,39 @@ describe('TerminalRuntimeManager', () => {
       rows: 12,
     });
     if (!('id' in sess)) throw new Error('expected session');
-    const shell = mgr.createShell({
+
+    await mgr.gracefulShutdownForAppQuit(800);
+
+    for (const pty of ptyState.instances) {
+      const ctrlCWrites = pty.write.mock.calls.filter(([data]) => data === '\x03');
+      expect(ctrlCWrites).toHaveLength(0);
+    }
+    expect(mgr.listSessions()).toEqual([]);
+  });
+
+  it('shutdownAllPtys stops sessions, shells, and planning', async () => {
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
+
+    const sess = await mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'p1',
+      agent: 'claude-code',
+      command: 'sleep',
+      args: ['9'],
+      cols: 40,
+      rows: 12,
+    });
+    if (!('id' in sess)) throw new Error('expected session');
+    const shell = await mgr.createShell({
       sessionId: sess.id,
       worktreePath: '/tmp/wt',
       cols: 30,
       rows: 8,
     });
-    const plan = mgr.startPlanning({
+    const plan = await mgr.startPlanning({
       projectId: 'p1',
       agent: 'cursor',
       planningDir: '/tmp/plan',
@@ -212,7 +244,7 @@ describe('TerminalRuntimeManager', () => {
 
     expect(mgr.liveMainProcessPtyCount()).toBe(0);
 
-    const sess = mgr.createSession({
+    const sess = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -237,7 +269,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: (f) => frames.push(f) });
 
-    const s = mgr.createSession({
+    const s = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -266,7 +298,7 @@ describe('TerminalRuntimeManager', () => {
       onSessionExit: (session) => exits.push(session),
     });
 
-    const s = mgr.createSession({
+    const s = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',
@@ -298,7 +330,7 @@ describe('TerminalRuntimeManager', () => {
         onAgentState: (id, state) => agentStates.push({ id, state }),
       });
 
-      const s = mgr.createSession({
+      const s = await mgr.createSession({
         worktreePath: '/tmp/wt',
         branch: 'main',
         taskId: 't1',
@@ -329,7 +361,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
 
-    const p = mgr.startPlanning({
+    const p = await mgr.startPlanning({
       projectId: 'p1',
       agent: 'cursor',
       planningDir: '/tmp/plan',
@@ -349,7 +381,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: (f) => frames.push(f) });
 
-    const shell = mgr.createShell({
+    const shell = await mgr.createShell({
       sessionId: 'sess-1',
       worktreePath: '/tmp/wt',
       cols: 30,
@@ -381,7 +413,7 @@ describe('TerminalRuntimeManager', () => {
     const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
     const mgr = new TerminalRuntimeManager({ deliverStreamFrame: vi.fn() });
     const roots = [path.resolve('/tmp/flux-worktrees')];
-    const s = mgr.createSession({
+    const s = await mgr.createSession({
       worktreePath: '/tmp/wt',
       branch: 'main',
       taskId: 't1',

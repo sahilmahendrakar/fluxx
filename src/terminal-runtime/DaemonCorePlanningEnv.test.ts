@@ -57,7 +57,7 @@ describe('TerminalRuntimeManager planning PTY env', () => {
     const { TerminalRuntimeManager } = await import('../main/TerminalRuntimeManager');
     const terminalRuntime = new TerminalRuntimeManager({ deliverStreamFrame: () => undefined });
 
-    const result = terminalRuntime.startPlanning({
+    const result = await terminalRuntime.startPlanning({
       projectId: 'project-1',
       agent: 'claude-code',
       planningDir: '/tmp/planning',
