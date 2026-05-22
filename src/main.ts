@@ -118,7 +118,12 @@ import {
 } from './main/sessionInputDebug';
 import { githubPrRefreshViewEqual } from './githubPrMetadata';
 import { shouldAutoMarkDoneAfterPrMergeRefresh } from './autoMarkDoneWhenPrMerged';
-import { shouldAutoMoveTaskToReviewForOpenPr } from './githubPrReviewWhenOpenAutomation';
+import {
+  agentStateTaskStatusTransition,
+  linkedAgentSessionStateForTask,
+  shouldAutoMoveTaskToInProgressForOpenPrWhenAgentActive,
+  shouldAutoMoveTaskToReviewForOpenPr,
+} from './githubPrReviewWhenOpenAutomation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { AuthServer } from './main/AuthServer';
 import { EmailService, type InviteEmailInput } from './main/EmailService';
@@ -713,10 +718,6 @@ app.whenReady().then(async () => {
   }
 
   async function applyAgentState(sessionId: string, state: AgentState): Promise<void> {
-    // Only handle the silent transition. needs-input → in-progress is
-    // triggered exclusively by session:write (user submitting a query).
-    if (state !== 'silent') return;
-
     const taskId = sessionTaskMap.get(sessionId);
     if (!taskId) return;
 
@@ -726,11 +727,32 @@ app.whenReady().then(async () => {
 
     const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
     if (!task) return;
-    if (task.status === 'in-progress') {
-      console.log('[task:status] in-progress → needs-input (silence detected, local)', { taskId });
-      await taskStore.update(taskId, { status: 'needs-input' });
-      broadcastLocalTasksChanged();
+
+    let linkedAgentSessionState = state;
+    try {
+      const silenceStates = await terminalBackend.getSessionSilenceStates();
+      linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, silenceStates);
+    } catch {
+      linkedAgentSessionState = state;
     }
+
+    const autoMoveToReviewWhenPrOpen = await readAutoMoveToReviewWhenPrOpen();
+    const nextStatus = agentStateTaskStatusTransition({
+      state,
+      task,
+      autoMoveToReviewWhenPrOpen,
+      linkedAgentSessionState,
+    });
+    if (!nextStatus || nextStatus === task.status) return;
+
+    console.log('[task:status] agent-state column transition (local)', {
+      taskId,
+      from: task.status,
+      to: nextStatus,
+      agentState: state,
+    });
+    await taskStore.update(taskId, { status: nextStatus });
+    broadcastLocalTasksChanged();
   }
 
   async function reconcileSilenceStatesFromTerminal(
@@ -3016,19 +3038,41 @@ app.whenReady().then(async () => {
           }
         } else {
           const autoReview = await readAutoMoveToReviewWhenPrOpen();
+          let linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, []);
+          try {
+            const silenceStates = await terminalBackend.getSessionSilenceStates();
+            linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, silenceStates);
+          } catch {
+            /* keep none */
+          }
+          let nextStatus: 'review' | 'in-progress' | null = null;
           if (
+            shouldAutoMoveTaskToInProgressForOpenPrWhenAgentActive({
+              enabled: autoReview,
+              taskStatus: rowForAuto.status,
+              githubPr: viewed.githubPr,
+              task: rowForAuto,
+              linkedAgentSessionState,
+            })
+          ) {
+            nextStatus = 'in-progress';
+          } else if (
             shouldAutoMoveTaskToReviewForOpenPr({
               enabled: autoReview,
               taskStatus: rowForAuto.status,
               githubPr: viewed.githubPr,
               task: rowForAuto,
+              linkedAgentSessionState,
             })
           ) {
+            nextStatus = 'review';
+          }
+          if (nextStatus) {
             try {
               await updateTaskWithTransitionHandling(
                 taskId,
-                { status: 'review' },
-                'github-pr:refresh-open',
+                { status: nextStatus },
+                nextStatus === 'review' ? 'github-pr:refresh-open' : 'github-pr:refresh-active',
               );
               broadcastLocalTasksChanged();
             } catch (err: unknown) {

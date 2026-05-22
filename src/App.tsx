@@ -74,6 +74,10 @@ import {
   type GithubPrDiscoveryMessageContext,
 } from './githubPrDiscoveryMessages';
 import {
+  agentStateTaskStatusTransition,
+  linkedAgentSessionStateForTask,
+} from './githubPrReviewWhenOpenAutomation';
+import {
   reconcileCloudSilenceFromDaemon,
   useCloudSilenceReconciliation,
 } from './renderer/tasks/useCloudSilenceReconciliation';
@@ -1092,6 +1096,7 @@ export default function App() {
     uidRef,
     providerRef,
     setTasks,
+    autoMoveToReviewWhenPrOpen: project?.autoMoveToReviewWhenPrOpen === true,
   });
 
   // Silence-based needs-input detection: subscribe to agent-state for running sessions.
@@ -1116,13 +1121,7 @@ export default function App() {
       if (s.status !== 'running' || agentStateUnsubsRef.current.has(s.id) || !s.taskId) continue;
       const { id, taskId } = s;
       const unsub = window.electronAPI.sessions.onAgentState(id, (state) => {
-        // Only silence triggers an automatic status change here. The
-        // needs-input → in-progress transition is driven exclusively by the
-        // user sending a message (session:write); see the task:userInput
-        // listener below.
-        if (state !== 'silent') return;
-
-        if (prAgentPromptSentTaskIdsRef.current.has(taskId)) {
+        if (state === 'silent' && prAgentPromptSentTaskIdsRef.current.has(taskId)) {
           const row = tasksRef.current.find((x) => x.id === taskId);
           if (!row?.githubPr?.url?.trim()) {
             void runDiscoverGithubPrForTaskRef
@@ -1135,47 +1134,65 @@ export default function App() {
           }
         }
 
-        // Cloud-only feature for now.
+        // Local projects: main process applyAgentState owns column transitions.
         if (projectRef.current?.kind !== 'cloud') {
           return;
         }
 
-        const task = tasksRef.current.find((t) => t.id === taskId);
-        if (!task || task.status !== 'in-progress') {
-          if (task) {
-            console.log('[task:status] silence skip: task not in-progress', {
-              taskId,
-              status: task.status,
-            });
-          } else {
-            console.log('[task:status] silence skip: task not found', { taskId });
+        void (async () => {
+          const task = tasksRef.current.find((t) => t.id === taskId);
+          if (!task) {
+            console.log('[task:status] agent-state skip: task not found', { taskId });
+            return;
           }
-          return;
-        }
 
-        // Only the assignee may mutate task status.
-        const currentUid = uidRef.current;
-        if (!currentUid || task.assigneeId !== currentUid) {
-          console.log('[task:status] silence skip: assignee mismatch', {
+          const currentUid = uidRef.current;
+          if (!currentUid || task.assigneeId !== currentUid) {
+            console.log('[task:status] agent-state skip: assignee mismatch', {
+              taskId,
+              assigneeId: task.assigneeId,
+              currentUid,
+            });
+            return;
+          }
+
+          let linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, []);
+          try {
+            const silenceStates = await window.electronAPI.sessions.getSilenceStates();
+            linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, silenceStates);
+          } catch {
+            linkedAgentSessionState = state;
+          }
+
+          const autoMoveToReviewWhenPrOpen =
+            projectRef.current?.autoMoveToReviewWhenPrOpen === true;
+          const nextStatus = agentStateTaskStatusTransition({
+            state,
+            task,
+            autoMoveToReviewWhenPrOpen,
+            linkedAgentSessionState,
+          });
+          if (!nextStatus || nextStatus === task.status) return;
+
+          console.log('[task:status] agent-state column transition', {
             taskId,
-            assigneeId: task.assigneeId,
-            currentUid,
+            from: task.status,
+            to: nextStatus,
+            agentState: state,
           });
-          return;
-        }
-
-        console.log('[task:status] in-progress → needs-input (silence detected)', {
-          taskId,
-          assigneeId: task.assigneeId,
-        });
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
-        );
-        void providerRef.current
-          ?.update(taskId, { status: 'needs-input' })
-          .catch((err) => {
-            console.error('[task:status] Firestore write failed (needs-input)', { taskId, err });
-          });
+          setTasks((prev) =>
+            prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t)),
+          );
+          void providerRef.current
+            ?.update(taskId, { status: nextStatus })
+            .catch((err) => {
+              console.error('[task:status] Firestore write failed (agent-state)', {
+                taskId,
+                nextStatus,
+                err,
+              });
+            });
+        })();
       });
       agentStateUnsubsRef.current.set(id, unsub);
     }
@@ -1458,6 +1475,7 @@ export default function App() {
                 provider: currentProvider,
                 setTasks,
                 source: 'startup-catchup',
+                autoMoveToReviewWhenPrOpen: project.autoMoveToReviewWhenPrOpen === true,
               });
             } catch (err) {
               console.warn('[task:status] startup cloud silence catchup failed', err);

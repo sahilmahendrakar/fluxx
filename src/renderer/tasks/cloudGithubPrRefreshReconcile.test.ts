@@ -69,7 +69,7 @@ describe('buildCloudGithubPrRefreshPatch', () => {
     expect(patch?.status).toBe('done');
   });
 
-  it('moves to review when open PR metadata matches and pref enabled', () => {
+  it('moves to review when open PR metadata matches, pref enabled, and agent is silent', () => {
     const openPr: TaskGithubPr = {
       url: 'https://github.com/o/r/pull/2',
       state: 'open',
@@ -86,8 +86,54 @@ describe('buildCloudGithubPrRefreshPatch', () => {
       snapshot: [live],
       autoMarkDoneWhenPrMerged: false,
       autoMoveToReviewWhenPrOpen: true,
+      linkedAgentSessionState: 'silent',
     });
     expect(patch?.status).toBe('review');
     expect(patch?.githubPr).toBeUndefined();
   });
+
+  it('does not move to review while agent session is active', () => {
+    const openPr: TaskGithubPr = {
+      url: 'https://github.com/o/r/pull/2',
+      state: 'open',
+      headBranch: 'fluxx/task-t1',
+    };
+    const live = baseTask({
+      id: 't1',
+      githubPr: openPr,
+      status: 'in-progress',
+    });
+    const patch = buildCloudGithubPrRefreshPatch({
+      live,
+      refreshed: openPr,
+      snapshot: [live],
+      autoMarkDoneWhenPrMerged: false,
+      autoMoveToReviewWhenPrOpen: true,
+      linkedAgentSessionState: 'active',
+    });
+    expect(patch).toBeNull();
+  });
+
+  it('moves review → in-progress when agent is active on refresh', () => {
+    const openPr: TaskGithubPr = {
+      url: 'https://github.com/o/r/pull/2',
+      state: 'open',
+      headBranch: 'fluxx/task-t1',
+    };
+    const live = baseTask({
+      id: 't1',
+      githubPr: openPr,
+      status: 'review',
+    });
+    const patch = buildCloudGithubPrRefreshPatch({
+      live,
+      refreshed: openPr,
+      snapshot: [live],
+      autoMarkDoneWhenPrMerged: false,
+      autoMoveToReviewWhenPrOpen: true,
+      linkedAgentSessionState: 'active',
+    });
+    expect(patch?.status).toBe('in-progress');
+  });
 });
+

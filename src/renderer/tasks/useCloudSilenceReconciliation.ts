@@ -1,6 +1,10 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { useEffect, useRef } from 'react';
 import type { AgentState } from '../../terminal-runtime/protocol';
+import {
+  agentStateTaskStatusTransition,
+  linkedAgentSessionStateForTask,
+} from '../../githubPrReviewWhenOpenAutomation';
 import type { Session, Task } from '../../types';
 import type { TaskProvider } from './TaskProvider';
 
@@ -18,8 +22,10 @@ export async function reconcileCloudSilenceFromDaemon(p: {
   provider: TaskProvider | null;
   setTasks: Dispatch<SetStateAction<Task[]>>;
   source: string;
+  autoMoveToReviewWhenPrOpen: boolean;
 }): Promise<void> {
-  const { projectId, sessions, tasks, uid, provider, setTasks, source } = p;
+  const { projectId, sessions, tasks, uid, provider, setTasks, source, autoMoveToReviewWhenPrOpen } =
+    p;
   if (!provider) return;
 
   let silenceStates: { id: string; taskId?: string; state: AgentState }[];
@@ -42,22 +48,26 @@ export async function reconcileCloudSilenceFromDaemon(p: {
   }
 
   const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const taskIds = new Set<string>();
+  for (const row of silenceStates) {
+    const taskId = sessionToTask.get(row.id) ?? row.taskId;
+    if (taskId) taskIds.add(taskId);
+  }
 
-  for (const { id, state } of silenceStates) {
-    const taskId = sessionToTask.get(id);
-    if (!taskId) continue;
+  for (const taskId of taskIds) {
     const task = taskById.get(taskId);
     if (!task || task.projectId !== projectId) continue;
-    if (state !== 'silent' || task.status !== 'in-progress') {
-      if (state === 'silent' && task.status !== 'in-progress') {
-        console.log('[task:status] reconcile skip: task not in-progress', {
-          taskId,
-          status: task.status,
-          source,
-        });
-      }
-      continue;
-    }
+
+    const linkedAgentSessionState = linkedAgentSessionStateForTask(taskId, silenceStates);
+    const state: AgentState = linkedAgentSessionState === 'active' ? 'active' : 'silent';
+    const nextStatus = agentStateTaskStatusTransition({
+      state,
+      task,
+      autoMoveToReviewWhenPrOpen,
+      linkedAgentSessionState,
+    });
+    if (!nextStatus || nextStatus === task.status) continue;
+
     if (!uid || task.assigneeId !== uid) {
       console.log('[task:status] reconcile skip: assignee mismatch', {
         taskId,
@@ -68,17 +78,20 @@ export async function reconcileCloudSilenceFromDaemon(p: {
       continue;
     }
 
-    console.log('[task:status] in-progress → needs-input (silence reconcile)', {
+    console.log('[task:status] agent-state column transition (reconcile)', {
       taskId,
-      assigneeId: task.assigneeId,
+      from: task.status,
+      to: nextStatus,
+      agentState: state,
       source,
     });
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
+      prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t)),
     );
-    void provider.update(taskId, { status: 'needs-input' }).catch((err) => {
-      console.error('[task:status] Firestore write failed (needs-input, reconcile)', {
+    void provider.update(taskId, { status: nextStatus }).catch((err) => {
+      console.error('[task:status] Firestore write failed (reconcile)', {
         taskId,
+        nextStatus,
         source,
         err,
       });
@@ -95,6 +108,7 @@ export function useCloudSilenceReconciliation(opts: {
   uidRef: MutableRefObject<string | null>;
   providerRef: MutableRefObject<TaskProvider | null>;
   setTasks: Dispatch<SetStateAction<Task[]>>;
+  autoMoveToReviewWhenPrOpen: boolean;
 }): void {
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -113,6 +127,7 @@ export function useCloudSilenceReconciliation(opts: {
         provider: cur.providerRef.current,
         setTasks: cur.setTasks,
         source,
+        autoMoveToReviewWhenPrOpen: cur.autoMoveToReviewWhenPrOpen,
       });
     };
 
@@ -128,5 +143,5 @@ export function useCloudSilenceReconciliation(opts: {
       window.clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [opts.enabled, opts.projectId, opts.setTasks]);
+  }, [opts.enabled, opts.projectId, opts.setTasks, opts.autoMoveToReviewWhenPrOpen]);
 }
