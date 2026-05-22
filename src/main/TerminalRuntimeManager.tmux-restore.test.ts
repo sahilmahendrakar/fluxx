@@ -15,11 +15,15 @@ const tmuxCommands = vi.hoisted(() => ({
   killSession: vi.fn(async () => undefined),
 }));
 
-vi.mock('./tmux/tmuxCommands', () => ({
-  tmuxHasSession: (name: string) => tmuxCommands.hasSession(name),
-  tmuxListSessionNames: () => tmuxCommands.listNames(),
-  tmuxKillSession: tmuxCommands.killSession,
-}));
+vi.mock('./tmux/tmuxCommands', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./tmux/tmuxCommands')>();
+  return {
+    ...actual,
+    tmuxHasSession: (name: string) => tmuxCommands.hasSession(name),
+    tmuxListSessionNames: () => tmuxCommands.listNames(),
+    tmuxKillSession: tmuxCommands.killSession,
+  };
+});
 
 const ptyState = vi.hoisted(() => ({
   instances: [] as Array<{ kill: ReturnType<typeof vi.fn> }>,

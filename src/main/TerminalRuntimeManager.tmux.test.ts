@@ -8,9 +8,13 @@ vi.mock('./tmux/tmuxSpawn', () => ({
   spawnFluxxTmuxSession: vi.fn(async () => undefined),
 }));
 
-vi.mock('./tmux/tmuxCommands', () => ({
-  tmuxKillSession: vi.fn(async () => undefined),
-}));
+vi.mock('./tmux/tmuxCommands', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./tmux/tmuxCommands')>();
+  return {
+    ...actual,
+    tmuxKillSession: vi.fn(async () => undefined),
+  };
+});
 
 const ptyState = vi.hoisted(() => ({
   instances: [] as Array<{
@@ -42,10 +46,15 @@ vi.mock('node-pty', () => ({
   }),
 }));
 
+import path from 'node:path';
 import { tmuxKillSession } from './tmux/tmuxCommands';
+import { setFluxxTmuxConfigPathOverride } from './tmux/resolveFluxxTmuxConfigPath';
+
+const fluxxTmuxConf = path.resolve(process.cwd(), 'resources', 'fluxx-tmux.conf');
 
 describe('TerminalRuntimeManager tmux', () => {
   beforeEach(() => {
+    setFluxxTmuxConfigPathOverride(fluxxTmuxConf);
     ptyState.instances.length = 0;
     ptyState.calls.length = 0;
     vi.mocked(tmuxKillSession).mockClear();
@@ -77,6 +86,15 @@ describe('TerminalRuntimeManager tmux', () => {
 
     const attachCallsBefore = ptyState.calls.filter((c) => c.command === 'tmux').length;
     expect(attachCallsBefore).toBe(1);
+    expect(ptyState.calls[0]?.args).toEqual([
+      '-L',
+      'fluxx',
+      '-f',
+      fluxxTmuxConf,
+      'attach-session',
+      '-t',
+      expect.stringMatching(/^fluxx-task-/),
+    ]);
 
     await mgr.attachSession(created.id);
     await mgr.attachSession(created.id);

@@ -5,7 +5,7 @@ import { Terminal as HeadlessTerminal } from '@xterm/headless';
 import type { AttachResult, TerminalSnapshot } from './protocol';
 import { buildFluxxTmuxSessionName } from '../main/tmux/tmuxSessionName';
 import { spawnFluxxTmuxSession, type FluxxTmuxSpawnSpec } from '../main/tmux/tmuxSpawn';
-import { tmuxKillSession } from '../main/tmux/tmuxCommands';
+import { buildFluxxTmuxArgv, tmuxKillSession } from '../main/tmux/tmuxCommands';
 import { buildPtyEnv, PTY_TERM_NAME } from './terminalEnv';
 import { collapsedBottomScreenText } from './renderedScreenText';
 import { buildRehydrateSequences, captureSerializedSnapshot } from './terminalSnapshot';
@@ -147,15 +147,19 @@ export class TmuxTerminalRuntime {
 
   private startAttachBridge(spec: SessionRuntimeSpawnSpec): void {
     if (this.attachPty) return;
-    this.attachPty = pty.spawn('tmux', ['attach-session', '-t', this.tmuxSessionName], {
-      name: PTY_TERM_NAME,
-      cols: spec.cols,
-      rows: spec.rows,
-      cwd: spec.cwd,
-      env: buildPtyEnv(spec.env ?? process.env, {
-        termProgram: spec.termProgram,
-      }),
-    });
+    this.attachPty = pty.spawn(
+      'tmux',
+      buildFluxxTmuxArgv(['attach-session', '-t', this.tmuxSessionName]),
+      {
+        name: PTY_TERM_NAME,
+        cols: spec.cols,
+        rows: spec.rows,
+        cwd: spec.cwd,
+        env: buildPtyEnv(spec.env ?? process.env, {
+          termProgram: spec.termProgram,
+        }),
+      },
+    );
 
     this.attachPty.onData((chunk) => {
       this.appendReplay(chunk);
