@@ -17,6 +17,7 @@ export type TerminalSilenceSnapshotReason = 'poll';
 export interface TerminalSessionLifecycleHooks {
   onAgentState?: (sessionId: string, state: AgentState) => void;
   onSessionExit?: (session: Session) => void;
+  onShellExit?: (shell: Shell) => void;
   onPlanningExit?: (session: PlanningSession) => void;
   onSilenceStatesSnapshot?: (
     states: { id: string; taskId?: string; state: AgentState }[],
@@ -74,10 +75,10 @@ export interface TerminalBackend {
   shouldConfirmAppQuit(): Promise<boolean>;
 
   /**
-   * Full app quit: stop all terminal runtime sessions (bounded by the caller).
-   * Idempotent with respect to local PTYs.
+   * Full app quit: gracefully stop resumable agent PTYs, then kill stragglers.
+   * The caller should still enforce an overall deadline (e.g. 3s).
    */
-  teardownForAppQuit(): Promise<void>;
+  teardownForAppQuit(deadlineMs?: number): Promise<void>;
 
   createSession(params: CreateSessionParams): Promise<CreateSessionResult>;
   listSessions(): Promise<Session[]>;

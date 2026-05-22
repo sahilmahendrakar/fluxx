@@ -345,6 +345,12 @@ function ProjectConfigPane({
   const [autoReviewOnOpenPrLoading, setAutoReviewOnOpenPrLoading] = useState(true);
   const [autoReviewOnOpenPrSaveState, setAutoReviewOnOpenPrSaveState] = useState<SaveState>('idle');
   const [autoReviewOnOpenPrError, setAutoReviewOnOpenPrError] = useState<string | null>(null);
+  const [persistTmuxEnabled, setPersistTmuxEnabled] = useState(false);
+  const [persistTmuxLoading, setPersistTmuxLoading] = useState(true);
+  const [persistTmuxSaveState, setPersistTmuxSaveState] = useState<SaveState>('idle');
+  const [persistTmuxError, setPersistTmuxError] = useState<string | null>(null);
+  const [tmuxAvailabilityMessage, setTmuxAvailabilityMessage] = useState<string | null>(null);
+  const [tmuxPlatformSupported, setTmuxPlatformSupported] = useState(true);
   const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
   const [planningAgentError, setPlanningAgentError] = useState<string | null>(null);
   const [defaultTaskAgentSaveState, setDefaultTaskAgentSaveState] = useState<SaveState>('idle');
@@ -611,6 +617,43 @@ function ProjectConfigPane({
 
   useEffect(() => {
     let cancelled = false;
+    setPersistTmuxLoading(true);
+    setPersistTmuxError(null);
+    void window.electronAPI.project
+      .getTmuxAvailability()
+      .then((availability) => {
+        if (cancelled) return;
+        setTmuxPlatformSupported(availability.available);
+        setTmuxAvailabilityMessage(availability.available ? null : (availability.message ?? null));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setTmuxAvailabilityMessage(err instanceof Error ? err.message : String(err));
+        }
+      });
+    void window.electronAPI.project
+      .getPersistTerminalsWithTmux()
+      .then((enabled) => {
+        if (!cancelled) {
+          setPersistTmuxEnabled(enabled);
+          setPersistTmuxSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setPersistTmuxError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPersistTmuxLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
     setMcpConfigLoading(true);
     setMcpConfigError(null);
     void window.electronAPI.project
@@ -854,6 +897,24 @@ function ProjectConfigPane({
     setAutoDoneOnPrMergeSaveState('saved');
     window.setTimeout(() => {
       setAutoDoneOnPrMergeSaveState((state) => (state === 'saved' ? 'idle' : state));
+    }, 1500);
+  }, []);
+
+  const handlePersistTmuxChange = useCallback(async (enabled: boolean) => {
+    setPersistTmuxEnabled(enabled);
+    setPersistTmuxSaveState('saving');
+    setPersistTmuxError(null);
+    const result = await window.electronAPI.project.setPersistTerminalsWithTmux(enabled);
+    if ('error' in result) {
+      setPersistTmuxSaveState('error');
+      setPersistTmuxError(result.error);
+      setPersistTmuxEnabled((prev) => !prev);
+      return;
+    }
+    setPersistTmuxEnabled(result.enabled);
+    setPersistTmuxSaveState('saved');
+    window.setTimeout(() => {
+      setPersistTmuxSaveState((state) => (state === 'saved' ? 'idle' : state));
     }, 1500);
   }, []);
 
@@ -1148,6 +1209,54 @@ function ProjectConfigPane({
               loading={autoReviewOnOpenPrLoading}
               saveState={autoReviewOnOpenPrSaveState}
               error={autoReviewOnOpenPrError}
+            />
+          </div>
+        </section>
+
+        <section
+          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="project-settings-sessions-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="project-settings-sessions-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Sessions
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              Terminal persistence on this machine. SSH and remote runners will expose tmux
+              separately per host in a later release.
+            </p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key={`${project.id}-persist-tmux`}
+              title="Persist terminals with tmux"
+              description={
+                <>
+                  When on, Fluxx starts task agents, planning assistants, and terminal panes in
+                  Fluxx-owned tmux sessions so they can survive a full app quit. Requires{' '}
+                  <code className="text-zinc-400">tmux</code> on PATH. Fluxx will reattach
+                  terminals on reopen when possible and fall back to agent resume for task/planning
+                  agents if reattach fails. Turning on affects new terminals only; existing
+                  direct PTYs stay as-is until restarted. For cloud projects this preference is
+                  stored per machine (local binding).
+                  {tmuxAvailabilityMessage ? (
+                    <span className="mt-2 block text-amber-400/90">{tmuxAvailabilityMessage}</span>
+                  ) : null}
+                </>
+              }
+              checked={persistTmuxEnabled}
+              onCheckedChange={(next) => void handlePersistTmuxChange(next)}
+              switchDisabled={
+                !tmuxPlatformSupported ||
+                persistTmuxLoading ||
+                persistTmuxSaveState === 'saving'
+              }
+              loading={persistTmuxLoading}
+              saveState={persistTmuxSaveState}
+              error={persistTmuxError}
             />
           </div>
         </section>

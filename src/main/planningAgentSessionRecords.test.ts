@@ -132,12 +132,12 @@ describe('PlanningAgentSessionRecordStore', () => {
     });
   });
 
-  it('markReplacedSessions sets replaced-by-new-session on open rows', async () => {
+  it('markReplacedSessions sets replaced-by-new-session only on live open rows', async () => {
     const dir = await tempProjectDir();
     const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => dir });
     await store.recordSessionStart(baseRow);
     await store.recordSessionStart({ ...baseRow, fluxxSessionId: 'plan-2' });
-    await store.markReplacedSessions('proj-1', 'plan-3');
+    await store.markReplacedSessions('proj-1', 'plan-3', new Set(['plan-1', 'plan-2']));
     await store.recordSessionStart({ ...baseRow, fluxxSessionId: 'plan-3' });
 
     const raw = await fs.readFile(path.join(dir, 'planning-agent-sessions.json'), 'utf8');
@@ -152,6 +152,22 @@ describe('PlanningAgentSessionRecordStore', () => {
     expect(plan3?.endedReason).toBeUndefined();
   });
 
+  it('markReplacedSessions leaves force-quit open rows when not live', async () => {
+    const dir = await tempProjectDir();
+    const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => dir });
+    await store.recordSessionStart(baseRow);
+    await store.markReplacedSessions('proj-1', 'plan-new', new Set());
+    await store.recordSessionStart({ ...baseRow, fluxxSessionId: 'plan-new' });
+
+    const raw = await fs.readFile(path.join(dir, 'planning-agent-sessions.json'), 'utf8');
+    const parsed = JSON.parse(raw) as {
+      records: Array<{ fluxxSessionId: string; endedReason?: string; endedAt?: string }>;
+    };
+    const plan1 = parsed.records.find((r) => r.fluxxSessionId === 'plan-1');
+    expect(plan1?.endedReason).toBeUndefined();
+    expect(plan1?.endedAt).toBeUndefined();
+  });
+
   it('skips synthetic rows when planning dir is missing', async () => {
     const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
@@ -162,6 +178,21 @@ describe('PlanningAgentSessionRecordStore', () => {
       },
     ]);
     await expect(store.getColdResumePlanningSessionView('proj-1', async () => false)).resolves.toBeNull();
+  });
+
+  it('open rows without endedAt are cold-resumable after force quit', async () => {
+    const store = new PlanningAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        ...baseRow,
+        fluxxSessionId: 'open-plan',
+        endedAt: undefined,
+        endedReason: undefined,
+      },
+    ]);
+    const listed = await store.listColdResumePlanningSessions('proj-1', async () => true);
+    expect(listed.map((s) => s.id)).toEqual(['open-plan']);
+    expect(listed[0]?.status).toBe('interrupted');
   });
 
   it('markSessionEnded with user-archived overrides app-quit cold rows', async () => {

@@ -109,7 +109,13 @@ import {
   replaceProjectWorkspaceRoute,
   useProjectHashRoute,
 } from './projectHashRoute';
-import { normalizeRestoredProjectTabState } from './projectTabRestore';
+import {
+  filterSessionsForWorkspaceSidebar,
+  mergeRestorableSessionIdSets,
+  normalizeRestoredProjectTabState,
+  resolvePlanningSidebarActiveId,
+} from './projectTabRestore';
+import { isPlanningSessionResumable } from './components/planningResumeUi';
 import { cloudProjectNeedsRepoBinding } from './cloudProjectActivation';
 import {
   READY_PROJECT_REPO_READINESS,
@@ -252,6 +258,9 @@ export default function App() {
   const tabRestoreGenerationRef = useRef(0);
   /** False until the current project's async tab restore finishes (avoids empty defaults overwriting disk on startup). */
   const tabsPersistAllowedRef = useRef(false);
+  const tabRestoreCompletedRef = useRef(false);
+  const lastPersistedTabsRef = useRef<ProjectTabState | null>(null);
+  const deferredPlanningTabRestoreRef = useRef(false);
   /** Bumps when restore completes so the persist effect re-evaluates `tabsPersistAllowedRef`. */
   const [tabPersistNonce, setTabPersistNonce] = useState(0);
   const boardRowRef = useRef<HTMLDivElement>(null);
@@ -1340,6 +1349,9 @@ export default function App() {
     if (!project) {
       tabRestoreGenerationRef.current += 1;
       tabsPersistAllowedRef.current = false;
+      tabRestoreCompletedRef.current = false;
+      lastPersistedTabsRef.current = null;
+      deferredPlanningTabRestoreRef.current = false;
       setSessions([]);
       setSessionStartPendingTaskIds(new Set());
       setOpenTabIds(new Set());
@@ -1357,6 +1369,9 @@ export default function App() {
     tabRestoreGenerationRef.current += 1;
     const restoreGen = tabRestoreGenerationRef.current;
     tabsPersistAllowedRef.current = false;
+    tabRestoreCompletedRef.current = false;
+    lastPersistedTabsRef.current = null;
+    deferredPlanningTabRestoreRef.current = false;
 
     // Clear strip state immediately so we never persist another project's tabs under
     // this project key while the daemon + disk restore is in flight.
@@ -1379,11 +1394,28 @@ export default function App() {
     let cancelled = false;
     const projectKey: ActiveProjectKey = { kind: project.kind, id: project.id };
     void (async () => {
+      let restoreOk = false;
       try {
-        const all = await window.electronAPI.sessions.getAll();
+        const [all, persisted, restorableIds, planningListInitial] = await Promise.all([
+          window.electronAPI.sessions.getAll(),
+          window.electronAPI.projects.getTabs(projectKey),
+          window.electronAPI.projects.getRestorableSessionIds(),
+          window.electronAPI.planning.list(),
+        ]);
+        if (cancelled) return;
+        const hadPlanningPersisted =
+          (persisted.openPlanningTabIds?.length ?? 0) > 0 ||
+          Boolean(persisted.planningSidebarActiveSessionId) ||
+          persisted.planningSidebarOpen === true;
+        let planningList = planningListInitial;
+        if (
+          hadPlanningPersisted &&
+          !planningList.some(isPlanningSessionResumable)
+        ) {
+          planningList = await window.electronAPI.planning.list();
+        }
         if (cancelled) return;
         const projectSessions = all.filter((s) => s.projectId === project.id);
-        setSessions(projectSessions);
 
         // Cloud startup catchup: the main process cannot write to Firestore, so
         // the renderer must reconcile task status against the daemon's current
@@ -1433,14 +1465,32 @@ export default function App() {
           })();
         }
 
-        const persisted = await window.electronAPI.projects.getTabs(projectKey);
         if (cancelled) return;
-        const aliveIds = new Set(projectSessions.map((s) => s.id));
-        const normalized = normalizeRestoredProjectTabState(persisted, aliveIds);
-        setOpenTabIds(new Set(normalized.openTaskIds));
-        setMinimizedWorkspaceIds(new Set(normalized.minimizedTaskWorkspaceIds));
+        lastPersistedTabsRef.current = persisted;
+        const restorable = mergeRestorableSessionIdSets(
+          restorableIds,
+          projectSessions,
+          planningList,
+          project.id,
+        );
+        const normalized = normalizeRestoredProjectTabState(persisted, restorable);
+        const openTabs = new Set(normalized.openTaskIds);
+        const minimized = new Set(normalized.minimizedTaskWorkspaceIds);
+        setSessions(
+          filterSessionsForWorkspaceSidebar(
+            projectSessions,
+            project.id,
+            openTabs,
+            minimized,
+          ),
+        );
+        setPlanningSessions(planningList);
+        setOpenTabIds(openTabs);
+        setMinimizedWorkspaceIds(minimized);
         setOpenPlanningMainTabIds(new Set(normalized.openPlanningTabIds));
-        setPlanningSidebarActiveId(normalized.planningSidebarActiveSessionId);
+        setPlanningSidebarActiveId(
+          resolvePlanningSidebarActiveId(persisted, planningList, normalized),
+        );
         setPlanningSidebarOpen(normalized.planningSidebarOpen);
         if (normalized.openSettingsRoute) {
           setActiveTabId('board');
@@ -1448,10 +1498,12 @@ export default function App() {
         } else {
           setActiveTabId(normalized.activeTabId);
         }
+        tabRestoreCompletedRef.current = true;
+        restoreOk = true;
       } catch (err) {
         console.error('[App] restore tabs failed', err);
       } finally {
-        if (!cancelled && tabRestoreGenerationRef.current === restoreGen) {
+        if (!cancelled && tabRestoreGenerationRef.current === restoreGen && restoreOk) {
           tabsPersistAllowedRef.current = true;
           setTabPersistNonce((n) => n + 1);
         }
@@ -1461,6 +1513,62 @@ export default function App() {
       cancelled = true;
     };
   }, [project?.id, project?.kind]);
+
+  // Planning cold rows can load after the first tab restore (record store project dir).
+  useEffect(() => {
+    if (!project || !tabRestoreCompletedRef.current) return;
+    if (deferredPlanningTabRestoreRef.current) return;
+    const persisted = lastPersistedTabsRef.current;
+    if (!persisted) return;
+    const hadPlanningPersisted =
+      (persisted.openPlanningTabIds?.length ?? 0) > 0 ||
+      Boolean(persisted.planningSidebarActiveSessionId) ||
+      persisted.planningSidebarOpen === true;
+    if (!hadPlanningPersisted) return;
+    if (planningSessions.length === 0) return;
+    if (!planningSessions.some(isPlanningSessionResumable)) {
+      void window.electronAPI.planning.list().then((list) => {
+        if (list.some(isPlanningSessionResumable)) {
+          setPlanningSessions(list);
+        }
+      });
+      return;
+    }
+
+    const restorable = mergeRestorableSessionIdSets(
+      { taskSessionIds: [], planningSessionIds: [] },
+      sessions.filter((s) => s.projectId === project.id),
+      planningSessions,
+      project.id,
+    );
+    const normalized = normalizeRestoredProjectTabState(persisted, restorable);
+    const planningSidebarActiveId = resolvePlanningSidebarActiveId(
+      persisted,
+      planningSessions,
+      normalized,
+    );
+    const needsPlanningTabs =
+      normalized.openPlanningTabIds.length > 0 ||
+      planningSidebarActiveId != null ||
+      normalized.planningSidebarOpen;
+    if (!needsPlanningTabs) return;
+
+    const appliedPlanningRestore =
+      normalized.openPlanningTabIds.length > 0 ||
+      (normalized.planningSidebarOpen && planningSidebarActiveId != null);
+    if (!appliedPlanningRestore) return;
+
+    deferredPlanningTabRestoreRef.current = true;
+    setOpenPlanningMainTabIds(new Set(normalized.openPlanningTabIds));
+    setPlanningSidebarActiveId(planningSidebarActiveId);
+    setPlanningSidebarOpen(normalized.planningSidebarOpen);
+    if (
+      normalized.activeTabId.startsWith('plan:') &&
+      normalized.activeTabId !== 'board'
+    ) {
+      setActiveTabId(normalized.activeTabId);
+    }
+  }, [project?.id, planningSessions, sessions]);
 
   // Persist tab strip whenever it changes for the active project.
   useEffect(() => {
@@ -2822,15 +2930,30 @@ export default function App() {
     [sessions, confirmLeaveDocsWithUnsavedEdits],
   );
 
-  const handleCloseSessionTab = useCallback((sessionId: string) => {
-    setOpenTabIds((prev) => {
-      if (!prev.has(sessionId)) return prev;
-      const next = new Set(prev);
-      next.delete(sessionId);
-      return next;
-    });
-    setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
-  }, []);
+  const handleCloseSessionTab = useCallback(
+    (sessionId: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      if (session?.status === 'interrupted') {
+        void window.electronAPI.sessions.archive(sessionId).then(() => {
+          setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        });
+      }
+      setOpenTabIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      setMinimizedWorkspaceIds((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Set(prev);
+        next.delete(sessionId);
+        return next;
+      });
+      setActiveTabId((prev) => (prev === sessionId ? 'board' : prev));
+    },
+    [sessions],
+  );
 
   const handleOpenPlanningInMainTab = useCallback(
     (sessionId: string) => {
@@ -3042,9 +3165,19 @@ export default function App() {
   const reviewCount = tasks.filter((t) => t.status === 'review').length;
   const statusLine = `${inProgressCount} in progress · ${needsInputCount} needs input · ${reviewCount} in review`;
 
+  const sidebarSessions = useMemo(() => {
+    if (!project) return sessions;
+    return filterSessionsForWorkspaceSidebar(
+      sessions,
+      project.id,
+      openTabIds,
+      minimizedWorkspaceIds,
+    );
+  }, [sessions, project?.id, openTabIds, minimizedWorkspaceIds]);
+
   const sessionItems = useMemo(
-    () => buildSessionTabs(sessions, tasks),
-    [sessions, tasks],
+    () => buildSessionTabs(sidebarSessions, tasks),
+    [sidebarSessions, tasks],
   );
 
   const sidebarSessionItems = useMemo(

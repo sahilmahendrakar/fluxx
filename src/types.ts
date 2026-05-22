@@ -50,6 +50,12 @@ export interface ProjectTabState {
   minimizedTaskWorkspaceIds?: string[];
 }
 
+/** Live plus cold-resumable session ids for tab-strip restore (per active project). */
+export interface RestorableSessionIds {
+  taskSessionIds: string[];
+  planningSessionIds: string[];
+}
+
 /**
  * Main → renderer: branch names for the active repo (short names; `remoteBranches`
  * entries may be `origin/foo` — normalizers strip the prefix).
@@ -162,6 +168,11 @@ export interface LocalProject {
    * task’s Flux branch may move the task from Backlog or In progress into Review.
    */
   autoMoveToReviewWhenPrOpen: boolean;
+  /**
+   * When on, new terminals run in Fluxx-owned tmux sessions (local machine only).
+   * See `docs/tmux-terminal-persistence-plan.md`.
+   */
+  persistTerminalsWithTmux: boolean;
   repos: RepoConfig[];
 }
 
@@ -220,6 +231,8 @@ export interface CloudProjectLocalBinding {
   autoCleanupWorkspaceWhenDone?: boolean;
   autoMarkDoneWhenPrMerged?: boolean;
   autoMoveToReviewWhenPrOpen?: boolean;
+  /** Per-machine: persist terminals with tmux across full app quit. */
+  persistTerminalsWithTmux?: boolean;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
 }
@@ -256,11 +269,100 @@ export interface CloudProject {
   autoCleanupWorkspaceWhenDone?: boolean;
   autoMarkDoneWhenPrMerged?: boolean;
   autoMoveToReviewWhenPrOpen?: boolean;
+  persistTerminalsWithTmux?: boolean;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;
+
+/** Unified durable terminal inventory (`<projectDir>/terminal-sessions.json`). */
+export type TerminalKind = 'task' | 'planning' | 'shell';
+export type TerminalRuntime = 'node-pty' | 'tmux';
+
+export type TerminalEndedReason =
+  | 'agent-exit-ok'
+  | 'agent-exit-error'
+  | 'shell-exit-ok'
+  | 'shell-exit-error'
+  | 'app-quit'
+  | 'tmux-missing'
+  | 'workspace-deleted'
+  | 'replaced-by-new-session'
+  | 'user-stopped'
+  | 'user-archived';
+
+export interface TerminalSessionRecord {
+  id: string;
+  kind: TerminalKind;
+  runtime: TerminalRuntime;
+  projectId: string;
+  repoId?: string;
+  tmuxSessionName?: string;
+  cwd: string;
+  command: string;
+  args: string[];
+  cols: number;
+  rows: number;
+  startedAt: string;
+  endedAt?: string;
+  endedReason?: TerminalEndedReason;
+  task?: {
+    taskId: string;
+    agent: Agent;
+    worktreePath: string;
+    fluxxWorkBranch: string;
+    sourceBranchShort?: string;
+    agentConversationId?: string;
+  };
+  planning?: {
+    agent: Agent;
+    planningDir: string;
+    agentModel?: string;
+    agentYolo?: boolean;
+    agentConversationId?: string;
+  };
+  shell?: {
+    parentSessionId: string;
+    worktreePath: string;
+  };
+}
+
+export interface TerminalSessionsFileV1 {
+  version: 1;
+  terminals: TerminalSessionRecord[];
+}
+
+/** Main-process diagnostic: live PTYs vs open manifest rows. */
+export interface TerminalInventorySnapshot {
+  live: {
+    taskSessions: number;
+    planningSessions: number;
+    shells: number;
+    total: number;
+  };
+  persistedOpen: {
+    taskSessions: number;
+    planningSessions: number;
+    shells: number;
+    total: number;
+  };
+  byProject: Array<{
+    projectId: string;
+    projectDir: string;
+    taskSessions: number;
+    planningSessions: number;
+    shells: number;
+  }>;
+  byWorkspace: Array<{
+    projectId: string;
+    taskId?: string;
+    worktreePath?: string;
+    planningDir?: string;
+    terminalIds: string[];
+    tmuxSessionNames: string[];
+  }>;
+}
 
 export type TaskGithubPrState = 'open' | 'closed' | 'merged';
 
@@ -533,6 +635,13 @@ export interface PlanningAgentSessionRecord {
   agentModel?: string;
   agentYolo?: boolean;
 }
+
+/** Result of probing whether `tmux` is available on PATH for this machine. */
+export type TmuxAvailability = {
+  available: boolean;
+  /** Human-readable detail when unavailable (missing binary, unsupported platform, etc.). */
+  message?: string;
+};
 
 /** Where to open a task worktree folder from the main process (`workspace:openPath`). */
 export type OpenWorkspaceTarget = 'cursor' | 'vscode' | 'terminal' | 'file-manager';

@@ -218,6 +218,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setAutoMoveToReviewWhenPrOpen', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getTmuxAvailability: () =>
+      ipcRenderer.invoke('project:getTmuxAvailability') as Promise<
+        import('./types').TmuxAvailability
+      >,
+    getPersistTerminalsWithTmux: () =>
+      ipcRenderer.invoke('project:getPersistTerminalsWithTmux') as Promise<boolean>,
+    setPersistTerminalsWithTmux: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setPersistTerminalsWithTmux', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
+  },
+  terminal: {
+    inventorySnapshot: () =>
+      ipcRenderer.invoke('terminal:inventorySnapshot') as Promise<
+        import('./types').TerminalInventorySnapshot
+      >,
   },
   projects: {
     listLocal: () =>
@@ -257,6 +273,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('projects:getTabs', key) as Promise<ProjectTabState>,
     setTabs: (key: ActiveProjectKey, tabs: ProjectTabState) =>
       ipcRenderer.invoke('projects:setTabs', key, tabs) as Promise<void>,
+    getRestorableSessionIds: () =>
+      ipcRenderer.invoke('projects:getRestorableSessionIds') as Promise<
+        import('./types').RestorableSessionIds
+      >,
     getLocalBinding: (cloudProjectId: string) =>
       ipcRenderer.invoke('projects:getLocalBinding', cloudProjectId) as Promise<
         CloudProjectLocalBinding | null
@@ -461,6 +481,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ) as Promise<SessionStartResult>,
     deleteWorkspace: (sessionId: string) =>
       ipcRenderer.invoke('session:delete', sessionId) as Promise<void>,
+    archive: (sessionId: string) =>
+      ipcRenderer.invoke('session:archive', sessionId) as Promise<void>,
     get: (taskId: string) =>
       ipcRenderer.invoke('session:get', taskId) as Promise<Session | null>,
     getAll: () => ipcRenderer.invoke('session:getAll') as Promise<Session[]>,

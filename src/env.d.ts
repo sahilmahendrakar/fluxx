@@ -207,6 +207,14 @@ declare global {
         setAutoMoveToReviewWhenPrOpen: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getTmuxAvailability: () => Promise<import('./types').TmuxAvailability>;
+        getPersistTerminalsWithTmux: () => Promise<boolean>;
+        setPersistTerminalsWithTmux: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+      };
+      terminal: {
+        inventorySnapshot: () => Promise<import('./types').TerminalInventorySnapshot>;
       };
       projects: {
         listLocal: () => Promise<LocalProject[]>;
