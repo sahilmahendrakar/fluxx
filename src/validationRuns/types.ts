@@ -9,7 +9,9 @@ export type ValidationRunStatus =
   | 'errored'
   | 'cancelled';
 
-export type ValidationPackId = 'electron-playwright';
+import type { ValidationPackId } from '../validationPacks/types';
+
+export type { ValidationPackId };
 
 export type ValidationArtifactKind =
   | 'screenshot'
@@ -58,6 +60,8 @@ export type ValidationRunCreateInput = {
   repoId?: string;
   packId?: ValidationPackId;
   validatorAgent: Agent;
+  /** Task worktree cwd for Playwright launch (optional; defaults from project config). */
+  worktreeCwd?: string;
 };
 
 export type ValidationRunStatusUpdate = {

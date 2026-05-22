@@ -8,13 +8,15 @@ import {
   VALIDATION_RUN_ARTIFACT_SUBDIRS,
   validationRunDir,
 } from '../validationRuns/path';
+import { scaffoldValidationRunFiles } from '../validationPacks/scaffoldRunFiles';
+import { isValidationPackId } from '../validationPacks/registry';
+import type { ValidationPackId } from '../validationPacks/types';
 import type {
   ValidationArtifact,
   ValidationArtifactFileState,
   ValidationArtifactKind,
   ValidationArtifactRegisterInput,
   ValidationArtifactView,
-  ValidationPackId,
   ValidationRun,
   ValidationRunCreateInput,
   ValidationRunStatus,
@@ -306,23 +308,24 @@ export class ValidationRunStore {
     };
   }
 
-  async scaffoldRunDirectory(projectDir: string, runId: string): Promise<string> {
+  async scaffoldRunDirectory(
+    projectDir: string,
+    runId: string,
+    packId: ValidationPackId,
+    worktreeCwd?: string,
+  ): Promise<string> {
     const dir = validationRunDir(projectDir, runId);
     await fs.mkdir(dir, { recursive: true });
     for (const sub of VALIDATION_RUN_ARTIFACT_SUBDIRS) {
       await fs.mkdir(path.join(dir, sub), { recursive: true });
     }
-    const placeholders: Array<[string, string]> = [
-      ['plan.json', '{}\n'],
-      ['instructions.md', '# Validation instructions\n\n'],
-      ['validate-electron.mjs', '// Validator-authored Playwright script for this run.\n'],
-    ];
-    for (const [name, body] of placeholders) {
-      const p = path.join(dir, name);
-      if (!(await pathExists(p))) {
-        await fs.writeFile(p, body, 'utf8');
-      }
-    }
+    await scaffoldValidationRunFiles({
+      packId,
+      runId,
+      runDir: dir,
+      projectDir,
+      ...(worktreeCwd?.trim() ? { worktreeCwd: worktreeCwd.trim() } : {}),
+    });
     return dir;
   }
 
@@ -331,7 +334,7 @@ export class ValidationRunStore {
       const projectDir = this.requireProjectDir();
       await this.ensureLoaded();
       const packId: ValidationPackId = input.packId ?? 'electron-playwright';
-      if (packId !== 'electron-playwright') {
+      if (!isValidationPackId(packId)) {
         throw new Error(`Unsupported validation pack: ${packId}`);
       }
       if (!isAgent(input.validatorAgent)) {
@@ -350,7 +353,7 @@ export class ValidationRunStore {
         startedAt,
         artifacts: [],
       };
-      await this.scaffoldRunDirectory(projectDir, id);
+      await this.scaffoldRunDirectory(projectDir, id, packId, input.worktreeCwd);
       this.cache.push(row);
       await this.persist();
       return this.toValidationRun(row);

@@ -57,6 +57,11 @@ import type {
 } from './planningDocs/types';
 import type { AppUpdateState } from './appUpdateState';
 import type {
+  ValidationPackDetail,
+  ValidationPackResolvedInstructions,
+  ValidationPackSummary,
+} from './validationPacks/types';
+import type {
   ValidationArtifactRegisterInput,
   ValidationRun,
   ValidationRunCreateInput,
@@ -465,6 +470,18 @@ declare global {
         registerArtifact: (
           input: ValidationArtifactRegisterInput,
         ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+      };
+      validationPacks: {
+        list: () => Promise<{ ok: true; packs: ValidationPackSummary[] } | { error: string }>;
+        get: (
+          packId: string,
+        ) => Promise<{ ok: true; pack: ValidationPackDetail } | { error: string }>;
+        resolveInstructions: (payload: {
+          packId: string;
+          projectDir?: string;
+        }) => Promise<
+          { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+        >;
       };
       planningDocs: {
         list: () => Promise<PlanningDocsListResult>;

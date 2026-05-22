@@ -1,0 +1,19 @@
+{
+  "packs": {
+    "electron-playwright": {
+      "launchCommand": "pnpm start:aux",
+      "worktreeCwd": ".",
+      "ready": {
+        "type": "selector",
+        "value": "[data-testid='app-shell']",
+        "timeoutMs": 120000
+      },
+      "cleanUserData": true,
+      "artifactPolicy": {
+        "screenshots": "required",
+        "trace": "on-failure",
+        "consoleLogs": "always"
+      }
+    }
+  }
+}

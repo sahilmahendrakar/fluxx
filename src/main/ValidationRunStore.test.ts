@@ -28,6 +28,17 @@ describe('ValidationRunStore', () => {
     await expect(
       fs.access(path.join(created.artifactDir, 'artifacts/screenshots')),
     ).resolves.toBeUndefined();
+    const instructions = await fs.readFile(
+      path.join(created.artifactDir, 'instructions.md'),
+      'utf8',
+    );
+    expect(instructions).toContain('Electron Playwright');
+    const script = await fs.readFile(
+      path.join(created.artifactDir, 'validate-electron.mjs'),
+      'utf8',
+    );
+    expect(script).toContain(created.id);
+    expect(script).toContain('playwright');
 
     const listed = await store.listForTask('task-1');
     expect(listed).toHaveLength(1);

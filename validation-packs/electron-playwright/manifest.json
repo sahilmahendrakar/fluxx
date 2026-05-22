@@ -1,0 +1,14 @@
+{
+  "id": "electron-playwright",
+  "displayName": "Electron Playwright",
+  "description": "Validate Electron desktop apps with Playwright's _electron API. Agents choose task-specific UI checks; the pack supplies launch guidance, starter scripts, artifact layout, and a verdict.json contract.",
+  "supportedArtifactKinds": [
+    "screenshot",
+    "video",
+    "trace",
+    "console-log",
+    "text",
+    "json"
+  ],
+  "defaultInstructions": "Read SKILL.md in this pack. Choose checks from the task and optional plan.json. Write evidence under artifacts/ in the validation run directory only. Finish with verdict.json using the pack verdict schema."
+}

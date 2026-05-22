@@ -95,6 +95,12 @@ import {
 import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { ValidationRunStore } from './main/ValidationRunStore';
+import {
+  getValidationPackById,
+  listValidationPacks,
+} from './validationPacks/registry';
+import { loadValidationPacksProjectConfig } from './validationPacks/projectConfig';
+import { resolveValidationPackInstructions } from './validationPacks/buildInstructions';
 import type {
   ValidationArtifactRegisterInput,
   ValidationRunCreateInput,
@@ -4932,6 +4938,61 @@ app.whenReady().then(async () => {
         return {
           error: err instanceof Error ? err.message : String(err),
         };
+      }
+    },
+  );
+
+  ipcMain.handle('validationPacks:list', async () => {
+    try {
+      return { ok: true as const, packs: listValidationPacks() };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('validationPacks:get', async (_e, packId: string) => {
+    if (typeof packId !== 'string' || packId.trim().length === 0) {
+      return { error: 'Invalid pack id' };
+    }
+    try {
+      const pack = getValidationPackById(packId.trim());
+      if (!pack) return { error: `Validation pack not found: ${packId}` };
+      return {
+        ok: true as const,
+        pack: {
+          id: pack.manifest.id,
+          displayName: pack.manifest.displayName,
+          description: pack.manifest.description,
+          supportedArtifactKinds: pack.manifest.supportedArtifactKinds,
+          defaultInstructions: pack.manifest.defaultInstructions,
+          verdictSchemaJson: pack.verdictSchemaJson,
+          skillMarkdown: pack.skillMarkdown,
+        },
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(
+    'validationPacks:resolveInstructions',
+    async (_e, payload: { packId: string; projectDir?: string }) => {
+      if (typeof payload?.packId !== 'string' || payload.packId.trim().length === 0) {
+        return { error: 'Invalid pack id' };
+      }
+      try {
+        const pack = getValidationPackById(payload.packId.trim());
+        if (!pack) return { error: `Validation pack not found: ${payload.packId}` };
+        const projectDir = payload.projectDir?.trim();
+        const projectConfig = projectDir
+          ? loadValidationPacksProjectConfig(projectDir, pack.manifest.id)
+          : undefined;
+        return {
+          ok: true as const,
+          resolved: resolveValidationPackInstructions(pack, projectConfig),
+        };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
