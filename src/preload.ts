@@ -60,6 +60,11 @@ import type {
 import { ipcSubscribe } from './ipcSubscribe';
 import type { AppUpdateState } from './appUpdateState';
 import type {
+  ValidationPackDetail,
+  ValidationPackResolvedInstructions,
+  ValidationPackSummary,
+} from './validationPacks/types';
+import type {
   ValidationArtifactRegisterInput,
   ValidationRun,
   ValidationRunCreateInput,
@@ -660,6 +665,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     registerArtifact: (input: ValidationArtifactRegisterInput) =>
       ipcRenderer.invoke('validationRuns:registerArtifact', input) as Promise<
         { ok: true; run: ValidationRun } | { error: string }
+      >,
+  },
+  validationPacks: {
+    list: () =>
+      ipcRenderer.invoke('validationPacks:list') as Promise<
+        { ok: true; packs: ValidationPackSummary[] } | { error: string }
+      >,
+    get: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:get', packId) as Promise<
+        { ok: true; pack: ValidationPackDetail } | { error: string }
+      >,
+    resolveInstructions: (payload: { packId: string; projectDir?: string }) =>
+      ipcRenderer.invoke('validationPacks:resolveInstructions', payload) as Promise<
+        { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
       >,
   },
   planningDocs: {

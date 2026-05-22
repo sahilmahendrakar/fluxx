@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluxx.dev/schemas/validation-packs/electron-playwright/verdict.schema.json",
+  "title": "Electron Playwright validation verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "checks"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["passed", "failed", "needs-human-review", "errored"],
+      "description": "Overall validation outcome."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One or two sentences for humans; must reflect evidence, not assumptions."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" },
+      "description": "Optional index of notable artifacts (paths are run-relative)."
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Gaps, untested areas, or limitations the validator could not clear."
+    },
+    "error": {
+      "type": "string",
+      "description": "When verdict is errored, tooling/setup failure details."
+    }
+  },
+  "$defs": {
+    "checkStatus": {
+      "type": "string",
+      "enum": ["passed", "failed", "skipped", "needs-human-review"]
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/checkStatus" },
+        "detail": { "type": "string" },
+        "artifactPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "artifactKind": {
+      "type": "string",
+      "enum": ["screenshot", "video", "trace", "console-log", "text", "json"]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "label", "path"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/artifactKind" },
+        "label": { "type": "string", "minLength": 1 },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Run-relative path, e.g. artifacts/screenshots/initial.png"
+        }
+      }
+    }
+  }
+}
