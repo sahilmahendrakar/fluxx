@@ -66,7 +66,10 @@ import { GithubPrIconButton } from './GithubPrIconButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 import ConfirmDialog from './ConfirmDialog';
 import type { PlanningDocFileEntry } from '../planningDocs/types';
-import { compactPlanningDocPathLabel } from '../taskPlanningDocAttachments';
+import {
+  attachedPlanningDocChipPresence,
+  compactPlanningDocPathLabel,
+} from '../taskPlanningDocAttachments';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import {
   buildTaskSourceBranchPersistPatch,
@@ -155,6 +158,10 @@ export interface TaskDetailPanelProps {
   multiRepo2Enabled?: boolean;
   /** Listed planning markdown files for this workspace (same source as the Docs sidebar). */
   planningDocFiles?: PlanningDocFileEntry[];
+  /** True while the host is fetching `planningDocFiles`. */
+  planningDocsListLoading?: boolean;
+  /** True after the host has completed at least one list fetch for this project. */
+  planningDocsListFetched?: boolean;
   /** Opens the Docs tab and selects `relativePath` (unsaved-doc confirm is handled by the host). */
   onOpenPlanningDoc?: (relativePath: string) => void;
   projectRepoReadiness?: ProjectRepoReadiness;
@@ -259,6 +266,8 @@ export default function TaskDetailPanel({
   projectRepos,
   multiRepo2Enabled = false,
   planningDocFiles = [],
+  planningDocsListLoading = false,
+  planningDocsListFetched = false,
   onOpenPlanningDoc,
   projectRepoReadiness = READY_PROJECT_REPO_READINESS,
   onOpenProjectSettings,
@@ -1631,11 +1640,16 @@ export default function TaskDetailPanel({
                   ) : (
                     <ul className="mb-2 flex flex-wrap gap-1.5" role="list">
                       {attachedPlanningPaths.map((relPath) => {
-                        const exists = planningDocPathSet.has(relPath);
+                        const presence = attachedPlanningDocChipPresence(
+                          relPath,
+                          planningDocPathSet,
+                          planningDocsListFetched,
+                          planningDocsListLoading,
+                        );
                         const label = compactPlanningDocPathLabel(relPath);
                         return (
                           <li key={relPath} className="flex max-w-full items-stretch">
-                            {exists ? (
+                            {presence !== 'missing' ? (
                               <button
                                 type="button"
                                 onClick={() => onOpenPlanningDoc(relPath)}
