@@ -90,8 +90,16 @@ describe('TerminalRuntimeManager', () => {
     mgr.resizeSession(id, 80, 24);
     expect(pty.resize).toHaveBeenCalledWith(80, 24);
 
+    const graceful = await import('./gracefulAgentExit');
+    const sleepSpy = vi.spyOn(graceful, 'sleepMs');
+
     await mgr.writeSessionAwait(id, 'paste');
+    await mgr.writeSessionAwait(id, '\r');
     expect(pty.write).toHaveBeenCalledWith('paste');
+    expect(pty.write).toHaveBeenCalledWith('\r');
+    expect(pty.write.mock.calls.slice(-2).map(([d]) => d)).toEqual(['paste', '\r']);
+    expect(sleepSpy).not.toHaveBeenCalled();
+    sleepSpy.mockRestore();
 
     mgr.stopSession(id);
     expect(pty.kill).toHaveBeenCalled();

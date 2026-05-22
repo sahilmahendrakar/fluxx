@@ -7,6 +7,7 @@ import {
   GRACEFUL_QUIT_INTERRUPT_GAP_MS,
   sleepMs,
 } from './gracefulAgentExit';
+import { tmuxAttachWriteSettleMs } from './tmux/tmuxAttachWriteSettle';
 import type { Agent, PlanningSession, Session, Shell, TerminalSessionRecord } from '../types';
 import type {
   AgentState,
@@ -230,6 +231,8 @@ export class TerminalRuntimeManager {
   private readonly onPlanningPtyData?: (payload: PlanningPtyDataPayload) => void;
   private resolveTerminalRuntimeContext?: () => TerminalRuntimeContext | null;
   private readonly tmuxSpawnLauncherPath: string;
+  /** Serializes awaited session writes (paste then submit for PR injection). */
+  private readonly sessionWriteAwaitChains = new Map<string, Promise<void>>();
 
   constructor(opts: TerminalRuntimeManagerOptions = {}) {
     this.deliverStreamFrame = opts.deliverStreamFrame ?? deliverTerminalStreamFrameToRenderers;
@@ -572,8 +575,28 @@ export class TerminalRuntimeManager {
    * then a lone `\r` for {@link tasks:requestPullRequestFromAgent}).
    */
   async writeSessionAwait(id: string, data: string): Promise<void> {
-    this.writeSession(id, data);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    const run = async (): Promise<void> => {
+      const entry = this.sessions.get(id);
+      if (!entry) return;
+      entry.runtime.write(data);
+      if (isTmuxRuntime(entry.runtime)) {
+        await sleepMs(tmuxAttachWriteSettleMs(data));
+      } else {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    };
+
+    const prev = this.sessionWriteAwaitChains.get(id) ?? Promise.resolve();
+    const next = prev.then(run, run);
+    this.sessionWriteAwaitChains.set(
+      id,
+      next.catch(() => undefined),
+    );
+    await next;
+  }
+
+  private clearSessionWriteAwaitChain(id: string): void {
+    this.sessionWriteAwaitChains.delete(id);
   }
 
   resizeSession(id: string, cols: number, rows: number): void {
@@ -586,6 +609,7 @@ export class TerminalRuntimeManager {
   stopSession(id: string): void {
     const entry = this.sessions.get(id);
     if (!entry) return;
+    this.clearSessionWriteAwaitChain(id);
     entry.detector.dispose();
     entry.autoresponder?.dispose();
     entry.runtime.kill();
