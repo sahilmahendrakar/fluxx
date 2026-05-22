@@ -173,6 +173,8 @@ export interface LocalProject {
    * See `docs/tmux-terminal-persistence-plan.md`.
    */
   persistTerminalsWithTmux: boolean;
+  /** Optional override of the global default device for new tasks in this project. */
+  defaultDeviceId?: string;
   repos: RepoConfig[];
 }
 
@@ -233,6 +235,13 @@ export interface CloudProjectLocalBinding {
   autoMoveToReviewWhenPrOpen?: boolean;
   /** Per-machine: persist terminals with tmux across full app quit. */
   persistTerminalsWithTmux?: boolean;
+  /** Optional override of the global default device for new tasks in this cloud project. */
+  defaultDeviceId?: string;
+  /**
+   * Per-task direct-SSH (or local) device overrides for this Desktop user only.
+   * Keyed by cloud task id; not synced to teammates.
+   */
+  perTaskDeviceOverrides?: Record<string, TaskExecutionDeviceRef>;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
 }
@@ -270,6 +279,7 @@ export interface CloudProject {
   autoMarkDoneWhenPrMerged?: boolean;
   autoMoveToReviewWhenPrOpen?: boolean;
   persistTerminalsWithTmux?: boolean;
+  defaultDeviceId?: string;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
 }
@@ -429,6 +439,45 @@ export type TaskRequestPullRequestFromAgentPayload = {
   repoId?: string;
 };
 
+/** Where a task session should run (`local` and `ssh` in v1; reserved for future runners). */
+export type TaskExecutionDeviceKind = 'local' | 'ssh' | 'runner' | 'managed-cloud';
+
+/** Task-level execution target selection (snapshotted at task creation for auto-start). */
+export interface TaskExecutionDeviceRef {
+  kind: TaskExecutionDeviceKind;
+  deviceId: string;
+  /** Future shared runner/cloud targets; not used for direct-SSH v1. */
+  ownerUid?: string;
+}
+
+export interface ExecutionDeviceTmuxSettings {
+  enabled: boolean;
+  required?: boolean;
+}
+
+export interface ExecutionDeviceSshConfig {
+  host: string;
+  user?: string;
+  port?: number;
+  extraArgs?: string[];
+  connectTimeoutSeconds?: number;
+}
+
+/** Per-machine device record in `userData/executionDevices.json`. */
+export interface ExecutionDeviceConfig {
+  id: string;
+  kind: 'local' | 'ssh';
+  displayName: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  tmux: ExecutionDeviceTmuxSettings;
+  workspaceRoot: string;
+  shell?: string;
+  ssh?: ExecutionDeviceSshConfig;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -508,6 +557,11 @@ export interface Task {
    * Omitted when none; persisted locally and in Firestore for cloud tasks.
    */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  /**
+   * Where this task should run. Local projects persist on the task row; cloud
+   * projects store private `local`/`ssh` refs in `localBindings.json` overrides.
+   */
+  executionDevice?: TaskExecutionDeviceRef;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error' | 'interrupted';

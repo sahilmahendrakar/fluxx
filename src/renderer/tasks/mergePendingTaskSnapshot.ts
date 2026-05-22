@@ -14,6 +14,7 @@ export function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | u
     autoStartOnUnblock,
     repoId,
     attachedPlanningDocs: patchAttachedPlanningDocs,
+    executionDevice: patchExecutionDevice,
     ...rest
   } = patch;
   let next: Task = { ...task, ...rest };
@@ -85,6 +86,14 @@ export function mergeServerTaskWithPendingPatch(task: Task, patch: TaskPatch | u
         next = { ...next };
         delete next.attachedPlanningDocs;
       }
+    }
+  }
+  if (patchExecutionDevice !== undefined) {
+    if (patchExecutionDevice === null) {
+      next = { ...next };
+      delete next.executionDevice;
+    } else {
+      next = { ...next, executionDevice: patchExecutionDevice };
     }
   }
   return next;
