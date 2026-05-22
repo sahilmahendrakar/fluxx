@@ -1,4 +1,5 @@
 import type { Task, TaskPullRequestIpcResult } from '../../types';
+import { notifyAutoTaskTransition } from '../notifyAutoTaskTransition';
 import { buildCloudGithubPrRefreshPatch } from './cloudGithubPrRefreshReconcile';
 import type { TaskProvider } from './TaskProvider';
 
@@ -44,7 +45,22 @@ export async function applyGithubPrRefreshFromRenderer(input: {
   });
   if (!patch) return;
   const updated = await provider.update(taskId, patch);
-  if (patch.status === 'done' && onCloudPrMergedAutoDone) {
-    await onCloudPrMergedAutoDone({ previous: live, updated });
+  if (patch.status === 'done') {
+    notifyAutoTaskTransition({
+      task: live,
+      previousStatus: live.status,
+      nextStatus: 'done',
+      reason: 'pr-merged',
+    });
+    if (onCloudPrMergedAutoDone) {
+      await onCloudPrMergedAutoDone({ previous: live, updated });
+    }
+  } else if (patch.status === 'review') {
+    notifyAutoTaskTransition({
+      task: live,
+      previousStatus: live.status,
+      nextStatus: 'review',
+      reason: 'pr-opened',
+    });
   }
 }

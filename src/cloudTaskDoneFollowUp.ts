@@ -1,4 +1,5 @@
 import type { Task } from './types';
+import { notifyAutoTaskTransition } from './renderer/notifyAutoTaskTransition';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import type { TaskPatch, TaskProvider } from './renderer/tasks/TaskProvider';
@@ -94,6 +95,14 @@ export async function runCloudDoneTransitionFollowUp(args: {
         patch.assigneeId = actorUid;
       }
       const moved = await provider.update(id, patch);
+      if (row && row.status !== 'in-progress') {
+        notifyAutoTaskTransition({
+          task: row,
+          previousStatus: row.status,
+          nextStatus: 'in-progress',
+          reason: 'dependency-unblocked',
+        });
+      }
       if (inProg) {
         const all = getTasks().map((x) => (x.id === id ? moved : x));
         const r = await window.electronAPI.sessions.start(moved, all, actorUid ?? undefined);
@@ -112,6 +121,14 @@ export async function runCloudDoneTransitionFollowUp(args: {
         patch.assigneeId = actorUid;
       }
       const moved = await provider.update(id, patch);
+      if (row && row.status !== 'in-progress') {
+        notifyAutoTaskTransition({
+          task: row,
+          previousStatus: row.status,
+          nextStatus: 'in-progress',
+          reason: 'dependency-unblocked',
+        });
+      }
       const all = getTasks().map((x) => (x.id === id ? moved : x));
       const r = await window.electronAPI.sessions.start(moved, all, actorUid ?? undefined);
       if (r && typeof r === 'object' && 'error' in r) {

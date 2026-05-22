@@ -2,6 +2,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { useEffect, useRef } from 'react';
 import type { AgentState } from '../../terminal-runtime/protocol';
 import type { Session, Task } from '../../types';
+import { notifyAutoTaskTransition } from '../notifyAutoTaskTransition';
 import type { TaskProvider } from './TaskProvider';
 
 const CLOUD_SILENCE_POLL_MS = 30_000;
@@ -76,6 +77,12 @@ export async function reconcileCloudSilenceFromDaemon(p: {
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
     );
+    notifyAutoTaskTransition({
+      task,
+      previousStatus: 'in-progress',
+      nextStatus: 'needs-input',
+      reason: 'agent-silence',
+    });
     void provider.update(taskId, { status: 'needs-input' }).catch((err) => {
       console.error('[task:status] Firestore write failed (needs-input, reconcile)', {
         taskId,

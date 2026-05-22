@@ -92,6 +92,7 @@ import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgr
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
 import { assigneePatchForCloudAutoStartOnUnblock } from './cloudAutoStartUnblockAssignee';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
+import { notifyAutoTaskTransition } from './renderer/notifyAutoTaskTransition';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
   defaultTaskAgentForProject,
@@ -750,6 +751,14 @@ export default function App() {
             const patch: TaskPatch = { status: 'in-progress' };
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
+            if (task && task.status !== 'in-progress') {
+              notifyAutoTaskTransition({
+                task,
+                previousStatus: task.status,
+                nextStatus: 'in-progress',
+                reason: 'dependency-unblocked',
+              });
+            }
             if (inProg) {
               const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
               const r = await window.electronAPI.sessions.start(
@@ -770,6 +779,14 @@ export default function App() {
             const patch: TaskPatch = { status: 'in-progress' };
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
+            if (task && task.status !== 'in-progress') {
+              notifyAutoTaskTransition({
+                task,
+                previousStatus: task.status,
+                nextStatus: 'in-progress',
+                reason: 'dependency-unblocked',
+              });
+            }
             const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
             const r = await window.electronAPI.sessions.start(
               updated,
@@ -1085,6 +1102,12 @@ export default function App() {
       setTasks((prev) =>
         prev.map((t) => (t.id === exited.taskId ? { ...t, status: 'needs-input' } : t)),
       );
+      notifyAutoTaskTransition({
+        task,
+        previousStatus: 'in-progress',
+        nextStatus: 'needs-input',
+        reason: 'agent-exited',
+      });
       void providerRef.current
         ?.update(exited.taskId, { status: 'needs-input' })
         .catch((err) => {
@@ -1191,6 +1214,12 @@ export default function App() {
         setTasks((prev) =>
           prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
         );
+        notifyAutoTaskTransition({
+          task,
+          previousStatus: 'in-progress',
+          nextStatus: 'needs-input',
+          reason: 'agent-silence',
+        });
         void providerRef.current
           ?.update(taskId, { status: 'needs-input' })
           .catch((err) => {
