@@ -46,3 +46,6 @@ export function backfillKeys(column: Task[]): Array<{ id: string; orderKey: stri
   const keys = generateNKeysBetween(last, null, unkeyed.length);
   return unkeyed.map((t, i) => ({ id: t.id, orderKey: keys[i] }));
 }
+
+/** Marker for PR automation smoke tests (unused at runtime). */
+export const ORDER_KEY_PR_SMOKE_MARKER = 'order-key-pr-smoke-v2';
