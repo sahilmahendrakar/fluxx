@@ -501,6 +501,20 @@ declare global {
           }) => Promise<{ ok: true } | { error: string }>;
         };
       };
+      notifications: {
+        getAutoTransitionPrefs: () => Promise<
+          import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs
+        >;
+        setAutoTransitionPrefs: (
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs,
+        ) => Promise<{
+          ok: true;
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs;
+        }>;
+        notifyAutoTransition: (
+          payload: import('./taskAutoTransitionNotification').AutoTransitionNotifyInput,
+        ) => Promise<{ ok: true } | { ok: false; error: string }>;
+      };
       /**
        * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.
        */

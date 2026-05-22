@@ -229,6 +229,7 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
+import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
 import { installMacApplicationMenu } from './main/macApplicationMenu';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
@@ -554,6 +555,7 @@ app.whenReady().then(async () => {
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();
+  const taskAutoTransitionNotify = registerTaskAutoTransitionNotificationIpc(appStateStore);
 
   const projectStore = new ProjectStore(fluxxBaseDir);
   const taskStore = new TaskStore('');
@@ -737,6 +739,12 @@ app.whenReady().then(async () => {
       console.log('[task:status] in-progress → needs-input (silence detected, local)', { taskId });
       await taskStore.update(taskId, { status: 'needs-input' });
       broadcastLocalTasksChanged();
+      taskAutoTransitionNotify.dispatch({
+        taskTitle: task.title,
+        previousStatus: 'in-progress',
+        nextStatus: 'needs-input',
+        reason: 'agent-silence',
+      });
     }
   }
 
@@ -783,6 +791,12 @@ app.whenReady().then(async () => {
             });
             await taskStore.update(taskId, { status: 'needs-input' });
             broadcastLocalTasksChanged();
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: task.title,
+              previousStatus: 'in-progress',
+              nextStatus: 'needs-input',
+              reason: 'agent-exited',
+            });
           }
         } else if (session.status === 'error') {
           console.warn('[task:status] agent exited with error, not transitioning task', {
@@ -3246,6 +3260,12 @@ app.whenReady().then(async () => {
               'pr:mergedRefresh',
             );
             broadcastLocalTasksChanged();
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: rowForAuto.title,
+              previousStatus: rowForAuto.status,
+              nextStatus: 'done',
+              reason: 'pr-merged',
+            });
           } catch (err) {
             console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
           }
@@ -3266,6 +3286,12 @@ app.whenReady().then(async () => {
                 'github-pr:refresh-open',
               );
               broadcastLocalTasksChanged();
+              taskAutoTransitionNotify.dispatch({
+                taskTitle: rowForAuto.title,
+                previousStatus: rowForAuto.status,
+                nextStatus: 'review',
+                reason: 'pr-opened',
+              });
             } catch (err: unknown) {
               console.warn('[github-pr:auto-review] move after refresh failed', taskId, err);
             }
@@ -4029,20 +4055,39 @@ app.whenReady().then(async () => {
       },
       startSession: (task, all) => startSessionForTask(task, all),
       moveBacklogToInProgress: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
         );
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
       },
       moveBacklogToInProgressThenStartSessionWithoutImplicitInProg: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
           { skipInProgressAutostart: true },
         );
-        const p = projectStore.get();
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
         if (!p) return;
         const all = taskStore.getAll(p.id);
         const fresh = all.find((t) => t.id === id);

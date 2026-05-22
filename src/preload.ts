@@ -719,6 +719,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ) as Promise<{ ok: true } | { error: string }>,
     },
   },
+  notifications: {
+    getAutoTransitionPrefs: () =>
+      ipcRenderer.invoke('notifications:getAutoTransitionPrefs') as Promise<
+        import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs
+      >,
+    setAutoTransitionPrefs: (
+      prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs,
+    ) =>
+      ipcRenderer.invoke('notifications:setAutoTransitionPrefs', prefs) as Promise<{
+        ok: true;
+        prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs;
+      }>,
+    notifyAutoTransition: (
+      payload: import('./taskAutoTransitionNotification').AutoTransitionNotifyInput,
+    ) =>
+      ipcRenderer.invoke('notifications:notifyAutoTransition', payload) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
+  },
   /**
    * macOS packaged builds — GitHub Releases via `electron-updater`; downloads only after `startDownload`.
    */

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '../../types';
+import { notifyAutoTaskTransition } from '../notifyAutoTaskTransition';
 import { buildCloudGithubPrRefreshPatch } from './cloudGithubPrRefreshReconcile';
 import type { TaskProvider } from './TaskProvider';
 
@@ -169,8 +170,23 @@ export function useGithubPrBoardRefresh(input: {
         });
         if (patch) {
           const updated = await prov.update(task.id, patch);
-          if (patch.status === 'done' && onCloudPrMergedAutoDoneRef.current) {
-            await onCloudPrMergedAutoDoneRef.current({ previous: live, updated });
+          if (patch.status === 'done') {
+            notifyAutoTaskTransition({
+              task: live,
+              previousStatus: live.status,
+              nextStatus: 'done',
+              reason: 'pr-merged',
+            });
+            if (onCloudPrMergedAutoDoneRef.current) {
+              await onCloudPrMergedAutoDoneRef.current({ previous: live, updated });
+            }
+          } else if (patch.status === 'review') {
+            notifyAutoTaskTransition({
+              task: live,
+              previousStatus: live.status,
+              nextStatus: 'review',
+              reason: 'pr-opened',
+            });
           }
         }
       } catch (err) {
