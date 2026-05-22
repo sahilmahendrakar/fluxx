@@ -53,6 +53,7 @@ export interface SessionRuntimeCallbacks {
  * `snapshot` (serialized headless state). Live bytes continue on IPC after attach.
  */
 export class SessionRuntime {
+  readonly isTmuxBacked = false as const;
   readonly pty: IPty;
   readonly headless: HeadlessTerminal;
   private readonly serializeAddon: SerializeAddon;
