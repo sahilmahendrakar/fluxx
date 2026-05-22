@@ -59,6 +59,12 @@ import type {
 } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 import type { AppUpdateState } from './appUpdateState';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRun,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -633,6 +639,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cursorAgent: {
     listModels: () =>
       ipcRenderer.invoke('cursor:listAgentModels') as Promise<ListCursorAgentModelsResult>,
+  },
+  validationRuns: {
+    create: (input: ValidationRunCreateInput) =>
+      ipcRenderer.invoke('validationRuns:create', input) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    updateStatus: (patch: ValidationRunStatusUpdate) =>
+      ipcRenderer.invoke('validationRuns:updateStatus', patch) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    listForTask: (taskId: string) =>
+      ipcRenderer.invoke('validationRuns:listForTask', taskId) as Promise<
+        { ok: true; runs: ValidationRun[] } | { error: string }
+      >,
+    get: (runId: string) =>
+      ipcRenderer.invoke('validationRuns:get', runId) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    registerArtifact: (input: ValidationArtifactRegisterInput) =>
+      ipcRenderer.invoke('validationRuns:registerArtifact', input) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
   },
   planningDocs: {
     list: () =>
