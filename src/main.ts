@@ -98,6 +98,7 @@ import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
 import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
+import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
 import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
 import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
@@ -938,6 +939,190 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function activeProjectIdForTmuxRestore(): Promise<string | null> {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) return null;
+    if (key.kind === 'local') {
+      return projectStore.get()?.id ?? key.id;
+    }
+    return key.id;
+  }
+
+  async function markTmuxWorkspaceMissingTerminal(record: TerminalSessionRecord): Promise<void> {
+    const endedAt = new Date().toISOString();
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: 'workspace-deleted',
+      endedAt,
+    });
+    if (record.kind === 'task') {
+      await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(record.id);
+    } else if (record.kind === 'planning') {
+      await planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          status: 'stopped',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+        },
+        { reason: 'user-archived' },
+      );
+    }
+  }
+
+  async function markTmuxMissingTerminal(record: TerminalSessionRecord): Promise<void> {
+    const endedAt = new Date().toISOString();
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: 'tmux-missing',
+      endedAt,
+    });
+
+    if (record.kind === 'task' && record.task) {
+      if (!(await taskAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+        await taskAgentSessionRecordStore.recordSessionStart({
+          fluxxSessionId: record.id,
+          taskId: record.task.taskId,
+          projectId: record.projectId,
+          ...(record.repoId != null && record.repoId.length > 0 ? { repoId: record.repoId } : {}),
+          agent: record.task.agent,
+          worktreePath: record.task.worktreePath,
+          fluxxWorkBranch: record.task.fluxxWorkBranch,
+          ...(record.task.sourceBranchShort
+            ? { sourceBranchShort: record.task.sourceBranchShort }
+            : {}),
+          startedAt: record.startedAt,
+          ...(record.task.agentConversationId
+            ? { agentConversationId: record.task.agentConversationId }
+            : {}),
+        });
+      }
+      await taskAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          taskId: record.task.taskId,
+          projectId: record.projectId,
+          worktreePath: record.task.worktreePath,
+          branch: record.task.fluxxWorkBranch,
+          status: 'interrupted',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+          ...(record.task.agentConversationId
+            ? { agentConversationId: record.task.agentConversationId }
+            : {}),
+        },
+        { reason: 'tmux-missing' },
+      );
+      return;
+    }
+
+    if (record.kind === 'planning' && record.planning) {
+      if (!(await planningAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+        await planningAgentSessionRecordStore.recordSessionStart({
+          fluxxSessionId: record.id,
+          projectId: record.projectId,
+          agent: record.planning.agent,
+          planningDir: record.planning.planningDir,
+          startedAt: record.startedAt,
+          ...(record.planning.agentModel ? { agentModel: record.planning.agentModel } : {}),
+          ...(typeof record.planning.agentYolo === 'boolean'
+            ? { agentYolo: record.planning.agentYolo }
+            : {}),
+          ...(record.planning.agentConversationId
+            ? { agentConversationId: record.planning.agentConversationId }
+            : {}),
+        });
+      }
+      await planningAgentSessionRecordStore.markSessionEnded(
+        {
+          id: record.id,
+          projectId: record.projectId,
+          agent: record.planning.agent,
+          planningDir: record.planning.planningDir,
+          status: 'interrupted',
+          startedAt: record.startedAt,
+          stoppedAt: endedAt,
+          ...(record.planning.agentConversationId
+            ? { agentConversationId: record.planning.agentConversationId }
+            : {}),
+        },
+        { reason: 'tmux-missing' },
+      );
+    }
+  }
+
+  async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
+    if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    await syncTerminalRuntimeContext();
+    if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
+
+    const projectId = await activeProjectIdForTmuxRestore();
+    const projectDir = resolveRecordProjectDir();
+    if (!projectId || !projectDir) return;
+
+    const tmuxProbe = await probeTmuxAvailability();
+    if (!tmuxProbe.available) {
+      console.warn('[tmux-reconcile] tmux unavailable; skipping restore', tmuxProbe);
+      return;
+    }
+
+    const openRecords = await terminalSessionRecordStore.listOpenRecords(projectId);
+    const project = projectStore.get();
+    const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
+    const trustAutorespond =
+      project?.autoRespondToTrustPrompts === true && trustRoots.length > 0;
+
+    const output = await terminalBackend.reconcileTmuxPersistedTerminals({
+      projectId,
+      records: openRecords,
+      pathStillPresent: async (absPath) => {
+        try {
+          await fs.access(absPath);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      trustPromptAutorespond: trustAutorespond,
+      trustPromptAutorespondRoots: trustAutorespond ? trustRoots : undefined,
+    });
+
+    for (const { sessionId, taskId } of output.restoredSessionTaskPairs) {
+      sessionTaskMap.set(sessionId, taskId);
+    }
+
+    for (const record of output.workspaceMissingTerminalRecords) {
+      await markTmuxWorkspaceMissingTerminal(record);
+    }
+
+    for (const record of output.missingTerminalRecords) {
+      if (record.kind === 'shell') {
+        await terminalSessionRecordStore.markTerminalEnded(record.id, {
+          reason: 'tmux-missing',
+          endedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      const hasResumeMetadata =
+        (record.kind === 'task' && record.task) || (record.kind === 'planning' && record.planning);
+      if (hasResumeMetadata) {
+        await markTmuxMissingTerminal(record);
+      } else {
+        await terminalSessionRecordStore.markTerminalEnded(record.id, {
+          reason: 'tmux-missing',
+          endedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    console.log(formatTmuxReconcileLogLine(output));
+
+    try {
+      const snapshot = await buildTerminalInventorySnapshotForActiveProject();
+      console.log('[tmux-reconcile] inventory', JSON.stringify(snapshot));
+    } catch (err) {
+      console.warn('[tmux-reconcile] inventory snapshot failed', err);
+    }
+  }
+
   // Catchup: for sessions already silent (or already exited) when this process
   // starts, no stream event will fire until the next PTY output tick.
   async function runSilenceCatchup(): Promise<void> {
@@ -1173,6 +1358,8 @@ app.whenReady().then(async () => {
     terminalBackend.setResolveTerminalRuntimeContext(() => terminalRuntimeContext);
   }
   await syncTerminalRuntimeContext();
+  await reconcileTmuxTerminalsForActiveProject();
+  await runSilenceCatchup();
 
   ipcMain.handle(
     'project:getMcpConfig',
@@ -2054,6 +2241,8 @@ app.whenReady().then(async () => {
         id: project.id,
       });
       await syncTerminalRuntimeContext();
+      await reconcileTmuxTerminalsForActiveProject();
+      await runSilenceCatchup();
       return project;
     },
   );
@@ -2186,6 +2375,8 @@ app.whenReady().then(async () => {
         });
       }
       await syncTerminalRuntimeContext();
+      await reconcileTmuxTerminalsForActiveProject();
+      await runSilenceCatchup();
       return { ok: true as const };
     },
   );

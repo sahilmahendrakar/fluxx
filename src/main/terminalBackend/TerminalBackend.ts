@@ -114,4 +114,11 @@ export interface TerminalBackend {
   writePlanning(id: string, data: string): void;
   resizePlanning(id: string, cols: number, rows: number): void;
   stopPlanning(id: string): Promise<void>;
+
+  /**
+   * Local tmux persistence: reattach open manifest rows after relaunch (in-process backend only).
+   */
+  reconcileTmuxPersistedTerminals?(
+    params: import('../TerminalRuntimeManager').TmuxPersistedRestoreParams,
+  ): Promise<import('../TerminalRuntimeManager').TmuxPersistedReconcileOutput>;
 }

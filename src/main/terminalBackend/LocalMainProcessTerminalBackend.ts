@@ -17,6 +17,8 @@ import {
   type SessionPtyDataPayload,
   type TerminalRuntimeContext,
   type TerminalRuntimeManagerOptions,
+  type TmuxPersistedReconcileOutput,
+  type TmuxPersistedRestoreParams,
 } from '../TerminalRuntimeManager';
 import type {
   TerminalBackend,
@@ -282,5 +284,11 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
 
   async stopPlanning(id: string): Promise<void> {
     this.mgr.stopPlanning(id);
+  }
+
+  reconcileTmuxPersistedTerminals(
+    params: TmuxPersistedRestoreParams,
+  ): Promise<TmuxPersistedReconcileOutput> {
+    return this.mgr.reconcileTmuxPersistedTerminals(params);
   }
 }

@@ -30,3 +30,19 @@ export async function tmuxNewDetachedSession(args: string[]): Promise<void> {
     maxBuffer: 1024 * 1024,
   });
 }
+
+/** Lists all tmux session names (empty when tmux server is not running). */
+export async function tmuxListSessionNames(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('tmux', ['list-sessions', '-F', '#S'], {
+      timeout: 5_000,
+      maxBuffer: 1024 * 1024,
+    });
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((name) => name.length > 0);
+  } catch {
+    return [];
+  }
+}
