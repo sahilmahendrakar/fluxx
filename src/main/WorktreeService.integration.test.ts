@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -33,6 +33,12 @@ async function localBranchExists(cwd: string, shortName: string): Promise<boolea
 
 describe('WorktreeService.create integration', () => {
   const legacyLayout = 'legacy-flat' as const;
+  const primaryRepoId =
+    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('creates missing source branch from default then worktree, and remove drops task branch', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-'));
@@ -42,8 +48,6 @@ describe('WorktreeService.create integration', () => {
       await initGitRepo(gitRoot);
       const svc = new WorktreeService(gitRoot, projectDir);
       const sourceName = 'flux-int-source';
-      const primaryRepoId =
-        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
       const { worktreePath, branch } = await svc.create({
         task: { id: 'mytaskid', title: 'Source branch integration' },
         repo: {
@@ -268,6 +272,177 @@ describe('WorktreeService.create integration', () => {
       expect(wtHeadOut.trim()).not.toBe(localMainSha);
 
       await svc.remove(worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not call remove when restarting after a stopped session (startSessionForTask path)', async () => {
+    const removeSpy = vi.spyOn(WorktreeService.prototype, 'remove');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-session-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const taskId = 'session-restart';
+      const first = await svc.create({
+        task: { id: taskId, title: 'Session restart' },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      removeSpy.mockClear();
+      await svc.create({
+        task: {
+          id: taskId,
+          title: 'Session restart',
+          fluxxWorkBranch: first.branch,
+        },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      expect(removeSpy).not.toHaveBeenCalled();
+
+      await svc.remove(first.worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reuses a healthy worktree after stop without reclaiming or losing uncommitted work', async () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-reuse-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const taskId = 'interrupt-task';
+      const first = await svc.create({
+        task: { id: taskId, title: 'Interrupt reuse' },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      const marker = path.join(first.worktreePath, 'after-ctrl-c.txt');
+      await fs.writeFile(marker, 'keep-me\n', 'utf8');
+
+      warnSpy.mockClear();
+      const second = await svc.create({
+        task: {
+          id: taskId,
+          title: 'Interrupt reuse',
+          fluxxWorkBranch: first.branch,
+        },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      expect(second.worktreePath).toBe(first.worktreePath);
+      expect(second.branch).toBe(first.branch);
+      await expect(fs.readFile(marker, 'utf8')).resolves.toBe('keep-me\n');
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes('[WorktreeService.create] reclaiming stale worktree'),
+        ),
+      ).toBe(false);
+
+      await svc.remove(second.worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reclaims an orphan directory at the target path that git does not register', async () => {
+    const warnSpy = vi.spyOn(console, 'warn');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-orphan-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const first = await svc.create({
+        task: { id: 'orphan-task', title: 'Orphan reclaim' },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+      await svc.remove(first.worktreePath, path.resolve(gitRoot));
+
+      await fs.mkdir(first.worktreePath, { recursive: true });
+      await fs.writeFile(path.join(first.worktreePath, 'stale.txt'), 'orphan\n', 'utf8');
+
+      warnSpy.mockClear();
+      const second = await svc.create({
+        task: {
+          id: 'orphan-task',
+          title: 'Orphan reclaim',
+          fluxxWorkBranch: first.branch,
+        },
+        repo: {
+          repoId: primaryRepoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      expect(second.worktreePath).toBe(first.worktreePath);
+      expect(second.branch).toBe(first.branch);
+      await expect(fs.stat(path.join(second.worktreePath, '.git'))).resolves.toBeDefined();
+      await expect(fs.readFile(path.join(second.worktreePath, 'stale.txt'), 'utf8')).rejects.toThrow();
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes('[WorktreeService.create] reclaiming stale worktree'),
+        ),
+      ).toBe(true);
+
+      await svc.remove(second.worktreePath, path.resolve(gitRoot));
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
