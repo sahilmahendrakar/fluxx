@@ -7,7 +7,9 @@ import {
   COLUMNS,
   Agent,
   type CloudRepoBindingOverview,
+  type ExecutionDeviceConfig,
   type RepoConfig,
+  type TaskExecutionDeviceRef,
 } from '../types';
 import { projectLabelCatalog } from '../taskLabels';
 import { resolvePrimaryRepoId } from '../repoIdentity';
@@ -44,6 +46,7 @@ interface Props {
       createSourceBranchIfMissing?: boolean;
       repoId?: string;
     },
+    executionDevice?: TaskExecutionDeviceRef,
   ) => void;
   /** Initial agent selection in the new-task modal. */
   defaultTaskAgent: Agent;
@@ -85,6 +88,8 @@ interface Props {
   planningInitBusy?: boolean;
   onPlanningInitStart?: () => void;
   onPlanningInitSkip?: () => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
 }
 
 export default function Board({
@@ -120,6 +125,8 @@ export default function Board({
   planningInitBusy = false,
   onPlanningInitStart,
   onPlanningInitSkip,
+  executionDevices,
+  cloudProject = false,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -293,6 +300,8 @@ export default function Board({
               taskHasWorktreeById={taskHasWorktreeById}
               onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
               onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
+              executionDevices={executionDevices}
+              cloudProject={cloudProject}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? repoActionsBlocked
@@ -316,10 +325,12 @@ export default function Board({
           projectRepos={projectRepos}
           multiRepo2Enabled={multiRepo2Enabled}
           projectRepoReadiness={projectRepoReadiness}
+          executionDevices={executionDevices ?? []}
+          cloudProject={cloudProject}
           onOpenProjectSettings={onOpenProjectSettings}
           onClose={() => setModalOpen(false)}
-          onCreate={(title, agent, labels, assigneeId, branch) => {
-            onCreateTask(title, agent, labels, assigneeId, branch);
+          onCreate={(title, agent, labels, assigneeId, branch, executionDevice) => {
+            onCreateTask(title, agent, labels, assigneeId, branch, executionDevice);
             setModalOpen(false);
           }}
         />

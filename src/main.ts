@@ -2632,6 +2632,25 @@ app.whenReady().then(async () => {
     resolveDefaultExecutionDeviceForNewTaskInContext(executionDeviceHostContext()),
   );
 
+  ipcMain.handle(
+    'executionDevices:createSsh',
+    async (_e, input: import('./types').SshExecutionDeviceUpsertInput) =>
+      deviceStore.createSshDevice(input),
+  );
+
+  ipcMain.handle(
+    'executionDevices:update',
+    async (
+      _e,
+      deviceId: string,
+      patch: import('./types').ExecutionDeviceUpdateInput,
+    ) => deviceStore.updateDevice(deviceId, patch),
+  );
+
+  ipcMain.handle('executionDevices:remove', async (_e, deviceId: string) => {
+    await deviceStore.removeDevice(deviceId);
+  });
+
   ipcMain.handle('tasks:resolveEffectiveExecutionDevice', async (_e, task: Task) =>
     resolveEffectiveExecutionDeviceForTaskInContext(executionDeviceHostContext(), task),
   );

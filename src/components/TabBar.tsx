@@ -1,10 +1,18 @@
-import type { Session, Task, TaskStatus } from '../types';
+import type {
+  ExecutionDeviceConfig,
+  Session,
+  Task,
+  TaskExecutionDeviceRef,
+  TaskStatus,
+} from '../types';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
+import { ExecutionDeviceChip } from './ExecutionDeviceChip';
 
 export interface SessionTabMeta {
   session: Session;
   title: string;
   taskStatus?: TaskStatus;
+  executionDevice?: TaskExecutionDeviceRef;
 }
 
 export interface PlanningTabMeta {
@@ -17,6 +25,8 @@ interface TabBarProps {
   activeTabId: string;
   openSessions: SessionTabMeta[];
   openPlanningTabs: PlanningTabMeta[];
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
   settingsRouteActive: boolean;
   onSelectTab: (tabId: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
@@ -35,6 +45,7 @@ export function buildSessionTabs(
       session,
       title: task?.title ?? 'Session',
       taskStatus: task?.status,
+      executionDevice: task?.executionDevice,
     };
   });
 }
@@ -45,6 +56,8 @@ export function TabBar({
   activeTabId,
   openSessions,
   openPlanningTabs,
+  executionDevices = [],
+  cloudProject = false,
   settingsRouteActive,
   onSelectTab,
   onCloseSessionTab,
@@ -96,7 +109,7 @@ export function TabBar({
       {openSessions.length > 0 ? (
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}
-      {openSessions.map(({ session, title, taskStatus }) => {
+      {openSessions.map(({ session, title, taskStatus, executionDevice }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
         const running = session.status === 'running';
         return (
@@ -113,7 +126,14 @@ export function TabBar({
                 ].join(' ')}
                 aria-hidden
               />
-              <span className="max-w-[180px] truncate">{title}</span>
+              <span className="max-w-[140px] truncate">{title}</span>
+              {executionDevices.length > 0 ? (
+                <ExecutionDeviceChip
+                  devices={executionDevices}
+                  ref={executionDevice}
+                  cloudProject={cloudProject}
+                />
+              ) : null}
             </button>
             <button
               type="button"

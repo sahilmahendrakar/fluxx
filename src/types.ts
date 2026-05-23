@@ -450,9 +450,9 @@ export interface TaskExecutionDeviceRef {
   ownerUid?: string;
 }
 
+/** When `enabled`, Fluxx must use tmux on this device and must not fall back to non-tmux PTYs. */
 export interface ExecutionDeviceTmuxSettings {
   enabled: boolean;
-  required?: boolean;
 }
 
 export interface ExecutionDeviceSshConfig {
@@ -463,6 +463,34 @@ export interface ExecutionDeviceSshConfig {
   connectTimeoutSeconds?: number;
 }
 
+/** Stub probe result until remote probing ships (settings UI + status chips). */
+export type DeviceProbeStatus = 'unknown' | 'available' | 'unavailable' | 'probing';
+
+export interface DeviceProbeResult {
+  status: DeviceProbeStatus;
+  checkedAt: string;
+  message?: string;
+}
+
+/** Input for creating an SSH device in the global registry. */
+export type SshExecutionDeviceUpsertInput = {
+  displayName: string;
+  host: string;
+  user?: string;
+  port?: number;
+  workspaceRoot: string;
+  tmuxEnabled: boolean;
+  shell?: string;
+  extraArgs?: string[];
+  connectTimeoutSeconds?: number;
+};
+
+/** Patch for updating a device (SSH fields ignored for built-in local). */
+export type ExecutionDeviceUpdateInput = Partial<SshExecutionDeviceUpsertInput> & {
+  displayName?: string;
+  enabled?: boolean;
+};
+
 /** Per-machine device record in `userData/executionDevices.json`. */
 export interface ExecutionDeviceConfig {
   id: string;
@@ -472,6 +500,7 @@ export interface ExecutionDeviceConfig {
   createdAt: string;
   updatedAt: string;
   lastUsedAt?: string;
+  lastProbe?: DeviceProbeResult;
   tmux: ExecutionDeviceTmuxSettings;
   workspaceRoot: string;
   shell?: string;
