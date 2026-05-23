@@ -96,6 +96,11 @@ import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionReco
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { ValidationRunStore } from './main/ValidationRunStore';
 import {
+  openValidationArtifactExternally,
+  readValidationArtifactForUi,
+  readValidationVerdictForUi,
+} from './main/validationArtifactIpc';
+import {
   getValidationPackById,
   listValidationPacks,
 } from './validationPacks/registry';
@@ -116,6 +121,7 @@ import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
 import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { createValidatorSessionLauncher } from './main/validatorSessionMain';
+import { broadcastValidationRunChanged } from './main/broadcastValidationRunChanged';
 import {
   completeValidatorSessionOnExit,
   cancelValidatorSession,
@@ -795,10 +801,7 @@ app.whenReady().then(async () => {
             endedAt: session.stoppedAt,
           });
           scheduleConversationCaptureCleanup(session.id);
-          for (const win of BrowserWindow.getAllWindows()) {
-            if (win.isDestroyed()) continue;
-            win.webContents.send('validationRuns:changed', { runId: validatorBinding.runId });
-          }
+          broadcastValidationRunChanged(validatorBinding.runId);
           return;
         }
 
@@ -4474,6 +4477,7 @@ app.whenReady().then(async () => {
     listTerminalSessions: () => terminalBackend.listSessions(),
     getRecordProjectDir: resolveRecordProjectDir,
     getMainWindow: () => mainWindow,
+    notifyValidationRunChanged: (runId) => broadcastValidationRunChanged(runId),
     launchValidatorSession,
     taskActions: {
       updateTask: (id, patch) =>
@@ -4935,6 +4939,7 @@ app.whenReady().then(async () => {
       try {
         const launched = await launchValidatorSession({ task, runId });
         if (!launched.ok) return { error: launched.error };
+        broadcastValidationRunChanged(runId);
         return {
           ok: true as const,
           run: launched.run,
@@ -4960,6 +4965,7 @@ app.whenReady().then(async () => {
         const run = await cancelValidatorSession(
           { validationRunStore, terminalBackend, runId, sessionId },
         );
+        broadcastValidationRunChanged(runId);
         return { ok: true as const, run };
       } catch (err) {
         return {
@@ -4973,7 +4979,9 @@ app.whenReady().then(async () => {
     'validationRuns:create',
     async (_e, input: ValidationRunCreateInput) => {
       try {
-        return { ok: true as const, run: await validationRunStore.create(input) };
+        const run = await validationRunStore.create(input);
+        broadcastValidationRunChanged(run.id);
+        return { ok: true as const, run };
       } catch (err) {
         return {
           error: err instanceof Error ? err.message : String(err),
@@ -4986,7 +4994,9 @@ app.whenReady().then(async () => {
     'validationRuns:updateStatus',
     async (_e, patch: ValidationRunStatusUpdate) => {
       try {
-        return { ok: true as const, run: await validationRunStore.updateStatus(patch) };
+        const run = await validationRunStore.updateStatus(patch);
+        broadcastValidationRunChanged(patch.runId);
+        return { ok: true as const, run };
       } catch (err) {
         return {
           error: err instanceof Error ? err.message : String(err),
@@ -5025,10 +5035,68 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle(
+    'validationRuns:readArtifact',
+    async (_e, payload: { runId?: string; artifactId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const artifactId = payload?.artifactId?.trim();
+      if (!runId || !artifactId) {
+        return { ok: false as const, error: 'runId and artifactId are required', code: 'NOT_FOUND' as const };
+      }
+      try {
+        return await readValidationArtifactForUi(validationRunStore, runId, artifactId);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+          code: 'UNREADABLE' as const,
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:openArtifact',
+    async (_e, payload: { runId?: string; artifactId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const artifactId = payload?.artifactId?.trim();
+      if (!runId || !artifactId) {
+        return { ok: false as const, error: 'runId and artifactId are required', code: 'NOT_FOUND' as const };
+      }
+      try {
+        return await openValidationArtifactExternally(validationRunStore, runId, artifactId);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+          code: 'OPEN_FAILED' as const,
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('validationRuns:readVerdict', async (_e, runIdRaw: unknown) => {
+    const runId = typeof runIdRaw === 'string' ? runIdRaw.trim() : '';
+    if (!runId) {
+      return { ok: false as const, error: 'Invalid run id', code: 'NOT_FOUND' as const };
+    }
+    try {
+      return await readValidationVerdictForUi(validationRunStore, runId);
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: err instanceof Error ? err.message : String(err),
+        code: 'UNREADABLE' as const,
+      };
+    }
+  });
+
+  ipcMain.handle(
     'validationRuns:registerArtifact',
     async (_e, input: ValidationArtifactRegisterInput) => {
       try {
-        return { ok: true as const, run: await validationRunStore.registerArtifact(input) };
+        const run = await validationRunStore.registerArtifact(input);
+        broadcastValidationRunChanged(input.runId);
+        return { ok: true as const, run };
       } catch (err) {
         return {
           error: err instanceof Error ? err.message : String(err),

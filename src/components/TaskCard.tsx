@@ -27,6 +27,7 @@ import {
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { TASK_STATUS_DOT as STATUS_DOT } from '../taskStatusDot';
+import TaskCardValidationBadge from './validation/TaskCardValidationBadge';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
 
@@ -445,6 +446,7 @@ export default function TaskCard({
                       </span>
                     </span>
                   ) : null}
+                  <TaskCardValidationBadge task={task} />
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (

@@ -40,6 +40,7 @@ import type { LocalBindingStore } from './LocalBindingStore';
 import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './AutomationHttpServer';
 import {
   automationRunValidationArtifacts,
+  automationRunValidationFinish,
   automationRunValidationIngest,
   automationRunValidationLaunch,
   automationRunValidationList,
@@ -70,6 +71,7 @@ export type FluxAutomationHost = {
   validationRunStore: ValidationRunStore;
   listTerminalSessions: () => Promise<import('../types').Session[]>;
   getRecordProjectDir: () => string;
+  notifyValidationRunChanged?: (runId: string) => void;
   launchValidatorSession?: FluxAutomationValidationHost['launchValidatorSession'];
   taskActions: {
     updateTask: (
@@ -746,6 +748,14 @@ export async function runFluxAutomationInvocation(
         return { ok: false, error: 'validation.ingest requires runId' };
       }
       return automationRunValidationIngest(vh, { runId: p.runId });
+    }
+    case 'validation.finish': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.finish requires runId' };
+      }
+      return automationRunValidationFinish(vh, { runId: p.runId });
     }
     default:
       return { ok: false, error: `Unknown op: ${String(op)}` };

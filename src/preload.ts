@@ -662,6 +662,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('validationRuns:get', runId) as Promise<
         { ok: true; run: ValidationRun } | { error: string }
       >,
+    readArtifact: (payload: { runId: string; artifactId: string }) =>
+      ipcRenderer.invoke('validationRuns:readArtifact', payload) as Promise<
+        | { ok: true; encoding: 'utf8'; content: string }
+        | { ok: true; encoding: 'base64'; content: string; mimeType: string }
+        | { ok: false; error: string; code: string }
+      >,
+    openArtifact: (payload: { runId: string; artifactId: string }) =>
+      ipcRenderer.invoke('validationRuns:openArtifact', payload) as Promise<
+        { ok: true } | { ok: false; error: string; code: string }
+      >,
+    readVerdict: (runId: string) =>
+      ipcRenderer.invoke('validationRuns:readVerdict', runId) as Promise<
+        | {
+            ok: true;
+            verdict: {
+              summary: string;
+              risks?: string[];
+              checks?: { name: string; status: string }[];
+            };
+          }
+        | { ok: false; error: string; code: string }
+      >,
     registerArtifact: (input: ValidationArtifactRegisterInput) =>
       ipcRenderer.invoke('validationRuns:registerArtifact', input) as Promise<
         { ok: true; run: ValidationRun } | { error: string }

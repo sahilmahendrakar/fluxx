@@ -467,6 +467,31 @@ declare global {
         get: (
           runId: string,
         ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        readArtifact: (payload: {
+          runId: string;
+          artifactId: string;
+        }) => Promise<
+          | { ok: true; encoding: 'utf8'; content: string }
+          | { ok: true; encoding: 'base64'; content: string; mimeType: string }
+          | { ok: false; error: string; code: string }
+        >;
+        openArtifact: (payload: {
+          runId: string;
+          artifactId: string;
+        }) => Promise<{ ok: true } | { ok: false; error: string; code: string }>;
+        readVerdict: (
+          runId: string,
+        ) => Promise<
+          | {
+              ok: true;
+              verdict: {
+                summary: string;
+                risks?: string[];
+                checks?: { name: string; status: string }[];
+              };
+            }
+          | { ok: false; error: string; code: string }
+        >;
         registerArtifact: (
           input: ValidationArtifactRegisterInput,
         ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;

@@ -71,6 +71,7 @@ import {
   compactPlanningDocPathLabel,
 } from '../taskPlanningDocAttachments';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
+import TaskValidationSection from './validation/TaskValidationSection';
 import {
   buildTaskSourceBranchPersistPatch,
   effectiveTaskSourceBranchShort,
@@ -1738,6 +1739,13 @@ export default function TaskDetailPanel({
                 </div>
               </section>
             ) : null}
+
+            <TaskValidationSection
+              task={task}
+              primaryRepoId={primaryRepoId}
+              worktreePath={resolvedWorktreePath}
+              projectRepoReadiness={projectRepoReadiness}
+            />
 
             <div className="space-y-4 px-5 py-5">
               {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (

@@ -9,12 +9,14 @@ import type { FluxAutomationHost } from './fluxAutomationRuns';
 import { resolveTaskWorktreePath } from './openWorkspacePath';
 import type { ValidationRunStore } from './ValidationRunStore';
 import { defaultValidatorAgent } from './startValidatorSession';
+import { finalizeValidationRun } from './finalizeValidationRun';
 import { ingestValidationVerdict } from './validationVerdictIngest';
 
 export type FluxAutomationValidationHost = FluxAutomationHost & {
   validationRunStore: ValidationRunStore;
   listTerminalSessions: () => Promise<Session[]>;
   getRecordProjectDir: () => string;
+  notifyValidationRunChanged?: (runId: string) => void;
   launchValidatorSession?: (input: {
     task: Task;
     runId: string;
@@ -293,6 +295,40 @@ export async function automationRunValidationIngest(
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
+  h.notifyValidationRunChanged?.(runId);
+  return {
+    ok: true,
+    data: {
+      ingested: result.ingested,
+      run: validationRunToCliJson(result.run),
+    },
+  };
+}
+
+export async function automationRunValidationFinish(
+  h: FluxAutomationValidationHost,
+  input: { runId: string },
+): Promise<FluxAutomationInvokeResponse> {
+  const active = h.resolveActive();
+  if (active.kind === 'none') {
+    return { ok: false, error: 'No project open' };
+  }
+  const projectDirResult = requireProjectDir(h);
+  if (typeof projectDirResult !== 'string') return projectDirResult;
+
+  const runId = input.runId?.trim();
+  if (!runId) {
+    return { ok: false, error: 'runId is required' };
+  }
+
+  const result = await finalizeValidationRun(h.validationRunStore, {
+    runId,
+    source: 'finish',
+  });
+  if (!result.ok) {
+    return { ok: false, error: result.error };
+  }
+  h.notifyValidationRunChanged?.(runId);
   return {
     ok: true,
     data: {

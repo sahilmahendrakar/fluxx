@@ -10,12 +10,12 @@ import { composeValidatorSessionPrompt } from './composeValidatorSessionPrompt';
 import {
   captureGitStatusPorcelain,
   captureWorktreeChangeSummary,
-  compareGitStatusPorcelain,
 } from './gitStatusGuardrail';
 import { pickSessionForTaskWorktree } from './openWorkspacePath';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
+import { finalizeValidationRun } from './finalizeValidationRun';
 import type { ValidationRunStore } from './ValidationRunStore';
-import { ingestValidationVerdict } from './validationVerdictIngest';
+import { validationRunPtyEnv } from './validationRunEnv';
 import {
   registerValidatorSession,
   unregisterValidatorSession,
@@ -70,17 +70,6 @@ async function readInstructionsMarkdown(runDir: string): Promise<string> {
 
 async function writeValidatorPromptArtifact(runDir: string, prompt: string): Promise<void> {
   await fs.writeFile(path.join(runDir, 'validator-prompt.md'), `${prompt}\n`, 'utf8');
-}
-
-async function writeGuardrailsLog(
-  runDir: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  await fs.writeFile(
-    path.join(runDir, 'guardrails.json'),
-    `${JSON.stringify(payload, null, 2)}\n`,
-    'utf8',
-  );
 }
 
 export function defaultValidatorAgent(): Agent {
@@ -227,6 +216,11 @@ export async function startValidatorSession(
     ...(spawnCtx.mcpConfigPath ? { mcpConfigPath: spawnCtx.mcpConfigPath } : {}),
   });
 
+  const ptyEnv = {
+    ...(spawnCtx.ptyEnv ?? {}),
+    ...validationRunPtyEnv(run),
+  };
+
   const result = await deps.terminalBackend.createSession({
     worktreePath: worktree.worktreePath,
     branch: worktree.branch,
@@ -242,7 +236,7 @@ export async function startValidatorSession(
     ...(spawnCtx.trustPromptAutorespondRoots
       ? { trustPromptAutorespondRoots: spawnCtx.trustPromptAutorespondRoots }
       : {}),
-    ...(spawnCtx.ptyEnv ? { ptyEnv: spawnCtx.ptyEnv } : {}),
+    ptyEnv,
   });
 
   if ('error' in result) {
@@ -261,12 +255,20 @@ export async function startValidatorSession(
     preValidationGitStatus: preStatus.porcelain,
   });
 
-  await writeGuardrailsLog(run.artifactDir, {
-    preValidationGitStatus: preStatus.porcelain,
-    preValidationCapturedAt: preStatus.capturedAt,
-    worktreeCwd: worktree.worktreePath,
-    validatorSessionId: result.id,
-  });
+  await fs.writeFile(
+    path.join(run.artifactDir, 'guardrails.json'),
+    `${JSON.stringify(
+      {
+        preValidationGitStatus: preStatus.porcelain,
+        preValidationCapturedAt: preStatus.capturedAt,
+        worktreeCwd: worktree.worktreePath,
+        validatorSessionId: result.id,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
 
   return { ok: true, run: launched, session: result };
 }
@@ -278,48 +280,13 @@ export async function completeValidatorSessionOnExit(
 ): Promise<ValidationRun | null> {
   unregisterValidatorSession(session.id);
 
-  const existing = await deps.validationRunStore.get(runId);
-  if (!existing) return null;
-
-  const worktreeCwd = existing.worktreeCwd?.trim();
-  let run = existing;
-  if (worktreeCwd) {
-    const postStatus = await captureGitStatusPorcelain(worktreeCwd);
-    const preSnapshot = {
-      porcelain: existing.gitGuardrails?.preValidationGitStatus ?? '',
-      capturedAt: existing.startedAt,
-    };
-    const comparison = compareGitStatusPorcelain(preSnapshot, postStatus);
-    run = await deps.validationRunStore.updateGuardrails({
-      runId,
-      postValidationGitStatus: postStatus.porcelain,
-      gitStatusDriftDetected: comparison.driftDetected,
-    });
-    await writeGuardrailsLog(existing.artifactDir, {
-      preValidationGitStatus: preSnapshot.porcelain,
-      postValidationGitStatus: postStatus.porcelain,
-      gitStatusDriftDetected: comparison.driftDetected,
-      ...(comparison.driftSummary ? { driftSummary: comparison.driftSummary } : {}),
-      validatorSessionId: session.id,
-      sessionExitStatus: session.status,
-      completedAt: new Date().toISOString(),
-    });
-  }
-
-  if (session.status === 'error' && run.status === 'running') {
-    run = await deps.validationRunStore.updateStatus({
-      runId,
-      status: 'errored',
-      verdictReason: 'Validator agent exited with an error before producing a verdict.',
-    });
-    return run;
-  }
-
-  const ingest = await ingestValidationVerdict(deps.validationRunStore, runId);
-  if (ingest.ok) {
-    return ingest.run;
-  }
-  return run;
+  const result = await finalizeValidationRun(deps.validationRunStore, {
+    runId,
+    session,
+    source: 'session-exit',
+  });
+  if (!result.ok) return null;
+  return result.run;
 }
 
 export async function cancelValidatorSession(

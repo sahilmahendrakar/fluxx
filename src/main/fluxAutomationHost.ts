@@ -34,6 +34,7 @@ export type FluxAutomationHostDeps = {
   listTerminalSessions: () => Promise<Session[]>;
   getRecordProjectDir: () => string;
   getMainWindow: () => BrowserWindow | null;
+  notifyValidationRunChanged?: (runId: string) => void;
   launchValidatorSession?: (input: {
     task: import('../types').Task;
     runId: string;
@@ -166,6 +167,9 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     validationRunStore: deps.validationRunStore,
     listTerminalSessions: deps.listTerminalSessions,
     getRecordProjectDir: deps.getRecordProjectDir,
+    ...(deps.notifyValidationRunChanged
+      ? { notifyValidationRunChanged: deps.notifyValidationRunChanged }
+      : {}),
     ...(deps.launchValidatorSession
       ? { launchValidatorSession: deps.launchValidatorSession }
       : {}),
