@@ -20,6 +20,8 @@ import type { LocalBindingStore } from './LocalBindingStore';
 import type { ProjectStore } from './ProjectStore';
 import type { RendererAutomationBridge, AutomationBridgeResult } from './RendererAutomationBridge';
 import type { TaskStore } from './TaskStore';
+import type { ValidationRunStore } from './ValidationRunStore';
+import type { Session } from '../types';
 import { repoDisplayLabel, resolvePrimaryRepoIdFromList } from '../repoIdentity';
 
 export type FluxAutomationHostDeps = {
@@ -28,6 +30,9 @@ export type FluxAutomationHostDeps = {
   appStateStore: AppStateStore;
   bindingStore: LocalBindingStore;
   bridge: RendererAutomationBridge;
+  validationRunStore: ValidationRunStore;
+  listTerminalSessions: () => Promise<Session[]>;
+  getRecordProjectDir: () => string;
   getMainWindow: () => BrowserWindow | null;
   taskActions: {
     updateTask: (
@@ -151,6 +156,9 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     taskStore: deps.taskStore,
     projectStore: deps.projectStore,
     bindingStore: deps.bindingStore,
+    validationRunStore: deps.validationRunStore,
+    listTerminalSessions: deps.listTerminalSessions,
+    getRecordProjectDir: deps.getRecordProjectDir,
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>
       automationBridgeFailureToInvoke(result),

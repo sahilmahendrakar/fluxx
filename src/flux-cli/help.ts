@@ -59,11 +59,54 @@ const TASK_DELETE_FLAGS = `Usage: fluxx tasks delete [--json] --id <taskId> --co
   --confirm                      Required; only after explicit user intent to delete
   --json`;
 
+const VALIDATION_RUN_FLAGS = `Usage: fluxx validation run [--json] --task-id <taskId> [options]
+
+Required:
+  --task-id <taskId>             Task to validate (alias: --task)
+
+Optional:
+  --pack <packId>                Validation pack (default: electron-playwright)
+  --validator-agent <agent>      claude-code | codex | cursor (default: cursor)
+  --json`;
+
+const VALIDATION_LIST_FLAGS = `Usage: fluxx validation list [--json] --task-id <taskId>
+
+Required:
+  --task-id <taskId>             Task whose runs to list (alias: --task)
+  --json`;
+
+const VALIDATION_SHOW_FLAGS = `Usage: fluxx validation show [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Notes:
+  Ingests verdict.json when the run is not terminal and the file is present.
+  --json`;
+
+const VALIDATION_ARTIFACTS_FLAGS = `Usage: fluxx validation artifacts [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Notes:
+  Ingests verdict.json when the run is not terminal and the file is present.
+  --json`;
+
+const VALIDATION_INGEST_FLAGS = `Usage: fluxx validation ingest [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Reads <artifactDir>/verdict.json, registers artifacts, and updates run status.
+  --json`;
+
 const TOP_LEVEL = `Fluxx CLI — board automation for planning sessions
 
 Usage:
   fluxx project info [--json]
   fluxx tasks list|create|update|start|delete [--json] ...
+  fluxx validation run|list|show|artifacts|ingest [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
 
@@ -72,6 +115,34 @@ Global:
   -h, --help                     Show command help
 
 Run \`fluxx <command> --help\` for subcommand flags (e.g. fluxx tasks create --help).`;
+
+function helpForValidationAction(action: string | undefined): string | null {
+  switch (action) {
+    case 'run':
+      return VALIDATION_RUN_FLAGS;
+    case 'list':
+      return VALIDATION_LIST_FLAGS;
+    case 'show':
+      return VALIDATION_SHOW_FLAGS;
+    case 'artifacts':
+      return VALIDATION_ARTIFACTS_FLAGS;
+    case 'ingest':
+      return VALIDATION_INGEST_FLAGS;
+    case undefined:
+      return `Usage: fluxx validation <run|list|show|artifacts|ingest> [options]
+
+Subcommands:
+  run        Create a validation run and scaffold artifact directory
+  list       List validation runs for a task
+  show       Show one run (ingests verdict when applicable)
+  artifacts  List artifacts for a run (ingests verdict when applicable)
+  ingest     Parse verdict.json and update run status
+
+Run \`fluxx validation <subcommand> --help\` for flags.`;
+    default:
+      return null;
+  }
+}
 
 function helpForTasksAction(action: string | undefined): string | null {
   switch (action) {
@@ -126,6 +197,9 @@ export function printFluxCliHelp(argv: string[]): boolean {
   } else if (domain === 'tasks') {
     const sub = helpForTasksAction(action);
     text = sub ?? `Unknown tasks subcommand. ${helpForTasksAction(undefined) ?? ''}`;
+  } else if (domain === 'validation') {
+    const sub = helpForValidationAction(action);
+    text = sub ?? `Unknown validation subcommand. ${helpForValidationAction(undefined) ?? ''}`;
   } else {
     text = TOP_LEVEL;
   }

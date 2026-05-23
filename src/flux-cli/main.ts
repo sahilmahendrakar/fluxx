@@ -62,6 +62,30 @@ export async function runFluxCli(argv: string[]): Promise<number> {
         ...(command.classifyBranch !== undefined ? { classifyBranch: command.classifyBranch } : {}),
       };
       break;
+    case 'validation':
+      if (command.action === 'run') {
+        op = 'validation.run';
+        payload = {
+          taskId: command.taskId,
+          ...(command.packId !== undefined ? { packId: command.packId } : {}),
+          ...(command.validatorAgent !== undefined
+            ? { validatorAgent: command.validatorAgent }
+            : {}),
+        };
+      } else if (command.action === 'list') {
+        op = 'validation.list';
+        payload = { taskId: command.taskId };
+      } else if (command.action === 'show') {
+        op = 'validation.show';
+        payload = { runId: command.runId };
+      } else if (command.action === 'artifacts') {
+        op = 'validation.artifacts';
+        payload = { runId: command.runId };
+      } else {
+        op = 'validation.ingest';
+        payload = { runId: command.runId };
+      }
+      break;
     case 'tasks':
       if (command.action === 'list') {
         op = 'tasks.list';
