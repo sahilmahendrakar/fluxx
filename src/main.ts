@@ -55,6 +55,12 @@ import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
+import { RemoteHelperClient } from './main/ssh/RemoteHelperClient';
+import {
+  formatRemoteSshReconcileLogLine,
+  reconcileRemoteSshTerminalsForProject,
+} from './main/ssh/remoteSshTerminalReconcile';
+import { mapRemoteLifecycleToEndedReason } from './main/ssh/remoteSessionLifecycle';
 import { startSshTaskSession } from './main/ssh/startSshTaskSession';
 import {
   type ExecutionDeviceHostContext,
@@ -85,6 +91,7 @@ import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
   deleteSessionWorkspaceAndStop,
+  listEnabledSshDevices,
   teardownEphemeralResourcesForTask,
 } from './main/taskEphemeralTeardown';
 import {
@@ -932,6 +939,8 @@ app.whenReady().then(async () => {
     ),
   });
   const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
+  const remoteHelperClient = new RemoteHelperClient();
+  const remoteTaskTeardownDeps = { deviceStore, gitRemoteWorkspace: gitRemoteWorkspaceProvider };
 
   function executionDeviceHostContext(): ExecutionDeviceHostContext {
     return {
@@ -1096,6 +1105,106 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function markRemoteInterruptedTerminal(
+    record: import('./types').TerminalSessionRecord,
+    device: import('./types').ExecutionDeviceConfig,
+    lifecycleStatus: import('./types').RemoteSessionLifecycleStatus,
+  ): Promise<void> {
+    const endedAt = new Date().toISOString();
+    const endReason = mapRemoteLifecycleToEndedReason(lifecycleStatus);
+    const preserveRemoteManifest =
+      lifecycleStatus === 'device-unreachable' || lifecycleStatus === 'helper-mismatch';
+
+    if (!preserveRemoteManifest && record.deviceId) {
+      await remoteHelperClient.runJsonCommand(device, 'mark-terminal-ended', {
+        terminalId: record.id,
+        deviceId: record.deviceId,
+        reason: endReason,
+      });
+    }
+
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: endReason,
+      endedAt,
+    });
+
+    if (record.kind !== 'task' || !record.task) return;
+
+    if (!(await taskAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+      await taskAgentSessionRecordStore.recordSessionStart({
+        fluxxSessionId: record.id,
+        taskId: record.task.taskId,
+        projectId: record.projectId,
+        ...(record.repoId ? { repoId: record.repoId } : {}),
+        agent: record.task.agent,
+        worktreePath: record.task.worktreePath,
+        fluxxWorkBranch: record.task.fluxxWorkBranch,
+        ...(record.task.sourceBranchShort ? { sourceBranchShort: record.task.sourceBranchShort } : {}),
+        startedAt: record.startedAt,
+        ...(record.deviceId ? { deviceId: record.deviceId } : {}),
+        deviceKind: 'ssh',
+        ...(device.displayName ? { deviceLabel: device.displayName } : {}),
+      });
+    }
+
+    await taskAgentSessionRecordStore.markSessionEnded(
+      {
+        id: record.id,
+        taskId: record.task.taskId,
+        projectId: record.projectId,
+        worktreePath: record.task.worktreePath,
+        branch: record.task.fluxxWorkBranch,
+        status: 'interrupted',
+        startedAt: record.startedAt,
+        stoppedAt: endedAt,
+      },
+      { reason: endReason },
+    );
+  }
+
+  async function reconcileRemoteSshTerminalsForActiveProject(): Promise<void> {
+    const sshBackend = sshTerminalBackendFrom(terminalBackend);
+    if (!sshBackend) return;
+
+    const projectId = await activeProjectIdForTmuxRestore();
+    if (!projectId) return;
+
+    const sshDevices = listEnabledSshDevices(deviceStore);
+    if (sshDevices.length === 0) return;
+
+    const localSshOpenRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
+      (r) => r.deviceKind === 'ssh',
+    );
+
+    const output = await reconcileRemoteSshTerminalsForProject({
+      projectId,
+      devices: sshDevices,
+      helper: remoteHelperClient,
+      sshBackend,
+      localOpenRecords: localSshOpenRecords,
+    });
+
+    for (const { sessionId, taskId } of output.restoredSessionTaskPairs) {
+      sessionTaskMap.set(sessionId, taskId);
+    }
+
+    for (const { record, lifecycleStatus } of output.interruptedRecords) {
+      const deviceId = record.deviceId?.trim();
+      const device = deviceId ? deviceStore.getDevice(deviceId) : undefined;
+      if (!device || device.kind !== 'ssh') continue;
+      await markRemoteInterruptedTerminal(record, device, lifecycleStatus);
+    }
+
+    if (output.untrackedFluxxSessions.length > 0) {
+      console.warn(
+        '[ssh-reconcile] untracked fluxx tmux sessions (not auto-killed):',
+        output.untrackedFluxxSessions.join(', '),
+      );
+    }
+
+    console.log(formatRemoteSshReconcileLogLine(output));
+  }
+
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
     const localTerminalBackend = localTerminalBackendFrom(terminalBackend);
     if (!localTerminalBackend) return;
@@ -1112,7 +1221,9 @@ app.whenReady().then(async () => {
       return;
     }
 
-    const openRecords = await terminalSessionRecordStore.listOpenRecords(projectId);
+    const openRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
+      (r) => r.deviceKind !== 'ssh',
+    );
     const project = projectStore.get();
     const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
     const trustAutorespond =
@@ -1171,6 +1282,39 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function reconcileTerminalsForActiveProject(): Promise<void> {
+    await reconcileTmuxTerminalsForActiveProject();
+    await reconcileRemoteSshTerminalsForActiveProject();
+  }
+
+  let terminalRestoreGeneration = 0;
+  let terminalRestoreComplete = true;
+  let terminalRestorePromise: Promise<void> = Promise.resolve();
+
+  function broadcastSessionsRestoreComplete(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('sessions:restoreComplete');
+    }
+  }
+
+  function beginTerminalRestore(): Promise<void> {
+    const gen = ++terminalRestoreGeneration;
+    terminalRestoreComplete = false;
+    terminalRestorePromise = (async () => {
+      try {
+        await reconcileTerminalsForActiveProject();
+        await runSilenceCatchup();
+      } finally {
+        if (gen === terminalRestoreGeneration) {
+          terminalRestoreComplete = true;
+          broadcastSessionsRestoreComplete();
+        }
+      }
+    })();
+    return terminalRestorePromise;
+  }
+
   // Catchup: for sessions already silent (or already exited) when this process
   // starts, no stream event will fire until the next PTY output tick.
   async function runSilenceCatchup(): Promise<void> {
@@ -1193,8 +1337,6 @@ app.whenReady().then(async () => {
       }
     }
   }
-
-  await runSilenceCatchup();
 
   const authServer = new AuthServer();
   const emailService = new EmailService();
@@ -1407,8 +1549,6 @@ app.whenReady().then(async () => {
     () => terminalRuntimeContext,
   );
   await syncTerminalRuntimeContext();
-  await reconcileTmuxTerminalsForActiveProject();
-  await runSilenceCatchup();
 
   ipcMain.handle(
     'project:getMcpConfig',
@@ -2290,8 +2430,7 @@ app.whenReady().then(async () => {
         id: project.id,
       });
       await syncTerminalRuntimeContext();
-      await reconcileTmuxTerminalsForActiveProject();
-      await runSilenceCatchup();
+      await beginTerminalRestore();
       return project;
     },
   );
@@ -2424,8 +2563,7 @@ app.whenReady().then(async () => {
         });
       }
       await syncTerminalRuntimeContext();
-      await reconcileTmuxTerminalsForActiveProject();
-      await runSilenceCatchup();
+      await beginTerminalRestore();
       return { ok: true as const };
     },
   );
@@ -3029,6 +3167,7 @@ app.whenReady().then(async () => {
         repos,
         taskRepoId,
         taskRow?.fluxxWorkBranch?.trim() || null,
+        remoteTaskTeardownDeps,
       );
       return { errors };
     },
@@ -4468,6 +4607,7 @@ app.whenReady().then(async () => {
           cleanupRepos,
           updated.repoId?.trim() ?? null,
           updated.fluxxWorkBranch?.trim() ?? null,
+          remoteTaskTeardownDeps,
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {
@@ -4586,6 +4726,7 @@ app.whenReady().then(async () => {
       worktreeService,
       sessionId,
       gitRootForDaemonSession,
+      remoteTaskTeardownDeps,
     );
     await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(sessionId);
     void terminalSessionRecordStore.markWorkspaceDeleted(sessionId);
@@ -4619,6 +4760,36 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:getAll', async () => {
+    const project = projectStore.get();
+    const live = await terminalBackend.listSessions();
+    if (!project) return live;
+    const forProject = live.filter((s) => s.projectId === project.id);
+    const liveIds = new Set(forProject.map((s) => s.id));
+    const cold = await taskAgentSessionRecordStore.listColdResumeTaskSessions(
+      project.id,
+      async (p) => {
+        try {
+          await fs.access(p);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { excludeFluxxSessionIds: liveIds },
+    );
+    const otherProjects = live.filter((s) => s.projectId !== project.id);
+    return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+  });
+
+  ipcMain.handle('sessions:isRestoreComplete', async () => terminalRestoreComplete);
+
+  ipcMain.handle('sessions:awaitRestoreComplete', async () => {
+    await terminalRestorePromise;
+  });
+
+  ipcMain.handle('session:reconcileRemote', async () => {
+    await reconcileRemoteSshTerminalsForActiveProject();
+    broadcastSessionsRestoreComplete();
     const project = projectStore.get();
     const live = await terminalBackend.listSessions();
     if (!project) return live;
@@ -4756,6 +4927,10 @@ app.whenReady().then(async () => {
     const taskSessionIds = [
       ...new Set([...liveTask.map((s) => s.id), ...coldTask.map((s) => s.id)]),
     ];
+    const taskSessionRefs = [
+      ...liveTask.map((s) => ({ sessionId: s.id, taskId: s.taskId })),
+      ...coldTask.map((s) => ({ sessionId: s.id, taskId: s.taskId })),
+    ];
 
     const livePlanning = (await terminalBackend.listPlanning()).filter(
       (s) => s.projectId === project.id,
@@ -4770,7 +4945,7 @@ app.whenReady().then(async () => {
       ...new Set([...livePlanning.map((s) => s.id), ...coldPlanning.map((s) => s.id)]),
     ];
 
-    return { taskSessionIds, planningSessionIds };
+    return { taskSessionIds, planningSessionIds, taskSessionRefs };
   }
 
   ipcMain.handle('projects:getRestorableSessionIds', async () => collectRestorableSessionIds());
@@ -5454,6 +5629,111 @@ app.whenReady().then(async () => {
   if (mainWindow && fluxAutomationRendererBridge) {
     fluxAutomationRendererBridge.attachWindow(mainWindow);
   }
+
+  try {
+    await beginTerminalRestore();
+  } catch (err) {
+    console.warn('[main] terminal restore/reconcile failed during startup', err);
+  }
+
+  app.on('before-quit', (e) => {
+    if (appQuitTeardownComplete) return;
+    e.preventDefault();
+
+    void (async () => {
+      try {
+        const backend = mainProcessTerminalBackend;
+        if (backend) {
+          try {
+            const quitConfirm = backend.getAppQuitConfirmInfo?.() ?? {
+              needsConfirm: await backend.shouldConfirmAppQuit(),
+              persistTmuxEnabled: false,
+              directPtyCount: 0,
+              tmuxBackedCount: 0,
+              remoteTmuxBackedCount: 0,
+            };
+            if (quitConfirm.needsConfirm) {
+              const focused = BrowserWindow.getFocusedWindow();
+              let quitMessage = 'Quit Fluxx and stop local agents?';
+              let quitDetail =
+                'Running task agents, terminal panes, and planning sessions in this app will end. ' +
+                'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).';
+              if (quitConfirm.persistTmuxEnabled && quitConfirm.tmuxBackedCount > 0) {
+                quitMessage = 'Quit Fluxx?';
+                if (quitConfirm.directPtyCount > 0) {
+                  quitDetail =
+                    'In-app terminals without tmux will stop. Fluxx-owned tmux sessions for task agents, planning assistants, and shell panes will keep running until you stop them from Fluxx or tmux.';
+                } else {
+                  quitDetail =
+                    'Task agents, planning assistants, and terminal panes running in Fluxx-owned tmux sessions will continue. Reopen Fluxx to reattach. Closing only the Fluxx window leaves them running until you fully quit.';
+                }
+              }
+              if ((quitConfirm.remoteTmuxBackedCount ?? 0) > 0) {
+                quitMessage = 'Quit Fluxx?';
+                const remoteNote =
+                  'Direct-SSH task sessions on remote hosts will keep running in tmux. Reopen Fluxx to reattach when the SSH host is reachable.';
+                quitDetail = quitDetail.includes('remote hosts')
+                  ? quitDetail
+                  : quitDetail.endsWith('.')
+                    ? `${quitDetail} ${remoteNote}`
+                    : `${quitDetail} ${remoteNote}`;
+              }
+              const messageOpts = {
+                type: 'warning' as const,
+                buttons: ['Quit', 'Cancel'],
+                defaultId: 1,
+                cancelId: 1,
+                title: 'Quit Fluxx?',
+                message: quitMessage,
+                detail: quitDetail,
+              };
+              const { response } =
+                focused && !focused.isDestroyed()
+                  ? await dialog.showMessageBox(focused, messageOpts)
+                  : await dialog.showMessageBox(messageOpts);
+              if (response === 1) return;
+            }
+          } catch (err) {
+            console.warn('[main] shouldConfirmAppQuit failed', err);
+          }
+        }
+
+        fluxAutomationServer?.stop();
+        fluxAutomationServer = null;
+        fluxAutomationToken = null;
+        fluxAutomationHostDeps = null;
+        planningDocsWatcher?.dispose();
+        planningDocsWatcher = null;
+
+        if (backend) {
+          try {
+            terminalQuitTeardownInProgress = true;
+            await Promise.race([
+              backend.teardownForAppQuit(APP_QUIT_TERMINAL_TEARDOWN_MS),
+              new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
+            ]);
+          } catch (err) {
+            console.warn('[main] teardownForAppQuit failed', err);
+          } finally {
+            terminalQuitTeardownInProgress = false;
+          }
+        }
+
+        if (pendingSessionExitWork.size > 0) {
+          await Promise.allSettled([...pendingSessionExitWork]);
+        }
+        await taskAgentSessionRecordStore.whenWriteIdle();
+        await planningAgentSessionRecordStore.whenWriteIdle();
+
+        appQuitTeardownComplete = true;
+        app.quit();
+      } catch (err) {
+        console.error('[main] before-quit handler failed', err);
+        appQuitTeardownComplete = true;
+        app.quit();
+      }
+    })();
+  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -5474,94 +5754,6 @@ app.on('activate', () => {
       fluxAutomationRendererBridge.attachWindow(mainWindow);
     }
   }
-});
-
-app.on('before-quit', (e) => {
-  if (appQuitTeardownComplete) return;
-  e.preventDefault();
-
-  void (async () => {
-    try {
-      const backend = mainProcessTerminalBackend;
-      if (backend) {
-        try {
-          const quitConfirm = backend.getAppQuitConfirmInfo?.() ?? {
-            needsConfirm: await backend.shouldConfirmAppQuit(),
-            persistTmuxEnabled: false,
-            directPtyCount: 0,
-            tmuxBackedCount: 0,
-          };
-          if (quitConfirm.needsConfirm) {
-            const focused = BrowserWindow.getFocusedWindow();
-            let quitMessage = 'Quit Fluxx and stop local agents?';
-            let quitDetail =
-              'Running task agents, terminal panes, and planning sessions in this app will end. ' +
-              'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).';
-            if (quitConfirm.persistTmuxEnabled && quitConfirm.tmuxBackedCount > 0) {
-              quitMessage = 'Quit Fluxx?';
-              if (quitConfirm.directPtyCount > 0) {
-                quitDetail =
-                  'In-app terminals without tmux will stop. Fluxx-owned tmux sessions for task agents, planning assistants, and shell panes will keep running until you stop them from Fluxx or tmux.';
-              } else {
-                quitDetail =
-                  'Task agents, planning assistants, and terminal panes running in Fluxx-owned tmux sessions will continue. Reopen Fluxx to reattach. Closing only the Fluxx window leaves them running until you fully quit.';
-              }
-            }
-            const messageOpts = {
-              type: 'warning' as const,
-              buttons: ['Quit', 'Cancel'],
-              defaultId: 1,
-              cancelId: 1,
-              title: 'Quit Fluxx?',
-              message: quitMessage,
-              detail: quitDetail,
-            };
-            const { response } =
-              focused && !focused.isDestroyed()
-                ? await dialog.showMessageBox(focused, messageOpts)
-                : await dialog.showMessageBox(messageOpts);
-            if (response === 1) return;
-          }
-        } catch (err) {
-          console.warn('[main] shouldConfirmAppQuit failed', err);
-        }
-      }
-
-      fluxAutomationServer?.stop();
-      fluxAutomationServer = null;
-      fluxAutomationToken = null;
-      fluxAutomationHostDeps = null;
-      planningDocsWatcher?.dispose();
-      planningDocsWatcher = null;
-
-      if (backend) {
-        try {
-          terminalQuitTeardownInProgress = true;
-          await Promise.race([
-            backend.teardownForAppQuit(APP_QUIT_TERMINAL_TEARDOWN_MS),
-            new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
-          ]);
-        } catch (err) {
-          console.warn('[main] teardownForAppQuit failed', err);
-        } finally {
-          terminalQuitTeardownInProgress = false;
-        }
-      }
-
-      if (pendingSessionExitWork.size > 0) {
-        await Promise.allSettled([...pendingSessionExitWork]);
-      }
-      await taskAgentSessionRecordStore.whenWriteIdle();
-      await planningAgentSessionRecordStore.whenWriteIdle();
-
-      appQuitTeardownComplete = true;
-      app.quit();
-    } catch (err) {
-      console.error('[main] before-quit handler failed', err);
-      appQuitTeardownComplete = true;
-      app.quit();
-    }
-  })();
 });
 
 // In this file you can include the rest of your app's specific main process

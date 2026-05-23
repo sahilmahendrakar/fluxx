@@ -24,13 +24,13 @@ describe('fluxx-remote-helper workspace RPCs', () => {
     }
   });
 
-  it('reports version 0.2.2', () => {
+  it('reports version 0.2.3', () => {
     const result = spawnSync(process.execPath, [helperPath, 'version', '--json'], {
       encoding: 'utf8',
     });
     expect(result.status).toBe(0);
     const envelope = JSON.parse(result.stdout.trim());
-    expect(envelope.data.version).toBe('0.2.2');
+    expect(envelope.data.version).toBe('0.2.3');
   });
 
   it('clones repo on demand when cache is missing', () => {

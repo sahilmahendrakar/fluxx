@@ -3,6 +3,7 @@ import type {
   PlanningSession,
   ProjectTabState,
   RestorableSessionIds,
+  RestorableTaskSessionRef,
   Session,
 } from './types';
 import { isPlanningSessionResumable } from './components/planningResumeUi';
@@ -19,6 +20,16 @@ export type RestorableSessionIdSets = {
   taskSessionIds: ReadonlySet<string>;
   planningSessionIds: ReadonlySet<string>;
 };
+
+export function taskIdBySessionIdFromRefs(
+  refs: readonly RestorableTaskSessionRef[] | undefined,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const ref of refs ?? []) {
+    if (ref.sessionId && ref.taskId) map.set(ref.sessionId, ref.taskId);
+  }
+  return map;
+}
 
 export function restorableSessionIdSets(ids: RestorableSessionIds): RestorableSessionIdSets {
   return {
@@ -50,9 +61,48 @@ export function mergeRestorableSessionIdSets(
  * `openTaskIds` on disk are **daemon session ids** for workspace tabs (not Flux task ids).
  * Tabs are kept when the session is live or cold-resumable (interrupted after hard quit).
  */
+export function buildRestoringWorkspacePlaceholder(
+  sessionId: string,
+  taskId: string,
+  projectId: string,
+): Session {
+  return {
+    id: sessionId,
+    taskId,
+    projectId,
+    worktreePath: '',
+    branch: '',
+    status: 'idle',
+    startedAt: new Date(0).toISOString(),
+  };
+}
+
+/** Synthetic rows for open tabs that are not hydrated yet (SSH restore in flight). */
+export function mergeSessionsWithRestoringPlaceholders(
+  sessions: readonly Session[],
+  openTabIds: ReadonlySet<string>,
+  minimizedWorkspaceIds: ReadonlySet<string>,
+  projectId: string,
+  taskIdBySessionId: ReadonlyMap<string, string>,
+): Session[] {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  for (const id of openTabIds) {
+    if (byId.has(id)) continue;
+    const taskId = taskIdBySessionId.get(id) ?? '';
+    byId.set(id, buildRestoringWorkspacePlaceholder(id, taskId, projectId));
+  }
+  for (const id of minimizedWorkspaceIds) {
+    if (byId.has(id)) continue;
+    const taskId = taskIdBySessionId.get(id) ?? '';
+    byId.set(id, buildRestoringWorkspacePlaceholder(id, taskId, projectId));
+  }
+  return [...byId.values()];
+}
+
 export function normalizeRestoredProjectTabState(
   persisted: ProjectTabState,
   restorable: RestorableSessionIdSets,
+  opts?: { keepPersistedOpenTaskIds?: boolean },
 ): {
   openTaskIds: string[];
   openPlanningTabIds: string[];
@@ -62,13 +112,13 @@ export function normalizeRestoredProjectTabState(
   activeTabId: string;
   openSettingsRoute: boolean;
 } {
-  const restoredOpen = persisted.openTaskIds.filter((id) =>
-    restorable.taskSessionIds.has(id),
-  );
+  const restoredOpen = opts?.keepPersistedOpenTaskIds
+    ? [...new Set(persisted.openTaskIds)]
+    : persisted.openTaskIds.filter((id) => restorable.taskSessionIds.has(id));
   const rawMinimized = persisted.minimizedTaskWorkspaceIds ?? [];
-  const minimizedTaskWorkspaceIds = rawMinimized.filter((id) =>
-    restorable.taskSessionIds.has(id),
-  );
+  const minimizedTaskWorkspaceIds = opts?.keepPersistedOpenTaskIds
+    ? [...new Set(rawMinimized)]
+    : rawMinimized.filter((id) => restorable.taskSessionIds.has(id));
   const openPlanning = (persisted.openPlanningTabIds ?? []).filter((id) =>
     restorable.planningSessionIds.has(id),
   );
@@ -90,7 +140,11 @@ export function normalizeRestoredProjectTabState(
       if (restorable.planningSessionIds.has(planSid)) {
         activeTabId = persisted.activeTaskId;
       }
-    } else if (restorable.taskSessionIds.has(persisted.activeTaskId)) {
+    } else if (
+      restorable.taskSessionIds.has(persisted.activeTaskId) ||
+      (opts?.keepPersistedOpenTaskIds &&
+        persisted.openTaskIds.includes(persisted.activeTaskId))
+    ) {
       activeTabId = persisted.activeTaskId;
     }
   }

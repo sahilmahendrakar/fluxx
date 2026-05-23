@@ -567,6 +567,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: (taskId: string) =>
       ipcRenderer.invoke('session:get', taskId) as Promise<Session | null>,
     getAll: () => ipcRenderer.invoke('session:getAll') as Promise<Session[]>,
+    isRestoreComplete: () =>
+      ipcRenderer.invoke('sessions:isRestoreComplete') as Promise<boolean>,
+    awaitRestoreComplete: () =>
+      ipcRenderer.invoke('sessions:awaitRestoreComplete') as Promise<void>,
+    reconcileRemote: () =>
+      ipcRenderer.invoke('session:reconcileRemote') as Promise<Session[]>,
+    onRestoreComplete: (cb: () => void) => {
+      const handler = () => cb();
+      return ipcSubscribe(ipcRenderer, 'sessions:restoreComplete', handler);
+    },
     /** Warm-reattach: attach payload (`replay` and optional `snapshot`). */
     attach: (sessionId: string) =>
       ipcRenderer.invoke('session:attach', sessionId) as Promise<AttachResult | null>,

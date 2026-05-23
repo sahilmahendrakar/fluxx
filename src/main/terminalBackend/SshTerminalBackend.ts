@@ -70,6 +70,14 @@ export type RegisterRemoteTaskSessionInput = {
   rows?: number;
 };
 
+export type RegisterRemoteShellSessionInput = {
+  shell: Shell;
+  deviceId: string;
+  tmuxSessionName: string;
+  cols?: number;
+  rows?: number;
+};
+
 export class SshTerminalBackend implements TerminalBackend {
   private readonly deviceStore: DeviceStore;
   private readonly helper: RemoteHelperClient;
@@ -110,6 +118,27 @@ export class SshTerminalBackend implements TerminalBackend {
       cols: input.cols ?? 80,
       rows: input.rows ?? 24,
     });
+  }
+
+  registerShellSession(input: RegisterRemoteShellSessionInput): void {
+    const { shell, deviceId, tmuxSessionName } = input;
+    this.shells.set(shell.id, {
+      shell: { ...shell },
+      deviceId,
+      tmuxSessionName,
+      bridge: null,
+      cols: input.cols ?? 80,
+      rows: input.rows ?? 24,
+    });
+  }
+
+  /** Running SSH task sessions only (excludes shells). */
+  countRunningTaskSessions(): number {
+    let n = 0;
+    for (const entry of this.sessions.values()) {
+      if (entry.session.status === 'running') n += 1;
+    }
+    return n;
   }
 
   ensureReady(): Promise<void> {

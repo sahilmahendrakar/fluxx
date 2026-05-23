@@ -115,8 +115,10 @@ import {
 import {
   filterSessionsForWorkspaceSidebar,
   mergeRestorableSessionIdSets,
+  mergeSessionsWithRestoringPlaceholders,
   normalizeRestoredProjectTabState,
   resolvePlanningSidebarActiveId,
+  taskIdBySessionIdFromRefs,
 } from './projectTabRestore';
 import { isPlanningSessionResumable } from './components/planningResumeUi';
 import { cloudProjectNeedsRepoBinding } from './cloudProjectActivation';
@@ -217,6 +219,12 @@ export default function App() {
   const [minimizedWorkspaceIds, setMinimizedWorkspaceIds] = useState<Set<string>>(
     () => new Set(),
   );
+  /** Open/minimized tabs waiting for startup SSH/tmux reconcile (sidebar placeholders). */
+  const [restoringWorkspaceIds, setRestoringWorkspaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [sessionsRestorePending, setSessionsRestorePending] = useState(false);
+  const taskIdBySessionIdRef = useRef<Map<string, string>>(new Map());
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('flux.sidebarCollapsed') === '1';
@@ -1381,6 +1389,8 @@ export default function App() {
       setSessionStartPendingTaskIds(new Set());
       setOpenTabIds(new Set());
       setMinimizedWorkspaceIds(new Set());
+      setRestoringWorkspaceIds(new Set());
+      setSessionsRestorePending(false);
       setActiveTabId('board');
       setPlanningSessions([]);
       setPlanningSidebarActiveId(null);
@@ -1405,6 +1415,8 @@ export default function App() {
     setPlanningSidebarActiveId(null);
     setPlanningSidebarOpen(false);
     setMinimizedWorkspaceIds(new Set());
+    setRestoringWorkspaceIds(new Set());
+    setSessionsRestorePending(true);
 
     setSessions((prev) => prev.filter((s) => s.projectId === project.id));
     setActiveTabId((prev) => {
@@ -1421,6 +1433,7 @@ export default function App() {
     void (async () => {
       let restoreOk = false;
       try {
+        const restoreComplete = await window.electronAPI.sessions.isRestoreComplete();
         const [all, persisted, restorableIds, planningListInitial] = await Promise.all([
           window.electronAPI.sessions.getAll(),
           window.electronAPI.projects.getTabs(projectKey),
@@ -1441,6 +1454,11 @@ export default function App() {
         }
         if (cancelled) return;
         const projectSessions = all.filter((s) => s.projectId === project.id);
+        const taskIdBySessionId = taskIdBySessionIdFromRefs(restorableIds.taskSessionRefs);
+        for (const s of projectSessions) {
+          taskIdBySessionId.set(s.id, s.taskId);
+        }
+        taskIdBySessionIdRef.current = taskIdBySessionId;
 
         // Cloud startup catchup: the main process cannot write to Firestore, so
         // the renderer must reconcile task status against the daemon's current
@@ -1498,20 +1516,38 @@ export default function App() {
           planningList,
           project.id,
         );
-        const normalized = normalizeRestoredProjectTabState(persisted, restorable);
+        const keepPersistedOpen =
+          !restoreComplete ||
+          persisted.openTaskIds.some((id) => !restorable.taskSessionIds.has(id));
+        const normalized = normalizeRestoredProjectTabState(persisted, restorable, {
+          keepPersistedOpenTaskIds: keepPersistedOpen,
+        });
         const openTabs = new Set(normalized.openTaskIds);
         const minimized = new Set(normalized.minimizedTaskWorkspaceIds);
-        setSessions(
-          filterSessionsForWorkspaceSidebar(
-            projectSessions,
-            project.id,
-            openTabs,
-            minimized,
-          ),
+        const hydratedIds = new Set(projectSessions.map((s) => s.id));
+        const pendingRestoreIds = new Set(
+          [...openTabs, ...minimized].filter((id) => !hydratedIds.has(id)),
         );
+        const sessionsForSidebar = filterSessionsForWorkspaceSidebar(
+          keepPersistedOpen
+            ? mergeSessionsWithRestoringPlaceholders(
+                projectSessions,
+                openTabs,
+                minimized,
+                project.id,
+                taskIdBySessionId,
+              )
+            : projectSessions,
+          project.id,
+          openTabs,
+          minimized,
+        );
+        setSessions(sessionsForSidebar);
         setPlanningSessions(planningList);
         setOpenTabIds(openTabs);
         setMinimizedWorkspaceIds(minimized);
+        setRestoringWorkspaceIds(pendingRestoreIds);
+        setSessionsRestorePending(!restoreComplete || pendingRestoreIds.size > 0);
         setOpenPlanningMainTabIds(new Set(normalized.openPlanningTabIds));
         setPlanningSidebarActiveId(
           resolvePlanningSidebarActiveId(persisted, planningList, normalized),
@@ -1538,6 +1574,61 @@ export default function App() {
       cancelled = true;
     };
   }, [project?.id, project?.kind]);
+
+  const refreshWorkspaceSessionsAfterRestore = useCallback(async () => {
+    if (!project) return;
+    try {
+      const [all, restorableIds, planningList] = await Promise.all([
+        window.electronAPI.sessions.getAll(),
+        window.electronAPI.projects.getRestorableSessionIds(),
+        window.electronAPI.planning.list(),
+      ]);
+      const projectSessions = all.filter((s) => s.projectId === project.id);
+      const restorable = mergeRestorableSessionIdSets(
+        restorableIds,
+        projectSessions,
+        planningList,
+        project.id,
+      );
+      const taskIdBySessionId = taskIdBySessionIdFromRefs(restorableIds.taskSessionRefs);
+      for (const s of projectSessions) {
+        taskIdBySessionId.set(s.id, s.taskId);
+      }
+      taskIdBySessionIdRef.current = taskIdBySessionId;
+
+      setOpenTabIds((prev) => {
+        const next = new Set([...prev].filter((id) => restorable.taskSessionIds.has(id)));
+        setMinimizedWorkspaceIds((minPrev) => {
+          const minNext = new Set([...minPrev].filter((id) => restorable.taskSessionIds.has(id)));
+          setSessions(
+            filterSessionsForWorkspaceSidebar(projectSessions, project.id, next, minNext),
+          );
+          return minNext;
+        });
+        return next;
+      });
+      setRestoringWorkspaceIds(new Set());
+      setSessionsRestorePending(false);
+    } catch (err) {
+      console.error('[App] refresh workspace sessions after restore failed', err);
+      setRestoringWorkspaceIds(new Set());
+      setSessionsRestorePending(false);
+    }
+  }, [project?.id, project?.kind]);
+
+  useEffect(() => {
+    if (!project) return;
+    return window.electronAPI.sessions.onRestoreComplete(() => {
+      void refreshWorkspaceSessionsAfterRestore();
+    });
+  }, [project?.id, project?.kind, refreshWorkspaceSessionsAfterRestore]);
+
+  useEffect(() => {
+    if (!project || !sessionsRestorePending) return;
+    void window.electronAPI.sessions.isRestoreComplete().then((done) => {
+      if (done) void refreshWorkspaceSessionsAfterRestore();
+    });
+  }, [project?.id, sessionsRestorePending, refreshWorkspaceSessionsAfterRestore]);
 
   // Planning cold rows can load after the first tab restore (record store project dir).
   useEffect(() => {
@@ -3215,8 +3306,14 @@ export default function App() {
   }, [sessions, project?.id, openTabIds, minimizedWorkspaceIds]);
 
   const sessionItems = useMemo(
-    () => buildSessionTabs(sidebarSessions, tasks, executionDeviceDefaults),
-    [sidebarSessions, tasks, executionDeviceDefaults],
+    () =>
+      buildSessionTabs(
+        sidebarSessions,
+        tasks,
+        executionDeviceDefaults,
+        restoringWorkspaceIds,
+      ),
+    [sidebarSessions, tasks, executionDeviceDefaults, restoringWorkspaceIds],
   );
 
   const sidebarSessionItems = useMemo(
@@ -3400,6 +3497,7 @@ export default function App() {
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={handleSelectPlanningDoc}
           sessionLayout={sidebarSessionLayout}
+          restoringWorkspaceIds={restoringWorkspaceIds}
           onOpenSession={handleOpenSessionFromSidebar}
           onMinimizeSession={handleMinimizeSession}
           onDeleteWorkspace={requestDeleteWorkspace}

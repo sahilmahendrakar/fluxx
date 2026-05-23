@@ -74,11 +74,22 @@ export class RoutingTerminalBackend implements TerminalBackend {
   }
 
   async shouldConfirmAppQuit(): Promise<boolean> {
-    return this.local.shouldConfirmAppQuit();
+    const local = await this.local.shouldConfirmAppQuit();
+    return local;
   }
 
   getAppQuitConfirmInfo() {
-    return this.local.getAppQuitConfirmInfo?.();
+    const localInfo = this.local.getAppQuitConfirmInfo?.() ?? {
+      needsConfirm: false,
+      persistTmuxEnabled: false,
+      directPtyCount: 0,
+      tmuxBackedCount: 0,
+    };
+    const remoteTmuxCount = this.ssh.countRunningTaskSessions();
+    if (remoteTmuxCount > 0 && !localInfo.needsConfirm) {
+      return { ...localInfo, needsConfirm: false, remoteTmuxBackedCount: remoteTmuxCount };
+    }
+    return { ...localInfo, remoteTmuxBackedCount: remoteTmuxCount };
   }
 
   getTerminalRuntimeMeta(

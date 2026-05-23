@@ -75,6 +75,8 @@ export interface AppQuitConfirmInfo {
   persistTmuxEnabled: boolean;
   directPtyCount: number;
   tmuxBackedCount: number;
+  /** Direct-SSH tmux sessions on remote hosts (not stopped by quitting Desktop). */
+  remoteTmuxBackedCount?: number;
 }
 
 export interface TerminalRuntimeMeta {

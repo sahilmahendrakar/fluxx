@@ -422,8 +422,13 @@ declare global {
           options?: SessionStartOptions,
         ) => Promise<SessionStartResult>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
+        archive: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;
         getAll: () => Promise<Session[]>;
+        isRestoreComplete: () => Promise<boolean>;
+        awaitRestoreComplete: () => Promise<void>;
+        reconcileRemote: () => Promise<Session[]>;
+        onRestoreComplete: (cb: () => void) => () => void;
         attach: (sessionId: string) => Promise<AttachResult | null>;
         write: (sessionId: string, data: string) => void;
         resize: (sessionId: string, cols: number, rows: number) => void;

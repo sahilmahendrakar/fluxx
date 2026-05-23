@@ -50,10 +50,17 @@ export interface ProjectTabState {
   minimizedTaskWorkspaceIds?: string[];
 }
 
+/** Task workspace tab identity for restore placeholders before live SSH reconcile. */
+export interface RestorableTaskSessionRef {
+  sessionId: string;
+  taskId: string;
+}
+
 /** Live plus cold-resumable session ids for tab-strip restore (per active project). */
 export interface RestorableSessionIds {
   taskSessionIds: string[];
   planningSessionIds: string[];
+  taskSessionRefs?: RestorableTaskSessionRef[];
 }
 
 /**
@@ -297,10 +304,19 @@ export type TerminalEndedReason =
   | 'shell-exit-error'
   | 'app-quit'
   | 'tmux-missing'
+  | 'device-unreachable'
+  | 'helper-mismatch'
   | 'workspace-deleted'
   | 'replaced-by-new-session'
   | 'user-stopped'
   | 'user-archived';
+
+/** Remote SSH session health after restore/reconcile (Desktop-attached direct SSH only). */
+export type RemoteSessionLifecycleStatus =
+  | 'device-unreachable'
+  | 'tmux-missing'
+  | 'helper-mismatch'
+  | 'workspace-missing';
 
 export interface TerminalSessionRecord {
   id: string;
@@ -739,6 +755,8 @@ export interface Session {
   deviceLabel?: string;
   /** Remote worktree path when {@link Session.deviceKind} is `ssh`. */
   remotePath?: string;
+  /** Set when a direct-SSH session cannot attach after restore (host offline, missing tmux, etc.). */
+  remoteLifecycleStatus?: RemoteSessionLifecycleStatus;
 }
 
 /** Persisted metadata for task agent PTY sessions (cold resume, audit). */
@@ -747,6 +765,8 @@ export type TaskAgentSessionEndedReason =
   | 'agent-exit-error'
   | 'app-quit'
   | 'tmux-missing'
+  | 'device-unreachable'
+  | 'helper-mismatch'
   | 'workspace-deleted'
   | 'replaced-by-new-session'
   | 'user-archived';
@@ -766,6 +786,10 @@ export interface TaskAgentSessionRecord {
   endedReason?: TaskAgentSessionEndedReason;
   /** Parsed from CLI output when available (Claude / Cursor). */
   agentConversationId?: string;
+  /** Direct-SSH rows: device that owns the remote tmux session. */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
 }
 
 /** Persisted metadata for planning assistant PTY sessions (cold resume). */

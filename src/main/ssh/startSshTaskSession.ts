@@ -196,6 +196,9 @@ export async function startSshTaskSession(
     fluxxWorkBranch: started.session.branch,
     ...(sourceBranchShort ? { sourceBranchShort } : {}),
     startedAt: started.session.startedAt,
+    deviceId: device.id,
+    deviceKind: 'ssh',
+    deviceLabel: device.displayName,
   });
 
   void deps.terminalSessionRecordStore.recordTerminalStart({
