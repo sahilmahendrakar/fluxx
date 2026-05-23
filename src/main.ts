@@ -54,6 +54,9 @@ import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
+import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
+import { RemoteSshSessionStore } from './main/ssh/RemoteSshSessionStore';
+import { startSshTaskSession } from './main/ssh/startSshTaskSession';
 import {
   type ExecutionDeviceHostContext,
   inferLegacyLocalTmuxForDeviceBootstrap,
@@ -924,6 +927,8 @@ app.whenReady().then(async () => {
       appStateStore.get().activeProjectKey,
     ),
   });
+  const remoteSshSessionStore = new RemoteSshSessionStore();
+  const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
 
   function executionDeviceHostContext(): ExecutionDeviceHostContext {
     return {
@@ -3768,7 +3773,10 @@ app.whenReady().then(async () => {
       };
     }
 
-    resolveEffectiveExecutionDeviceForTaskInContext(executionDeviceHostContext(), merged);
+    const executionDevice = resolveEffectiveExecutionDeviceForTaskInContext(
+      executionDeviceHostContext(),
+      merged,
+    );
 
     const projectDirForSession = activeProjectDir();
     let projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
@@ -3791,6 +3799,11 @@ app.whenReady().then(async () => {
       if (!sessionTaskMap.has(existing.id)) sessionTaskMap.set(existing.id, task.id);
       return existing;
     }
+    const existingRemote = remoteSshSessionStore.findRunningByTaskId(task.id);
+    if (existingRemote) {
+      sessionTaskMap.set(existingRemote.id, task.id);
+      return existingRemote;
+    }
 
     const taskId = task.id;
     const sendTaskStartProgress = (payload: {
@@ -3810,6 +3823,68 @@ app.whenReady().then(async () => {
       startOutcome = r;
       return r;
     };
+
+    if (executionDevice.kind === 'ssh') {
+      try {
+        const cloudProject =
+          project.kind === 'cloud'
+            ? (project as import('./types').CloudProject)
+            : null;
+        const sshResult = await startSshTaskSession(
+          {
+            deviceStore,
+            projectStore,
+            remoteSessionStore: remoteSshSessionStore,
+            gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+            taskAgentSessionRecordStore,
+            terminalSessionRecordStore,
+            resolvePlanningDocsDir,
+            activeProjectDir,
+          },
+          {
+            task: merged,
+            project,
+            executionDevice,
+            cloudProject,
+            options,
+          },
+        );
+        if ('error' in sshResult) {
+          return finish(sshResult);
+        }
+        sessionTaskMap.set(sshResult.id, task.id);
+        const priorFw = (merged.fluxxWorkBranch ?? '').trim();
+        if (priorFw !== sshResult.branch) {
+          if (project.kind === 'local') {
+            const p = projectStore.get();
+            if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
+              try {
+                await taskStore.update(task.id, { fluxxWorkBranch: sshResult.branch });
+                broadcastLocalTasksChanged();
+              } catch (err) {
+                console.warn('[session:start] failed to persist fluxxWorkBranch', err);
+              }
+            }
+          } else if (project.kind === 'cloud') {
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (win.isDestroyed()) continue;
+              win.webContents.send('task:persistFluxxWorkBranch', {
+                taskId: task.id,
+                fluxxWorkBranch: sshResult.branch,
+              });
+            }
+          }
+        }
+        return finish(sshResult);
+      } finally {
+        const outcome: SessionStartResult = startOutcome ?? {
+          error: 'INTERNAL',
+          message: 'Session start did not return a result',
+        };
+        sendTaskStartProgress({ taskId, phase: 'settled', outcome });
+      }
+    }
+
     try {
       let worktreePath = '';
       let branch = '';
@@ -4493,7 +4568,10 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
-    const sessions = await terminalBackend.listSessions();
+    const sessions = [
+      ...(await terminalBackend.listSessions()),
+      ...remoteSshSessionStore.list(),
+    ];
     const forTask = sessions.filter((s) => s.taskId === taskId);
     const running = forTask.find((s) => s.status === 'running');
     if (running) return running;
@@ -4521,7 +4599,10 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:getAll', async () => {
     const project = projectStore.get();
-    const live = await terminalBackend.listSessions();
+    const live = [
+      ...(await terminalBackend.listSessions()),
+      ...remoteSshSessionStore.list(),
+    ];
     if (!project) return live;
     const forProject = live.filter((s) => s.projectId === project.id);
     const liveIds = new Set(forProject.map((s) => s.id));

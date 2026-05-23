@@ -161,6 +161,40 @@ export class RemoteHelperClient {
     };
   }
 
+  async runJsonCommand<T>(
+    device: ExecutionDeviceConfig,
+    command: string,
+    request: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<
+    | { ok: true; version: string; data: T }
+    | { ok: false; code: string; message: string }
+  > {
+    const ssh = requireSsh(device);
+    const argv = buildOpenSshArgv({
+      ssh,
+      remoteCommand: buildRemoteHelperShellCommand(command),
+    });
+    const result = await this.runner.run({
+      argv,
+      stdin: `${JSON.stringify(request)}\n`,
+      timeoutMs: timeoutMs ?? defaultProbeTimeoutMs(ssh) + 120_000,
+    });
+    const parsed = tryParseRemoteHelperJsonOutput<T>(result.stdout);
+    if (parsed) {
+      return parsed;
+    }
+    if (result.exitCode !== 0 || result.timedOut || result.error) {
+      const mapped = mapSshFailureToProbeError(result);
+      return { ok: false, code: mapped.code, message: mapped.message };
+    }
+    return {
+      ok: false,
+      code: 'INTERNAL',
+      message: 'Remote helper returned no JSON output',
+    };
+  }
+
   private async bootstrap(device: ExecutionDeviceConfig): Promise<void> {
     const ssh = requireSsh(device);
     const source = await this.readHelperSource();
@@ -240,6 +274,28 @@ function tryParseRemoteHelperProbeOutput(
       code: envelope.error.code,
       message: envelope.error.message,
       capabilities: envelope.data,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function tryParseRemoteHelperJsonOutput<T>(
+  stdout: string,
+):
+  | { ok: true; version: string; data: T }
+  | { ok: false; code: string; message: string }
+  | null {
+  if (!stdout.trim()) return null;
+  try {
+    const envelope = parseRemoteHelperEnvelope<T>(stdout);
+    if (envelope.ok) {
+      return { ok: true, version: envelope.version, data: envelope.data };
+    }
+    return {
+      ok: false,
+      code: envelope.error.code,
+      message: envelope.error.message,
     };
   } catch {
     return null;

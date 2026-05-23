@@ -162,3 +162,48 @@ export function mapSshFailureToProbeError(input: {
 export type RemoteHelperVersionData = { version: string };
 
 export type RemoteHelperProbeData = DeviceProbeCapabilities;
+
+export type RemoteHelperRepoEnsureData = {
+  repoPath: string;
+  action: 'cloned' | 'fetched' | 'validated';
+};
+
+export type RemoteHelperWorktreeCreateData = {
+  worktreePath: string;
+  branch: string;
+};
+
+export type RemoteHelperStartTerminalData = {
+  terminalId: string;
+  tmuxSessionName: string;
+  startedAt: string;
+};
+
+export type RemoteHelperListTerminalsData = {
+  terminals: Array<{
+    id: string;
+    kind: string;
+    runtime: string;
+    projectId: string;
+    repoId?: string;
+    deviceId?: string;
+    deviceKind?: string;
+    hostLabel?: string;
+    cwd: string;
+    tmuxSessionName?: string;
+    command: string;
+    args: string[];
+    startedAt: string;
+    task?: {
+      taskId: string;
+      agent: string;
+      worktreePath: string;
+      fluxxWorkBranch: string;
+      sourceBranchShort?: string;
+    };
+  }>;
+};
+
+export type RemoteHelperJsonResult<T> =
+  | { ok: true; version: string; data: T }
+  | { ok: false; code: string; message: string };
