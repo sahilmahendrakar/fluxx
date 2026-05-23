@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Task } from '../types';
+import type { LocalProject, Task } from '../types';
+import { VALIDATION_DISABLED_CODE } from '../validation/validationEnabled';
 import { ValidationRunStore } from './ValidationRunStore';
 import {
   automationRunValidationArtifacts,
@@ -23,18 +24,35 @@ describe('fluxAutomationValidation', () => {
     }
   });
 
-  function makeHost(task: Task, store: ValidationRunStore): FluxAutomationValidationHost {
+  function makeHost(
+    task: Task,
+    store: ValidationRunStore,
+    options?: { validationEnabled?: boolean },
+  ): FluxAutomationValidationHost {
     const notifyValidationRunChanged = vi.fn();
+    const validationEnabled = options?.validationEnabled !== false;
+    const project: LocalProject = {
+      kind: 'local',
+      id: 'proj-1',
+      name: 'Demo',
+      rootPath: tmp,
+      addedAt: new Date().toISOString(),
+      planningAgent: 'claude-code',
+      defaultTaskAgent: 'cursor',
+      autoStartSessionOnInProgress: false,
+      autoRespondToTrustPrompts: false,
+      autoStartWhenUnblocked: false,
+      autoCleanupWorkspaceWhenDone: false,
+      autoMarkDoneWhenPrMerged: false,
+      autoMoveToReviewWhenPrOpen: false,
+      persistTerminalsWithTmux: false,
+      validationEnabled,
+      repos: [{ id: 'r1', rootPath: tmp, baseBranch: 'main' }],
+    };
     const active: FluxAutomationResolvedActive = {
       kind: 'local',
       activeKey: { kind: 'local', id: 'proj-1' },
-      project: {
-        id: 'proj-1',
-        name: 'Demo',
-        rootPath: tmp,
-        createdAt: new Date().toISOString(),
-        defaultTaskAgent: 'cursor',
-      },
+      project,
       projectDir: tmp,
     };
     return {
@@ -43,7 +61,9 @@ describe('fluxAutomationValidation', () => {
       notifyTasksChanged: () => undefined,
       bridge: { request: vi.fn() } as unknown as FluxAutomationValidationHost['bridge'],
       taskStore: {} as FluxAutomationValidationHost['taskStore'],
-      projectStore: {} as FluxAutomationValidationHost['projectStore'],
+      projectStore: {
+        getValidationEnabledAt: vi.fn(async () => validationEnabled),
+      } as unknown as FluxAutomationValidationHost['projectStore'],
       bindingStore: {} as FluxAutomationValidationHost['bindingStore'],
       validationRunStore: store,
       listTerminalSessions: async () => [],
@@ -55,6 +75,30 @@ describe('fluxAutomationValidation', () => {
       probeRepoPathStatus: async () => 'missing',
     };
   }
+
+  it('returns VALIDATION_DISABLED when validation is off', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-auto-disabled-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const task: Task = {
+      id: 'task-1',
+      title: 'T',
+      status: 'review',
+      agent: 'cursor',
+      projectId: 'proj-1',
+      orderKey: 'a',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const host = makeHost(task, store, { validationEnabled: false });
+    const result = await automationRunValidationRun(host, {
+      taskId: task.id,
+      packId: 'electron-playwright',
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe(VALIDATION_DISABLED_CODE);
+    }
+  });
 
   it('returns error for missing task on run', async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-auto-'));

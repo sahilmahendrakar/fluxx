@@ -150,6 +150,8 @@ export interface AutomationBridgeProjectInfoResult {
   repos?: AutomationBridgeProjectInfoRepoSummary[];
   /** Multi-repo2: stable id of the primary repo (same as {@link AutomationBridgeProjectInfoRepoSummary.isPrimary}). */
   primaryRepoId?: string;
+  /** Electron Playwright validation opt-in for this project. */
+  validationEnabled: boolean;
 }
 
 export interface AutomationBridgeRepoBranchDiscoveryPayload {

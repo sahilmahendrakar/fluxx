@@ -4,8 +4,12 @@ import { isValidationPackId } from '../validationPacks/registry';
 import type { ValidationPackId } from '../validationPacks/types';
 import { validationRunToCliJson } from '../validationRuns/cliJson';
 import type { ValidationRun } from '../validationRuns/types';
+import {
+  validationDisabledInvokeResponse,
+} from '../validation/validationEnabled';
 import type { FluxAutomationInvokeResponse } from './AutomationHttpServer';
 import type { FluxAutomationHost } from './fluxAutomationRuns';
+import { resolveValidationEnabledForAutomationHost } from './fluxAutomationRuns';
 import { resolveTaskWorktreePath } from './openWorkspacePath';
 import type { ValidationRunStore } from './ValidationRunStore';
 import { defaultValidatorAgent } from './startValidatorSession';
@@ -25,6 +29,15 @@ export type FluxAutomationValidationHost = FluxAutomationHost & {
     | { ok: false; error: string }
   >;
 };
+
+async function requireValidationEnabled(
+  h: FluxAutomationValidationHost,
+): Promise<FluxAutomationInvokeResponse | null> {
+  if (!(await resolveValidationEnabledForAutomationHost(h))) {
+    return validationDisabledInvokeResponse();
+  }
+  return null;
+}
 
 function requireProjectDir(h: FluxAutomationValidationHost): string | FluxAutomationInvokeResponse {
   const dir = h.getRecordProjectDir()?.trim();
@@ -116,6 +129,8 @@ export async function automationRunValidationRun(
   h: FluxAutomationValidationHost,
   input: { taskId: string; packId?: string; validatorAgent?: Agent; launch?: boolean },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -177,6 +192,8 @@ export async function automationRunValidationList(
   h: FluxAutomationValidationHost,
   input: { taskId: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -210,6 +227,8 @@ export async function automationRunValidationShow(
   h: FluxAutomationValidationHost,
   input: { runId: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -238,6 +257,8 @@ export async function automationRunValidationArtifacts(
   h: FluxAutomationValidationHost,
   input: { runId: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -280,6 +301,8 @@ export async function automationRunValidationIngest(
   h: FluxAutomationValidationHost,
   input: { runId: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -310,6 +333,8 @@ export async function automationRunValidationFinish(
   h: FluxAutomationValidationHost,
   input: { runId: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
@@ -343,6 +368,8 @@ export async function automationRunValidationLaunch(
   h: FluxAutomationValidationHost,
   input: { runId: string; taskId?: string },
 ): Promise<FluxAutomationInvokeResponse> {
+  const disabled = await requireValidationEnabled(h);
+  if (disabled) return disabled;
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };

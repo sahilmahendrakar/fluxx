@@ -51,6 +51,10 @@ import {
   type FluxAutomationValidationHost,
 } from './fluxAutomationValidation';
 import type { ValidationRunStore } from './ValidationRunStore';
+import {
+  VALIDATION_DISABLED_CODE,
+  VALIDATION_DISABLED_MESSAGE,
+} from '../validation/validationEnabled';
 
 export type FluxAutomationResolvedActive =
   | { kind: 'none' }
@@ -167,12 +171,41 @@ function parseAutomationAttachedPlanningDocs(
   return { ok: true, docs: parsed.docs };
 }
 
+export async function resolveValidationEnabledForAutomationHost(
+  h: FluxAutomationHost,
+): Promise<boolean> {
+  const active = h.resolveActive();
+  if (active.kind === 'none') return false;
+  if (active.kind === 'local') {
+    return active.project.validationEnabled;
+  }
+  const projectDir = h.getRecordProjectDir()?.trim();
+  if (projectDir) {
+    try {
+      return await h.projectStore.getValidationEnabledAt(projectDir);
+    } catch {
+      // fall through
+    }
+  }
+  return false;
+}
+
 function parseAutomationValidationPlan(
   raw: unknown,
   mode: 'create' | 'update',
-): { ok: true; plan: TaskValidationPlan | null | undefined } | { ok: false; error: string } {
+  validationEnabled: boolean,
+):
+  | { ok: true; plan: TaskValidationPlan | null | undefined }
+  | { ok: false; error: string; code?: string } {
   if (raw === undefined) {
     return { ok: true, plan: undefined };
+  }
+  if (!validationEnabled) {
+    return {
+      ok: false,
+      error: VALIDATION_DISABLED_MESSAGE,
+      code: VALIDATION_DISABLED_CODE,
+    };
   }
   if (raw === null) {
     if (mode === 'create') {
@@ -200,9 +233,18 @@ export async function automationRunCreateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
-  const planParsed = parseAutomationValidationPlan(input.validationPlan, 'create');
+  const validationEnabled = await resolveValidationEnabledForAutomationHost(h);
+  const planParsed = parseAutomationValidationPlan(
+    input.validationPlan,
+    'create',
+    validationEnabled,
+  );
   if (!planParsed.ok) {
-    return { ok: false, error: planParsed.error };
+    return {
+      ok: false,
+      error: planParsed.error,
+      ...(planParsed.code ? { code: planParsed.code } : {}),
+    };
   }
   const validationPlan = planParsed.plan;
   const agent: Agent | null =
@@ -325,9 +367,18 @@ export async function automationRunUpdateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
-  const planParsed = parseAutomationValidationPlan(input.validationPlan, 'update');
+  const validationEnabled = await resolveValidationEnabledForAutomationHost(h);
+  const planParsed = parseAutomationValidationPlan(
+    input.validationPlan,
+    'update',
+    validationEnabled,
+  );
   if (!planParsed.ok) {
-    return { ok: false, error: planParsed.error };
+    return {
+      ok: false,
+      error: planParsed.error,
+      ...(planParsed.code ? { code: planParsed.code } : {}),
+    };
   }
   const validationPlan = planParsed.plan;
   if (active.kind === 'local') {
@@ -605,6 +656,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       data: {
         name: active.project.name,
         rootPath: primaryRootPath,
+        validationEnabled: active.project.validationEnabled,
         taskCounts,
         ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
         ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
@@ -621,6 +673,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
     data: {
       name: data.name,
       rootPath: active.rootPath,
+      validationEnabled: data.validationEnabled === true,
       taskCounts: data.taskCounts,
       ...(data.defaultBranchShort !== undefined ? { defaultBranchShort: data.defaultBranchShort } : {}),
       ...(data.branchDiscoveryError !== undefined ? { branchDiscoveryError: data.branchDiscoveryError } : {}),

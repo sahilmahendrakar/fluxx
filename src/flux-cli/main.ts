@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { FluxCliConnectionError, invokeFluxAutomation } from './client';
+import { VALIDATION_DISABLED_CODE, validationDisabledJson } from '../validation/validationEnabled';
 import { loadFluxCliBridgeConfig } from './config';
 import { printFluxCliHelp } from './help';
 import { parseFluxCliArgs } from './parseArgs';
@@ -126,7 +127,11 @@ export async function runFluxCli(argv: string[]): Promise<number> {
     const result = await invokeFluxAutomation(config, op, payload);
     if (!result.ok) {
       if (command.json) {
-        printJson(result);
+        if (result.code === VALIDATION_DISABLED_CODE) {
+          printJson(validationDisabledJson());
+        } else {
+          printJson(result);
+        }
       } else {
         printError(result.error);
       }

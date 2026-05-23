@@ -37,6 +37,8 @@ export interface CloudProjectSummary {
   createdAt: string;
   /** Shared logical repos for the team (Firestore `repos` field). */
   repos?: CloudSharedRepo[];
+  /** Team-wide Electron Playwright validation opt-in (default off). */
+  validationEnabled?: boolean;
 }
 
 export function subscribeToCloudProjects(
@@ -75,7 +77,20 @@ function toCloudProjectSummary(
     memberIds: Array.isArray(data.memberIds) ? (data.memberIds as string[]) : [],
     createdAt: tsToIso(data.createdAt),
     ...(repos ? { repos } : {}),
+    ...(data.validationEnabled === true ? { validationEnabled: true } : {}),
   };
+}
+
+export async function updateCloudProjectValidationEnabled(
+  projectId: string,
+  enabled: boolean,
+): Promise<void> {
+  const trimmed = projectId.trim();
+  if (!trimmed) throw new Error('projectId is required');
+  const db = getFirebaseFirestore();
+  await updateDoc(doc(db, 'projects', trimmed), {
+    validationEnabled: enabled === true,
+  });
 }
 
 function tsToIso(ts: unknown): string {

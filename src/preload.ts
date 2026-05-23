@@ -239,6 +239,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setPersistTerminalsWithTmux', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getValidationEnabled: () =>
+      ipcRenderer.invoke('project:getValidationEnabled') as Promise<boolean>,
+    setValidationEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setValidationEnabled', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
   },
   terminal: {
     inventorySnapshot: () =>

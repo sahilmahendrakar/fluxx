@@ -16,6 +16,7 @@ import { resolveValidatorWorktree, startValidatorSession } from './startValidato
 import type { ValidationRunStore } from './ValidationRunStore';
 import type { ValidationRun } from '../validationRuns/types';
 import type { ActiveProjectKey } from '../types';
+import { VALIDATION_DISABLED_MESSAGE } from '../validation/validationEnabled';
 
 export type ValidatorSessionLauncherDeps = {
   validationRunStore: ValidationRunStore;
@@ -23,6 +24,7 @@ export type ValidatorSessionLauncherDeps = {
   listTerminalSessions: () => Promise<Session[]>;
   getRecordProjectDir: () => string;
   getProject: () => LocalProject | null;
+  getValidationEnabled: () => Promise<boolean>;
   getActiveProjectKey: () => ActiveProjectKey | null;
   getFluxAutomation: () => {
     server: { whenReady: () => Promise<void>; baseUrl: string } | null;
@@ -40,6 +42,10 @@ export function createValidatorSessionLauncher(
     const projectDir = deps.getRecordProjectDir()?.trim();
     if (!projectDir) {
       return { ok: false, error: 'No project directory open for validation runs' };
+    }
+
+    if (!(await deps.getValidationEnabled())) {
+      return { ok: false, error: VALIDATION_DISABLED_MESSAGE };
     }
 
     const project = deps.getProject();

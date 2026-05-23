@@ -40,6 +40,7 @@ import {
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
   DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
 } from '../cloudBindingPrefs';
+import { normalizeValidationEnabled } from '../validation/validationEnabled';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
 import type { ProjectPlanningDefaultsInput } from '../projectCreate';
 
@@ -66,6 +67,7 @@ export interface ConfigFile {
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
   persistTerminalsWithTmux?: boolean;
+  validationEnabled?: boolean;
   repos: RepoConfig[];
 }
 
@@ -120,6 +122,7 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     autoMarkDoneWhenPrMerged: c.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: c.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: c.persistTerminalsWithTmux === true,
+    validationEnabled: normalizeValidationEnabled(c.validationEnabled),
     repos: c.repos,
   };
   if (c.planningModels && Object.keys(c.planningModels).length > 0) {
@@ -288,6 +291,9 @@ function parseConfig(raw: string): ConfigFile | null {
     autoMarkDoneWhenPrMerged: p.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: p.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: p.persistTerminalsWithTmux === true,
+    validationEnabled: normalizeValidationEnabled(
+      (p as { validationEnabled?: unknown }).validationEnabled,
+    ),
     repos,
     ...(planningModels ? { planningModels } : {}),
     ...(py === true ? { planningAgentYolo: true } : {}),
@@ -834,6 +840,33 @@ export class ProjectStore {
     return next.persistTerminalsWithTmux === true;
   }
 
+  async getValidationEnabledAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return normalizeValidationEnabled(parsed.validationEnabled);
+  }
+
+  async setValidationEnabledAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      validationEnabled: enabled === true,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return normalizeValidationEnabled(next.validationEnabled);
+  }
+
   private async mutateConfig(
     fn: (c: ConfigFile) => ConfigFile,
   ): Promise<void> {
@@ -967,6 +1000,7 @@ export class ProjectStore {
           autoMoveToReviewWhenPrOpen:
             defaults.autoMoveToReviewWhenPrOpen ?? DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
           persistTerminalsWithTmux: DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
+          validationEnabled: false,
           repos,
           ...(defaults.planningModels && Object.keys(defaults.planningModels).length > 0
             ? { planningModels: defaults.planningModels }
@@ -985,7 +1019,7 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       name,
       planningContextRoot,
-      { multiRepoGuide: repos.length > 1 },
+      { multiRepoGuide: repos.length > 1, validationEnabled: false },
     );
 
     const project = configToLocalProject(config);
@@ -1027,7 +1061,10 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       config.name,
       planningRoot,
-      { multiRepoGuide: config.repos.length > 1 },
+      {
+        multiRepoGuide: config.repos.length > 1,
+        validationEnabled: normalizeValidationEnabled(config.validationEnabled),
+      },
     );
 
     return { projectDir, project: configToLocalProject(config) };
@@ -1233,6 +1270,10 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       projectName,
       resolvedRoot,
+      {
+        multiRepoGuide: config.repos.length > 1,
+        validationEnabled: normalizeValidationEnabled(config.validationEnabled),
+      },
     );
 
     return { projectDir, project: configToLocalProject(config) };
