@@ -59,6 +59,10 @@ describe('DeviceStore', () => {
     });
     expect(created.kind).toBe('ssh');
     expect(created.ssh?.host).toBe('gpu');
+    const withAgent = await store.updateDevice(created.id, { forwardAgent: true });
+    expect(withAgent.ssh?.forwardAgent).toBe(true);
+    const withoutAgent = await store.updateDevice(created.id, { forwardAgent: false });
+    expect(withoutAgent.ssh?.forwardAgent).toBeUndefined();
     const updated = await store.updateDevice(created.id, {
       displayName: 'GPU Box',
       enabled: false,

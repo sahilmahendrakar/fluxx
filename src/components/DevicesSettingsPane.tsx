@@ -8,6 +8,10 @@ import type {
   SshExecutionDeviceUpsertInput,
 } from '../types';
 import { BUILTIN_LOCAL_DEVICE_ID, DEFAULT_SSH_WORKSPACE_ROOT } from '../executionDevices/constants';
+import {
+  buildAvailableProbeMessage,
+  probeAgentWarningMessage,
+} from '../executionDevices/probeAgents';
 import { useExecutionDevices } from '../hooks/useExecutionDevices';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -19,8 +23,13 @@ type ProjectRef = LocalProject | CloudProject;
 function probeStatusLabel(device: ExecutionDeviceConfig): string {
   const probe = device.lastProbe;
   if (!probe) return 'Not probed yet';
-  if (probe.status === 'available') return 'Available';
-  if (probe.status === 'unavailable') return probe.message ?? 'Unavailable';
+  if (probe.status === 'available') {
+    return probe.message ?? buildAvailableProbeMessage(probe.capabilities);
+  }
+  if (probe.status === 'unavailable') {
+    if (probe.phase) return `${probe.message ?? 'Unavailable'} · phase: ${probe.phase}`;
+    return probe.message ?? 'Unavailable';
+  }
   if (probe.status === 'probing') return 'Probing…';
   return 'Unknown';
 }
@@ -44,6 +53,7 @@ function SshDeviceFormModal({
     initial?.workspaceRoot ?? DEFAULT_SSH_WORKSPACE_ROOT,
   );
   const [tmuxEnabled, setTmuxEnabled] = useState(initial?.tmux.enabled ?? true);
+  const [forwardAgent, setForwardAgent] = useState(initial?.ssh?.forwardAgent === true);
   const [shell, setShell] = useState(initial?.shell ?? '');
   const [extraArgs, setExtraArgs] = useState(initial?.ssh?.extraArgs?.join(' ') ?? '');
   const [connectTimeout, setConnectTimeout] = useState(
@@ -72,6 +82,7 @@ function SshDeviceFormModal({
         port: portNum != null && Number.isFinite(portNum) ? portNum : undefined,
         workspaceRoot,
         tmuxEnabled,
+        forwardAgent,
         shell: shell.trim() || undefined,
         extraArgs: args.length > 0 ? args : undefined,
         connectTimeoutSeconds:
@@ -99,8 +110,8 @@ function SshDeviceFormModal({
           {initial ? 'Edit SSH device' : 'Add SSH device'}
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
-          Uses your OpenSSH config on this computer (aliases, keys, ProxyJump). Probe and remote
-          sessions ship in a later release.
+          Uses your OpenSSH config on this computer (aliases, keys, ProxyJump). Fluxx installs a
+          small remote helper on first probe.
         </p>
         <div className="mt-4 space-y-3">
           <label className="block text-[11px] font-medium text-zinc-400">
@@ -172,6 +183,24 @@ function SshDeviceFormModal({
           <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
             <input
               type="checkbox"
+              checked={forwardAgent}
+              onChange={(e) => setForwardAgent(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2]"
+            />
+            <span className="leading-snug">
+              <span className="font-medium text-zinc-100">
+                Use this Mac&apos;s SSH keys for Git on the remote
+              </span>
+              <span className="mt-1 block text-[11px] text-zinc-500">
+                Enables SSH agent forwarding so the remote host can use keys loaded in your Mac&apos;s
+                ssh-agent (for example GitHub). Your private keys stay on this computer. Fluxx
+                automatically trusts Git SSH host keys on the remote during probe.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-zinc-300">
+            <input
+              type="checkbox"
               checked={tmuxEnabled}
               onChange={(e) => setTmuxEnabled(e.target.checked)}
               className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2]"
@@ -219,6 +248,7 @@ export function DevicesSettingsPane({ project }: { project: ProjectRef | null })
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editorDevice, setEditorDevice] = useState<ExecutionDeviceConfig | 'new' | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ExecutionDeviceConfig | null>(null);
+  const [probingDeviceId, setProbingDeviceId] = useState<string | null>(null);
 
   const loadDefaults = useCallback(async () => {
     setDefaultsLoading(true);
@@ -285,13 +315,31 @@ export function DevicesSettingsPane({ project }: { project: ProjectRef | null })
   };
 
   const handleSaveSsh = async (input: SshExecutionDeviceUpsertInput) => {
+    let saved: ExecutionDeviceConfig;
     if (editorDevice === 'new') {
-      await window.electronAPI.executionDevices.createSsh(input);
+      saved = await window.electronAPI.executionDevices.createSsh(input);
     } else if (editorDevice) {
       const patch: ExecutionDeviceUpdateInput = { ...input };
-      await window.electronAPI.executionDevices.update(editorDevice.id, patch);
+      saved = await window.electronAPI.executionDevices.update(editorDevice.id, patch);
+    } else {
+      return;
     }
     await reload();
+    await runProbe(saved.id);
+  };
+
+  const runProbe = async (deviceId: string) => {
+    setSaveError(null);
+    setProbingDeviceId(deviceId);
+    try {
+      await window.electronAPI.executionDevices.probe(deviceId);
+      await reload();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+      await reload();
+    } finally {
+      setProbingDeviceId(null);
+    }
   };
 
   const toggleEnabled = async (device: ExecutionDeviceConfig) => {
@@ -435,14 +483,31 @@ export function DevicesSettingsPane({ project }: { project: ProjectRef | null })
                         </p>
                         <p className="mt-1 text-[11px] text-zinc-600">
                           Tmux persistence {device.tmux.enabled ? 'on' : 'off'}
+                          {device.kind === 'ssh' && device.ssh?.forwardAgent
+                            ? ' · Agent forwarding on'
+                            : ''}
                           {' · '}
                           {probeStatusLabel(device)}
                         </p>
+                        {device.kind === 'ssh' ? (() => {
+                          const agentWarning = probeAgentWarningMessage(device.lastProbe);
+                          return agentWarning ? (
+                            <p className="mt-1 text-[11px] text-amber-300/90">{agentWarning}</p>
+                          ) : null;
+                        })() : null}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">
                       {device.kind === 'ssh' ? (
                         <>
+                          <button
+                            type="button"
+                            disabled={probingDeviceId === device.id}
+                            onClick={() => void runProbe(device.id)}
+                            className="rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-50"
+                          >
+                            {probingDeviceId === device.id ? 'Probing…' : 'Probe'}
+                          </button>
                           <button
                             type="button"
                             onClick={() => setEditorDevice(device)}

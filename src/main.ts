@@ -53,6 +53,7 @@ import {
 import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
+import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import {
   type ExecutionDeviceHostContext,
   inferLegacyLocalTmuxForDeviceBootstrap,
@@ -931,6 +932,15 @@ app.whenReady().then(async () => {
       bindingStore,
       activeKey: appStateStore.get().activeProjectKey,
     };
+  }
+
+  function createDeviceProbeService(): DeviceProbeService {
+    return new DeviceProbeService(deviceStore, {
+      projectStore,
+      bindingStore,
+      activeKey: appStateStore.get().activeProjectKey,
+      cloudProject: null,
+    });
   }
 
   let activeRootPath = projectStore.get()?.rootPath ?? '';
@@ -2649,6 +2659,13 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('executionDevices:remove', async (_e, deviceId: string) => {
     await deviceStore.removeDevice(deviceId);
+  });
+
+  ipcMain.handle('executionDevices:probe', async (_e, deviceId: string) => {
+    if (typeof deviceId !== 'string' || !deviceId.trim()) {
+      throw new Error('deviceId is required');
+    }
+    return await createDeviceProbeService().probeDevice(deviceId.trim());
   });
 
   ipcMain.handle('tasks:resolveEffectiveExecutionDevice', async (_e, task: Task) =>

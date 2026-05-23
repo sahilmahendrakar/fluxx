@@ -459,17 +459,65 @@ export interface ExecutionDeviceSshConfig {
   host: string;
   user?: string;
   port?: number;
+  /** When true, pass `-o ForwardAgent=yes` so Git on the remote can use this Mac's ssh-agent keys. */
+  forwardAgent?: boolean;
   extraArgs?: string[];
   connectTimeoutSeconds?: number;
 }
 
-/** Stub probe result until remote probing ships (settings UI + status chips). */
 export type DeviceProbeStatus = 'unknown' | 'available' | 'unavailable' | 'probing';
+
+/** Structured probe / SSH transport errors surfaced in Devices UI and session start. */
+export type DeviceProbeErrorCode =
+  | 'SSH_CONNECT_FAILED'
+  | 'SSH_HOST_KEY_FAILED'
+  | 'SSH_AUTH_FAILED'
+  | 'SSH_TIMEOUT'
+  | 'SSH_HELPER_MISSING'
+  | 'SSH_HELPER_VERSION_MISMATCH'
+  | 'SSH_HELPER_BOOTSTRAP_FAILED'
+  | 'REMOTE_TMUX_MISSING'
+  | 'REMOTE_GIT_MISSING'
+  | 'REMOTE_AGENT_NOT_FOUND'
+  | 'REMOTE_WORKSPACE_UNWRITABLE'
+  | 'REMOTE_REPO_ACCESS_FAILED'
+  | 'INTERNAL';
+
+export interface DeviceProbeAgentCapability {
+  command: string;
+  found: boolean;
+  path?: string;
+  version?: string;
+}
+
+export interface DeviceProbeRepoCapability {
+  repoId: string;
+  label?: string;
+  remoteUrl?: string;
+  accessible: boolean;
+  error?: string;
+}
+
+export interface DeviceProbeCapabilities {
+  os?: string;
+  arch?: string;
+  shell?: string;
+  git?: { found: boolean; path?: string; version?: string };
+  tmux?: { found: boolean; path?: string; version?: string };
+  workspaceRoot?: { path: string; writable: boolean };
+  agents?: DeviceProbeAgentCapability[];
+  repos?: DeviceProbeRepoCapability[];
+}
 
 export interface DeviceProbeResult {
   status: DeviceProbeStatus;
   checkedAt: string;
   message?: string;
+  errorCode?: DeviceProbeErrorCode;
+  /** Failing step label, e.g. `ssh-connect`, `helper-bootstrap`, `probe-tmux`. */
+  phase?: string;
+  capabilities?: DeviceProbeCapabilities;
+  helperVersion?: string;
 }
 
 /** Input for creating an SSH device in the global registry. */
@@ -480,6 +528,7 @@ export type SshExecutionDeviceUpsertInput = {
   port?: number;
   workspaceRoot: string;
   tmuxEnabled: boolean;
+  forwardAgent?: boolean;
   shell?: string;
   extraArgs?: string[];
   connectTimeoutSeconds?: number;

@@ -177,6 +177,7 @@ export class DeviceStore {
         host,
         ...(input.user?.trim() ? { user: input.user.trim() } : {}),
         ...(input.port != null && Number.isFinite(input.port) ? { port: input.port } : {}),
+        ...(input.forwardAgent === true ? { forwardAgent: true } : {}),
         ...(input.extraArgs?.length ? { extraArgs: input.extraArgs } : {}),
         ...(input.connectTimeoutSeconds != null && Number.isFinite(input.connectTimeoutSeconds)
           ? { connectTimeoutSeconds: input.connectTimeoutSeconds }
@@ -242,6 +243,10 @@ export class DeviceStore {
         if (patch.port == null) delete next.ssh.port;
         else next.ssh.port = patch.port;
       }
+      if (patch.forwardAgent !== undefined) {
+        if (patch.forwardAgent) next.ssh.forwardAgent = true;
+        else delete next.ssh.forwardAgent;
+      }
       if (patch.extraArgs !== undefined) {
         if (patch.extraArgs.length > 0) next.ssh.extraArgs = patch.extraArgs;
         else delete next.ssh.extraArgs;
@@ -269,6 +274,22 @@ export class DeviceStore {
       this.defaultDeviceId = undefined;
     }
     await this.save();
+  }
+
+  async setLastProbe(id: string, probe: import('../types').DeviceProbeResult): Promise<ExecutionDeviceConfig> {
+    const idx = this.devices.findIndex((d) => d.id === id);
+    if (idx < 0) throw new Error(`Unknown device id: ${id}`);
+    const existing = this.devices[idx];
+    const next: ExecutionDeviceConfig = {
+      ...existing,
+      updatedAt: new Date().toISOString(),
+      lastProbe: probe,
+      tmux: { ...existing.tmux },
+      ...(existing.ssh ? { ssh: { ...existing.ssh } } : {}),
+    };
+    this.devices[idx] = next;
+    await this.save();
+    return this.getDevice(id)!;
   }
 
   getBuiltInLocalDevice(): ExecutionDeviceConfig {

@@ -30,6 +30,7 @@ import type {
   TaskAttachedPlanningDoc,
   TaskExecutionDeviceRef,
   ExecutionDeviceConfig,
+  DeviceProbeResult,
   ExecutionDeviceUpdateInput,
   SshExecutionDeviceUpsertInput,
 } from './types';
@@ -310,6 +311,7 @@ declare global {
           patch: ExecutionDeviceUpdateInput,
         ) => Promise<ExecutionDeviceConfig>;
         remove: (deviceId: string) => Promise<void>;
+        probe: (deviceId: string) => Promise<DeviceProbeResult>;
       };
       cloudBindings: {
         getPerTaskDeviceOverrides: (
