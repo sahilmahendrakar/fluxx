@@ -19,6 +19,7 @@ import AgentModelPicker from './AgentModelPicker';
 import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
+import { DevicesSettingsPane } from './DevicesSettingsPane';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -33,7 +34,7 @@ interface Props {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type Category = 'project' | 'team';
+type Category = 'project' | 'devices' | 'team';
 
 function isRepoManagementStatesError(
   result:
@@ -245,6 +246,11 @@ export function ProjectSettingsView({
           label="Project Config"
           onClick={() => setCategory('project')}
         />
+        <CategoryButton
+          active={category === 'devices'}
+          label="Devices"
+          onClick={() => setCategory('devices')}
+        />
         {teamAvailable ? (
           <CategoryButton
             active={category === 'team'}
@@ -261,6 +267,8 @@ export function ProjectSettingsView({
             onProjectAgentPrefsRefresh={onProjectAgentPrefsRefresh}
             onCloudSharedReposChanged={onCloudSharedReposChanged}
           />
+        ) : category === 'devices' ? (
+          <DevicesSettingsPane project={project} />
         ) : teamAvailable && project.kind === 'cloud' && currentUid ? (
           <TeamView
             project={project}

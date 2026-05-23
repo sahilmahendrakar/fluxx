@@ -24,6 +24,8 @@ import type {
   Task,
   TaskExecutionDeviceRef,
   ExecutionDeviceConfig,
+  ExecutionDeviceUpdateInput,
+  SshExecutionDeviceUpsertInput,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentPayload,
@@ -360,6 +362,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke(
         'executionDevices:resolveDefaultForNewTask',
       ) as Promise<TaskExecutionDeviceRef>,
+    createSsh: (input: SshExecutionDeviceUpsertInput) =>
+      ipcRenderer.invoke('executionDevices:createSsh', input) as Promise<ExecutionDeviceConfig>,
+    update: (deviceId: string, patch: ExecutionDeviceUpdateInput) =>
+      ipcRenderer.invoke('executionDevices:update', deviceId, patch) as Promise<
+        ExecutionDeviceConfig
+      >,
+    remove: (deviceId: string) =>
+      ipcRenderer.invoke('executionDevices:remove', deviceId) as Promise<void>,
   },
   cloudBindings: {
     getPerTaskDeviceOverrides: (projectId: string) =>

@@ -46,6 +46,29 @@ describe('DeviceStore', () => {
     expect(store.getBuiltInLocalDevice().tmux.enabled).toBe(true);
   });
 
+  it('creates, updates, and removes ssh devices', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-device-store-crud-'));
+    filePath = path.join(dir, 'executionDevices.json');
+    const store = new DeviceStore({ filePath });
+    await store.init();
+    const created = await store.createSshDevice({
+      displayName: 'GPU box',
+      host: 'gpu',
+      workspaceRoot: '~/.fluxx/workspaces',
+      tmuxEnabled: true,
+    });
+    expect(created.kind).toBe('ssh');
+    expect(created.ssh?.host).toBe('gpu');
+    const updated = await store.updateDevice(created.id, {
+      displayName: 'GPU Box',
+      enabled: false,
+    });
+    expect(updated.displayName).toBe('GPU Box');
+    expect(updated.enabled).toBe(false);
+    await store.removeDevice(created.id);
+    expect(store.listDevices().some((d) => d.id === created.id)).toBe(false);
+  });
+
   it('persists global default device id', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-device-store-default-'));
     filePath = path.join(dir, 'executionDevices.json');

@@ -78,6 +78,8 @@ import {
   useCloudSilenceReconciliation,
 } from './renderer/tasks/useCloudSilenceReconciliation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
+import { useExecutionDevices } from './hooks/useExecutionDevices';
+import type { TaskExecutionDeviceRef } from './types';
 import { normalizeTaskLabels } from './taskLabels';
 import { sanitizeTaskAttachedPlanningDocsInput } from './taskAttachedPlanningDocs';
 import { selectSessionForTaskWorkspace } from './sessionWorkspacePick';
@@ -196,6 +198,7 @@ function readStoredPlanningWidth(): number | null {
 
 export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
+  const { devices: executionDevices } = useExecutionDevices();
   const [project, setProject] = useState<ActiveProject | null>(null);
   const [activationLoading, setActivationLoading] = useState(true);
   const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
@@ -2484,6 +2487,7 @@ export default function App() {
         createSourceBranchIfMissing?: boolean;
         repoId?: string;
       },
+      executionDevice?: TaskExecutionDeviceRef,
     ) => {
       if (!provider) return;
       try {
@@ -2512,6 +2516,7 @@ export default function App() {
             ? { createSourceBranchIfMissing: branch.createSourceBranchIfMissing }
             : {}),
           ...(branch?.repoId !== undefined ? { repoId: branch.repoId } : {}),
+          ...(executionDevice ? { executionDevice } : {}),
         });
         setTasks((prev) => {
           if (prev.some((t) => t.id === task.id)) return prev;
@@ -3394,6 +3399,8 @@ export default function App() {
               activeTabId={activeTabId}
               openSessions={openTabItems}
               openPlanningTabs={openPlanningTabItems}
+              executionDevices={executionDevices}
+              cloudProject={project?.kind === 'cloud'}
               settingsRouteActive={settingsRouteActive}
               onSelectTab={handleSelectWorkspaceTab}
               onCloseSessionTab={handleCloseSessionTab}
@@ -3615,6 +3622,8 @@ export default function App() {
                         planningInitBusy={planningInitBusy}
                         onPlanningInitStart={() => void handlePlanningInitStart()}
                         onPlanningInitSkip={() => void handlePlanningInitSkip()}
+                        executionDevices={executionDevices}
+                        cloudProject={project.kind === 'cloud'}
                       />
                       <TaskDetailPanel
                         task={selectedTask}
@@ -3664,6 +3673,8 @@ export default function App() {
                         onOpenPlanningDoc={handleSelectPlanningDoc}
                         projectRepoReadiness={projectRepoReadiness}
                         onOpenProjectSettings={handleOpenProjectSettings}
+                        executionDevices={executionDevices}
+                        cloudProject={project.kind === 'cloud'}
                       />
                     </div>
                     <div

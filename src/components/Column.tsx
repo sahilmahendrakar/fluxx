@@ -5,6 +5,7 @@ import {
   Task,
   TaskStatus,
   type CloudRepoBindingOverview,
+  type ExecutionDeviceConfig,
   type RepoConfig,
 } from '../types';
 import {
@@ -50,6 +51,8 @@ interface Props {
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   onOpenTaskWorkspaceTab: (taskId: string) => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
 }
 
 export default function Column({
@@ -81,6 +84,8 @@ export default function Column({
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
   onOpenTaskWorkspaceTab,
+  executionDevices,
+  cloudProject,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
   const isReview = id === 'review';
@@ -192,6 +197,8 @@ export default function Column({
                     onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
                     canOpenTaskWorkspaceTab={canOpenTaskWorkspaceTab}
                     onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
+                    executionDevices={executionDevices}
+                    cloudProject={cloudProject}
                   />
                 );
               })}

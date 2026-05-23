@@ -1,4 +1,6 @@
 import type {
+  DeviceProbeResult,
+  DeviceProbeStatus,
   ExecutionDeviceConfig,
   ExecutionDeviceSshConfig,
   ExecutionDeviceTmuxSettings,
@@ -102,8 +104,28 @@ function parseTmuxSettings(raw: unknown): ExecutionDeviceTmuxSettings | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.enabled !== 'boolean') return null;
-  const out: ExecutionDeviceTmuxSettings = { enabled: o.enabled };
-  if (o.required === true) out.required = true;
+  return { enabled: o.enabled };
+}
+
+const PROBE_STATUSES: DeviceProbeStatus[] = ['unknown', 'available', 'unavailable', 'probing'];
+
+function parseDeviceProbeResult(raw: unknown): DeviceProbeResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (
+    typeof o.status !== 'string' ||
+    !(PROBE_STATUSES as string[]).includes(o.status)
+  ) {
+    return null;
+  }
+  if (typeof o.checkedAt !== 'string' || !o.checkedAt) return null;
+  const out: DeviceProbeResult = {
+    status: o.status as DeviceProbeStatus,
+    checkedAt: o.checkedAt,
+  };
+  if (typeof o.message === 'string' && o.message.trim()) {
+    out.message = o.message.trim();
+  }
   return out;
 }
 
@@ -157,6 +179,10 @@ export function parseExecutionDeviceConfig(raw: unknown): ExecutionDeviceConfig 
   };
   if (typeof o.lastUsedAt === 'string' && o.lastUsedAt) {
     config.lastUsedAt = o.lastUsedAt;
+  }
+  const lastProbe = parseDeviceProbeResult(o.lastProbe);
+  if (lastProbe) {
+    config.lastProbe = lastProbe;
   }
   if (typeof o.shell === 'string' && o.shell.trim()) {
     config.shell = o.shell.trim();

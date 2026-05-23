@@ -24,10 +24,14 @@ import {
   DEFAULT_CURSOR_AGENT_MODEL,
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
+  type ExecutionDeviceConfig,
   type RepoBranchDiscovery,
   type RepoConfig,
   type ResolveTaskWorktreeIpcResult,
+  type TaskExecutionDeviceRef,
 } from '../types';
+import { ExecutionDevicePicker } from './ExecutionDevicePicker';
+import { isTaskExecutionDeviceEditable } from '../executionDevices/deviceUi';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import {
   effectiveTaskRepoId,
@@ -166,6 +170,8 @@ export interface TaskDetailPanelProps {
   onOpenPlanningDoc?: (relativePath: string) => void;
   projectRepoReadiness?: ProjectRepoReadiness;
   onOpenProjectSettings?: () => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -271,8 +277,13 @@ export default function TaskDetailPanel({
   onOpenPlanningDoc,
   projectRepoReadiness = READY_PROJECT_REPO_READINESS,
   onOpenProjectSettings,
+  executionDevices = [],
+  cloudProject = false,
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
+  const [resolvedDevice, setResolvedDevice] = useState<TaskExecutionDeviceRef | undefined>(
+    task?.executionDevice,
+  );
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
@@ -364,6 +375,24 @@ export default function TaskDetailPanel({
     setSourceMetadataError(null);
     setAnySessionForTask(false);
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task) {
+      setResolvedDevice(undefined);
+      return;
+    }
+    if (task.executionDevice) {
+      setResolvedDevice(task.executionDevice);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.tasks.resolveEffectiveExecutionDevice(task).then((ref) => {
+      if (!cancelled) setResolvedDevice(ref);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id, task?.executionDevice]);
 
   useEffect(() => {
     if (!task || !primaryRepoId) return;
@@ -1426,6 +1455,31 @@ export default function TaskDetailPanel({
                   </select>
                 </div>
               </div>
+
+              {executionDevices.length > 0 ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="shrink-0">
+                    <p className="text-xs text-zinc-500">Run on</p>
+                    {sessionRunning ? (
+                      <p className="mt-0.5 text-[10px] text-zinc-600">
+                        Locked while the session is running.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 sm:max-w-[min(18rem,100%)] sm:flex-1">
+                    <ExecutionDevicePicker
+                      id={`task-${task.id}-device`}
+                      devices={executionDevices}
+                      value={task.executionDevice ?? resolvedDevice}
+                      onChange={(ref) => onUpdate(task.id, { executionDevice: ref })}
+                      disabled={!isTaskExecutionDeviceEditable(session?.status)}
+                      cloudProject={cloudProject}
+                      hasExplicitTaskDevice={Boolean(task.executionDevice)}
+                      aria-label="Execution device"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               {projectMembers !== undefined ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">

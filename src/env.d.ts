@@ -30,6 +30,8 @@ import type {
   TaskAttachedPlanningDoc,
   TaskExecutionDeviceRef,
   ExecutionDeviceConfig,
+  ExecutionDeviceUpdateInput,
+  SshExecutionDeviceUpsertInput,
 } from './types';
 import type {
   AgentState,
@@ -302,6 +304,12 @@ declare global {
         getGlobalDefault: () => Promise<string | null>;
         setGlobalDefault: (deviceId: string | null) => Promise<string | null>;
         resolveDefaultForNewTask: () => Promise<TaskExecutionDeviceRef>;
+        createSsh: (input: SshExecutionDeviceUpsertInput) => Promise<ExecutionDeviceConfig>;
+        update: (
+          deviceId: string,
+          patch: ExecutionDeviceUpdateInput,
+        ) => Promise<ExecutionDeviceConfig>;
+        remove: (deviceId: string) => Promise<void>;
       };
       cloudBindings: {
         getPerTaskDeviceOverrides: (

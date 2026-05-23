@@ -15,7 +15,8 @@ import {
   Terminal,
   UserCircle2,
 } from 'lucide-react';
-import { Task } from '../types';
+import { ExecutionDeviceConfig, Task } from '../types';
+import { ExecutionDeviceChip } from './ExecutionDeviceChip';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
@@ -234,6 +235,8 @@ interface Props {
   canOpenTaskWorkspaceTab: boolean;
   /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
 }
 
 export default function TaskCard({
@@ -261,6 +264,8 @@ export default function TaskCard({
   onTaskAgentSpawnPrefsChange,
   canOpenTaskWorkspaceTab,
   onOpenTaskWorkspaceTab,
+  executionDevices = [],
+  cloudProject = false,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
@@ -392,6 +397,13 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
+                  {executionDevices.length > 0 ? (
+                    <ExecutionDeviceChip
+                      devices={executionDevices}
+                      ref={task.executionDevice}
+                      cloudProject={cloudProject}
+                    />
+                  ) : null}
                   <button
                     type="button"
                     disabled={!canOpenTaskWorkspaceTab}
