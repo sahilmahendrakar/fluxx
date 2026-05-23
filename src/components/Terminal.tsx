@@ -8,6 +8,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { installMacShiftDragSelectionBypass } from './terminalSelectionBypass';
 
 export interface TerminalProps {
   sessionId: string | null;
@@ -144,6 +145,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       // Preserve PTY/snapshot cursor semantics exactly; the PTY is responsible
       // for CRLF translation when terminal output needs it.
       convertEol: false,
+      // With tmux `mouse on`, xterm receives mouse-reporting events and disables
+      // normal drag selection. Option+drag forces xterm selection on macOS.
+      macOptionClickForcesSelection: true,
     });
 
     const fitAddon = new FitAddon();
@@ -156,6 +160,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     term.loadAddon(webLinksAddon);
 
     term.open(container);
+    const removeMacShiftDragSelectionBypass = installMacShiftDragSelectionBypass(term);
     termRef.current = term;
 
     // Swap xterm's default DOM renderer for the GPU-accelerated WebGL one.
@@ -325,6 +330,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       ro?.disconnect();
       d1.dispose();
       d2.dispose();
+      removeMacShiftDragSelectionBypass();
       term.dispose();
       termRef.current = null;
     };

@@ -1,5 +1,4 @@
 import type { TerminalKind } from '../../types';
-import { isAuxDevInstance } from '../auxDevInstance';
 import { probeTmuxAvailability } from '../tmuxAvailability';
 import {
   SessionRuntime,
@@ -23,8 +22,6 @@ export type AnyTerminalRuntime = SessionRuntime | TmuxTerminalRuntime;
 
 export async function shouldUseTmuxRuntime(ctx: TerminalRuntimeFactoryContext): Promise<boolean> {
   if (!ctx.persistTerminalsWithTmux) return false;
-  // Aux dev shares project dirs with has disk but must not attach to/kill primary tmux sessions.
-  if (isAuxDevInstance()) return false;
   if (process.platform === 'win32') return false;
   const availability = await probeTmuxAvailability();
   return availability.available;
