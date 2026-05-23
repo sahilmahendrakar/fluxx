@@ -71,6 +71,13 @@ export async function runFluxCli(argv: string[]): Promise<number> {
           ...(command.validatorAgent !== undefined
             ? { validatorAgent: command.validatorAgent }
             : {}),
+          ...(command.launch !== undefined ? { launch: command.launch } : {}),
+        };
+      } else if (command.action === 'launch') {
+        op = 'validation.launch';
+        payload = {
+          runId: command.runId,
+          ...(command.taskId !== undefined ? { taskId: command.taskId } : {}),
         };
       } else if (command.action === 'list') {
         op = 'validation.list';

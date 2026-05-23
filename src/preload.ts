@@ -666,6 +666,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('validationRuns:registerArtifact', input) as Promise<
         { ok: true; run: ValidationRun } | { error: string }
       >,
+    launchValidator: (payload: { runId: string; task: Task }) =>
+      ipcRenderer.invoke('validationRuns:launchValidator', payload) as Promise<
+        | { ok: true; run: ValidationRun; validatorSessionId: string }
+        | { error: string }
+      >,
+    cancelValidator: (payload: { runId: string; sessionId: string }) =>
+      ipcRenderer.invoke('validationRuns:cancelValidator', payload) as Promise<
+        { ok: true; run: ValidationRun | null } | { error: string }
+      >,
+    onChanged: (cb: (payload: { runId: string }) => void) => {
+      const channel = 'validationRuns:changed';
+      const handler = (_e: Electron.IpcRendererEvent, payload: { runId: string }) =>
+        cb(payload);
+      return ipcSubscribe(ipcRenderer, channel, handler);
+    },
   },
   validationPacks: {
     list: () =>

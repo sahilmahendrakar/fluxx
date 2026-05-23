@@ -115,6 +115,16 @@ import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime
 import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
 import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
+import { createValidatorSessionLauncher } from './main/validatorSessionMain';
+import {
+  completeValidatorSessionOnExit,
+  cancelValidatorSession,
+} from './main/startValidatorSession';
+import {
+  computeSessionExitTransition,
+  getValidatorSessionBinding,
+  isValidatorSessionId,
+} from './main/validatorSessionLifecycle';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
@@ -709,6 +719,7 @@ app.whenReady().then(async () => {
   }
 
   terminalBackend.setSessionPtyDataHook?.((payload) => {
+    if (isValidatorSessionId(payload.sessionId)) return;
     captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
       void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
       void terminalSessionRecordStore.mergeTaskConversationId(payload.sessionId, parsed);
@@ -735,6 +746,7 @@ app.whenReady().then(async () => {
   }
 
   async function applyAgentState(sessionId: string, state: AgentState): Promise<void> {
+    if (isValidatorSessionId(sessionId)) return;
     // Only handle the silent transition. needs-input → in-progress is
     // triggered exclusively by session:write (user submitting a query).
     if (state !== 'silent') return;
@@ -771,6 +783,25 @@ app.whenReady().then(async () => {
     onSilenceStatesSnapshot: reconcileSilenceStatesFromTerminal,
     onSessionExit: (session) => {
       trackSessionExitWork((async () => {
+        const validatorBinding = getValidatorSessionBinding(session.id);
+        if (validatorBinding) {
+          await completeValidatorSessionOnExit(
+            { validationRunStore, terminalBackend },
+            session,
+            validatorBinding.runId,
+          );
+          await terminalSessionRecordStore.markTerminalEnded(session.id, {
+            reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
+            endedAt: session.stoppedAt,
+          });
+          scheduleConversationCaptureCleanup(session.id);
+          for (const win of BrowserWindow.getAllWindows()) {
+            if (win.isDestroyed()) continue;
+            win.webContents.send('validationRuns:changed', { runId: validatorBinding.runId });
+          }
+          return;
+        }
+
         const endReason = terminalQuitTeardownInProgress
           ? ('app-quit' as const)
           : session.status === 'stopped'
@@ -790,19 +821,22 @@ app.whenReady().then(async () => {
         const project = projectStore.get();
         if (!project) return;
 
-        if (session.status === 'stopped') {
-          const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-          if (task && task.status === 'in-progress') {
-            console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
-              taskId,
-            });
-            await taskStore.update(taskId, { status: 'needs-input' });
-            broadcastLocalTasksChanged();
-          }
+        const transition = computeSessionExitTransition(
+          session,
+          sessionTaskMap,
+          (id) => taskStore.getAll(project.id).find((t) => t.id === id),
+        );
+        if (transition.action === 'transition') {
+          console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
+            taskId: transition.taskId,
+          });
+          await taskStore.update(transition.taskId, { status: 'needs-input' });
+          broadcastLocalTasksChanged();
         } else if (session.status === 'error') {
           console.warn('[task:status] agent exited with error, not transitioning task', {
             taskId,
             sessionId: session.id,
+            reason: transition.reason,
           });
         }
       })());
@@ -4417,6 +4451,19 @@ app.whenReady().then(async () => {
       worktreeService.getProjectDir(),
     );
 
+  const launchValidatorSession = createValidatorSessionLauncher({
+    validationRunStore,
+    terminalBackend,
+    listTerminalSessions: () => terminalBackend.listSessions(),
+    getRecordProjectDir: resolveRecordProjectDir,
+    getProject: () => projectStore.get(),
+    getActiveProjectKey: () => appStateStore.get().activeProjectKey,
+    getFluxAutomation: () => ({
+      server: fluxAutomationServer,
+      token: fluxAutomationToken,
+    }),
+  });
+
   fluxAutomationHostDeps = {
     taskStore,
     projectStore,
@@ -4427,6 +4474,7 @@ app.whenReady().then(async () => {
     listTerminalSessions: () => terminalBackend.listSessions(),
     getRecordProjectDir: resolveRecordProjectDir,
     getMainWindow: () => mainWindow,
+    launchValidatorSession,
     taskActions: {
       updateTask: (id, patch) =>
         updateTaskWithTransitionHandling(id, patch, 'cli:fluxx tasks update'),
@@ -4874,6 +4922,50 @@ app.whenReady().then(async () => {
         if (!s || s.projectId !== pid) return;
         terminalBackend.resizePlanning(sessionId, cols, rows);
       })();
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:launchValidator',
+    async (_e, payload: { runId?: string; task?: Task }) => {
+      const runId = payload?.runId?.trim();
+      const task = payload?.task;
+      if (!runId) return { error: 'runId is required' };
+      if (!task || typeof task.id !== 'string') return { error: 'task is required' };
+      try {
+        const launched = await launchValidatorSession({ task, runId });
+        if (!launched.ok) return { error: launched.error };
+        return {
+          ok: true as const,
+          run: launched.run,
+          validatorSessionId: launched.sessionId,
+        };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:cancelValidator',
+    async (_e, payload: { runId?: string; sessionId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const sessionId = payload?.sessionId?.trim();
+      if (!runId || !sessionId) {
+        return { error: 'runId and sessionId are required' };
+      }
+      try {
+        const run = await cancelValidatorSession(
+          { validationRunStore, terminalBackend, runId, sessionId },
+        );
+        return { ok: true as const, run };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     },
   );
 

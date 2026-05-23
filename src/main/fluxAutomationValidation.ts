@@ -8,12 +8,20 @@ import type { FluxAutomationInvokeResponse } from './AutomationHttpServer';
 import type { FluxAutomationHost } from './fluxAutomationRuns';
 import { resolveTaskWorktreePath } from './openWorkspacePath';
 import type { ValidationRunStore } from './ValidationRunStore';
+import { defaultValidatorAgent } from './startValidatorSession';
 import { ingestValidationVerdict } from './validationVerdictIngest';
 
 export type FluxAutomationValidationHost = FluxAutomationHost & {
   validationRunStore: ValidationRunStore;
   listTerminalSessions: () => Promise<Session[]>;
   getRecordProjectDir: () => string;
+  launchValidatorSession?: (input: {
+    task: Task;
+    runId: string;
+  }) => Promise<
+    | { ok: true; run: ValidationRun; sessionId: string }
+    | { ok: false; error: string }
+  >;
 };
 
 function requireProjectDir(h: FluxAutomationValidationHost): string | FluxAutomationInvokeResponse {
@@ -62,10 +70,20 @@ function resolveProjectId(h: FluxAutomationValidationHost): string | null {
   return null;
 }
 
-function defaultValidatorAgent(): Agent {
-  const raw = process.env.FLUXX_VALIDATOR_AGENT?.trim();
-  if (raw === 'claude-code' || raw === 'codex' || raw === 'cursor') return raw;
-  return 'cursor';
+async function maybeLaunchValidator(
+  h: FluxAutomationValidationHost,
+  task: Task,
+  run: ValidationRun,
+  launch: boolean | undefined,
+): Promise<{ run: ValidationRun; sessionId?: string; launchError?: string }> {
+  if (launch === false || !h.launchValidatorSession) {
+    return { run };
+  }
+  const launched = await h.launchValidatorSession({ task, runId: run.id });
+  if (!launched.ok) {
+    return { run, launchError: launched.error };
+  }
+  return { run: launched.run, sessionId: launched.sessionId };
 }
 
 async function resolveWorktreeCwdForTask(
@@ -94,7 +112,7 @@ async function maybeIngestVerdict(
 
 export async function automationRunValidationRun(
   h: FluxAutomationValidationHost,
-  input: { taskId: string; packId?: string; validatorAgent?: Agent },
+  input: { taskId: string; packId?: string; validatorAgent?: Agent; launch?: boolean },
 ): Promise<FluxAutomationInvokeResponse> {
   const active = h.resolveActive();
   if (active.kind === 'none') {
@@ -126,7 +144,7 @@ export async function automationRunValidationRun(
   const worktreeCwd = await resolveWorktreeCwdForTask(h, task, projectDirResult);
 
   try {
-    const run = await h.validationRunStore.create({
+    let run = await h.validationRunStore.create({
       taskId: task.id,
       projectId,
       ...(task.repoId?.trim() ? { repoId: task.repoId.trim() } : {}),
@@ -134,6 +152,8 @@ export async function automationRunValidationRun(
       validatorAgent,
       ...(worktreeCwd ? { worktreeCwd } : {}),
     });
+    const launchResult = await maybeLaunchValidator(h, task, run, input.launch);
+    run = launchResult.run;
     const cliRun = validationRunToCliJson(run);
     return {
       ok: true,
@@ -141,6 +161,8 @@ export async function automationRunValidationRun(
         runId: run.id,
         artifactDir: run.artifactDir,
         run: cliRun,
+        ...(launchResult.sessionId ? { validatorSessionId: launchResult.sessionId } : {}),
+        ...(launchResult.launchError ? { launchError: launchResult.launchError } : {}),
       },
     };
   } catch (err) {
@@ -276,6 +298,51 @@ export async function automationRunValidationIngest(
     data: {
       ingested: result.ingested,
       run: validationRunToCliJson(result.run),
+    },
+  };
+}
+
+export async function automationRunValidationLaunch(
+  h: FluxAutomationValidationHost,
+  input: { runId: string; taskId?: string },
+): Promise<FluxAutomationInvokeResponse> {
+  const active = h.resolveActive();
+  if (active.kind === 'none') {
+    return { ok: false, error: 'No project open' };
+  }
+  if (!h.launchValidatorSession) {
+    return { ok: false, error: 'Validator launch is not available in this context' };
+  }
+  const projectDirResult = requireProjectDir(h);
+  if (typeof projectDirResult !== 'string') return projectDirResult;
+
+  const runId = input.runId?.trim();
+  if (!runId) {
+    return { ok: false, error: 'runId is required' };
+  }
+
+  const run = await h.validationRunStore.get(runId);
+  if (!run) {
+    return { ok: false, error: `Validation run not found: ${runId}` };
+  }
+
+  const taskId = (input.taskId?.trim() || run.taskId).trim();
+  const taskResult = await resolveTaskForValidation(h, taskId);
+  if (!taskResult.ok) return taskResult.response;
+  if (taskResult.task.id !== run.taskId) {
+    return { ok: false, error: 'Validation run does not belong to this task' };
+  }
+
+  const launched = await h.launchValidatorSession({ task: taskResult.task, runId });
+  if (!launched.ok) {
+    return { ok: false, error: launched.error };
+  }
+  return {
+    ok: true,
+    data: {
+      runId: launched.run.id,
+      validatorSessionId: launched.sessionId,
+      run: validationRunToCliJson(launched.run),
     },
   };
 }

@@ -103,4 +103,47 @@ describe('ValidationRunStore', () => {
     expect(done.completedAt).toBeTruthy();
     expect(done.summary).toBe('ok');
   });
+
+  it('markLaunched transitions queued runs to running with guardrail metadata', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-run-launch-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: 't',
+      projectId: 'p',
+      validatorAgent: 'cursor',
+    });
+    const launched = await store.markLaunched({
+      runId: run.id,
+      validatorSessionId: 'sess-val-1',
+      worktreeCwd: '/tmp/worktree',
+      preValidationGitStatus: ' M src/a.ts',
+    });
+    expect(launched.status).toBe('running');
+    expect(launched.validatorSessionId).toBe('sess-val-1');
+    expect(launched.worktreeCwd).toBe('/tmp/worktree');
+    expect(launched.gitGuardrails?.preValidationGitStatus).toBe(' M src/a.ts');
+  });
+
+  it('updateGuardrails persists post-validation git status drift', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-run-guard-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: 't',
+      projectId: 'p',
+      validatorAgent: 'cursor',
+    });
+    await store.markLaunched({
+      runId: run.id,
+      validatorSessionId: 'sess-val-2',
+      worktreeCwd: '/tmp/worktree',
+      preValidationGitStatus: '',
+    });
+    const updated = await store.updateGuardrails({
+      runId: run.id,
+      postValidationGitStatus: ' M src/b.ts',
+      gitStatusDriftDetected: true,
+    });
+    expect(updated.gitGuardrails?.postValidationGitStatus).toBe(' M src/b.ts');
+    expect(updated.gitGuardrails?.gitStatusDriftDetected).toBe(true);
+  });
 });

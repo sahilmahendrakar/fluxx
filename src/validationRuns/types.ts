@@ -37,6 +37,12 @@ export interface ValidationArtifactView extends ValidationArtifact {
   fileState: ValidationArtifactFileState;
 }
 
+export interface ValidationRunGitGuardrails {
+  preValidationGitStatus?: string;
+  postValidationGitStatus?: string;
+  gitStatusDriftDetected?: boolean;
+}
+
 export interface ValidationRun {
   id: string;
   taskId: string;
@@ -52,6 +58,12 @@ export interface ValidationRun {
   /** Absolute path to `<fluxxProjectDir>/validation-runs/<runId>/`. */
   artifactDir: string;
   artifacts: ValidationArtifactView[];
+  /** Daemon session id for the independent validator agent PTY. */
+  validatorSessionId?: string;
+  /** Task worktree cwd used for Playwright launch during validation. */
+  worktreeCwd?: string;
+  /** Pre/post `git status --porcelain` captured for source-edit guardrails. */
+  gitGuardrails?: ValidationRunGitGuardrails;
 }
 
 export type ValidationRunCreateInput = {
@@ -78,4 +90,17 @@ export type ValidationArtifactRegisterInput = {
   label: string;
   path: string;
   createdAt?: string;
+};
+
+export type ValidationRunLaunchUpdate = {
+  runId: string;
+  validatorSessionId: string;
+  worktreeCwd: string;
+  preValidationGitStatus: string;
+};
+
+export type ValidationRunGuardrailsUpdate = {
+  runId: string;
+  postValidationGitStatus: string;
+  gitStatusDriftDetected: boolean;
 };

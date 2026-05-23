@@ -41,6 +41,7 @@ import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './Autom
 import {
   automationRunValidationArtifacts,
   automationRunValidationIngest,
+  automationRunValidationLaunch,
   automationRunValidationList,
   automationRunValidationRun,
   automationRunValidationShow,
@@ -69,6 +70,7 @@ export type FluxAutomationHost = {
   validationRunStore: ValidationRunStore;
   listTerminalSessions: () => Promise<import('../types').Session[]>;
   getRecordProjectDir: () => string;
+  launchValidatorSession?: FluxAutomationValidationHost['launchValidatorSession'];
   taskActions: {
     updateTask: (
       id: string,
@@ -691,7 +693,7 @@ export async function runFluxAutomationInvocation(
       return automationRunRepoBranches(h, (payload ?? {}) as { repoId?: string; classifyBranch?: string });
     case 'validation.run': {
       const vh = asValidationHost(h);
-      const p = payload as { taskId?: string; packId?: string; validatorAgent?: Agent };
+      const p = payload as { taskId?: string; packId?: string; validatorAgent?: Agent; launch?: boolean };
       if (typeof p?.taskId !== 'string') {
         return { ok: false, error: 'validation.run requires taskId' };
       }
@@ -699,6 +701,18 @@ export async function runFluxAutomationInvocation(
         taskId: p.taskId,
         ...(p.packId !== undefined ? { packId: p.packId } : {}),
         ...(p.validatorAgent !== undefined ? { validatorAgent: p.validatorAgent } : {}),
+        ...(p.launch !== undefined ? { launch: p.launch } : {}),
+      });
+    }
+    case 'validation.launch': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string; taskId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.launch requires runId' };
+      }
+      return automationRunValidationLaunch(vh, {
+        runId: p.runId,
+        ...(p.taskId !== undefined ? { taskId: p.taskId } : {}),
       });
     }
     case 'validation.list': {
