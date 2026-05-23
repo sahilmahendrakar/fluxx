@@ -130,6 +130,8 @@ export interface TaskDetailPanelProps {
   markAsDoneBlocked?: boolean;
   /** Project “auto-start when unblocked” (from local config / cloud binding). */
   autoStartWhenUnblockedProject?: boolean;
+  /** Electron Playwright validation opt-in for this project. */
+  validationEnabledProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
@@ -257,6 +259,7 @@ export default function TaskDetailPanel({
   onMarkAsDone,
   markAsDoneBlocked = false,
   autoStartWhenUnblockedProject = false,
+  validationEnabledProject = false,
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
@@ -290,6 +293,11 @@ export default function TaskDetailPanel({
   const [detailContentTab, setDetailContentTab] = useState<'implementation' | 'validation'>(
     'implementation',
   );
+  useEffect(() => {
+    if (!validationEnabledProject && detailContentTab === 'validation') {
+      setDetailContentTab('implementation');
+    }
+  }, [validationEnabledProject, detailContentTab]);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const taskFormSplitRef = useRef<HTMLDivElement>(null);
   const [sessionPaneHeightPx, setSessionPaneHeightPx] = useState(
@@ -1589,7 +1597,9 @@ export default function TaskDetailPanel({
               {(
                 [
                   ['implementation', 'Implementation'],
-                  ['validation', 'Validation'],
+                  ...(validationEnabledProject
+                    ? ([['validation', 'Validation']] as const)
+                    : []),
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -1991,13 +2001,30 @@ export default function TaskDetailPanel({
             ) : null}
 
             {detailContentTab === 'validation' ? (
-              <TaskValidationSection
-                task={task}
-                primaryRepoId={primaryRepoId}
-                worktreePath={resolvedWorktreePath}
-                projectRepoReadiness={projectRepoReadiness}
-                onUpdate={onUpdate}
-              />
+              validationEnabledProject ? (
+                <TaskValidationSection
+                  task={task}
+                  primaryRepoId={primaryRepoId}
+                  worktreePath={resolvedWorktreePath}
+                  projectRepoReadiness={projectRepoReadiness}
+                  onUpdate={onUpdate}
+                />
+              ) : (
+                <section className="border-t border-white/[0.04] px-5 py-8 text-center">
+                  <p className="text-sm text-zinc-400">
+                    Validation is disabled for this project.
+                  </p>
+                  {onOpenProjectSettings ? (
+                    <button
+                      type="button"
+                      onClick={onOpenProjectSettings}
+                      className="mt-3 text-[13px] font-medium text-sky-400/90 underline-offset-2 hover:underline"
+                    >
+                      Enable in Project settings → Experimental
+                    </button>
+                  ) : null}
+                </section>
+              )
             ) : null}
           </div>
 

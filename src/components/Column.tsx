@@ -31,6 +31,7 @@ interface Props {
   onCardClick: (id: string) => void;
   onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
+  validationEnabledProject: boolean;
   onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   emptyState?: ReactNode;
   membersMap?: Map<string, ProjectMember>;
@@ -64,6 +65,7 @@ export default function Column({
   onCardClick,
   onLabelClick,
   autoStartWhenUnblockedProject,
+  validationEnabledProject,
   onPatchTaskAutoStartOnUnblock,
   emptyState,
   membersMap,
@@ -177,6 +179,7 @@ export default function Column({
                     onCardClick={onCardClick}
                     onLabelClick={onLabelClick}
                     autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                    validationEnabledProject={validationEnabledProject}
                     onPatchTaskAutoStartOnUnblock={onPatchTaskAutoStartOnUnblock}
                     assigneeMember={task.assigneeId ? membersMap?.get(task.assigneeId) : undefined}
                     cloudProjectMembers={projectMembers}

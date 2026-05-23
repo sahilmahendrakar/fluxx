@@ -320,6 +320,7 @@ async function handleRequest(
           name: project.name,
           activeKey: currentKey,
           uid: uid ?? null,
+          validationEnabled: project.validationEnabled === true,
           taskCounts,
           ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
           ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),

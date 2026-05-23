@@ -4,7 +4,11 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
-import { ProjectStore } from './main/ProjectStore';
+import { ProjectStore, ensurePlanningAssistantMarkdownFiles } from './main/ProjectStore';
+import {
+  VALIDATION_DISABLED_CODE,
+  VALIDATION_DISABLED_MESSAGE,
+} from './validation/validationEnabled';
 import {
   getPlanningInitStatus,
   planningDocsAreInitialized,
@@ -1380,6 +1384,41 @@ app.whenReady().then(async () => {
     throw new Error('No active project');
   }
 
+  async function refreshPlanningAssistantForValidationToggle(
+    enabled: boolean,
+  ): Promise<void> {
+    const projectDir = activeProjectDir();
+    const config = await projectStore.readStoredProjectConfig(projectDir);
+    const repos = await projectStore.getReposAt(projectDir);
+    const planningRoot =
+      repos[0]?.rootPath ?? config?.rootPath ?? projectDir;
+    const projectName = config?.name ?? projectStore.get()?.name ?? 'Project';
+    await ensurePlanningAssistantMarkdownFiles(
+      path.join(projectDir, 'planning'),
+      projectName,
+      planningRoot,
+      {
+        multiRepoGuide: repos.length > 1,
+        validationEnabled: enabled === true,
+      },
+    );
+  }
+
+  async function requireValidationEnabledIpc(): Promise<
+    { error: string; code: typeof VALIDATION_DISABLED_CODE } | null
+  > {
+    try {
+      const enabled = await projectStore.getValidationEnabledAt(activeProjectDir());
+      if (!enabled) {
+        return { error: VALIDATION_DISABLED_MESSAGE, code: VALIDATION_DISABLED_CODE };
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { error: message, code: VALIDATION_DISABLED_CODE };
+    }
+    return null;
+  }
+
   const terminalRuntimeContext: TerminalRuntimeContext = {
     persistTerminalsWithTmux: false,
     projectSlugSource: '',
@@ -2122,6 +2161,30 @@ app.whenReady().then(async () => {
           enabled,
         );
         await syncTerminalRuntimeContext();
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle('project:getValidationEnabled', async () => {
+    try {
+      return await projectStore.getValidationEnabledAt(activeProjectDir());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(message);
+    }
+  });
+  ipcMain.handle(
+    'project:setValidationEnabled',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const next = await projectStore.setValidationEnabledAt(
+          activeProjectDir(),
+          enabled === true,
+        );
+        await refreshPlanningAssistantForValidationToggle(next);
         return { ok: true, enabled: next };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -4460,6 +4523,15 @@ app.whenReady().then(async () => {
     listTerminalSessions: () => terminalBackend.listSessions(),
     getRecordProjectDir: resolveRecordProjectDir,
     getProject: () => projectStore.get(),
+    getValidationEnabled: async () => {
+      const dir = resolveRecordProjectDir()?.trim();
+      if (!dir) return false;
+      try {
+        return await projectStore.getValidationEnabledAt(dir);
+      } catch {
+        return false;
+      }
+    },
     getActiveProjectKey: () => appStateStore.get().activeProjectKey,
     getFluxAutomation: () => ({
       server: fluxAutomationServer,
@@ -4710,10 +4782,16 @@ app.whenReady().then(async () => {
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
       );
+      const planningRepos = await projectStore.getReposAt(projectDir);
+      const validationEnabled = await projectStore.getValidationEnabledAt(projectDir);
       await ensurePlanningAssistantMarkdownFiles(
         planningDir,
         project.name,
-        project.rootPath,
+        planningRepos[0]?.rootPath ?? project.rootPath,
+        {
+          multiRepoGuide: planningRepos.length > 1,
+          validationEnabled,
+        },
       );
 
       const spawnModel = resumeRecord?.agentModel?.trim()
@@ -4932,6 +5010,8 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'validationRuns:launchValidator',
     async (_e, payload: { runId?: string; task?: Task }) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
       const runId = payload?.runId?.trim();
       const task = payload?.task;
       if (!runId) return { error: 'runId is required' };
@@ -4978,6 +5058,8 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'validationRuns:create',
     async (_e, input: ValidationRunCreateInput) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
       try {
         const run = await validationRunStore.create(input);
         broadcastValidationRunChanged(run.id);
@@ -4993,6 +5075,8 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'validationRuns:updateStatus',
     async (_e, patch: ValidationRunStatusUpdate) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
       try {
         const run = await validationRunStore.updateStatus(patch);
         broadcastValidationRunChanged(patch.runId);
@@ -5093,6 +5177,8 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'validationRuns:registerArtifact',
     async (_e, input: ValidationArtifactRegisterInput) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
       try {
         const run = await validationRunStore.registerArtifact(input);
         broadcastValidationRunChanged(input.runId);
@@ -5106,6 +5192,8 @@ app.whenReady().then(async () => {
   );
 
   ipcMain.handle('validationPacks:list', async () => {
+    const gate = await requireValidationEnabledIpc();
+    if (gate) return gate;
     try {
       return { ok: true as const, packs: listValidationPacks() };
     } catch (err) {
@@ -5114,6 +5202,8 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('validationPacks:get', async (_e, packId: string) => {
+    const gate = await requireValidationEnabledIpc();
+    if (gate) return gate;
     if (typeof packId !== 'string' || packId.trim().length === 0) {
       return { error: 'Invalid pack id' };
     }
@@ -5140,6 +5230,8 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     'validationPacks:resolveInstructions',
     async (_e, payload: { packId: string; projectDir?: string }) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
       if (typeof payload?.packId !== 'string' || payload.packId.trim().length === 0) {
         return { error: 'Invalid pack id' };
       }

@@ -223,6 +223,10 @@ declare global {
         setPersistTerminalsWithTmux: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getValidationEnabled: () => Promise<boolean>;
+        setValidationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
       terminal: {
         inventorySnapshot: () => Promise<import('./types').TerminalInventorySnapshot>;

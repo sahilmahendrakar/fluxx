@@ -22,7 +22,11 @@ export interface FluxAutomationInvokeBody {
 
 export type FluxAutomationInvokeResponse =
   | { ok: true; data: unknown }
-  | { ok: false; error: string; code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' };
+  | {
+      ok: false;
+      error: string;
+      code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' | 'VALIDATION_DISABLED';
+    };
 
 function readJsonBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

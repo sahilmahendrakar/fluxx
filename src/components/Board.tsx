@@ -52,6 +52,7 @@ interface Props {
   cleanupLoadingTaskId: string | null;
   onCardClick: (id: string) => void;
   autoStartWhenUnblockedProject: boolean;
+  validationEnabledProject: boolean;
   onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
@@ -97,6 +98,7 @@ export default function Board({
   cleanupLoadingTaskId,
   onCardClick,
   autoStartWhenUnblockedProject,
+  validationEnabledProject,
   onPatchTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
@@ -277,6 +279,7 @@ export default function Board({
               onCardClick={onCardClick}
               onLabelClick={onLabelClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+              validationEnabledProject={validationEnabledProject}
               onPatchTaskAutoStartOnUnblock={onPatchTaskAutoStartOnUnblock}
               membersMap={membersMap}
               projectMembers={projectMembers}

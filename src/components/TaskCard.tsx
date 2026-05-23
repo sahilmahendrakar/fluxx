@@ -212,6 +212,7 @@ interface Props {
   onCardClick: (id: string) => void;
   onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
+  validationEnabledProject: boolean;
   onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   assigneeMember?: ProjectMember;
   /** Cloud: roster for quick assign from the card. Omit on local projects (no assignee slot on cards). */
@@ -247,6 +248,7 @@ export default function TaskCard({
   onCardClick,
   onLabelClick,
   autoStartWhenUnblockedProject,
+  validationEnabledProject,
   onPatchTaskAutoStartOnUnblock,
   assigneeMember,
   cloudProjectMembers,
@@ -446,7 +448,7 @@ export default function TaskCard({
                       </span>
                     </span>
                   ) : null}
-                  <TaskCardValidationBadge task={task} />
+                  {validationEnabledProject ? <TaskCardValidationBadge task={task} /> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (

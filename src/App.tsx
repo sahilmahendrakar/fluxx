@@ -1021,19 +1021,28 @@ export default function App() {
     const reposChanged =
       fresh.repos !== undefined &&
       JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
+    const validationEnabled = fresh.validationEnabled === true;
+    const validationChanged = validationEnabled !== (project.validationEnabled === true);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
       fresh.createdAt !== project.createdAt ||
-      reposChanged;
+      reposChanged ||
+      validationChanged;
     if (!changed) return;
+    if (validationChanged) {
+      void window.electronAPI.project.setValidationEnabled(validationEnabled).catch((err) => {
+        console.warn('[App] sync validationEnabled to disk', err);
+      });
+    }
     setProject({
       ...project,
       name: fresh.name,
       ownerId: fresh.ownerId,
       memberIds: fresh.memberIds,
       createdAt: fresh.createdAt,
+      validationEnabled,
       ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
     });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
@@ -3576,6 +3585,7 @@ export default function App() {
                         cleanupLoadingTaskId={cleanupLoadingTaskId}
                         onCardClick={(id) => setSelectedTaskId(id)}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        validationEnabledProject={project.validationEnabled === true}
                         onPatchTaskAutoStartOnUnblock={(id, patch) =>
                           void handleUpdateTask(id, patch)
                         }
@@ -3638,6 +3648,7 @@ export default function App() {
                           selectedTask && isTaskBlocked(selectedTask, tasks),
                         )}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        validationEnabledProject={project.validationEnabled === true}
                         remoteRunner={remoteRunnerForSelected}
                         cloudActiveRunnerSession={
                           project.kind === 'cloud' && selectedTask

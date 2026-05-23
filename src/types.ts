@@ -173,6 +173,11 @@ export interface LocalProject {
    * See `docs/tmux-terminal-persistence-plan.md`.
    */
   persistTerminalsWithTmux: boolean;
+  /**
+   * When on, Electron Playwright validation (runs, validator sessions, planning validation guidance).
+   * Default off; opt in via Project settings → Experimental.
+   */
+  validationEnabled: boolean;
   repos: RepoConfig[];
 }
 
@@ -235,6 +240,11 @@ export interface CloudProjectLocalBinding {
   persistTerminalsWithTmux?: boolean;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
+  /**
+   * Team-wide validation opt-in (Firestore). Mirrored to the cloud project `config.json`
+   * on this machine for CLI/automation guards.
+   */
+  validationEnabled?: boolean;
 }
 
 /** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
@@ -272,6 +282,8 @@ export interface CloudProject {
   persistTerminalsWithTmux?: boolean;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
+  /** Electron Playwright validation opt-in (team setting from Firestore). */
+  validationEnabled?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;
