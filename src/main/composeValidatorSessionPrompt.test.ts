@@ -43,6 +43,8 @@ describe('composeValidatorSessionPrompt', () => {
     expect(prompt).toContain('Do **not** implement product source changes');
     expect(prompt).toContain('/tmp/project/validation-runs/run-abc');
     expect(prompt).toContain('verdict.json');
+    expect(prompt).toContain('fluxx validation finish');
+    expect(prompt).toContain('FLUXX_VALIDATION_RUN_ID');
     expect(prompt).toContain('Launch Electron with Playwright');
     expect(prompt).toContain('M src/main.ts');
   });

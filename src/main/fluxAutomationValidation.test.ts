@@ -6,6 +6,7 @@ import type { Task } from '../types';
 import { ValidationRunStore } from './ValidationRunStore';
 import {
   automationRunValidationArtifacts,
+  automationRunValidationFinish,
   automationRunValidationList,
   automationRunValidationRun,
   type FluxAutomationValidationHost,
@@ -23,6 +24,7 @@ describe('fluxAutomationValidation', () => {
   });
 
   function makeHost(task: Task, store: ValidationRunStore): FluxAutomationValidationHost {
+    const notifyValidationRunChanged = vi.fn();
     const active: FluxAutomationResolvedActive = {
       kind: 'local',
       activeKey: { kind: 'local', id: 'proj-1' },
@@ -46,6 +48,7 @@ describe('fluxAutomationValidation', () => {
       validationRunStore: store,
       listTerminalSessions: async () => [],
       getRecordProjectDir: () => tmp,
+      notifyValidationRunChanged,
       taskActions: {} as FluxAutomationValidationHost['taskActions'],
       bridgeFailureToInvoke: (r) => ({ ok: false, error: r.error }),
       buildLocalProjectInfoRepoSummaries: async () => [],
@@ -186,5 +189,51 @@ describe('fluxAutomationValidation', () => {
       const reloaded = await store.get(runId);
       expect(reloaded?.status).toBe('failed');
     }
+  });
+
+  it('finalizes a run via validation.finish and notifies listeners', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-auto-finish-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const task: Task = {
+      id: 'task-1',
+      title: 'T',
+      status: 'review',
+      agent: 'cursor',
+      projectId: 'proj-1',
+      orderKey: 'a',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const host = makeHost(task, store);
+    const created = await automationRunValidationRun(host, {
+      taskId: task.id,
+      packId: 'electron-playwright',
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const { runId, artifactDir } = created.data as { runId: string; artifactDir: string };
+    await store.markLaunched({
+      runId,
+      validatorSessionId: 'sess-1',
+      worktreeCwd: tmp,
+      preValidationGitStatus: '',
+    });
+    await fs.writeFile(
+      path.join(artifactDir, 'verdict.json'),
+      JSON.stringify({
+        verdict: 'passed',
+        summary: 'All good',
+        checks: [{ name: 'Validation complete', status: 'passed' }],
+      }),
+      'utf8',
+    );
+    const finished = await automationRunValidationFinish(host, { runId });
+    expect(finished.ok).toBe(true);
+    if (finished.ok) {
+      const data = finished.data as { ingested: boolean; run: { status: string } };
+      expect(data.ingested).toBe(true);
+      expect(data.run.status).toBe('passed');
+    }
+    expect(host.notifyValidationRunChanged).toHaveBeenCalledWith(runId);
   });
 });

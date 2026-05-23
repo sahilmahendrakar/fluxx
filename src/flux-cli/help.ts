@@ -111,12 +111,21 @@ Required:
 Reads <artifactDir>/verdict.json, registers artifacts, and updates run status.
   --json`;
 
+const VALIDATION_FINISH_FLAGS = `Usage: fluxx validation finish [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Finalizes a validation run after the validator writes verdict.json. Registers artifacts,
+updates run status, and refreshes the Fluxx UI. Keep the validator session open for follow-up.
+  --json`;
+
 const TOP_LEVEL = `Fluxx CLI — board automation for planning sessions
 
 Usage:
   fluxx project info [--json]
   fluxx tasks list|create|update|start|delete [--json] ...
-  fluxx validation run|launch|list|show|artifacts|ingest [--json] ...
+  fluxx validation run|launch|list|show|artifacts|ingest|finish [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
 
@@ -140,8 +149,10 @@ function helpForValidationAction(action: string | undefined): string | null {
       return VALIDATION_ARTIFACTS_FLAGS;
     case 'ingest':
       return VALIDATION_INGEST_FLAGS;
+    case 'finish':
+      return VALIDATION_FINISH_FLAGS;
     case undefined:
-      return `Usage: fluxx validation <run|launch|list|show|artifacts|ingest> [options]
+      return `Usage: fluxx validation <run|launch|list|show|artifacts|ingest|finish> [options]
 
 Subcommands:
   run        Create a validation run and start the validator agent (use --no-launch to skip)
@@ -150,6 +161,7 @@ Subcommands:
   show       Show one run (ingests verdict when applicable)
   artifacts  List artifacts for a run (ingests verdict when applicable)
   ingest     Parse verdict.json and update run status
+  finish     Finalize a validation run after verdict.json is written (preferred for validators)
 
 Run \`fluxx validation <subcommand> --help\` for flags.`;
     default:

@@ -88,6 +88,9 @@ export async function runFluxCli(argv: string[]): Promise<number> {
       } else if (command.action === 'artifacts') {
         op = 'validation.artifacts';
         payload = { runId: command.runId };
+      } else if (command.action === 'finish') {
+        op = 'validation.finish';
+        payload = { runId: command.runId };
       } else {
         op = 'validation.ingest';
         payload = { runId: command.runId };

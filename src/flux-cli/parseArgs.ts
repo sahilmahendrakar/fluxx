@@ -11,6 +11,7 @@ export type FluxCliCommand =
   | { kind: 'validation'; action: 'show'; json: boolean; runId: string }
   | { kind: 'validation'; action: 'artifacts'; json: boolean; runId: string }
   | { kind: 'validation'; action: 'ingest'; json: boolean; runId: string }
+  | { kind: 'validation'; action: 'finish'; json: boolean; runId: string }
   | { kind: 'members'; action: 'list'; json: boolean }
   | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string };
 
@@ -324,7 +325,7 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
       }
       return { ok: true, command: { kind: 'validation', action: 'list', json, taskId } };
     }
-    if (action === 'show' || action === 'artifacts' || action === 'ingest') {
+    if (action === 'show' || action === 'artifacts' || action === 'ingest' || action === 'finish') {
       const { value: runId, rest: r } = takeFlagAliases(rest, ['--run-id', '--run']);
       if (!runId || r.length > 0) {
         return { ok: false, message: `validation ${action} requires --run-id` };
@@ -394,6 +395,6 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
   return {
     ok: false,
     message:
-      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx validation run|list|show|artifacts|ingest, fluxx members list, fluxx repo branches',
+      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx validation run|list|show|artifacts|ingest|finish, fluxx members list, fluxx repo branches',
   };
 }

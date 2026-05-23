@@ -213,6 +213,17 @@ describe('parseFluxCliArgs', () => {
         runId: 'run-1',
       });
     }
+
+    const finish = parseFluxCliArgs(['validation', 'finish', '--run-id', 'run-1', '--json']);
+    expect(finish.ok).toBe(true);
+    if (finish.ok) {
+      expect(finish.command).toEqual({
+        kind: 'validation',
+        action: 'finish',
+        json: true,
+        runId: 'run-1',
+      });
+    }
   });
 
   it('requires task-id for validation run and rejects unknown pack at parse time only via run', () => {

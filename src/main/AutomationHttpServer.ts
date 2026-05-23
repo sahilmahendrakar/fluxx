@@ -11,7 +11,8 @@ export type FluxAutomationHttpOp =
   | 'validation.list'
   | 'validation.show'
   | 'validation.artifacts'
-  | 'validation.ingest';
+  | 'validation.ingest'
+  | 'validation.finish';
 
 export interface FluxAutomationInvokeBody {
   op: FluxAutomationHttpOp;

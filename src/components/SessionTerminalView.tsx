@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { LayoutList } from 'lucide-react';
+import { LayoutList, ShieldCheck } from 'lucide-react';
 import type { Agent, Session, Shell, Task } from '../types';
 import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
 import { GithubPrIconButton } from './GithubPrIconButton';
+import {
+  taskWorkspaceShouldShowValidationTab,
+  validationRunIsActive,
+} from '../validationRuns/display';
+import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
 import {
   getSessionAttachShared,
   getShellAttachShared,
@@ -79,7 +84,7 @@ interface SessionTerminalViewProps {
   taskDetailPanel?: Omit<TaskDetailPanelProps, 'task' | 'layout'>;
 }
 
-type PaneId = 'details' | 'agent' | `shell:${string}`;
+type PaneId = 'details' | 'agent' | 'validation' | `shell:${string}`;
 
 // We stack every pane at inset-0 and flip `visibility` instead of `display`
 // so the xterm container keeps the same size across pane switches. Reflowing
@@ -293,6 +298,118 @@ function AgentPane({
   );
 }
 
+function ValidationPane({
+  session,
+  visible,
+  runPending,
+}: {
+  session: Session | null;
+  visible: boolean;
+  /** Run is active but validator PTY has not been attached yet. */
+  runPending: boolean;
+}) {
+  const terminalRef = useRef<TerminalHandle | null>(null);
+  const running = session?.status === 'running';
+  const id = session?.id ?? '';
+  const trustAutorespondNote = useTrustAutorespondNotice('session', id || null, running);
+  const [attachReady, setAttachReady] = useState(false);
+
+  useEffect(() => {
+    setAttachReady(false);
+  }, [session?.id]);
+
+  useTerminalPtyStream({
+    terminalRef,
+    id,
+    enabled: running && Boolean(id),
+    viewPolicy: OWNER_TERMINAL_VIEW_POLICY,
+    getAttach: () =>
+      getSessionAttachShared(id, async () => {
+        try {
+          return await window.electronAPI.sessions.attach(id);
+        } catch (err) {
+          console.error('[ValidationPane] attach failed', err);
+          return null;
+        }
+      }),
+    onStreamData: (sid, cb) => window.electronAPI.sessions.onData(sid, cb),
+    onAttachComplete: () => setAttachReady(true),
+  });
+
+  const handleData = (data: string) => {
+    if (running && session) window.electronAPI.sessions.write(session.id, data);
+  };
+  const handleResize = (cols: number, rows: number) => {
+    if (running && session) window.electronAPI.sessions.resize(session.id, cols, rows);
+  };
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className="absolute inset-0 p-3"
+      style={paneVisibilityStyle(visible)}
+    >
+      {runPending && !session ? (
+        <div
+          className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-zinc-400"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+            aria-hidden
+          />
+          <span className="font-medium text-zinc-300">Starting validator…</span>
+        </div>
+      ) : running && session ? (
+        <div className="relative h-full min-h-0">
+          {!attachReady ? (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <span
+                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+                aria-hidden
+              />
+              <span className="font-medium text-zinc-300">Connecting…</span>
+            </div>
+          ) : null}
+          {trustAutorespondNote ? (
+            <div
+              role="status"
+              className="absolute left-3 right-3 top-3 z-[5] rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
+            >
+              {trustAutorespondNote}
+            </div>
+          ) : null}
+          <Terminal
+            ref={terminalRef}
+            sessionId={session.id}
+            onData={handleData}
+            onResize={visible && running ? handleResize : undefined}
+            visible={visible}
+            autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
+            hideCursor
+          />
+        </div>
+      ) : session ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+          <p className="text-[13px] text-zinc-500">Validator session ended.</p>
+          <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
+            Check the Details tab for validation status and artifacts.
+          </p>
+        </div>
+      ) : (
+        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
+          No validator session available.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = shell.status === 'running';
@@ -423,12 +540,75 @@ export function SessionTerminalView({
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
   const showDetailsTab = Boolean(task && taskDetailPanel);
+  const { latestRun, refresh: refreshValidationRuns } = useTaskValidationRuns(task?.id);
+  const [validatorSession, setValidatorSession] = useState<Session | null>(null);
+  const validationAutoSwitchRunRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    validationAutoSwitchRunRef.current = null;
+  }, [task?.id]);
+
+  const showValidationTab = taskWorkspaceShouldShowValidationTab({
+    latestRun,
+    validatorSession,
+  });
+  const validationRunPending = Boolean(
+    task && latestRun && validationRunIsActive(latestRun.status) && !validatorSession,
+  );
+
+  useEffect(() => {
+    if (!task?.id) {
+      setValidatorSession(null);
+      return;
+    }
+    const sessionId = latestRun?.validatorSessionId?.trim();
+    if (!sessionId) {
+      setValidatorSession(null);
+      return;
+    }
+    let cancelled = false;
+    const syncValidatorSession = () => {
+      void window.electronAPI.sessions.getAll().then((all) => {
+        if (cancelled) return;
+        setValidatorSession(all.find((s) => s.id === sessionId) ?? null);
+      });
+    };
+    syncValidatorSession();
+    const unsubExit = window.electronAPI.sessions.onExit((exited) => {
+      if (exited.id === sessionId) {
+        setValidatorSession(exited);
+        refreshValidationRuns();
+      }
+    });
+    const unsubValidation = window.electronAPI.validationRuns.onChanged(() => {
+      refreshValidationRuns();
+    });
+    return () => {
+      cancelled = true;
+      unsubExit();
+      unsubValidation();
+    };
+  }, [task?.id, latestRun?.id, latestRun?.validatorSessionId, refreshValidationRuns]);
 
   useEffect(() => {
     if (activePane === 'details' && !showDetailsTab) {
       setActivePane('agent');
     }
   }, [activePane, showDetailsTab]);
+
+  useEffect(() => {
+    if (activePane === 'validation' && !showValidationTab) {
+      setActivePane('agent');
+    }
+  }, [activePane, showValidationTab]);
+
+  useEffect(() => {
+    if (!showValidationTab || !latestRun?.id) return;
+    if (!validationRunIsActive(latestRun.status)) return;
+    if (validationAutoSwitchRunRef.current === latestRun.id) return;
+    validationAutoSwitchRunRef.current = latestRun.id;
+    setActivePane('validation');
+  }, [showValidationTab, latestRun?.id, latestRun?.status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -496,6 +676,23 @@ export function SessionTerminalView({
             onClick={() => setActivePane('agent')}
             icon={<BotIcon className="shrink-0 opacity-80" />}
           />
+          {showValidationTab ? (
+            <PaneTab
+              label="Validation"
+              active={activePane === 'validation'}
+              onClick={() => setActivePane('validation')}
+              status={
+                validatorSession?.status === 'running' || validationRunPending ? 'running' : 'idle'
+              }
+              icon={
+                <ShieldCheck
+                  className="h-3.5 w-3.5 shrink-0 opacity-80"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              }
+            />
+          ) : null}
           {shells.map((shell, idx) => (
             <PaneTab
               key={shell.id}
@@ -575,6 +772,13 @@ export function SessionTerminalView({
           agentSessionLifecycle={agentSessionLifecycle}
           onAgentSessionStartSuccess={onAgentSessionStartSuccess}
         />
+        {showValidationTab ? (
+          <ValidationPane
+            session={validatorSession}
+            visible={visible && activePane === 'validation'}
+            runPending={validationRunPending}
+          />
+        ) : null}
         {shells.map((shell) => (
           <ShellPane
             key={shell.id}
