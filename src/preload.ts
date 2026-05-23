@@ -22,6 +22,7 @@ import type {
   SessionStartResult,
   Shell,
   Task,
+  TaskStatus,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentPayload,
@@ -709,6 +710,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         cb(payload);
       return ipcSubscribe(ipcRenderer, channel, handler);
     },
+  },
+  validationTasks: {
+    onEnteredValidation: (payload: { previousStatus: TaskStatus; task: Task }) =>
+      ipcRenderer.invoke('validationTasks:onEnteredValidation', payload) as Promise<
+        { ok: true } | { error: string }
+      >,
   },
   validationPacks: {
     list: () =>

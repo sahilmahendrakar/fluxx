@@ -42,6 +42,10 @@ export type FluxAutomationHostDeps = {
     | { ok: true; run: import('../validationRuns/types').ValidationRun; sessionId: string }
     | { ok: false; error: string }
   >;
+  onValidationRunFinalized?: (
+    run: import('../validationRuns/types').ValidationRun,
+    source: string,
+  ) => Promise<void>;
   taskActions: {
     updateTask: (
       id: string,
@@ -172,6 +176,9 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
       : {}),
     ...(deps.launchValidatorSession
       ? { launchValidatorSession: deps.launchValidatorSession }
+      : {}),
+    ...(deps.onValidationRunFinalized
+      ? { onValidationRunFinalized: deps.onValidationRunFinalized }
       : {}),
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>

@@ -4,6 +4,7 @@ import type { TaskStatus } from './types';
 export const TASK_STATUS_DOT: Record<TaskStatus, string> = {
   'in-progress': 'bg-emerald-400/80',
   'needs-input': 'bg-amber-400/80',
+  validation: 'bg-violet-400/85',
   review: 'bg-sky-400/85',
   backlog: 'bg-zinc-600',
   done: 'bg-zinc-600',

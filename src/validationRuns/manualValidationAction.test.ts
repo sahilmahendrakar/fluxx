@@ -45,7 +45,7 @@ describe('manualValidationAction wiring', () => {
       task: {
         id: 'task-1',
         title: 'Review me',
-        status: 'review',
+        status: 'validation',
         agent: 'cursor',
         projectId: 'proj-1',
         createdAt: '2026-05-22T09:00:00.000Z',

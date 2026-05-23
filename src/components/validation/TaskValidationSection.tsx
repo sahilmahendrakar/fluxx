@@ -136,8 +136,10 @@ export default function TaskValidationSection({
             ) : null}
             {runBusy ? 'Starting validation…' : 'Run validation'}
           </button>
-          {task.status !== 'review' ? (
-            <span className="text-[11px] text-zinc-500">Available when the task is in Review.</span>
+          {task.status !== 'validation' ? (
+            <span className="text-[11px] text-zinc-500">
+              Available when the task is in Validation.
+            </span>
           ) : null}
         </div>
 
@@ -151,7 +153,7 @@ export default function TaskValidationSection({
             {error}
           </p>
         ) : null}
-        {!eligibility.canRun && eligibility.message && task.status === 'review' && !runError ? (
+        {!eligibility.canRun && eligibility.message && task.status === 'validation' && !runError ? (
           <p className="mb-3 text-[11px] leading-snug text-zinc-500">{eligibility.message}</p>
         ) : null}
 

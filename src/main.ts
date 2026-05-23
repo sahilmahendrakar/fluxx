@@ -125,6 +125,11 @@ import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
 import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { createValidatorSessionLauncher } from './main/validatorSessionMain';
+import {
+  buildValidationTransitionHooks,
+  handleValidationRunFinalized,
+  type ValidationTransitionHooks,
+} from './main/validationTransitionHooks';
 import { broadcastValidationRunChanged } from './main/broadcastValidationRunChanged';
 import {
   completeValidatorSessionOnExit,
@@ -228,6 +233,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  TaskStatus,
   PlanningAgentSessionRecord,
   PlanningSession,
   Shell,
@@ -620,6 +626,7 @@ app.whenReady().then(async () => {
   const validationRunStore = new ValidationRunStore({
     getProjectDir: resolveRecordProjectDir,
   });
+  let validationTransitionHooks: ValidationTransitionHooks | null = null;
 
   async function buildTerminalInventorySnapshotForActiveProject(): Promise<TerminalInventorySnapshot> {
     const sessions = await terminalBackend.listSessions();
@@ -795,10 +802,15 @@ app.whenReady().then(async () => {
       trackSessionExitWork((async () => {
         const validatorBinding = getValidatorSessionBinding(session.id);
         if (validatorBinding) {
-          await completeValidatorSessionOnExit(
+          const finalized = await completeValidatorSessionOnExit(
             { validationRunStore, terminalBackend },
             session,
             validatorBinding.runId,
+          );
+          await handleValidationRunFinalized(
+            finalized,
+            validationTransitionHooks,
+            'validator:session-exit',
           );
           await terminalSessionRecordStore.markTerminalEnded(session.id, {
             reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
@@ -3040,8 +3052,8 @@ app.whenReady().then(async () => {
     const project = projectStore.get();
     if (project) {
       const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-      if (task?.status === 'needs-input' || task?.status === 'review') {
-        console.log('[task:status] needs-input/review → in-progress (user submitted query, local)', {
+      if (task?.status === 'needs-input' || task?.status === 'review' || task?.status === 'validation') {
+        console.log('[task:status] needs-input/review/validation → in-progress (user submitted query, local)', {
           taskId,
           from: task.status,
         });
@@ -4290,6 +4302,7 @@ app.whenReady().then(async () => {
 
     const updated = await taskStore.update(id, patchToApply);
     await maybeAutoStartSessionOnInProgressTransition(previous, updated, source, options);
+    await validationTransitionHooks?.onEnteredValidation(previous, updated, source);
     if (updated.status === 'done' && previous.status !== 'done') {
       await processDependentsUnblockedAfterBlockerDone(previous, updated, source);
     }
@@ -4539,6 +4552,19 @@ app.whenReady().then(async () => {
     }),
   });
 
+  validationTransitionHooks = buildValidationTransitionHooks({
+    validationRunStore,
+    launchValidatorSession,
+    projectStore,
+    taskStore,
+    terminalBackend,
+    getRecordProjectDir: resolveRecordProjectDir,
+    getActiveProjectKey: () => appStateStore.get().activeProjectKey,
+    bridge: automationRendererBridge,
+    updateLocalTask: (id, patch, source) => updateTaskWithTransitionHandling(id, patch, source),
+    broadcastLocalTasksChanged,
+  });
+
   fluxAutomationHostDeps = {
     taskStore,
     projectStore,
@@ -4551,6 +4577,9 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
     notifyValidationRunChanged: (runId) => broadcastValidationRunChanged(runId),
     launchValidatorSession,
+    onValidationRunFinalized: async (run, source) => {
+      await validationTransitionHooks?.onRunPassed(run, source);
+    },
     taskActions: {
       updateTask: (id, patch) =>
         updateTaskWithTransitionHandling(id, patch, 'cli:fluxx tasks update'),
@@ -5004,6 +5033,37 @@ app.whenReady().then(async () => {
         if (!s || s.projectId !== pid) return;
         terminalBackend.resizePlanning(sessionId, cols, rows);
       })();
+    },
+  );
+
+  ipcMain.handle(
+    'validationTasks:onEnteredValidation',
+    async (
+      _e,
+      payload: { previousStatus?: TaskStatus; task?: Task },
+    ) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      const task = payload?.task;
+      const previousStatus = payload?.previousStatus;
+      if (!task || typeof task.id !== 'string' || !previousStatus) {
+        return { error: 'previousStatus and task are required' };
+      }
+      if (task.status !== 'validation') {
+        return { ok: true as const };
+      }
+      try {
+        await validationTransitionHooks?.onEnteredValidation(
+          { ...task, status: previousStatus },
+          task,
+          'ipc:validationTasks:onEnteredValidation',
+        );
+        return { ok: true as const };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     },
   );
 

@@ -43,9 +43,10 @@ describe('validationRuns/display', () => {
     expect(validationBoardBadgeLabel('review-needed')).toBe('Validation: review needed');
   });
 
-  it('shows validation badge on review tasks and when runs exist', () => {
-    expect(taskCardShouldShowValidationBadge('review', [])).toBe(true);
+  it('shows validation badge on validation tasks and when runs exist', () => {
+    expect(taskCardShouldShowValidationBadge('validation', [])).toBe(true);
     expect(taskCardShouldShowValidationBadge('backlog', [])).toBe(false);
+    expect(taskCardShouldShowValidationBadge('review', [])).toBe(false);
     expect(
       taskCardShouldShowValidationBadge(
         'done',
@@ -54,7 +55,7 @@ describe('validationRuns/display', () => {
     ).toBe(true);
   });
 
-  it('evaluateManualValidationEligibility gates review, agent, and active runs', () => {
+  it('evaluateManualValidationEligibility gates validation, agent, and active runs', () => {
     expect(
       evaluateManualValidationEligibility({
         task: { status: 'in-progress', agent: 'cursor' },
@@ -63,19 +64,19 @@ describe('validationRuns/display', () => {
     ).toBe(false);
     expect(
       evaluateManualValidationEligibility({
-        task: { status: 'review', agent: null },
+        task: { status: 'validation', agent: null },
         latestRun: null,
       }).reason,
     ).toBe('no-agent');
     expect(
       evaluateManualValidationEligibility({
-        task: { status: 'review', agent: 'cursor' },
+        task: { status: 'validation', agent: 'cursor' },
         latestRun: run({ id: 'a', status: 'running', startedAt: '2026-05-22T10:00:00.000Z' }),
       }).reason,
     ).toBe('already-running');
     expect(
       evaluateManualValidationEligibility({
-        task: { status: 'review', agent: 'cursor' },
+        task: { status: 'validation', agent: 'cursor' },
         latestRun: null,
       }).canRun,
     ).toBe(true);

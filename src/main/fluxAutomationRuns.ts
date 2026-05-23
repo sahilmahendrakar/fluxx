@@ -79,6 +79,7 @@ export type FluxAutomationHost = {
   getRecordProjectDir: () => string;
   notifyValidationRunChanged?: (runId: string) => void;
   launchValidatorSession?: FluxAutomationValidationHost['launchValidatorSession'];
+  onValidationRunFinalized?: FluxAutomationValidationHost['onValidationRunFinalized'];
   taskActions: {
     updateTask: (
       id: string,
@@ -339,7 +340,7 @@ type UpdateTaskMcpShape = {
   id: string;
   title?: string;
   description?: string;
-  status?: 'backlog' | 'in-progress' | 'needs-input' | 'review' | 'done';
+  status?: 'backlog' | 'in-progress' | 'needs-input' | 'validation' | 'review' | 'done';
   agent?: 'claude-code' | 'codex' | 'cursor' | 'none';
   blockedByTaskIds?: string[];
   labels?: string[];
@@ -622,6 +623,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       backlog: 0,
       'in-progress': 0,
       'needs-input': 0,
+      validation: 0,
       review: 0,
       done: 0,
       total: tasks.length,
@@ -630,6 +632,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       if (t.status === 'backlog') taskCounts.backlog++;
       else if (t.status === 'in-progress') taskCounts['in-progress']++;
       else if (t.status === 'needs-input') taskCounts['needs-input']++;
+      else if (t.status === 'validation') taskCounts.validation++;
       else if (t.status === 'review') taskCounts.review++;
       else if (t.status === 'done') taskCounts.done++;
     }

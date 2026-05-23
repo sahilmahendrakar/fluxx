@@ -135,6 +135,7 @@ export interface AutomationBridgeProjectInfoResult {
     backlog: number;
     'in-progress': number;
     'needs-input': number;
+    validation: number;
     review: number;
     done: number;
     total: number;

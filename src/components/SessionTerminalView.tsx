@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LayoutList, ShieldCheck } from 'lucide-react';
 import type { Agent, Session, Shell, Task } from '../types';
 import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
@@ -7,6 +7,7 @@ import {
   taskWorkspaceShouldShowValidationTab,
   validationRunIsActive,
 } from '../validationRuns/display';
+import { evaluateValidateActionEligibility } from '../validationRuns/validateTaskAction';
 import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
 import {
   getSessionAttachShared,
@@ -651,6 +652,21 @@ export function SessionTerminalView({
     'shrink-0 rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
   const markDoneBtnDisabled =
     'shrink-0 cursor-not-allowed rounded-lg bg-zinc-800/50 px-3 py-1.5 text-[12px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+  const validateBtn =
+    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-500/90 px-3 py-1.5 text-[12px] font-medium text-violet-50 transition hover:bg-violet-400/90 disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500';
+
+  const validationEnabledProject = taskDetailPanel?.validationEnabledProject === true;
+  const validateEligibility = useMemo(
+    () =>
+      task
+        ? evaluateValidateActionEligibility({
+            validationEnabled: validationEnabledProject,
+            task,
+            latestRun,
+          })
+        : { canValidate: false },
+    [task, validationEnabledProject, latestRun],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#09090b]">
@@ -730,6 +746,17 @@ export function SessionTerminalView({
               prLoading={prLoading}
               prAgentAwaiting={prAgentAwaiting}
             />
+          ) : null}
+          {validateEligibility.canValidate && task && taskDetailPanel?.onUpdate ? (
+            <button
+              type="button"
+              onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
+              title={validateEligibility.message}
+              className={validateBtn}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              Validate
+            </button>
           ) : null}
           {showMarkAsDone ? (
             <button

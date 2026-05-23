@@ -13,11 +13,12 @@ import {
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, FileText, Pencil, Settings, Terminal, UserCircle2, X } from 'lucide-react';
+import { ChevronDown, FileText, Pencil, Settings, ShieldCheck, Terminal, UserCircle2, X } from 'lucide-react';
 import {
   Task,
   TaskStatus,
   COLUMNS,
+  boardColumns,
   TASK_AGENT_SELECT_OPTIONS,
   Agent,
   Session,
@@ -72,6 +73,8 @@ import {
 } from '../taskPlanningDocAttachments';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import TaskValidationSection from './validation/TaskValidationSection';
+import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
+import { evaluateValidateActionEligibility } from '../validationRuns/validateTaskAction';
 import {
   buildTaskSourceBranchPersistPatch,
   effectiveTaskSourceBranchShort,
@@ -213,6 +216,7 @@ const STATUS_CHIP: Record<TaskStatus, string> = {
   backlog: 'bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]',
   'in-progress': 'bg-emerald-500/[0.12] text-emerald-200/95 ring-1 ring-inset ring-emerald-500/15',
   'needs-input': 'bg-amber-500/[0.12] text-amber-200/90 ring-1 ring-inset ring-amber-500/18',
+  validation: 'bg-violet-500/[0.12] text-violet-200/95 ring-1 ring-inset ring-violet-500/18',
   review: 'bg-sky-500/[0.12] text-sky-200/95 ring-1 ring-inset ring-sky-500/18',
   done: 'bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.05]',
 };
@@ -333,6 +337,24 @@ export default function TaskDetailPanel({
   const primaryRepoId = useMemo(
     () => resolvePrimaryRepoId(projectRepos ?? []) ?? '',
     [projectRepos],
+  );
+  const statusColumnOptions = useMemo(
+    () => boardColumns(validationEnabledProject),
+    [validationEnabledProject],
+  );
+  const { latestRun: validationLatestRun } = useTaskValidationRuns(task?.id);
+  const repoBlockedForValidation = projectRepoActionsBlocked(projectRepoReadiness);
+  const validateEligibility = useMemo(
+    () =>
+      task
+        ? evaluateValidateActionEligibility({
+            validationEnabled: validationEnabledProject,
+            task,
+            latestRun: validationLatestRun,
+            repoBlocked: repoBlockedForValidation,
+          })
+        : { canValidate: false },
+    [task, validationEnabledProject, validationLatestRun, repoBlockedForValidation],
   );
   const showRepoSection = Boolean(
     multiRepo2Enabled && projectRepos && projectRepos.length > 1,
@@ -1094,6 +1116,8 @@ export default function TaskDetailPanel({
     'rounded-lg bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
   const markDoneBtnDisabled =
     'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+  const validateBtn =
+    'inline-flex items-center gap-2 rounded-lg bg-violet-500/90 px-4 py-2 text-[13px] font-medium text-violet-50 shadow-sm transition hover:bg-violet-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none';
 
   const propertySelectClass =
     'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
@@ -1139,6 +1163,17 @@ export default function TaskDetailPanel({
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {validateEligibility.canValidate ? (
+                <button
+                  type="button"
+                  onClick={() => onUpdate(task.id, { status: 'validation' })}
+                  title={validateEligibility.message}
+                  className={validateBtn}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  Validate
+                </button>
+              ) : null}
               {showMarkAsDone ? (
                 <button
                   type="button"
@@ -1434,7 +1469,7 @@ export default function TaskDetailPanel({
                     style={{ colorScheme: 'dark' } as CSSProperties}
                     aria-label="Change status"
                   >
-                    {COLUMNS.map((c) => (
+                    {statusColumnOptions.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>

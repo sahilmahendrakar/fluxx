@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import type {
   Task,
+  TaskStatus,
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
@@ -511,6 +512,12 @@ declare global {
           sessionId: string;
         }) => Promise<{ ok: true; run: ValidationRun | null } | { error: string }>;
         onChanged: (cb: (payload: { runId: string }) => void) => () => void;
+      };
+      validationTasks: {
+        onEnteredValidation: (payload: {
+          previousStatus: TaskStatus;
+          task: Task;
+        }) => Promise<{ ok: true } | { error: string }>;
       };
       validationPacks: {
         list: () => Promise<{ ok: true; packs: ValidationPackSummary[] } | { error: string }>;
