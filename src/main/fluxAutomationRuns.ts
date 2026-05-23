@@ -18,8 +18,10 @@ import type {
   Task,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
+  TaskValidationPlan,
 } from '../types';
 import { parseTaskAttachedPlanningDocsForMcp } from '../taskAttachedPlanningDocs';
+import { parseCliValidationPlanInput } from '../validationPlans/persist';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
@@ -151,6 +153,7 @@ type CreateTaskMcpShape = {
   agentYolo?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan | unknown;
 };
 
 function parseAutomationAttachedPlanningDocs(
@@ -162,6 +165,26 @@ function parseAutomationAttachedPlanningDocs(
     return { ok: false, error: parsed.message };
   }
   return { ok: true, docs: parsed.docs };
+}
+
+function parseAutomationValidationPlan(
+  raw: unknown,
+  mode: 'create' | 'update',
+): { ok: true; plan: TaskValidationPlan | null | undefined } | { ok: false; error: string } {
+  if (raw === undefined) {
+    return { ok: true, plan: undefined };
+  }
+  if (raw === null) {
+    if (mode === 'create') {
+      return { ok: false, error: 'validationPlan cannot be null on create' };
+    }
+    return { ok: true, plan: null };
+  }
+  const parsed = parseCliValidationPlanInput(raw);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  return { ok: true, plan: parsed.plan };
 }
 
 export async function automationRunCreateTask(
@@ -177,6 +200,11 @@ export async function automationRunCreateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
+  const planParsed = parseAutomationValidationPlan(input.validationPlan, 'create');
+  if (!planParsed.ok) {
+    return { ok: false, error: planParsed.error };
+  }
+  const validationPlan = planParsed.plan;
   const agent: Agent | null =
     input.agent === 'none'
       ? null
@@ -224,6 +252,7 @@ export async function automationRunCreateTask(
       ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
+      ...(validationPlan !== undefined ? { validationPlan } : {}),
     });
     if (input.description != null && input.description !== '') {
       task = await h.taskStore.update(task.id, {
@@ -256,6 +285,7 @@ export async function automationRunCreateTask(
       ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
+      ...(validationPlan !== undefined ? { validationPlan } : {}),
     },
   };
   const result = await h.bridge.request<Task>('tasks.create', active.activeKey, payload);
@@ -279,6 +309,7 @@ type UpdateTaskMcpShape = {
   githubPr?: TaskGithubPr | null;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  validationPlan?: TaskValidationPlan | null | unknown;
 };
 
 export async function automationRunUpdateTask(
@@ -294,6 +325,11 @@ export async function automationRunUpdateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
+  const planParsed = parseAutomationValidationPlan(input.validationPlan, 'update');
+  if (!planParsed.ok) {
+    return { ok: false, error: planParsed.error };
+  }
+  const validationPlan = planParsed.plan;
   if (active.kind === 'local') {
     const existing = h.getTaskInCurrentProject(input.id);
     if (!existing) {
@@ -316,6 +352,7 @@ export async function automationRunUpdateTask(
     > & {
       githubPr?: TaskGithubPr | null;
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      validationPlan?: TaskValidationPlan | null;
     } = {};
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description;
@@ -342,6 +379,9 @@ export async function automationRunUpdateTask(
     }
     if (attachedPlanningDocs !== undefined) {
       patch.attachedPlanningDocs = attachedPlanningDocs;
+    }
+    if (validationPlan !== undefined) {
+      patch.validationPlan = validationPlan;
     }
     const updated = await h.taskActions.updateTask(input.id, patch);
     h.notifyTasksChanged();
@@ -376,6 +416,7 @@ export async function automationRunUpdateTask(
     assigneeId?: string | null;
     githubPr?: TaskGithubPr | null;
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    validationPlan?: TaskValidationPlan | null;
   } = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.description !== undefined) patch.description = input.description;
@@ -405,6 +446,9 @@ export async function automationRunUpdateTask(
   if (assigneeId !== undefined) patch.assigneeId = assigneeId;
   if (attachedPlanningDocs !== undefined) {
     patch.attachedPlanningDocs = attachedPlanningDocs;
+  }
+  if (validationPlan !== undefined) {
+    patch.validationPlan = validationPlan;
   }
   const payload: AutomationBridgeTasksUpdatePayload = { taskId: input.id, patch };
   const result = await h.bridge.request<AutomationBridgeTasksUpdateResult>(

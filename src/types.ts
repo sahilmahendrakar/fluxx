@@ -371,6 +371,16 @@ export interface TaskAttachedPlanningDoc {
   relativePath: string;
 }
 
+/** Task-specific validation plan for the validator agent (separate from implementation description). */
+export interface TaskValidationPlan {
+  goal: string;
+  pack: 'electron-playwright';
+  checks: string[];
+  requiredArtifacts: string[];
+  risks?: string[];
+  notes?: string;
+}
+
 /** GitHub pull request linked to a task (persisted locally and in Firestore). */
 export interface TaskGithubPr {
   url: string;
@@ -508,6 +518,11 @@ export interface Task {
    * Omitted when none; persisted locally and in Firestore for cloud tasks.
    */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  /**
+   * Optional structured validation plan for the validator agent.
+   * Stored separately from {@link Task.description}.
+   */
+  validationPlan?: TaskValidationPlan;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error' | 'interrupted';

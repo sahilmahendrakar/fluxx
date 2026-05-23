@@ -287,6 +287,9 @@ export default function TaskDetailPanel({
   const [depSearch, setDepSearch] = useState('');
   const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
   const [descriptionEditing, setDescriptionEditing] = useState(false);
+  const [detailContentTab, setDetailContentTab] = useState<'implementation' | 'validation'>(
+    'implementation',
+  );
   const terminalRef = useRef<TerminalHandle | null>(null);
   const taskFormSplitRef = useRef<HTMLDivElement>(null);
   const [sessionPaneHeightPx, setSessionPaneHeightPx] = useState(
@@ -314,6 +317,10 @@ export default function TaskDetailPanel({
   const [repoDraftId, setRepoDraftId] = useState('');
   const [sourceMetadataError, setSourceMetadataError] = useState<string | null>(null);
   const [anySessionForTask, setAnySessionForTask] = useState(false);
+
+  useEffect(() => {
+    setDetailContentTab('implementation');
+  }, [task?.id]);
 
   const primaryRepoId = useMemo(
     () => resolvePrimaryRepoId(projectRepos ?? []) ?? '',
@@ -1574,6 +1581,37 @@ export default function TaskDetailPanel({
               </div>
             </div>
 
+            <div
+              className="flex gap-1 border-b border-white/[0.04] px-5 pt-1"
+              role="tablist"
+              aria-label="Task detail sections"
+            >
+              {(
+                [
+                  ['implementation', 'Implementation'],
+                  ['validation', 'Validation'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={detailContentTab === id}
+                  onClick={() => setDetailContentTab(id)}
+                  className={[
+                    'rounded-t-lg px-3 py-2 text-[12px] font-medium transition',
+                    detailContentTab === id
+                      ? 'bg-white/[0.04] text-zinc-100 ring-1 ring-inset ring-white/[0.06] ring-b-transparent'
+                      : 'text-zinc-500 hover:text-zinc-300',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {detailContentTab === 'implementation' ? (
+              <>
             {/* Description: read-first, edit on demand */}
             <section
               className="border-t border-white/[0.04] bg-white/[0.02] px-5 py-5"
@@ -1739,13 +1777,6 @@ export default function TaskDetailPanel({
                 </div>
               </section>
             ) : null}
-
-            <TaskValidationSection
-              task={task}
-              primaryRepoId={primaryRepoId}
-              worktreePath={resolvedWorktreePath}
-              projectRepoReadiness={projectRepoReadiness}
-            />
 
             <div className="space-y-4 px-5 py-5">
               {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (
@@ -1956,6 +1987,18 @@ export default function TaskDetailPanel({
                 </div>
               </section>
             </div>
+              </>
+            ) : null}
+
+            {detailContentTab === 'validation' ? (
+              <TaskValidationSection
+                task={task}
+                primaryRepoId={primaryRepoId}
+                worktreePath={resolvedWorktreePath}
+                projectRepoReadiness={projectRepoReadiness}
+                onUpdate={onUpdate}
+              />
+            ) : null}
           </div>
 
           {!sessionWorkspace ? (

@@ -6,6 +6,7 @@ import type {
   TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskStatus,
+  TaskValidationPlan,
 } from './types';
 
 export const AUTOMATION_BRIDGE_REQUEST_CHANNEL = 'automation:rendererBridge:request';
@@ -47,6 +48,7 @@ export interface AutomationBridgeTaskCreateInput {
   /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan;
 }
 
 export interface AutomationBridgeTaskPatch {
@@ -63,6 +65,7 @@ export interface AutomationBridgeTaskPatch {
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  validationPlan?: TaskValidationPlan | null;
 }
 
 export interface AutomationBridgeTasksCreatePayload {

@@ -48,4 +48,47 @@ describe('composeValidatorSessionPrompt', () => {
     expect(prompt).toContain('Launch Electron with Playwright');
     expect(prompt).toContain('M src/main.ts');
   });
+
+  it('includes validation plan content and required artifacts when present', () => {
+    const prompt = composeValidatorSessionPrompt({
+      task,
+      run: {
+        id: 'run-abc',
+        artifactDir: '/tmp/project/validation-runs/run-abc',
+        packId: 'electron-playwright',
+        validatorAgent: 'cursor',
+      },
+      worktreeCwd: '/tmp/worktrees/task-1',
+      instructionsMarkdown: 'Pack skill',
+      verdictSchemaJson: '{ "verdict": "passed" }',
+      validationPlan: {
+        goal: 'Verify validation tab',
+        pack: 'electron-playwright',
+        checks: ['Open task details', 'Confirm Validation tab'],
+        requiredArtifacts: ['task-detail-validation'],
+      },
+    });
+
+    expect(prompt).toContain('Verify validation tab');
+    expect(prompt).toContain('Confirm Validation tab');
+    expect(prompt).toContain('task-detail-validation');
+  });
+
+  it('surfaces invalid plan warnings without blocking prompt generation', () => {
+    const prompt = composeValidatorSessionPrompt({
+      task,
+      run: {
+        id: 'run-abc',
+        artifactDir: '/tmp/project/validation-runs/run-abc',
+        packId: 'electron-playwright',
+        validatorAgent: 'cursor',
+      },
+      worktreeCwd: '/tmp/worktrees/task-1',
+      instructionsMarkdown: 'Pack skill',
+      verdictSchemaJson: '{ "verdict": "passed" }',
+      validationPlanWarning: 'Task validation plan is invalid and was ignored: missing goal',
+    });
+    expect(prompt).toContain('Validation plan warning');
+    expect(prompt).toContain('invalid and was ignored');
+  });
 });

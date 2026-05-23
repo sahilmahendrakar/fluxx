@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr } from '../types';
+import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskValidationPlan } from '../types';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
@@ -21,6 +21,7 @@ type TaskInput = {
   /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan;
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -272,6 +273,9 @@ export class TaskStore {
         task.attachedPlanningDocs = s;
       }
     }
+    if (input.validationPlan !== undefined) {
+      task.validationPlan = input.validationPlan;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -296,6 +300,7 @@ export class TaskStore {
         | 'createSourceBranchIfMissing'
         | 'repoId'
         | 'fluxxWorkBranch'
+        | 'validationPlan'
       >
     > & {
       autoStartOnUnblock?: boolean | null;
@@ -303,6 +308,8 @@ export class TaskStore {
       githubPr?: TaskGithubPr | null;
       /** `null` clears stored attachments. */
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      /** `null` clears the validation plan. */
+      validationPlan?: TaskValidationPlan | null;
     },
   ): Promise<Task> {
     if (!this.filePath) {
@@ -318,6 +325,7 @@ export class TaskStore {
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
       attachedPlanningDocs: patchAttachedDocs,
+      validationPlan: patchValidationPlan,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -363,6 +371,13 @@ export class TaskStore {
         } else {
           delete updated.attachedPlanningDocs;
         }
+      }
+    }
+    if (patchValidationPlan !== undefined) {
+      if (patchValidationPlan === null) {
+        delete updated.validationPlan;
+      } else {
+        updated.validationPlan = patchValidationPlan;
       }
     }
     if (patch.sourceBranch !== undefined) {

@@ -153,6 +153,7 @@ export async function automationRunValidationRun(
       packId,
       validatorAgent,
       ...(worktreeCwd ? { worktreeCwd } : {}),
+      ...(task.validationPlan !== undefined ? { validationPlan: task.validationPlan } : {}),
     });
     const launchResult = await maybeLaunchValidator(h, task, run, input.launch);
     run = launchResult.run;

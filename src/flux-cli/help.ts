@@ -15,6 +15,7 @@ Optional:
   --assignee-email <email>       Cloud projects; resolve uid via fluxx members list
   --attach-doc <relativePath>    Repeat; planning markdown path (e.g. docs/plan.md)
                                  (aliases: --attach-docs, --attach-planning-doc)
+  --validation-plan <json>       Task-specific validator instructions (JSON object)
   --agent-model <model>
   --agent-yolo=true|false
   --json                         JSON on stdout`;
@@ -36,6 +37,8 @@ Optional:
   --attach-doc <relativePath>    Replaces all attachments when any --attach-doc is passed
                                  (aliases: --attach-docs, --attach-planning-doc)
   --clear-attached-docs          Remove all planning doc attachments (alias: --clear-attach-docs)
+  --validation-plan <json>       Replace validation plan (JSON object for the validator agent)
+  --clear-validation-plan        Remove the validation plan
   --source-branch <git-branch>   Alias: --feature-branch, --branch
   --create-source-branch-if-missing=true|false
   --repo-id <id>                 Only before session/worktree/PR exists

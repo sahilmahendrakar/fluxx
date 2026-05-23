@@ -1,5 +1,6 @@
-import type { Task } from '../types';
+import type { Task, TaskValidationPlan } from '../types';
 import type { ValidationRun } from '../validationRuns/types';
+import { formatValidationPlanForValidatorPrompt } from '../validationPlans/formatForValidatorPrompt';
 
 export type ValidatorSessionPromptInput = {
   task: Task;
@@ -9,6 +10,8 @@ export type ValidatorSessionPromptInput = {
   verdictSchemaJson: string;
   changeSummary?: string;
   planJsonPath?: string;
+  validationPlan?: TaskValidationPlan;
+  validationPlanWarning?: string;
 };
 
 const VALIDATOR_RULES = [
@@ -100,6 +103,8 @@ export function composeValidatorSessionPrompt(input: ValidatorSessionPromptInput
     verdictSchemaJson,
     changeSummary,
     planJsonPath,
+    validationPlan,
+    validationPlanWarning,
   } = input;
 
   const parts = [
@@ -123,11 +128,22 @@ export function composeValidatorSessionPrompt(input: ValidatorSessionPromptInput
     parts.push('## Repository change summary', '', changeSummary.trim(), '');
   }
 
-  if (planJsonPath?.trim()) {
+  if (validationPlanWarning?.trim()) {
+    parts.push(
+      '## Validation plan warning',
+      '',
+      validationPlanWarning.trim(),
+      '',
+    );
+  }
+
+  if (validationPlan) {
+    parts.push(formatValidationPlanForValidatorPrompt(validationPlan));
+  } else if (planJsonPath?.trim()) {
     parts.push(
       '## Validation plan',
       '',
-      `Optional plan at \`${planJsonPath.trim()}\` — use when present.`,
+      `Optional plan at \`${planJsonPath.trim()}\` — read when present and adapt if the UI differs.`,
       '',
     );
   }

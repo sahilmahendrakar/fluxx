@@ -11,6 +11,7 @@ import {
   captureGitStatusPorcelain,
   captureWorktreeChangeSummary,
 } from './gitStatusGuardrail';
+import { snapshotValidationPlanToRunDir } from '../validationPlans/snapshotPlan';
 import { pickSessionForTaskWorktree } from './openWorkspacePath';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import { finalizeValidationRun } from './finalizeValidationRun';
@@ -179,6 +180,10 @@ export async function startValidatorSession(
     buildValidationPackInstructions(pack, projectConfig);
   const changeSummary = await captureWorktreeChangeSummary(worktree.worktreePath);
   const preStatus = await captureGitStatusPorcelain(worktree.worktreePath);
+  const planSnapshot = await snapshotValidationPlanToRunDir(
+    run.artifactDir,
+    input.task.validationPlan,
+  );
   const prompt = composeValidatorSessionPrompt({
     task: input.task,
     run,
@@ -187,6 +192,10 @@ export async function startValidatorSession(
     verdictSchemaJson: pack.verdictSchemaJson,
     changeSummary,
     planJsonPath: path.join(run.artifactDir, 'plan.json'),
+    ...(planSnapshot.ok ? { validationPlan: planSnapshot.plan } : {}),
+    ...(!planSnapshot.ok && input.task.validationPlan != null
+      ? { validationPlanWarning: planSnapshot.warning }
+      : {}),
   });
   await writeValidatorPromptArtifact(run.artifactDir, prompt);
 

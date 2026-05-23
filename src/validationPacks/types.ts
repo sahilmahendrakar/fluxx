@@ -4,6 +4,11 @@ export type ValidationPackId = 'electron-playwright';
 
 export const VALIDATION_PACK_IDS = ['electron-playwright'] as const satisfies readonly ValidationPackId[];
 
+/** Renderer-safe structural pack id check (no disk I/O). */
+export function isKnownValidationPackId(packId: string): packId is ValidationPackId {
+  return (VALIDATION_PACK_IDS as readonly string[]).includes(packId);
+}
+
 export type ValidationVerdictOutcome = 'passed' | 'failed' | 'needs-human-review' | 'errored';
 
 export type ValidationCheckStatus = 'passed' | 'failed' | 'skipped' | 'needs-human-review';
