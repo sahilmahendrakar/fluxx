@@ -48,7 +48,11 @@ import { spawnFluxxTmuxSession } from './tmuxSpawn';
 import { createTerminalRuntime, shouldUseTmuxRuntime } from './terminalRuntimeFactory';
 
 describe('terminalRuntimeFactory', () => {
+  const priorEnv = { ...process.env };
+
   beforeEach(() => {
+    process.env = { ...priorEnv };
+    delete process.env.FLUX_AUX_DEV_SERVER_PORT;
     ptyState.instances.length = 0;
     vi.mocked(spawnFluxxTmuxSession).mockClear();
   });
@@ -95,5 +99,32 @@ describe('terminalRuntimeFactory', () => {
     expect(tmuxSessionName).toMatch(/^fluxx-planning-/);
     expect(spawnFluxxTmuxSession).toHaveBeenCalledOnce();
     expect(ptyState.instances.length).toBeGreaterThan(0);
+  });
+
+  it('uses direct PTY on aux dev even when persist setting is on', async () => {
+    process.env.FLUX_AUX_DEV_SERVER_PORT = '5180';
+    expect(
+      await shouldUseTmuxRuntime({
+        kind: 'task',
+        terminalId: 't1',
+        projectSlugSource: 'demo',
+        persistTerminalsWithTmux: true,
+        tmuxSpawnLauncherPath: '/launcher.cjs',
+      }),
+    ).toBe(false);
+    const { runtime, tmuxSessionName } = await createTerminalRuntime(
+      {
+        kind: 'task',
+        terminalId: 't1',
+        projectSlugSource: 'demo',
+        persistTerminalsWithTmux: true,
+        tmuxSpawnLauncherPath: '/launcher.cjs',
+      },
+      { command: 'echo', args: ['hi'], cwd: '/tmp', cols: 40, rows: 12 },
+      { onData: () => undefined, onExit: () => undefined },
+    );
+    expect(tmuxSessionName).toBeUndefined();
+    expect(runtime.isTmuxBacked).toBe(false);
+    expect(spawnFluxxTmuxSession).not.toHaveBeenCalled();
   });
 });

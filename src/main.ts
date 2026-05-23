@@ -97,6 +97,7 @@ import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
+import { isAuxDevInstance } from './main/auxDevInstance';
 import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
@@ -492,6 +493,13 @@ let appQuitTeardownComplete = false;
 /** When true, PTY exits during `teardownForAppQuit` are recorded as app-quit (cold resume). */
 let terminalQuitTeardownInProgress = false;
 
+/** Session exit hooks enqueue async record writes; `before-quit` awaits these. */
+const pendingSessionExitWork = new Set<Promise<void>>();
+
+/** Assigned during `app.whenReady`; used by `before-quit` to flush agent session records. */
+let taskAgentSessionRecordStore!: TaskAgentSessionRecordStore;
+let planningAgentSessionRecordStore!: PlanningAgentSessionRecordStore;
+
 const APP_QUIT_TERMINAL_TEARDOWN_MS = 3000;
 
 const createWindow = () => {
@@ -578,10 +586,10 @@ app.whenReady().then(async () => {
 
   const resolveRecordProjectDir = (): string =>
     worktreeService.getProjectDir()?.trim() || projectStore.getProjectDir()?.trim() || '';
-  const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
+  taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
-  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+  planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
   const terminalSessionRecordStore = new TerminalSessionRecordStore({
@@ -631,7 +639,6 @@ app.whenReady().then(async () => {
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
   const conversationAgentBySessionId = new Map<string, Agent>();
-  const pendingSessionExitWork = new Set<Promise<void>>();
 
   function trackSessionExitWork(work: Promise<void>): void {
     pendingSessionExitWork.add(work);
@@ -1066,6 +1073,7 @@ app.whenReady().then(async () => {
 
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
     if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    if (isAuxDevInstance()) return;
     await syncTerminalRuntimeContext();
     if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
 
@@ -5322,8 +5330,12 @@ app.on('before-quit', (e) => {
       if (pendingSessionExitWork.size > 0) {
         await Promise.allSettled([...pendingSessionExitWork]);
       }
-      await taskAgentSessionRecordStore.whenWriteIdle();
-      await planningAgentSessionRecordStore.whenWriteIdle();
+      if (taskAgentSessionRecordStore) {
+        await taskAgentSessionRecordStore.whenWriteIdle();
+      }
+      if (planningAgentSessionRecordStore) {
+        await planningAgentSessionRecordStore.whenWriteIdle();
+      }
 
       appQuitTeardownComplete = true;
       app.quit();
