@@ -71,6 +71,26 @@ describe('buildDevicePickerOptions', () => {
     const options = buildDevicePickerOptions([localDevice, disabled, sshDevice]);
     expect(options.map((o) => o.ref.deviceId)).toEqual(['local', 'devbox']);
   });
+
+  it('shows agent warning hint without disabling an available ssh device', () => {
+    const probed: ExecutionDeviceConfig = {
+      ...sshDevice,
+      lastProbe: {
+        status: 'available',
+        checkedAt: '2026-01-02T00:00:00.000Z',
+        capabilities: {
+          agents: [
+            { command: 'claude', found: false },
+            { command: 'agent', found: false },
+            { command: 'codex', found: false },
+          ],
+        },
+      },
+    };
+    const [option] = buildDevicePickerOptions([probed]);
+    expect(option.disabled).toBe(false);
+    expect(option.hint).toContain('No agent CLIs');
+  });
 });
 
 describe('deviceUsesTmuxPersistence', () => {

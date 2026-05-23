@@ -12,6 +12,7 @@ import {
   BUILTIN_LOCAL_DEVICE_DISPLAY_NAME,
   BUILTIN_LOCAL_DEVICE_ID,
 } from './constants';
+import { probeAgentWarningMessage } from './probeAgents';
 import { resolveEffectiveExecutionDevice } from './resolve';
 
 export type DeviceAvailabilityState =
@@ -70,7 +71,7 @@ export function deviceAvailabilityHint(state: DeviceAvailabilityState): string |
     case 'missing':
       return 'Configured device is missing. Choose another device or add it in Settings → Devices.';
     case 'probe-unavailable':
-      return 'Last probe reported this host as unavailable.';
+      return 'Last probe reported this host as unavailable. Open Settings → Devices and run Probe for details.';
     case 'cloud-no-local-override':
       return 'No device chosen on this computer yet. Pick a device to run sessions locally.';
     default:
@@ -112,12 +113,14 @@ export function buildDevicePickerOptions(
     if (!includeDisabled && !device.enabled) continue;
     const ref = taskRefFromDeviceConfig(device);
     const state = deviceAvailabilityForRef(devices, ref);
+    const agentWarning =
+      device.kind === 'ssh' ? probeAgentWarningMessage(device.lastProbe) : null;
     out.push({
       ref,
       label: device.displayName,
       kindLabel: device.kind === 'local' ? 'Local' : 'SSH',
       disabled: !device.enabled || state === 'missing',
-      hint: deviceAvailabilityHint(state) ?? undefined,
+      hint: agentWarning ?? deviceAvailabilityHint(state) ?? undefined,
     });
   }
   return out;

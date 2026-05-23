@@ -1,4 +1,6 @@
 import type {
+  DeviceProbeCapabilities,
+  DeviceProbeErrorCode,
   DeviceProbeResult,
   DeviceProbeStatus,
   ExecutionDeviceConfig,
@@ -109,6 +111,88 @@ function parseTmuxSettings(raw: unknown): ExecutionDeviceTmuxSettings | null {
 
 const PROBE_STATUSES: DeviceProbeStatus[] = ['unknown', 'available', 'unavailable', 'probing'];
 
+const PROBE_ERROR_CODES: DeviceProbeErrorCode[] = [
+  'SSH_CONNECT_FAILED',
+  'SSH_HOST_KEY_FAILED',
+  'SSH_AUTH_FAILED',
+  'SSH_TIMEOUT',
+  'SSH_HELPER_MISSING',
+  'SSH_HELPER_VERSION_MISMATCH',
+  'SSH_HELPER_BOOTSTRAP_FAILED',
+  'REMOTE_TMUX_MISSING',
+  'REMOTE_GIT_MISSING',
+  'REMOTE_AGENT_NOT_FOUND',
+  'REMOTE_WORKSPACE_UNWRITABLE',
+  'REMOTE_REPO_ACCESS_FAILED',
+  'INTERNAL',
+];
+
+function parseDeviceProbeCapabilities(raw: unknown): DeviceProbeCapabilities | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: DeviceProbeCapabilities = {};
+  if (typeof o.os === 'string' && o.os.trim()) out.os = o.os.trim();
+  if (typeof o.arch === 'string' && o.arch.trim()) out.arch = o.arch.trim();
+  if (typeof o.shell === 'string' && o.shell.trim()) out.shell = o.shell.trim();
+  if (o.git && typeof o.git === 'object') {
+    const git = o.git as Record<string, unknown>;
+    out.git = {
+      found: git.found === true,
+      ...(typeof git.path === 'string' ? { path: git.path } : {}),
+      ...(typeof git.version === 'string' ? { version: git.version } : {}),
+    };
+  }
+  if (o.tmux && typeof o.tmux === 'object') {
+    const tmux = o.tmux as Record<string, unknown>;
+    out.tmux = {
+      found: tmux.found === true,
+      ...(typeof tmux.path === 'string' ? { path: tmux.path } : {}),
+      ...(typeof tmux.version === 'string' ? { version: tmux.version } : {}),
+    };
+  }
+  if (o.workspaceRoot && typeof o.workspaceRoot === 'object') {
+    const ws = o.workspaceRoot as Record<string, unknown>;
+    if (typeof ws.path === 'string') {
+      out.workspaceRoot = {
+        path: ws.path,
+        writable: ws.writable === true,
+      };
+    }
+  }
+  if (Array.isArray(o.agents)) {
+    out.agents = o.agents
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const a = entry as Record<string, unknown>;
+        if (typeof a.command !== 'string' || !a.command.trim()) return null;
+        return {
+          command: a.command.trim(),
+          found: a.found === true,
+          ...(typeof a.path === 'string' ? { path: a.path } : {}),
+          ...(typeof a.version === 'string' ? { version: a.version } : {}),
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+  }
+  if (Array.isArray(o.repos)) {
+    out.repos = o.repos
+      .map((entry) => {
+        if (!entry || typeof entry !== 'object') return null;
+        const r = entry as Record<string, unknown>;
+        if (typeof r.repoId !== 'string' || !r.repoId.trim()) return null;
+        return {
+          repoId: r.repoId.trim(),
+          accessible: r.accessible === true,
+          ...(typeof r.label === 'string' ? { label: r.label } : {}),
+          ...(typeof r.remoteUrl === 'string' ? { remoteUrl: r.remoteUrl } : {}),
+          ...(typeof r.error === 'string' ? { error: r.error } : {}),
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 function parseDeviceProbeResult(raw: unknown): DeviceProbeResult | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -126,6 +210,22 @@ function parseDeviceProbeResult(raw: unknown): DeviceProbeResult | null {
   if (typeof o.message === 'string' && o.message.trim()) {
     out.message = o.message.trim();
   }
+  if (typeof o.phase === 'string' && o.phase.trim()) {
+    out.phase = o.phase.trim();
+  }
+  if (
+    typeof o.errorCode === 'string' &&
+    (PROBE_ERROR_CODES as string[]).includes(o.errorCode)
+  ) {
+    out.errorCode = o.errorCode as DeviceProbeErrorCode;
+  }
+  if (typeof o.helperVersion === 'string' && o.helperVersion.trim()) {
+    out.helperVersion = o.helperVersion.trim();
+  }
+  const capabilities = parseDeviceProbeCapabilities(o.capabilities);
+  if (capabilities) {
+    out.capabilities = capabilities;
+  }
   return out;
 }
 
@@ -136,6 +236,7 @@ function parseSshConfig(raw: unknown): ExecutionDeviceSshConfig | null {
   const out: ExecutionDeviceSshConfig = { host: o.host.trim() };
   if (typeof o.user === 'string' && o.user.trim()) out.user = o.user.trim();
   if (typeof o.port === 'number' && Number.isFinite(o.port)) out.port = o.port;
+  if (o.forwardAgent === true) out.forwardAgent = true;
   if (Array.isArray(o.extraArgs)) {
     const args = o.extraArgs.filter((x): x is string => typeof x === 'string');
     if (args.length > 0) out.extraArgs = args;

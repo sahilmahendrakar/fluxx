@@ -24,6 +24,7 @@ import type {
   Task,
   TaskExecutionDeviceRef,
   ExecutionDeviceConfig,
+  DeviceProbeResult,
   ExecutionDeviceUpdateInput,
   SshExecutionDeviceUpsertInput,
   TaskGithubPr,
@@ -370,6 +371,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     remove: (deviceId: string) =>
       ipcRenderer.invoke('executionDevices:remove', deviceId) as Promise<void>,
+    probe: (deviceId: string) =>
+      ipcRenderer.invoke('executionDevices:probe', deviceId) as Promise<DeviceProbeResult>,
   },
   cloudBindings: {
     getPerTaskDeviceOverrides: (projectId: string) =>
