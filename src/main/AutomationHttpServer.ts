@@ -7,6 +7,7 @@ export type FluxAutomationHttpOp =
   | AutomationBridgeOp
   | 'tasks.start'
   | 'validation.run'
+  | 'validation.launch'
   | 'validation.list'
   | 'validation.show'
   | 'validation.artifacts'

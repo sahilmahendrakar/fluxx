@@ -470,6 +470,18 @@ declare global {
         registerArtifact: (
           input: ValidationArtifactRegisterInput,
         ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        launchValidator: (payload: {
+          runId: string;
+          task: Task;
+        }) => Promise<
+          | { ok: true; run: ValidationRun; validatorSessionId: string }
+          | { error: string }
+        >;
+        cancelValidator: (payload: {
+          runId: string;
+          sessionId: string;
+        }) => Promise<{ ok: true; run: ValidationRun | null } | { error: string }>;
+        onChanged: (cb: (payload: { runId: string }) => void) => () => void;
       };
       validationPacks: {
         list: () => Promise<{ ok: true; packs: ValidationPackSummary[] } | { error: string }>;

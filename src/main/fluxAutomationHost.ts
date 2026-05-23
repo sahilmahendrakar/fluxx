@@ -34,6 +34,13 @@ export type FluxAutomationHostDeps = {
   listTerminalSessions: () => Promise<Session[]>;
   getRecordProjectDir: () => string;
   getMainWindow: () => BrowserWindow | null;
+  launchValidatorSession?: (input: {
+    task: import('../types').Task;
+    runId: string;
+  }) => Promise<
+    | { ok: true; run: import('../validationRuns/types').ValidationRun; sessionId: string }
+    | { ok: false; error: string }
+  >;
   taskActions: {
     updateTask: (
       id: string,
@@ -159,6 +166,9 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     validationRunStore: deps.validationRunStore,
     listTerminalSessions: deps.listTerminalSessions,
     getRecordProjectDir: deps.getRecordProjectDir,
+    ...(deps.launchValidatorSession
+      ? { launchValidatorSession: deps.launchValidatorSession }
+      : {}),
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>
       automationBridgeFailureToInvoke(result),

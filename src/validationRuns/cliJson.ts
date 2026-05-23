@@ -15,6 +15,13 @@ export type ValidationRunCliJson = {
   verdictReason?: string;
   artifactDir: string;
   artifacts: ValidationArtifactCliJson[];
+  validatorSessionId?: string;
+  worktreeCwd?: string;
+  gitGuardrails?: {
+    preValidationGitStatus?: string;
+    postValidationGitStatus?: string;
+    gitStatusDriftDetected?: boolean;
+  };
 };
 
 export type ValidationArtifactCliJson = {
@@ -52,5 +59,8 @@ export function validationRunToCliJson(run: ValidationRun): ValidationRunCliJson
     ...(run.verdictReason ? { verdictReason: run.verdictReason } : {}),
     artifactDir: run.artifactDir,
     artifacts: run.artifacts.map(validationArtifactToCliJson),
+    ...(run.validatorSessionId ? { validatorSessionId: run.validatorSessionId } : {}),
+    ...(run.worktreeCwd ? { worktreeCwd: run.worktreeCwd } : {}),
+    ...(run.gitGuardrails ? { gitGuardrails: run.gitGuardrails } : {}),
   };
 }

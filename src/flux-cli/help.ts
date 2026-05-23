@@ -67,6 +67,16 @@ Required:
 Optional:
   --pack <packId>                Validation pack (default: electron-playwright)
   --validator-agent <agent>      claude-code | codex | cursor (default: cursor)
+  --no-launch                    Create the run record only (do not start validator agent)
+  --json`;
+
+const VALIDATION_LAUNCH_FLAGS = `Usage: fluxx validation launch [--json] --run-id <runId> [options]
+
+Required:
+  --run-id <runId>               Queued validation run to launch (alias: --run)
+
+Optional:
+  --task-id <taskId>             Task id when disambiguation is needed (alias: --task)
   --json`;
 
 const VALIDATION_LIST_FLAGS = `Usage: fluxx validation list [--json] --task-id <taskId>
@@ -106,7 +116,7 @@ const TOP_LEVEL = `Fluxx CLI — board automation for planning sessions
 Usage:
   fluxx project info [--json]
   fluxx tasks list|create|update|start|delete [--json] ...
-  fluxx validation run|list|show|artifacts|ingest [--json] ...
+  fluxx validation run|launch|list|show|artifacts|ingest [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
 
@@ -120,6 +130,8 @@ function helpForValidationAction(action: string | undefined): string | null {
   switch (action) {
     case 'run':
       return VALIDATION_RUN_FLAGS;
+    case 'launch':
+      return VALIDATION_LAUNCH_FLAGS;
     case 'list':
       return VALIDATION_LIST_FLAGS;
     case 'show':
@@ -129,10 +141,11 @@ function helpForValidationAction(action: string | undefined): string | null {
     case 'ingest':
       return VALIDATION_INGEST_FLAGS;
     case undefined:
-      return `Usage: fluxx validation <run|list|show|artifacts|ingest> [options]
+      return `Usage: fluxx validation <run|launch|list|show|artifacts|ingest> [options]
 
 Subcommands:
-  run        Create a validation run and scaffold artifact directory
+  run        Create a validation run and start the validator agent (use --no-launch to skip)
+  launch     Start the validator agent for an existing queued run
   list       List validation runs for a task
   show       Show one run (ingests verdict when applicable)
   artifacts  List artifacts for a run (ingests verdict when applicable)

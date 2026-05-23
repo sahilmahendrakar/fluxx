@@ -5,7 +5,8 @@ export type FluxCliCommand =
   | { kind: 'tasks'; action: 'update'; json: boolean; payload: Record<string, unknown> }
   | { kind: 'tasks'; action: 'start'; json: boolean; id: string }
   | { kind: 'tasks'; action: 'delete'; json: boolean; id: string; confirm: boolean }
-  | { kind: 'validation'; action: 'run'; json: boolean; taskId: string; packId?: string; validatorAgent?: string }
+  | { kind: 'validation'; action: 'run'; json: boolean; taskId: string; packId?: string; validatorAgent?: string; launch?: boolean }
+  | { kind: 'validation'; action: 'launch'; json: boolean; runId: string; taskId?: string }
   | { kind: 'validation'; action: 'list'; json: boolean; taskId: string }
   | { kind: 'validation'; action: 'show'; json: boolean; runId: string }
   | { kind: 'validation'; action: 'artifacts'; json: boolean; runId: string }
@@ -281,7 +282,9 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
       const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--task']);
       const { value: packId, rest: r2 } = takeFlag(r1, '--pack');
       const { value: validatorAgent, rest: r3 } = takeFlag(r2, '--validator-agent');
-      if (!taskId || r3.length > 0) {
+      const noLaunch = r3.includes('--no-launch');
+      const r4 = noLaunch ? r3.filter((a) => a !== '--no-launch') : r3;
+      if (!taskId || r4.length > 0) {
         return { ok: false, message: 'validation run requires --task-id' };
       }
       return {
@@ -293,6 +296,24 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
           taskId,
           ...(packId !== undefined ? { packId } : {}),
           ...(validatorAgent !== undefined ? { validatorAgent } : {}),
+          ...(noLaunch ? { launch: false } : {}),
+        },
+      };
+    }
+    if (action === 'launch') {
+      const { value: runId, rest: r1 } = takeFlagAliases(rest, ['--run-id', '--run']);
+      const { value: taskId, rest: r2 } = takeFlagAliases(r1, ['--task-id', '--task']);
+      if (!runId || r2.length > 0) {
+        return { ok: false, message: 'validation launch requires --run-id' };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'validation',
+          action: 'launch',
+          json,
+          runId,
+          ...(taskId !== undefined ? { taskId } : {}),
         },
       };
     }

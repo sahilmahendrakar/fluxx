@@ -19,6 +19,8 @@ import type {
   ValidationArtifactView,
   ValidationRun,
   ValidationRunCreateInput,
+  ValidationRunGuardrailsUpdate,
+  ValidationRunLaunchUpdate,
   ValidationRunStatus,
   ValidationRunStatusUpdate,
 } from '../validationRuns/types';
@@ -61,6 +63,11 @@ type PersistedRunRow = {
   completedAt?: string;
   summary?: string;
   verdictReason?: string;
+  validatorSessionId?: string;
+  worktreeCwd?: string;
+  preValidationGitStatus?: string;
+  postValidationGitStatus?: string;
+  gitStatusDriftDetected?: boolean;
   artifacts: ValidationArtifact[];
 };
 
@@ -152,6 +159,21 @@ function parsePersistedRow(raw: unknown): PersistedRunRow | null {
   if (typeof r.completedAt === 'string') out.completedAt = r.completedAt;
   if (typeof r.summary === 'string') out.summary = r.summary;
   if (typeof r.verdictReason === 'string') out.verdictReason = r.verdictReason;
+  if (typeof r.validatorSessionId === 'string' && r.validatorSessionId.trim()) {
+    out.validatorSessionId = r.validatorSessionId.trim();
+  }
+  if (typeof r.worktreeCwd === 'string' && r.worktreeCwd.trim()) {
+    out.worktreeCwd = r.worktreeCwd.trim();
+  }
+  if (typeof r.preValidationGitStatus === 'string') {
+    out.preValidationGitStatus = r.preValidationGitStatus;
+  }
+  if (typeof r.postValidationGitStatus === 'string') {
+    out.postValidationGitStatus = r.postValidationGitStatus;
+  }
+  if (typeof r.gitStatusDriftDetected === 'boolean') {
+    out.gitStatusDriftDetected = r.gitStatusDriftDetected;
+  }
   return out;
 }
 
@@ -291,6 +313,22 @@ export class ValidationRunStore {
   private async toValidationRun(row: PersistedRunRow): Promise<ValidationRun> {
     const projectDir = this.requireProjectDir();
     const artifactDir = validationRunDir(projectDir, row.id);
+    const gitGuardrails =
+      row.preValidationGitStatus !== undefined ||
+      row.postValidationGitStatus !== undefined ||
+      row.gitStatusDriftDetected !== undefined
+        ? {
+            ...(row.preValidationGitStatus !== undefined
+              ? { preValidationGitStatus: row.preValidationGitStatus }
+              : {}),
+            ...(row.postValidationGitStatus !== undefined
+              ? { postValidationGitStatus: row.postValidationGitStatus }
+              : {}),
+            ...(row.gitStatusDriftDetected !== undefined
+              ? { gitStatusDriftDetected: row.gitStatusDriftDetected }
+              : {}),
+          }
+        : undefined;
     return {
       id: row.id,
       taskId: row.taskId,
@@ -303,6 +341,9 @@ export class ValidationRunStore {
       ...(row.completedAt ? { completedAt: row.completedAt } : {}),
       ...(row.summary ? { summary: row.summary } : {}),
       ...(row.verdictReason ? { verdictReason: row.verdictReason } : {}),
+      ...(row.validatorSessionId ? { validatorSessionId: row.validatorSessionId } : {}),
+      ...(row.worktreeCwd ? { worktreeCwd: row.worktreeCwd } : {}),
+      ...(gitGuardrails ? { gitGuardrails } : {}),
       artifactDir,
       artifacts: await this.enrichArtifacts(projectDir, row.id, row.artifacts),
     };
@@ -436,6 +477,49 @@ export class ValidationRunStore {
       const updated: PersistedRunRow = {
         ...current,
         artifacts: [...current.artifacts, artifact],
+      };
+      this.cache[index] = updated;
+      await this.persist();
+      return this.toValidationRun(updated);
+    });
+  }
+
+  async markLaunched(input: ValidationRunLaunchUpdate): Promise<ValidationRun> {
+    return this.enqueueWrite(async () => {
+      await this.ensureLoaded();
+      const index = this.cache.findIndex((r) => r.id === input.runId);
+      if (index === -1) {
+        throw new Error(`Validation run not found: ${input.runId}`);
+      }
+      const current = this.cache[index];
+      if (current.status !== 'queued') {
+        throw new Error(`Validation run is not queued: ${current.status}`);
+      }
+      const updated: PersistedRunRow = {
+        ...current,
+        status: 'running',
+        validatorSessionId: input.validatorSessionId.trim(),
+        worktreeCwd: input.worktreeCwd.trim(),
+        preValidationGitStatus: input.preValidationGitStatus,
+      };
+      this.cache[index] = updated;
+      await this.persist();
+      return this.toValidationRun(updated);
+    });
+  }
+
+  async updateGuardrails(input: ValidationRunGuardrailsUpdate): Promise<ValidationRun> {
+    return this.enqueueWrite(async () => {
+      await this.ensureLoaded();
+      const index = this.cache.findIndex((r) => r.id === input.runId);
+      if (index === -1) {
+        throw new Error(`Validation run not found: ${input.runId}`);
+      }
+      const current = this.cache[index];
+      const updated: PersistedRunRow = {
+        ...current,
+        postValidationGitStatus: input.postValidationGitStatus,
+        gitStatusDriftDetected: input.gitStatusDriftDetected,
       };
       this.cache[index] = updated;
       await this.persist();
