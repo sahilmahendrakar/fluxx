@@ -308,6 +308,10 @@ export interface TerminalSessionRecord {
   runtime: TerminalRuntime;
   projectId: string;
   repoId?: string;
+  /** Direct-SSH sessions: Fluxx desktop device id that owns the remote manifest row. */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  hostLabel?: string;
   tmuxSessionName?: string;
   cwd: string;
   command: string;
@@ -668,6 +672,18 @@ export type SessionStartErrorCode =
   | 'WORKTREE_REPO_NOT_GIT'
   /** Cloud project: shared repo exists but no local clone is bound on this machine. */
   | 'WORKTREE_REPO_NOT_BOUND'
+  | 'DEVICE_NOT_CONFIGURED'
+  | 'DEVICE_UNAVAILABLE'
+  | 'SSH_CONNECT_FAILED'
+  | 'SSH_HELPER_MISSING'
+  | 'SSH_HELPER_VERSION_MISMATCH'
+  | 'REMOTE_TMUX_MISSING'
+  | 'REMOTE_GIT_MISSING'
+  | 'REMOTE_AGENT_NOT_FOUND'
+  | 'REMOTE_WORKSPACE_UNWRITABLE'
+  | 'REMOTE_REPO_ACCESS_FAILED'
+  | 'REMOTE_NON_GIT_UNSUPPORTED'
+  | 'REMOTE_SETUP_FAILED'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';
@@ -717,6 +733,12 @@ export interface Session {
    * main may attach it to the live {@link Session} row for UI hints.
    */
   agentConversationId?: string;
+  /** Execution device that owns this session (direct SSH v1). */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
+  /** Remote worktree path when {@link Session.deviceKind} is `ssh`. */
+  remotePath?: string;
 }
 
 /** Persisted metadata for task agent PTY sessions (cold resume, audit). */

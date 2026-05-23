@@ -1,5 +1,5 @@
 /** Protocol + bundled artifact version for `fluxx-remote-helper`. */
-export const FLUXX_REMOTE_HELPER_VERSION = '0.1.0';
+export const FLUXX_REMOTE_HELPER_VERSION = '0.2.1';
 
 export const FLUXX_REMOTE_HELPER_COMMAND = 'fluxx-remote-helper';
 
