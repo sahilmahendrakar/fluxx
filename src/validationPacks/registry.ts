@@ -6,7 +6,7 @@ import type {
   ValidationPackManifest,
   ValidationPackSummary,
 } from './types';
-import { VALIDATION_PACK_IDS } from './types';
+import { isKnownValidationPackId, VALIDATION_PACK_IDS } from './types';
 import { resolveValidationPacksRoot } from './resolveValidationPacksRoot';
 
 function readUtf8(filePath: string): string {
@@ -95,5 +95,5 @@ export function getValidationPackById(
 }
 
 export function isValidationPackId(packId: string): packId is ValidationPackId {
-  return packId === 'electron-playwright' && getValidationPackById(packId) !== null;
+  return isKnownValidationPackId(packId) && getValidationPackById(packId) !== null;
 }

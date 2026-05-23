@@ -74,6 +74,8 @@ export type ValidationRunCreateInput = {
   validatorAgent: Agent;
   /** Task worktree cwd for Playwright launch (optional; defaults from project config). */
   worktreeCwd?: string;
+  /** Snapshot of the task validation plan into `<runDir>/plan.json` when valid. */
+  validationPlan?: TaskValidationPlan | null;
 };
 
 export type ValidationRunStatusUpdate = {

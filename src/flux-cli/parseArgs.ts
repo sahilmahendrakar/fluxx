@@ -191,8 +191,12 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
     '--attach-docs',
     '--attach-planning-doc',
   ]);
+  const { value: validationPlanRaw, rest: withoutValidationPlan } = takeFlagAliases(
+    withoutAttachDoc,
+    ['--validation-plan'],
+  );
 
-  const payload = parseKeyValuePayload(withoutAttachDoc);
+  const payload = parseKeyValuePayload(withoutValidationPlan);
   const labels = splitListValues(labelsRaw);
   const blockedByTaskIds = splitListValues(blockedByRaw);
   const attachDocPaths = splitListValues(attachDocRaw);
@@ -203,6 +207,7 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
     payload.clearDependencies === true;
   const clearAttachedDocs =
     payload.clearAttachedDocs === true || payload.clearAttachDocs === true;
+  const clearValidationPlan = payload.clearValidationPlan === true;
 
   if (clearLabels && labels.length > 0) {
     return { ok: false, message: 'Pass either --label/--labels or --clear-labels, not both' };
@@ -219,6 +224,12 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
       message: 'Pass either --attach-doc/--attach-docs or --clear-attached-docs, not both',
     };
   }
+  if (clearValidationPlan && validationPlanRaw !== undefined) {
+    return {
+      ok: false,
+      message: 'Pass either --validation-plan or --clear-validation-plan, not both',
+    };
+  }
 
   delete payload.clearLabels;
   delete payload.clearBlockedBy;
@@ -226,12 +237,18 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
   delete payload.clearDependencies;
   delete payload.clearAttachedDocs;
   delete payload.clearAttachDocs;
+  delete payload.clearValidationPlan;
   if (labels.length > 0 || clearLabels) payload.labels = labels;
   if (blockedByTaskIds.length > 0 || clearBlockedBy) payload.blockedByTaskIds = blockedByTaskIds;
   if (attachDocPaths.length > 0) {
     payload.attachedPlanningDocs = attachDocPaths.map((relativePath) => ({ relativePath }));
   } else if (clearAttachedDocs) {
     payload.attachedPlanningDocs = null;
+  }
+  if (validationPlanRaw !== undefined) {
+    payload.validationPlan = validationPlanRaw;
+  } else if (clearValidationPlan) {
+    payload.validationPlan = null;
   }
   if (repoId !== undefined) payload.repoId = repoId;
   if (sourceBranch !== undefined) payload.sourceBranch = sourceBranch;

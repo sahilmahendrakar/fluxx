@@ -31,6 +31,7 @@ export async function runManualValidationForTask(input: {
     validatorAgent: task.agent,
     ...(repoId ? { repoId } : {}),
     ...(input.worktreePath?.trim() ? { worktreeCwd: input.worktreePath.trim() } : {}),
+    ...(task.validationPlan !== undefined ? { validationPlan: task.validationPlan } : {}),
   });
   if ('error' in createResult) {
     return { ok: false, error: createResult.error };

@@ -9,6 +9,8 @@ import {
   validationRunDir,
 } from '../validationRuns/path';
 import { scaffoldValidationRunFiles } from '../validationPacks/scaffoldRunFiles';
+import type { TaskValidationPlan } from '../types';
+import { snapshotValidationPlanToRunDir } from '../validationPlans/snapshotPlan';
 import { isValidationPackId } from '../validationPacks/registry';
 import type { ValidationPackId } from '../validationPacks/types';
 import type {
@@ -395,6 +397,9 @@ export class ValidationRunStore {
         artifacts: [],
       };
       await this.scaffoldRunDirectory(projectDir, id, packId, input.worktreeCwd);
+      if (input.validationPlan !== undefined) {
+        await snapshotValidationPlanToRunDir(validationRunDir(projectDir, id), input.validationPlan);
+      }
       this.cache.push(row);
       await this.persist();
       return this.toValidationRun(row);

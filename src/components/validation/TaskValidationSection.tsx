@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
 import type { Task } from '../../types';
+import type { TaskPatch } from '../../renderer/tasks/TaskProvider';
 import { AGENTS } from '../../types';
 import type { ProjectRepoReadiness } from '../../projectRepoReadiness';
 import { projectRepoActionsBlocked } from '../../projectRepoReadiness';
@@ -16,22 +17,39 @@ import { runManualValidationForTask } from '../../validationRuns/manualValidatio
 import { useTaskValidationRuns } from '../../validationRuns/useTaskValidationRuns';
 import ValidationArtifactList from './ValidationArtifactList';
 import ValidationStatusBadge from './ValidationStatusBadge';
+import type { ValidationVerdictCheck } from '../../validationPacks/verdict';
+import {
+  matchPlannedChecksToVerdict,
+  verdictCheckStatusClass,
+} from '../../validationPlans/compareChecks';
+import TaskValidationPlanEditor from './TaskValidationPlanEditor';
 
 export default function TaskValidationSection({
   task,
   primaryRepoId,
   worktreePath,
   projectRepoReadiness,
+  onUpdate,
 }: {
   task: Task;
   primaryRepoId: string;
   worktreePath?: string | null;
   projectRepoReadiness?: ProjectRepoReadiness;
+  onUpdate: (id: string, patch: TaskPatch) => void;
 }) {
   const { runs, latestRun, loading, error, refresh } = useTaskValidationRuns(task.id);
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [verdictRisks, setVerdictRisks] = useState<string[]>([]);
+  const [verdictChecks, setVerdictChecks] = useState<ValidationVerdictCheck[]>([]);
+
+  const plannedCheckRows = useMemo(
+    () =>
+      task.validationPlan?.checks?.length
+        ? matchPlannedChecksToVerdict(task.validationPlan.checks, verdictChecks)
+        : [],
+    [task.validationPlan?.checks, verdictChecks],
+  );
 
   const repoBlocked = projectRepoReadiness
     ? projectRepoActionsBlocked(projectRepoReadiness)
@@ -53,12 +71,14 @@ export default function TaskValidationSection({
 
   useEffect(() => {
     setVerdictRisks([]);
+    setVerdictChecks([]);
     if (!latestRun?.id) return;
     if (latestRun.status === 'queued' || latestRun.status === 'running') return;
     let cancelled = false;
     void window.electronAPI.validationRuns.readVerdict(latestRun.id).then((result) => {
       if (cancelled || !result.ok) return;
       setVerdictRisks(result.verdict.risks ?? []);
+      setVerdictChecks(result.verdict.checks ?? []);
     });
     return () => {
       cancelled = true;
@@ -135,6 +155,10 @@ export default function TaskValidationSection({
           <p className="mb-3 text-[11px] leading-snug text-zinc-500">{eligibility.message}</p>
         ) : null}
 
+        <div className="mb-4">
+          <TaskValidationPlanEditor task={task} onUpdate={onUpdate} />
+        </div>
+
         {loading && runs.length === 0 ? (
           <p className="text-xs text-zinc-600">Loading validation history…</p>
         ) : null}
@@ -176,6 +200,27 @@ export default function TaskValidationSection({
                   Summary
                 </p>
                 <p className="text-[13px] leading-relaxed text-zinc-300">{latestRun.summary}</p>
+              </div>
+            ) : null}
+
+            {plannedCheckRows.length > 0 ? (
+              <div>
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                  Planned vs verdict checks
+                </p>
+                <ul className="space-y-1.5">
+                  {plannedCheckRows.map((row) => (
+                    <li
+                      key={row.name}
+                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg border border-white/[0.05] bg-white/[0.02] px-2.5 py-1.5 text-[12px]"
+                    >
+                      <span className="text-zinc-300">{row.name}</span>
+                      <span className={`font-medium ${verdictCheckStatusClass(row.verdictStatus)}`}>
+                        {row.verdictStatus ?? 'not run'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
 

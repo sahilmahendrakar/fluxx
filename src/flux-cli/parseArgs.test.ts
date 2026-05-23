@@ -82,6 +82,29 @@ describe('parseFluxCliArgs', () => {
     }
   });
 
+  it('parses validation-plan on create and update', () => {
+    const plan =
+      '{"goal":"Verify UI","pack":"electron-playwright","checks":["Open details"],"requiredArtifacts":["shot"]}';
+    const create = parseFluxCliArgs([
+      'tasks',
+      'create',
+      '--title',
+      'Ship',
+      '--validation-plan',
+      plan,
+    ]);
+    expect(create.ok).toBe(true);
+    if (create.ok && create.command.kind === 'tasks' && create.command.action === 'create') {
+      expect(create.command.payload.validationPlan).toBe(plan);
+    }
+
+    const update = parseFluxCliArgs(['tasks', 'update', '--id', 't1', '--clear-validation-plan']);
+    expect(update.ok).toBe(true);
+    if (update.ok && update.command.kind === 'tasks' && update.command.action === 'update') {
+      expect(update.command.payload.validationPlan).toBeNull();
+    }
+  });
+
   it('parses task create and update attach-doc flags', () => {
     const create = parseFluxCliArgs([
       'tasks',
