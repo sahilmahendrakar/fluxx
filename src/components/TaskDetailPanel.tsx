@@ -127,6 +127,9 @@ export interface TaskDetailPanelProps {
   onMarkAsDone?: () => void;
   /** True when dependencies block finishing; shows a disabled Mark as done control. */
   markAsDoneBlocked?: boolean;
+  /** Done task with workspace not yet cleaned — same flow as board broom / session chrome. */
+  onRequestCleanupTask?: () => void;
+  cleanupLoading?: boolean;
   /** Project “auto-start when unblocked” (from local config / cloud binding). */
   autoStartWhenUnblockedProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
@@ -255,6 +258,8 @@ export default function TaskDetailPanel({
   onMinimizeSession,
   onMarkAsDone,
   markAsDoneBlocked = false,
+  onRequestCleanupTask,
+  cleanupLoading = false,
   autoStartWhenUnblockedProject = false,
   projectMembers,
   cloudActiveRunnerSession = false,
@@ -1094,6 +1099,9 @@ export default function TaskDetailPanel({
 
   const showMarkAsDone = task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
+  const showCleanUp =
+    task.status === 'done' && !task.workspaceCleanedAt && Boolean(onRequestCleanupTask);
+  const cleanUpDisabled = showCleanUp && (cleanupLoading || !onRequestCleanupTask);
 
   const panelShell = (
     <>
@@ -1136,6 +1144,21 @@ export default function TaskDetailPanel({
                   className={markDoneDisabled ? markDoneBtnDisabled : markDoneBtn}
                 >
                   Mark as done
+                </button>
+              ) : null}
+              {showCleanUp ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestCleanupTask?.()}
+                  disabled={cleanUpDisabled}
+                  title={
+                    cleanupLoading
+                      ? 'Cleaning up workspace…'
+                      : 'Tear down agent session, terminals, and worktree for this task'
+                  }
+                  className={cleanUpDisabled ? markDoneBtnDisabled : markDoneBtn}
+                >
+                  {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
                 </button>
               ) : null}
               <OpenInWorkspaceButton
