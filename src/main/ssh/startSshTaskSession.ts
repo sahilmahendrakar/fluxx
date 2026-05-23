@@ -33,14 +33,14 @@ import {
 import { GitRemoteWorkspaceProvider, type RemoteContextFile } from './GitRemoteWorkspaceProvider';
 import { mapRemoteHelperCodeToSessionStart } from './remoteSessionErrors';
 import { resolveRemoteRepoForTaskSession } from './resolveRemoteRepoForTask';
-import type { RemoteSshSessionStore } from './RemoteSshSessionStore';
+import type { SshTerminalBackend } from '../terminalBackend/SshTerminalBackend';
 import type { DeviceStore } from '../DeviceStore';
 import type { ProjectStore } from '../ProjectStore';
 
 export type StartSshTaskSessionDeps = {
   deviceStore: DeviceStore;
   projectStore: ProjectStore;
-  remoteSessionStore: RemoteSshSessionStore;
+  sshTerminalBackend: SshTerminalBackend;
   gitRemoteWorkspace: GitRemoteWorkspaceProvider;
   taskAgentSessionRecordStore: TaskAgentSessionRecordStore;
   terminalSessionRecordStore: TerminalSessionRecordStore;
@@ -96,7 +96,7 @@ export async function startSshTaskSession(
     };
   }
 
-  const existing = deps.remoteSessionStore.findRunningByTaskId(task.id);
+  const existing = deps.sshTerminalBackend.findRunningByTaskId(task.id);
   if (existing) {
     return existing;
   }
@@ -176,7 +176,14 @@ export async function startSshTaskSession(
     };
   }
 
-  deps.remoteSessionStore.add(started.session);
+  deps.sshTerminalBackend.registerTaskSession({
+    session: started.session,
+    deviceId: device.id,
+    tmuxSessionName: started.tmuxSessionName,
+    agent: task.agent ?? undefined,
+    cols: 80,
+    rows: 24,
+  });
 
   const sourceBranchShort = sourceOpts.sourceBranchShort || undefined;
   void deps.taskAgentSessionRecordStore.recordSessionStart({

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 
 const FLUXX_TMUX_SOCKET = 'fluxx';
 const SETUP_DEFAULT_TIMEOUT_MS = 300_000;
@@ -791,7 +791,163 @@ function runListTerminals(params) {
   if (!deviceId) {
     fail('INTERNAL', 'list-terminals requires deviceId');
   }
-  emit({ ok: true, data: { terminals: readManifest(deviceId) } });
+  emit({ ok: true, data: { terminals: readManifest(deviceId).filter((t) => !t.endedAt) } });
+}
+
+function findOpenTerminalRow(terminalId) {
+  const trimmed = typeof terminalId === 'string' ? terminalId.trim() : '';
+  if (!trimmed) return null;
+  const devicesRoot = path.join(os.homedir(), '.fluxx', 'devices');
+  let deviceDirs = [];
+  try {
+    deviceDirs = fs
+      .readdirSync(devicesRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return null;
+  }
+  for (const deviceId of deviceDirs) {
+    const rows = readManifest(deviceId).filter((t) => !t.endedAt);
+    const row = rows.find((t) => t.id === trimmed);
+    if (row) {
+      return { deviceId, row };
+    }
+  }
+  return null;
+}
+
+function runAttachTerminal(terminalId) {
+  const found = findOpenTerminalRow(terminalId);
+  if (!found) {
+    process.stderr.write(`Fluxx terminal ${terminalId} was not found in the remote manifest.\n`);
+    process.exit(1);
+  }
+  const tmuxSessionName =
+    typeof found.row.tmuxSessionName === 'string' ? found.row.tmuxSessionName.trim() : '';
+  if (!tmuxSessionName) {
+    process.stderr.write('Remote terminal manifest row is missing tmuxSessionName.\n');
+    process.exit(1);
+  }
+  const hasSession = runCapture('tmux', tmuxArgs(['has-session', '-t', tmuxSessionName]));
+  if (!hasSession.ok) {
+    process.stderr.write(`Remote tmux session ${tmuxSessionName} is not running.\n`);
+    process.exit(1);
+  }
+  const child = spawn('tmux', tmuxArgs(['attach-session', '-t', tmuxSessionName]), {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  child.on('exit', (code, signal) => {
+    if (typeof code === 'number') {
+      process.exit(code);
+    }
+    process.exit(signal ? 128 : 0);
+  });
+}
+
+function runStopTerminal(params) {
+  const terminalId = typeof params.terminalId === 'string' ? params.terminalId.trim() : '';
+  const deviceId = typeof params.deviceId === 'string' ? params.deviceId.trim() : '';
+  const reason =
+    typeof params.reason === 'string' && params.reason.trim()
+      ? params.reason.trim()
+      : 'user-stopped';
+  if (!terminalId || !deviceId) {
+    fail('INTERNAL', 'stop-terminal requires terminalId and deviceId');
+  }
+  const rows = readManifest(deviceId);
+  const row = rows.find((t) => t.id === terminalId && !t.endedAt);
+  if (!row) {
+    emit({ ok: true, data: { stopped: false, terminalId, reason: 'not-found' } });
+    return;
+  }
+  if (row.tmuxSessionName) {
+    runCapture('tmux', tmuxArgs(['kill-session', '-t', row.tmuxSessionName]));
+  }
+  const endedAt = new Date().toISOString();
+  const remaining = rows.map((t) =>
+    t.id === terminalId ? { ...t, endedAt, endedReason: reason } : t,
+  );
+  writeManifest(deviceId, remaining);
+  emit({ ok: true, data: { stopped: true, terminalId, endedAt, reason } });
+}
+
+function runStartShell(params) {
+  if (!which('tmux')) {
+    fail('REMOTE_TMUX_MISSING', 'tmux was not found on PATH');
+  }
+  const terminalId = typeof params.terminalId === 'string' ? params.terminalId.trim() : '';
+  const deviceId = typeof params.deviceId === 'string' ? params.deviceId.trim() : '';
+  const parentSessionId =
+    typeof params.parentSessionId === 'string' ? params.parentSessionId.trim() : '';
+  const cwd = typeof params.cwd === 'string' ? expandHome(params.cwd.trim()) : '';
+  const tmuxSessionName =
+    typeof params.tmuxSessionName === 'string' ? params.tmuxSessionName.trim() : '';
+  const projectId = typeof params.projectId === 'string' ? params.projectId.trim() : '';
+  if (!terminalId || !deviceId || !parentSessionId || !cwd || !tmuxSessionName) {
+    fail(
+      'INTERNAL',
+      'start-shell requires terminalId, deviceId, parentSessionId, cwd, and tmuxSessionName',
+    );
+  }
+
+  const hasSession = runCapture('tmux', tmuxArgs(['has-session', '-t', tmuxSessionName]));
+  if (hasSession.ok) {
+    fail('INTERNAL', `tmux session ${tmuxSessionName} already exists`);
+  }
+
+  const shellPath = process.env.SHELL || which('bash') || which('sh') || '/bin/bash';
+  const cols = Math.max(1, Number(params.cols) || 80);
+  const rows = Math.max(1, Number(params.rows) || 24);
+  const tmuxResult = runCapture(
+    'tmux',
+    tmuxArgs([
+      'new-session',
+      '-d',
+      '-s',
+      tmuxSessionName,
+      '-c',
+      cwd,
+      '-x',
+      String(cols),
+      '-y',
+      String(rows),
+      '--',
+      shellPath,
+      '-l',
+    ]),
+    { timeoutMs: 30_000 },
+  );
+  if (!tmuxResult.ok) {
+    fail('INTERNAL', tmuxResult.error || 'tmux new-session failed for shell');
+  }
+
+  const startedAt = new Date().toISOString();
+  const manifestRow = {
+    id: terminalId,
+    kind: 'shell',
+    runtime: 'tmux',
+    projectId,
+    deviceId,
+    deviceKind: 'ssh',
+    hostLabel: typeof params.hostLabel === 'string' ? params.hostLabel : undefined,
+    cwd,
+    tmuxSessionName,
+    command: shellPath,
+    args: ['-l'],
+    cols,
+    rows,
+    startedAt,
+    shell: {
+      parentSessionId,
+      worktreePath: cwd,
+    },
+  };
+
+  const existing = readManifest(deviceId).filter((t) => t.id !== terminalId);
+  writeManifest(deviceId, [...existing, manifestRow]);
+  emit({ ok: true, data: { terminalId, tmuxSessionName, startedAt } });
 }
 
 function runProbeAgent(params) {
@@ -804,12 +960,21 @@ function runProbeAgent(params) {
 }
 
 function main() {
-  if (!process.argv.includes('--json')) {
-    fail('INTERNAL', '--json is required');
-  }
   const command = process.argv[2];
   if (!command) {
     fail('INTERNAL', 'Missing helper command');
+  }
+  if (command === 'attach-terminal') {
+    const terminalId = process.argv[3];
+    if (!terminalId || !terminalId.trim()) {
+      process.stderr.write('Missing terminal id for attach-terminal\n');
+      process.exit(1);
+    }
+    runAttachTerminal(terminalId.trim());
+    return;
+  }
+  if (!process.argv.includes('--json')) {
+    fail('INTERNAL', '--json is required');
   }
   switch (command) {
     case 'version':
@@ -832,6 +997,12 @@ function main() {
       break;
     case 'list-terminals':
       runListTerminals(readStdinJson());
+      break;
+    case 'stop-terminal':
+      runStopTerminal(readStdinJson());
+      break;
+    case 'start-shell':
+      runStartShell(readStdinJson());
       break;
     default:
       fail('INTERNAL', `Unknown helper command: ${command}`);

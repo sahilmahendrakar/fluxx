@@ -7,6 +7,8 @@ import type {
 } from '../types';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
 import { ExecutionDeviceChip } from './ExecutionDeviceChip';
+import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 
 export interface SessionTabMeta {
   session: Session;
@@ -38,14 +40,18 @@ interface TabBarProps {
 export function buildSessionTabs(
   openSessions: Session[],
   tasks: Task[],
+  executionDeviceDefaults?: ExecutionDeviceDefaults,
 ): SessionTabMeta[] {
   return openSessions.map((session) => {
     const task = tasks.find((t) => t.id === session.taskId);
+    const executionDevice = task
+      ? resolveTaskChipExecutionDevice(task, executionDeviceDefaults)
+      : undefined;
     return {
       session,
       title: task?.title ?? 'Session',
       taskStatus: task?.status,
-      executionDevice: task?.executionDevice,
+      executionDevice,
     };
   });
 }
@@ -130,7 +136,7 @@ export function TabBar({
               {executionDevices.length > 0 ? (
                 <ExecutionDeviceChip
                   devices={executionDevices}
-                  ref={executionDevice}
+                  deviceRef={executionDevice}
                   cloudProject={cloudProject}
                 />
               ) : null}

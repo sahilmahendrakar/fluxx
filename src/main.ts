@@ -55,7 +55,6 @@ import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
-import { RemoteSshSessionStore } from './main/ssh/RemoteSshSessionStore';
 import { startSshTaskSession } from './main/ssh/startSshTaskSession';
 import {
   type ExecutionDeviceHostContext,
@@ -77,7 +76,11 @@ import {
   buildPickerLastOpenedAtMap,
   touchPickerProjectLastOpened,
 } from './main/projectPickerLastOpened';
-import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
+import {
+  createMainTerminalBackend,
+  localTerminalBackendFrom,
+  sshTerminalBackendFrom,
+} from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
@@ -115,7 +118,6 @@ import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxS
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
 import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
-import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
@@ -573,12 +575,15 @@ app.whenReady().then(async () => {
   const taskStore = new TaskStore('');
   await taskStore.init();
 
+  const deviceStore = new DeviceStore();
+
   const worktreeService = new WorktreeService('', '');
   // Side-effecting `process.env` here means every PTY child inherits the
   // corrected env without per-call wiring. See `src/main/userShellEnv.ts`.
   await applyShellEnvToProcess();
 
   const terminalBackend = createMainTerminalBackend({
+    deviceStore,
     tmuxSpawnLauncherPath: resolveFluxxTmuxSpawnLauncherPath(app.getAppPath(), process.execPath),
   });
   mainProcessTerminalBackend = terminalBackend;
@@ -919,7 +924,6 @@ app.whenReady().then(async () => {
   const bindingStore = new LocalBindingStore();
   await bindingStore.init();
 
-  const deviceStore = new DeviceStore();
   await deviceStore.init({
     legacyLocalTmuxEnabled: await inferLegacyLocalTmuxForDeviceBootstrap(
       projectStore,
@@ -927,7 +931,6 @@ app.whenReady().then(async () => {
       appStateStore.get().activeProjectKey,
     ),
   });
-  const remoteSshSessionStore = new RemoteSshSessionStore();
   const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
 
   function executionDeviceHostContext(): ExecutionDeviceHostContext {
@@ -1094,7 +1097,8 @@ app.whenReady().then(async () => {
   }
 
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
-    if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    const localTerminalBackend = localTerminalBackendFrom(terminalBackend);
+    if (!localTerminalBackend) return;
     await syncTerminalRuntimeContext();
     if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
 
@@ -1114,7 +1118,7 @@ app.whenReady().then(async () => {
     const trustAutorespond =
       project?.autoRespondToTrustPrompts === true && trustRoots.length > 0;
 
-    const output = await terminalBackend.reconcileTmuxPersistedTerminals({
+    const output = await localTerminalBackend.reconcileTmuxPersistedTerminals({
       projectId,
       records: openRecords,
       pathStillPresent: async (absPath) => {
@@ -1399,9 +1403,9 @@ app.whenReady().then(async () => {
     }
   }
 
-  if (terminalBackend instanceof LocalMainProcessTerminalBackend) {
-    terminalBackend.setResolveTerminalRuntimeContext(() => terminalRuntimeContext);
-  }
+  localTerminalBackendFrom(terminalBackend)?.setResolveTerminalRuntimeContext(
+    () => terminalRuntimeContext,
+  );
   await syncTerminalRuntimeContext();
   await reconcileTmuxTerminalsForActiveProject();
   await runSilenceCatchup();
@@ -2629,6 +2633,13 @@ app.whenReady().then(async () => {
   );
 
   // ---- Execution devices (global registry + cloud local overrides) ----
+  function broadcastExecutionDevicesChanged(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('executionDevices:changed');
+    }
+  }
+
   ipcMain.handle('executionDevices:list', async () => deviceStore.listDevices());
 
   ipcMain.handle('executionDevices:getGlobalDefault', async () =>
@@ -2639,6 +2650,7 @@ app.whenReady().then(async () => {
     'executionDevices:setGlobalDefault',
     async (_e, deviceId: string | null) => {
       await deviceStore.setGlobalDefaultDeviceId(deviceId);
+      broadcastExecutionDevicesChanged();
       return deviceStore.getGlobalDefaultDeviceId() ?? null;
     },
   );
@@ -2649,8 +2661,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'executionDevices:createSsh',
-    async (_e, input: import('./types').SshExecutionDeviceUpsertInput) =>
-      deviceStore.createSshDevice(input),
+    async (_e, input: import('./types').SshExecutionDeviceUpsertInput) => {
+      const created = await deviceStore.createSshDevice(input);
+      broadcastExecutionDevicesChanged();
+      return created;
+    },
   );
 
   ipcMain.handle(
@@ -2659,18 +2674,25 @@ app.whenReady().then(async () => {
       _e,
       deviceId: string,
       patch: import('./types').ExecutionDeviceUpdateInput,
-    ) => deviceStore.updateDevice(deviceId, patch),
+    ) => {
+      const updated = await deviceStore.updateDevice(deviceId, patch);
+      broadcastExecutionDevicesChanged();
+      return updated;
+    },
   );
 
   ipcMain.handle('executionDevices:remove', async (_e, deviceId: string) => {
     await deviceStore.removeDevice(deviceId);
+    broadcastExecutionDevicesChanged();
   });
 
   ipcMain.handle('executionDevices:probe', async (_e, deviceId: string) => {
     if (typeof deviceId !== 'string' || !deviceId.trim()) {
       throw new Error('deviceId is required');
     }
-    return await createDeviceProbeService().probeDevice(deviceId.trim());
+    const result = await createDeviceProbeService().probeDevice(deviceId.trim());
+    broadcastExecutionDevicesChanged();
+    return result;
   });
 
   ipcMain.handle('tasks:resolveEffectiveExecutionDevice', async (_e, task: Task) =>
@@ -3799,11 +3821,6 @@ app.whenReady().then(async () => {
       if (!sessionTaskMap.has(existing.id)) sessionTaskMap.set(existing.id, task.id);
       return existing;
     }
-    const existingRemote = remoteSshSessionStore.findRunningByTaskId(task.id);
-    if (existingRemote) {
-      sessionTaskMap.set(existingRemote.id, task.id);
-      return existingRemote;
-    }
 
     const taskId = task.id;
     const sendTaskStartProgress = (payload: {
@@ -3830,11 +3847,18 @@ app.whenReady().then(async () => {
           project.kind === 'cloud'
             ? (project as import('./types').CloudProject)
             : null;
+        const sshBackend = sshTerminalBackendFrom(terminalBackend);
+        if (!sshBackend) {
+          return finish({
+            error: 'INTERNAL',
+            message: 'SSH terminal backend is not available.',
+          });
+        }
         const sshResult = await startSshTaskSession(
           {
             deviceStore,
             projectStore,
-            remoteSessionStore: remoteSshSessionStore,
+            sshTerminalBackend: sshBackend,
             gitRemoteWorkspace: gitRemoteWorkspaceProvider,
             taskAgentSessionRecordStore,
             terminalSessionRecordStore,
@@ -4568,10 +4592,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:get', async (_e, taskId: string) => {
-    const sessions = [
-      ...(await terminalBackend.listSessions()),
-      ...remoteSshSessionStore.list(),
-    ];
+    const sessions = await terminalBackend.listSessions();
     const forTask = sessions.filter((s) => s.taskId === taskId);
     const running = forTask.find((s) => s.status === 'running');
     if (running) return running;
@@ -4599,10 +4620,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:getAll', async () => {
     const project = projectStore.get();
-    const live = [
-      ...(await terminalBackend.listSessions()),
-      ...remoteSshSessionStore.list(),
-    ];
+    const live = await terminalBackend.listSessions();
     if (!project) return live;
     const forProject = live.filter((s) => s.projectId === project.id);
     const liveIds = new Set(forProject.map((s) => s.id));
@@ -5389,8 +5407,11 @@ app.whenReady().then(async () => {
     const shellTerminalRow = withTerminalRuntimeMeta(terminalBackend, shell.id, 'shell', {
       id: shell.id,
       kind: 'shell',
-      runtime: 'node-pty',
+      runtime: session.deviceKind === 'ssh' ? 'tmux' : 'node-pty',
       projectId: session.projectId,
+      ...(session.deviceKind === 'ssh' && session.deviceId
+        ? { deviceId: session.deviceId, deviceKind: session.deviceKind, hostLabel: session.deviceLabel }
+        : {}),
       cwd: session.worktreePath,
       command: sh.command,
       args: sh.args,

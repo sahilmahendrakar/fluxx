@@ -179,6 +179,19 @@ export type RemoteHelperStartTerminalData = {
   startedAt: string;
 };
 
+export type RemoteHelperStopTerminalData = {
+  stopped: boolean;
+  terminalId: string;
+  endedAt?: string;
+  reason?: string;
+};
+
+export type RemoteHelperStartShellData = {
+  terminalId: string;
+  tmuxSessionName: string;
+  startedAt: string;
+};
+
 export type RemoteHelperListTerminalsData = {
   terminals: Array<{
     id: string;

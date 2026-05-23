@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { ExecutionDeviceConfig, Task } from '../types';
 import { ExecutionDeviceChip } from './ExecutionDeviceChip';
+import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
@@ -236,6 +238,7 @@ interface Props {
   /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
   executionDevices?: ExecutionDeviceConfig[];
+  executionDeviceDefaults?: ExecutionDeviceDefaults;
   cloudProject?: boolean;
 }
 
@@ -265,8 +268,14 @@ export default function TaskCard({
   canOpenTaskWorkspaceTab,
   onOpenTaskWorkspaceTab,
   executionDevices = [],
+  executionDeviceDefaults,
   cloudProject = false,
 }: Props) {
+  const chipDeviceRef = useMemo(
+    () => resolveTaskChipExecutionDevice(task, executionDeviceDefaults),
+    [task, task.executionDevice, executionDeviceDefaults],
+  );
+
   const isNeedsInput = task.status === 'needs-input';
   const isReview = task.status === 'review';
   const isDone = task.status === 'done';
@@ -400,7 +409,7 @@ export default function TaskCard({
                   {executionDevices.length > 0 ? (
                     <ExecutionDeviceChip
                       devices={executionDevices}
-                      ref={task.executionDevice}
+                      deviceRef={chipDeviceRef}
                       cloudProject={cloudProject}
                     />
                   ) : null}

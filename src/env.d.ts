@@ -312,6 +312,7 @@ declare global {
         ) => Promise<ExecutionDeviceConfig>;
         remove: (deviceId: string) => Promise<void>;
         probe: (deviceId: string) => Promise<DeviceProbeResult>;
+        onChanged: (cb: () => void) => () => void;
       };
       cloudBindings: {
         getPerTaskDeviceOverrides: (

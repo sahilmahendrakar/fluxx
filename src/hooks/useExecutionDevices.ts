@@ -26,5 +26,12 @@ export function useExecutionDevices(): {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    const unsub = window.electronAPI.executionDevices.onChanged(() => {
+      void reload();
+    });
+    return unsub;
+  }, [reload]);
+
   return { devices, loading, reload };
 }
