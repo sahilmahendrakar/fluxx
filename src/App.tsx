@@ -79,6 +79,7 @@ import {
 } from './renderer/tasks/useCloudSilenceReconciliation';
 import { keyForInsert, sortColumn } from './renderer/tasks/orderKey';
 import { useExecutionDevices } from './hooks/useExecutionDevices';
+import { useExecutionDeviceDefaults } from './hooks/useExecutionDeviceDefaults';
 import type { TaskExecutionDeviceRef } from './types';
 import { normalizeTaskLabels } from './taskLabels';
 import { sanitizeTaskAttachedPlanningDocsInput } from './taskAttachedPlanningDocs';
@@ -200,6 +201,7 @@ export default function App() {
   const isMac = window.electronAPI.platform === 'darwin';
   const { devices: executionDevices } = useExecutionDevices();
   const [project, setProject] = useState<ActiveProject | null>(null);
+  const executionDeviceDefaults = useExecutionDeviceDefaults(project);
   const [activationLoading, setActivationLoading] = useState(true);
   const [pendingCloudActive, setPendingCloudActive] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -2041,6 +2043,7 @@ export default function App() {
         githubPr: patchGh,
         workspaceCleanedAt: patchWsc,
         attachedPlanningDocs: patchAttachedPlanningDocs,
+        executionDevice: patchExecutionDevice,
         ...patchRest
       } = patch;
       setTasks((prev) =>
@@ -2113,6 +2116,14 @@ export default function App() {
               }
             }
           }
+          if (patchExecutionDevice !== undefined) {
+            if (patchExecutionDevice === null) {
+              next = { ...next };
+              delete next.executionDevice;
+            } else {
+              next = { ...next, executionDevice: patchExecutionDevice };
+            }
+          }
           next = {
             ...next,
             ...assigneePatchForCloudAutoStartOnUnblock({
@@ -2169,6 +2180,9 @@ export default function App() {
           patchAttachedPlanningDocs === null
             ? null
             : sanitizeTaskAttachedPlanningDocsInput(patchAttachedPlanningDocs);
+      }
+      if (patchExecutionDevice !== undefined) {
+        persistable.executionDevice = patchExecutionDevice;
       }
       if (Object.keys(persistable).length === 0) return;
 
@@ -3201,8 +3215,8 @@ export default function App() {
   }, [sessions, project?.id, openTabIds, minimizedWorkspaceIds]);
 
   const sessionItems = useMemo(
-    () => buildSessionTabs(sidebarSessions, tasks),
-    [sidebarSessions, tasks],
+    () => buildSessionTabs(sidebarSessions, tasks, executionDeviceDefaults),
+    [sidebarSessions, tasks, executionDeviceDefaults],
   );
 
   const sidebarSessionItems = useMemo(
@@ -3623,6 +3637,7 @@ export default function App() {
                         onPlanningInitStart={() => void handlePlanningInitStart()}
                         onPlanningInitSkip={() => void handlePlanningInitSkip()}
                         executionDevices={executionDevices}
+                        executionDeviceDefaults={executionDeviceDefaults}
                         cloudProject={project.kind === 'cloud'}
                       />
                       <TaskDetailPanel

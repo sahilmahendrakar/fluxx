@@ -6,6 +6,8 @@ export const DEFAULT_SSH_BINARY = 'ssh';
 export type BuildOpenSshArgvInput = {
   sshBinary?: string;
   ssh: ExecutionDeviceSshConfig;
+  /** When true, allocate a TTY on the client (`ssh -tt`). */
+  forceTty?: boolean;
   /** Remote command argv after OpenSSH `--` (each entry is a discrete argument). */
   remoteCommand: string[];
 };
@@ -43,6 +45,9 @@ export function buildOpenSshArgv(input: BuildOpenSshArgvInput): string[] {
   }
   if (ssh.forwardAgent === true) {
     argv.push('-o', 'ForwardAgent=yes');
+  }
+  if (input.forceTty === true) {
+    argv.push('-tt');
   }
   if (ssh.extraArgs?.length) {
     for (const arg of ssh.extraArgs) {
@@ -95,6 +100,28 @@ export function buildRemoteHelperShellCommand(
     '--json',
   ];
   return ['sh', '-c', parts.join(' ')];
+}
+
+/** Interactive attach bridge: no `--json`; runs remote tmux attach over SSH TTY. */
+export function buildRemoteHelperAttachTerminalCommand(terminalId: string): string[] {
+  const id = terminalId.trim();
+  if (!id) {
+    throw new Error('terminalId is required for attach-terminal');
+  }
+  return ['sh', '-c', `"$HOME/.fluxx/bin/fluxx-remote-helper" attach-terminal ${id}`];
+}
+
+export function buildOpenSshAttachArgv(
+  ssh: ExecutionDeviceSshConfig,
+  terminalId: string,
+  opts?: { sshBinary?: string },
+): string[] {
+  return buildOpenSshArgv({
+    sshBinary: opts?.sshBinary,
+    ssh,
+    forceTty: true,
+    remoteCommand: buildRemoteHelperAttachTerminalCommand(terminalId),
+  });
 }
 
 export type OpenSshRunResult = {

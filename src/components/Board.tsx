@@ -32,6 +32,7 @@ import {
 } from '../projectRepoReadiness';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 
 interface Props {
   allTasks: Task[];
@@ -89,6 +90,7 @@ interface Props {
   onPlanningInitStart?: () => void;
   onPlanningInitSkip?: () => void;
   executionDevices?: ExecutionDeviceConfig[];
+  executionDeviceDefaults?: ExecutionDeviceDefaults;
   cloudProject?: boolean;
 }
 
@@ -126,6 +128,7 @@ export default function Board({
   onPlanningInitStart,
   onPlanningInitSkip,
   executionDevices,
+  executionDeviceDefaults,
   cloudProject = false,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -301,6 +304,7 @@ export default function Board({
               onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
               onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
               executionDevices={executionDevices}
+              executionDeviceDefaults={executionDeviceDefaults}
               cloudProject={cloudProject}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty

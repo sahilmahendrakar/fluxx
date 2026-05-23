@@ -19,6 +19,7 @@ import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import type { ProjectMember } from '../renderer/projects/members';
 import { selectSessionForTaskWorkspace } from '../sessionWorkspacePick';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 
 interface Props {
   id: TaskStatus;
@@ -52,6 +53,7 @@ interface Props {
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   onOpenTaskWorkspaceTab: (taskId: string) => void;
   executionDevices?: ExecutionDeviceConfig[];
+  executionDeviceDefaults?: ExecutionDeviceDefaults;
   cloudProject?: boolean;
 }
 
@@ -85,6 +87,7 @@ export default function Column({
   onTaskAgentSpawnPrefsChange,
   onOpenTaskWorkspaceTab,
   executionDevices,
+  executionDeviceDefaults,
   cloudProject,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
@@ -198,6 +201,7 @@ export default function Column({
                     canOpenTaskWorkspaceTab={canOpenTaskWorkspaceTab}
                     onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
                     executionDevices={executionDevices}
+                    executionDeviceDefaults={executionDeviceDefaults}
                     cloudProject={cloudProject}
                   />
                 );

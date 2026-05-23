@@ -373,6 +373,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('executionDevices:remove', deviceId) as Promise<void>,
     probe: (deviceId: string) =>
       ipcRenderer.invoke('executionDevices:probe', deviceId) as Promise<DeviceProbeResult>,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('executionDevices:changed', handler);
+      return () => ipcRenderer.removeListener('executionDevices:changed', handler);
+    },
   },
   cloudBindings: {
     getPerTaskDeviceOverrides: (projectId: string) =>

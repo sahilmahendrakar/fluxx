@@ -1,6 +1,6 @@
 import type { Session } from '../../types';
 
-/** In-memory registry for SSH task sessions until {@link SshTerminalBackend} attach is implemented. */
+/** @deprecated Use {@link SshTerminalBackend} session registry instead. */
 export class RemoteSshSessionStore {
   private readonly sessions = new Map<string, Session>();
 

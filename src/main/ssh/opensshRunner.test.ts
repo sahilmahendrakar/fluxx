@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import {
   buildOpenSshArgv,
+  buildOpenSshAttachArgv,
   buildRemoteHelperShellCommand,
   createOpenSshRunner,
   defaultProbeTimeoutMs,
@@ -59,6 +60,14 @@ describe('buildOpenSshArgv', () => {
     expect(argv).toContain('devbox;rm -rf /');
     expect(argv[argv.length - 2]).toBe('echo');
     expect(argv[argv.length - 1]).toBe('ok');
+  });
+
+  it('builds ssh -tt attach argv for interactive remote tmux attach', () => {
+    const argv = buildOpenSshAttachArgv({ host: 'devbox' }, 'term-abc');
+    expect(argv).toContain('-tt');
+    expect(argv[argv.length - 1]).toBe(
+      wrapRemoteShellScript('"$HOME/.fluxx/bin/fluxx-remote-helper" attach-terminal term-abc'),
+    );
   });
 });
 

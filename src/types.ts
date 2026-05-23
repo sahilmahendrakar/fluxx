@@ -850,6 +850,10 @@ export interface Shell {
   status: ShellStatus;
   startedAt: string;
   stoppedAt?: string;
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
+  remotePath?: string;
 }
 
 export type RunnerStatus = 'running' | 'idle' | 'errored';

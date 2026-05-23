@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Monitor, Server } from 'lucide-react';
+import { ExecutionDeviceKindIcon } from './ExecutionDeviceKindIcon';
 import type {
   CloudProject,
   ExecutionDeviceConfig,
@@ -458,11 +458,7 @@ export function DevicesSettingsPane({ project }: { project: ProjectRef | null })
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 gap-3">
                       <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]">
-                        {device.kind === 'local' ? (
-                          <Monitor className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                        ) : (
-                          <Server className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                        )}
+                        <ExecutionDeviceKindIcon kind={device.kind} />
                       </span>
                       <div className="min-w-0">
                         <p className="text-[14px] font-medium text-zinc-100">
