@@ -1400,7 +1400,9 @@ function ProjectConfigPane({
                   <code className="text-zinc-400">tmux</code> on PATH. Fluxx will reattach
                   terminals on reopen when possible and fall back to agent resume for task/planning
                   agents if reattach fails. Turning on affects new terminals only; existing
-                  direct PTYs stay as-is until restarted. For cloud projects this preference is
+                  direct PTYs stay as-is until restarted. On macOS with tmux mouse mode,
+                  normal drag is handled by tmux; use Option+drag or Shift+drag to select
+                  terminal output for Cmd+C copy. For cloud projects this preference is
                   stored per machine (local binding).
                   {tmuxAvailabilityMessage ? (
                     <span className="mt-2 block text-amber-400/90">{tmuxAvailabilityMessage}</span>
