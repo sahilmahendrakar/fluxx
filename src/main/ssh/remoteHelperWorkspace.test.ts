@@ -120,6 +120,17 @@ describe('fluxx-remote-helper workspace RPCs', () => {
     expect(fs.existsSync(envelope.data.worktreePath)).toBe(true);
   });
 
+  it('probe-repo-path rejects missing directories', () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-probe-'));
+    const result = runHelper('probe-repo-path', {
+      remotePath: path.join(tempRoot, 'missing'),
+      remoteUrl: 'https://github.com/octocat/Hello-World.git',
+    });
+    expect(result.status).toBe(1);
+    const envelope = JSON.parse(result.stdout.trim());
+    expect(envelope.error.code).toBe('REMOTE_REPO_MISMATCH');
+  });
+
   it('writes and lists terminal manifest rows', () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-manifest-'));
     const manifestDir = path.join(tempRoot, '.fluxx', 'devices', 'device-1');

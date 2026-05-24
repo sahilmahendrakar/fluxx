@@ -5,8 +5,11 @@ import type {
   Agent,
   AgentSessionModelDefaults,
   CloudProjectLocalBinding,
+  RemoteRepoBinding,
+  RemoteRepoBindingsByDevice,
   TaskExecutionDeviceRef,
 } from '../types';
+import { parseRemoteRepoBindingsByDevice } from '../remoteRepoBindings';
 import { parsePerTaskDeviceOverridesRecord, parseTaskExecutionDeviceRef } from '../executionDevices/parse';
 import {
   migrateLegacyCloudBinding,
@@ -105,6 +108,9 @@ function copyBindingDevicePrefs(from: LocalBinding, to: LocalBinding): void {
   if (from.defaultDeviceId !== undefined) {
     to.defaultDeviceId = from.defaultDeviceId;
   }
+  if (from.remoteRepoBindings) {
+    to.remoteRepoBindings = JSON.parse(JSON.stringify(from.remoteRepoBindings)) as RemoteRepoBindingsByDevice;
+  }
   if (from.perTaskDeviceOverrides) {
     to.perTaskDeviceOverrides = { ...from.perTaskDeviceOverrides };
   }
@@ -149,6 +155,10 @@ function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): vo
   const overrides = parsePerTaskDeviceOverridesRecord(v.perTaskDeviceOverrides);
   if (overrides) {
     binding.perTaskDeviceOverrides = overrides;
+  }
+  const remoteRepoBindings = parseRemoteRepoBindingsByDevice(v.remoteRepoBindings);
+  if (remoteRepoBindings) {
+    binding.remoteRepoBindings = remoteRepoBindings;
   }
   if (typeof v.autoDeleteTaskWhenDone === 'boolean') {
     binding.autoDeleteTaskWhenDone = v.autoDeleteTaskWhenDone;
@@ -247,6 +257,68 @@ export class LocalBindingStore {
     taskId: string,
   ): TaskExecutionDeviceRef | undefined {
     return this.bindings[projectId]?.perTaskDeviceOverrides?.[taskId];
+  }
+
+  getRemoteRepoBindings(projectId: string): RemoteRepoBindingsByDevice | undefined {
+    const bindings = this.bindings[projectId]?.remoteRepoBindings;
+    if (!bindings) return undefined;
+    return JSON.parse(JSON.stringify(bindings)) as RemoteRepoBindingsByDevice;
+  }
+
+  getRemoteRepoBinding(
+    projectId: string,
+    deviceId: string,
+    repoId: string,
+  ): RemoteRepoBinding | undefined {
+    const did = deviceId.trim();
+    const rid = repoId.trim();
+    if (!did || !rid) return undefined;
+    return this.bindings[projectId]?.remoteRepoBindings?.[did]?.[rid];
+  }
+
+  async setRemoteRepoBinding(
+    projectId: string,
+    deviceId: string,
+    repoId: string,
+    binding: RemoteRepoBinding,
+  ): Promise<void> {
+    const existing = this.bindings[projectId];
+    if (!existing) {
+      throw new Error('No local binding for this cloud project. Bind a local clone first.');
+    }
+    const did = deviceId.trim();
+    const rid = repoId.trim();
+    if (!did || !rid) throw new Error('deviceId and repoId are required');
+    if (!existing.remoteRepoBindings) {
+      existing.remoteRepoBindings = {};
+    }
+    if (!existing.remoteRepoBindings[did]) {
+      existing.remoteRepoBindings[did] = {};
+    }
+    existing.remoteRepoBindings[did][rid] = binding;
+    await this.save();
+  }
+
+  async clearRemoteRepoBinding(
+    projectId: string,
+    deviceId: string,
+    repoId: string,
+  ): Promise<void> {
+    const existing = this.bindings[projectId];
+    if (!existing?.remoteRepoBindings) return;
+    const did = deviceId.trim();
+    const rid = repoId.trim();
+    if (!did || !rid) return;
+    const perDevice = existing.remoteRepoBindings[did];
+    if (!perDevice?.[rid]) return;
+    delete perDevice[rid];
+    if (Object.keys(perDevice).length === 0) {
+      delete existing.remoteRepoBindings[did];
+    }
+    if (Object.keys(existing.remoteRepoBindings).length === 0) {
+      delete existing.remoteRepoBindings;
+    }
+    await this.save();
   }
 
   async setPerTaskDeviceOverride(

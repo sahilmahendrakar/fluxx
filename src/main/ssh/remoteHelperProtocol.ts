@@ -194,6 +194,12 @@ export type RemoteHelperRepoEnsureData = {
   action: 'cloned' | 'fetched' | 'validated';
 };
 
+export type RemoteHelperProbeRepoPathData = {
+  resolvedPath: string;
+  originUrl: string;
+  writable: boolean;
+};
+
 export type RemoteHelperWorktreeCreateData = {
   worktreePath: string;
   branch: string;

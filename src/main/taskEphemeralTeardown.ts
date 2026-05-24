@@ -1,6 +1,9 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { getRemoteRepoBinding } from '../remoteRepoBindings';
 import type { ExecutionDeviceConfig, RepoConfig, Session } from '../types';
+import type { LocalBindingStore } from './LocalBindingStore';
+import type { ProjectStore } from './ProjectStore';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
@@ -11,6 +14,8 @@ import { removeLocalSyncedWorktreeForTask } from './ssh/remoteSshSyncMetadata';
 export type RemoteTaskTeardownDeps = {
   deviceStore: DeviceStore;
   gitRemoteWorkspace: GitRemoteWorkspaceProvider;
+  bindingStore: LocalBindingStore;
+  projectStore: ProjectStore;
 };
 
 /**
@@ -36,11 +41,13 @@ export async function deleteSessionWorkspaceAndStop(
     if (device?.kind === 'ssh') {
       const repoId = target.repoId?.trim();
       if (repoId) {
+        const boundRepoPath = resolveBoundRemoteRepoPath(remote, target.projectId, device.id, repoId);
         const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
           projectId: target.projectId,
           repoId,
           taskId: target.taskId,
           worktreePath: target.remotePath ?? target.worktreePath,
+          ...(boundRepoPath ? { repoPath: boundRepoPath } : {}),
         });
         if (err) {
           console.error('[deleteSessionWorkspaceAndStop] remote worktree remove failed', {
@@ -93,10 +100,12 @@ async function cleanupRemoteTaskOrphans(
       ...(await remote.gitRemoteWorkspace.stopOpenTerminalsForTask(device, taskId, projectId)),
     );
     if (repoId) {
+      const boundRepoPath = resolveBoundRemoteRepoPath(remote, projectId, device.id, repoId);
       const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
         projectId,
         repoId,
         taskId,
+        ...(boundRepoPath ? { repoPath: boundRepoPath } : {}),
       });
       if (err) errors.push(`${device.displayName}: ${err}`);
     }
@@ -279,4 +288,19 @@ export async function teardownEphemeralResourcesForTask(
 
 export function listEnabledSshDevices(deviceStore: DeviceStore): ExecutionDeviceConfig[] {
   return deviceStore.listDevices().filter((d) => d.kind === 'ssh' && d.enabled);
+}
+
+function resolveBoundRemoteRepoPath(
+  remote: RemoteTaskTeardownDeps,
+  projectId: string,
+  deviceId: string,
+  repoId: string,
+): string | undefined {
+  const cloudBinding = remote.bindingStore.getRemoteRepoBinding(projectId, deviceId, repoId);
+  if (cloudBinding?.remotePath) return cloudBinding.remotePath;
+  const local = remote.projectStore.get();
+  if (local?.kind === 'local' && local.id === projectId) {
+    return getRemoteRepoBinding(local.remoteRepoBindings, deviceId, repoId)?.remotePath;
+  }
+  return undefined;
 }

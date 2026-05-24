@@ -8,10 +8,12 @@ import {
   type CloudRepoLocalBindingStatus,
   type CloudProject,
   type CloudSharedRepo,
+  type ExecutionDeviceConfig,
   type LocalProject,
   type RepoConfig,
   type RepoManagementState,
 } from '../types';
+import { RemoteSshRepoBindingPanel } from './RemoteSshRepoBindingPanel';
 import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
 import { deriveRepoIdForRootPath, repoRootBasename } from '../repoIdentity';
 import { updateCloudProjectRepos } from '../renderer/projects/cloudProjects';
@@ -329,6 +331,7 @@ function ProjectConfigPane({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addRepoState, setAddRepoState] = useState<SaveState>('idle');
   const [addRepoError, setAddRepoError] = useState<string | null>(null);
+  const [sshDevices, setSshDevices] = useState<ExecutionDeviceConfig[]>([]);
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
   const [autoStartSaveState, setAutoStartSaveState] = useState<SaveState>('idle');
@@ -547,6 +550,30 @@ function ProjectConfigPane({
       cancelled = true;
     };
   }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI.executionDevices
+      .list()
+      .then((devices) => {
+        if (cancelled) return;
+        setSshDevices(devices.filter((d) => d.kind === 'ssh' && d.enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setSshDevices([]);
+      });
+    const unsub = window.electronAPI.executionDevices.onChanged(() => {
+      void window.electronAPI.executionDevices.list().then((devices) => {
+        if (!cancelled) {
+          setSshDevices(devices.filter((d) => d.kind === 'ssh' && d.enabled));
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1664,6 +1691,7 @@ function ProjectConfigPane({
             <CloudTeamReposBindingsSection
               project={project}
               localRepoConfigs={repos ?? []}
+              sshDevices={sshDevices}
               onLocalReposChanged={(nextRepos) => setRepos(nextRepos)}
               onBindingsChanged={onProjectAgentPrefsRefresh}
               onSharedReposChanged={onCloudSharedReposChanged}
@@ -1703,6 +1731,8 @@ function ProjectConfigPane({
                         repoState={repoStates[repo.id]}
                         primary={index === 0}
                         multiRepoManagementEnabled={multiRepoLocalManagementEnabled}
+                        sshDevices={sshDevices}
+                        projectDefaultDeviceId={project.defaultDeviceId}
                         expanded={expanded[key] ?? false}
                         onToggle={() =>
                           setExpanded((prev) => ({
@@ -1760,6 +1790,7 @@ function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBinding
 function CloudTeamReposBindingsSection({
   project,
   localRepoConfigs,
+  sshDevices,
   onLocalReposChanged,
   onBindingsChanged,
   onSharedReposChanged,
@@ -1768,6 +1799,7 @@ function CloudTeamReposBindingsSection({
 }: {
   project: CloudProject;
   localRepoConfigs: RepoConfig[];
+  sshDevices: ExecutionDeviceConfig[];
   onLocalReposChanged?: (repos: RepoConfig[]) => void;
   onBindingsChanged?: () => void | Promise<void>;
   onSharedReposChanged?: (repos: CloudSharedRepo[]) => void;
@@ -1941,16 +1973,6 @@ function CloudTeamReposBindingsSection({
                     {st.rootPath}
                   </p>
                 ) : null}
-                {st?.kind === 'bound' && st.pathStatus === 'missing' ? (
-                  <p className="mt-2 text-[11px] text-red-300">
-                    This path no longer exists on disk. Bind a different folder.
-                  </p>
-                ) : null}
-                {st?.kind === 'bound' && st.pathStatus === 'not_git' ? (
-                  <p className="mt-2 text-[11px] text-amber-300">
-                    This folder is not a git repository root. Choose another folder.
-                  </p>
-                ) : null}
               </div>
               </div>
             </button>
@@ -1961,26 +1983,30 @@ function CloudTeamReposBindingsSection({
                   repo={sr}
                   localRepoConfig={localRepoConfig}
                   status={st}
+                  sshDevices={sshDevices}
+                  bindLocalBusy={actionRepoId === sr.id}
+                  onBindLocalFolder={() => void handleBind(sr.id)}
                   onSharedReposChanged={onSharedReposChanged}
                   onLocalReposChanged={onLocalReposChanged}
                   onBindingsChanged={onBindingsChanged}
                 />
               </div>
-            ) : null}
-            <div className="flex justify-end border-t border-white/[0.04] px-4 py-3">
-              <button
-                type="button"
-                onClick={() => void handleBind(sr.id)}
-                disabled={actionRepoId === sr.id}
-                className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
-              >
-                {actionRepoId === sr.id
-                  ? 'Working…'
-                  : st?.kind === 'bound'
-                    ? 'Change folder'
-                    : 'Bind local folder'}
-              </button>
-            </div>
+            ) : (
+              <div className="flex justify-end border-t border-white/[0.04] px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => void handleBind(sr.id)}
+                  disabled={actionRepoId === sr.id}
+                  className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
+                >
+                  {actionRepoId === sr.id
+                    ? 'Working…'
+                    : st?.kind === 'bound'
+                      ? 'Change folder'
+                      : 'Bind local folder'}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1993,6 +2019,9 @@ function CloudRepoFields({
   repo,
   localRepoConfig,
   status,
+  sshDevices,
+  bindLocalBusy,
+  onBindLocalFolder,
   onSharedReposChanged,
   onLocalReposChanged,
   onBindingsChanged,
@@ -2001,6 +2030,9 @@ function CloudRepoFields({
   repo: CloudSharedRepo;
   localRepoConfig?: RepoConfig;
   status?: CloudRepoLocalBindingStatus;
+  sshDevices: ExecutionDeviceConfig[];
+  bindLocalBusy?: boolean;
+  onBindLocalFolder?: () => void;
   onSharedReposChanged?: (repos: CloudSharedRepo[]) => void;
   onLocalReposChanged?: (repos: RepoConfig[]) => void;
   onBindingsChanged?: () => void | Promise<void>;
@@ -2067,22 +2099,59 @@ function CloudRepoFields({
     }
   };
 
-  const bindingCopy =
-    status?.kind === 'bound'
-      ? status.rootPath
-      : 'No local folder is bound on this machine.';
+  const isLocallyBound = status?.kind === 'bound';
+  const bindingCopy = isLocallyBound
+    ? status.rootPath
+    : 'No local folder is bound on this machine.';
   const localRepoFieldsDisabled = !localRepoConfig;
   const localRepoFieldsDisabledReason =
     'Bind this shared repository to a local folder before saving local setup or .env values.';
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
-        <div className="text-[12px] font-medium text-zinc-300">Repository binding</div>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-600" title={bindingCopy}>
-          {bindingCopy}
-        </p>
+      <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] font-medium text-zinc-300">Local folder (this Mac)</div>
+            <p
+              className="mt-0.5 truncate font-mono text-[11px] text-zinc-600"
+              title={bindingCopy}
+            >
+              {bindingCopy}
+            </p>
+            {isLocallyBound && status.pathStatus === 'missing' ? (
+              <p className="mt-2 text-[11px] text-red-300">
+                This path no longer exists on disk. Bind a different folder.
+              </p>
+            ) : null}
+            {isLocallyBound && status.pathStatus === 'not_git' ? (
+              <p className="mt-2 text-[11px] text-amber-300">
+                This folder is not a git repository root. Choose another folder.
+              </p>
+            ) : null}
+          </div>
+          {onBindLocalFolder ? (
+            <button
+              type="button"
+              onClick={onBindLocalFolder}
+              disabled={bindLocalBusy}
+              className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
+            >
+              {bindLocalBusy
+                ? 'Working…'
+                : isLocallyBound
+                  ? 'Change folder'
+                  : 'Bind local folder'}
+            </button>
+          ) : null}
+        </div>
       </div>
+      <RemoteSshRepoBindingPanel
+        repoId={repo.id}
+        repoLabel={repo.name}
+        sshDevices={sshDevices}
+        projectDefaultDeviceId={project.defaultDeviceId}
+      />
       <label className="block">
         <span className="text-[12px] font-medium text-zinc-300">Display name</span>
         <input
@@ -2169,6 +2238,8 @@ interface RepoCardProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  sshDevices: ExecutionDeviceConfig[];
+  projectDefaultDeviceId?: string;
   expanded: boolean;
   onToggle: () => void;
   onSaved: (repos: RepoConfig[]) => void;
@@ -2181,6 +2252,8 @@ function RepoCard({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  sshDevices,
+  projectDefaultDeviceId,
   expanded,
   onToggle,
   onSaved,
@@ -2242,6 +2315,8 @@ function RepoCard({
             repoState={repoState}
             primary={primary}
             multiRepoManagementEnabled={multiRepoManagementEnabled}
+            sshDevices={sshDevices}
+            projectDefaultDeviceId={projectDefaultDeviceId}
             onSaved={onSaved}
             onReposChanged={onReposChanged}
           />
@@ -2281,6 +2356,8 @@ interface RepoFieldsProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  sshDevices: ExecutionDeviceConfig[];
+  projectDefaultDeviceId?: string;
   onSaved: (repos: RepoConfig[]) => void;
   onReposChanged: (repos: RepoConfig[]) => void | Promise<void>;
 }
@@ -2291,6 +2368,8 @@ function RepoFields({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  sshDevices,
+  projectDefaultDeviceId,
   onSaved,
   onReposChanged,
 }: RepoFieldsProps) {
@@ -2386,6 +2465,12 @@ function RepoFields({
           />
         </>
       ) : null}
+      <RemoteSshRepoBindingPanel
+        repoId={repo.id}
+        repoLabel={repoDisplayLabelForSettings(repo)}
+        sshDevices={sshDevices}
+        projectDefaultDeviceId={projectDefaultDeviceId}
+      />
       <FieldEditor
         label="Base branch"
         description="Branch fetched from origin and used as the base for new task worktrees."

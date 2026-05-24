@@ -35,12 +35,15 @@ import { mapRemoteHelperCodeToSessionStart } from './remoteSessionErrors';
 import { resolveRemoteRepoForTaskSession } from './resolveRemoteRepoForTask';
 import type { SshTerminalBackend } from '../terminalBackend/SshTerminalBackend';
 import type { DeviceStore } from '../DeviceStore';
+import type { LocalBindingStore } from '../LocalBindingStore';
 import type { ProjectStore } from '../ProjectStore';
 import { trustPromptAutorespondRootsForRemoteWorktree } from '../trustPromptAutorespondRoots';
+import { resolveRemoteRepoBindingForSession } from './RemoteRepoBindingService';
 
 export type StartSshTaskSessionDeps = {
   deviceStore: DeviceStore;
   projectStore: ProjectStore;
+  bindingStore: LocalBindingStore;
   sshTerminalBackend: SshTerminalBackend;
   gitRemoteWorkspace: GitRemoteWorkspaceProvider;
   taskAgentSessionRecordStore: TaskAgentSessionRecordStore;
@@ -152,6 +155,14 @@ export async function startSshTaskSession(
 
   const contextFiles = buildRemoteAgentContextFiles(task.agent, projectMcpConfig.config);
 
+  const boundRepoPath = resolveRemoteRepoBindingForSession(
+    project,
+    device.id,
+    remoteRepo.repoId,
+    deps.bindingStore,
+    project.kind === 'local' ? project.remoteRepoBindings : undefined,
+  );
+
   const started = await deps.gitRemoteWorkspace.createTaskWorkspaceAndStart({
     device,
     projectId: project.id,
@@ -162,6 +173,7 @@ export async function startSshTaskSession(
       agent: task.agent,
     },
     repo: remoteRepo,
+    ...(boundRepoPath ? { boundRepoPath } : {}),
     sourceBranchShort: sourceOpts.sourceBranchShort,
     createSourceBranchIfMissing: sourceOpts.createSourceBranchIfMissing,
     command,

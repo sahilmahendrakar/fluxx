@@ -361,6 +361,73 @@ function tmuxArgs(subArgs) {
   return ['-L', FLUXX_TMUX_SOCKET, '-f', confPath, ...subArgs];
 }
 
+function assertRepoPathWritable(repoPath) {
+  try {
+    fs.accessSync(repoPath, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runProbeRepoPath(params) {
+  const remotePathRaw =
+    typeof params.remotePath === 'string' ? params.remotePath.trim() : '';
+  const remoteUrl = typeof params.remoteUrl === 'string' ? params.remoteUrl.trim() : '';
+  if (!remotePathRaw) {
+    fail('INTERNAL', 'probe-repo-path requires remotePath');
+  }
+  if (!remoteUrl) {
+    fail('INTERNAL', 'probe-repo-path requires remoteUrl');
+  }
+  if (!which('git')) {
+    fail('REMOTE_GIT_MISSING', 'git was not found on PATH');
+  }
+  const repoPath = expandHome(remotePathRaw);
+  if (!path.isAbsolute(repoPath)) {
+    fail('INTERNAL', 'Remote path must be absolute');
+  }
+  if (!fs.existsSync(repoPath)) {
+    fail('REMOTE_REPO_MISMATCH', `Path does not exist: ${remotePathRaw}`);
+  }
+  const stat = fs.statSync(repoPath);
+  if (!stat.isDirectory()) {
+    fail('REMOTE_REPO_MISMATCH', `Path is not a directory: ${remotePathRaw}`);
+  }
+  if (!assertRepoPathWritable(repoPath)) {
+    fail('REMOTE_WORKSPACE_UNWRITABLE', `Path is not writable: ${remotePathRaw}`);
+  }
+  const gitDir = path.join(repoPath, '.git');
+  if (!fs.existsSync(gitDir)) {
+    fail('REMOTE_REPO_MISMATCH', `Path is not a git repository: ${remotePathRaw}`);
+  }
+  const origin = gitRun(['remote', 'get-url', 'origin'], { cwd: repoPath });
+  if (!origin.ok) {
+    fail('REMOTE_REPO_MISMATCH', `Could not read git remote origin at ${remotePathRaw}`);
+  }
+  if (normalizeRemoteUrl(origin.stdout) !== normalizeRemoteUrl(remoteUrl)) {
+    fail(
+      'REMOTE_REPO_MISMATCH',
+      `Repository origin (${origin.stdout.trim()}) does not match expected ${remoteUrl}.`,
+    );
+  }
+  const fetch = gitRun(['fetch', 'origin', '--prune'], { cwd: repoPath, timeoutMs: 180_000 });
+  if (!fetch.ok) {
+    fail(
+      'REMOTE_REPO_ACCESS_FAILED',
+      `git fetch failed for ${remoteUrl}: ${fetch.error}`,
+    );
+  }
+  emit({
+    ok: true,
+    data: {
+      resolvedPath: repoPath,
+      originUrl: origin.stdout.trim(),
+      writable: true,
+    },
+  });
+}
+
 function runRepoEnsure(params) {
   const workspaceRoot =
     typeof params.workspaceRoot === 'string' && params.workspaceRoot.trim()
@@ -375,6 +442,48 @@ function runRepoEnsure(params) {
 
   if (!which('git')) {
     fail('REMOTE_GIT_MISSING', 'git was not found on PATH');
+  }
+
+  const boundRepoPath =
+    typeof params.repoPath === 'string' && params.repoPath.trim()
+      ? expandHome(params.repoPath.trim())
+      : '';
+  if (boundRepoPath) {
+    if (!path.isAbsolute(boundRepoPath)) {
+      fail('INTERNAL', 'repoPath must be absolute');
+    }
+    if (!fs.existsSync(boundRepoPath)) {
+      fail('REMOTE_REPO_MISMATCH', `Bound repo path does not exist: ${params.repoPath}`);
+    }
+    const gitDir = path.join(boundRepoPath, '.git');
+    if (!fs.existsSync(gitDir)) {
+      fail('REMOTE_REPO_MISMATCH', `Bound path is not a git repository: ${params.repoPath}`);
+    }
+    if (!assertRepoPathWritable(boundRepoPath)) {
+      fail('REMOTE_WORKSPACE_UNWRITABLE', `Bound path is not writable: ${params.repoPath}`);
+    }
+    const origin = gitRun(['remote', 'get-url', 'origin'], { cwd: boundRepoPath });
+    if (!origin.ok) {
+      fail('REMOTE_REPO_MISMATCH', `Could not read git remote origin at ${params.repoPath}`);
+    }
+    if (normalizeRemoteUrl(origin.stdout) !== normalizeRemoteUrl(remoteUrl)) {
+      fail(
+        'REMOTE_REPO_MISMATCH',
+        `Bound repository origin (${origin.stdout.trim()}) does not match expected ${remoteUrl}.`,
+      );
+    }
+    const fetch = gitRun(['fetch', 'origin', '--prune'], {
+      cwd: boundRepoPath,
+      timeoutMs: 180_000,
+    });
+    if (!fetch.ok) {
+      fail(
+        'REMOTE_REPO_ACCESS_FAILED',
+        `git fetch failed for ${remoteUrl}: ${fetch.error}`,
+      );
+    }
+    emit({ ok: true, data: { repoPath: boundRepoPath, action: 'validated' } });
+    return;
   }
 
   const repoPath = repoCachePath(workspaceRoot, projectId, repoId);
@@ -1223,6 +1332,9 @@ function main() {
       break;
     case 'repo-ensure':
       runRepoEnsure(readStdinJson());
+      break;
+    case 'probe-repo-path':
+      runProbeRepoPath(readStdinJson());
       break;
     case 'worktree-create':
       runWorktreeCreate(readStdinJson());

@@ -33,6 +33,8 @@ export type GitRemoteWorkspaceCreateParams = {
   projectId: string;
   task: Pick<Task, 'id' | 'title' | 'fluxxWorkBranch' | 'agent'>;
   repo: RemoteRepoSessionContext;
+  /** When set, use this existing remote clone instead of Fluxx-managed storage. */
+  boundRepoPath?: string;
   sourceBranchShort: string;
   createSourceBranchIfMissing: boolean;
   command: string;
@@ -110,6 +112,7 @@ export class GitRemoteWorkspaceProvider {
       }
     }
 
+    const boundRepoPath = params.boundRepoPath?.trim();
     const repoEnsure = await this.helper.runJsonCommand<RemoteHelperRepoEnsureData>(
       device,
       'repo-ensure',
@@ -119,6 +122,7 @@ export class GitRemoteWorkspaceProvider {
         repoId: params.repo.repoId,
         remoteUrl: params.repo.remoteUrl,
         repoLabel: params.repo.label,
+        ...(boundRepoPath ? { repoPath: boundRepoPath } : {}),
       },
     );
     if (!repoEnsure.ok) {
@@ -312,13 +316,17 @@ export class GitRemoteWorkspaceProvider {
       repoId: string;
       taskId: string;
       worktreePath?: string;
+      /** Main repo root (bound clone or Fluxx cache); defaults to managed cache path. */
+      repoPath?: string;
     },
   ): Promise<string | null> {
     if (device.kind !== 'ssh') return 'Device is not SSH';
     const worktreePath =
       input.worktreePath?.trim() ||
       remoteTaskWorktreePath(device.workspaceRoot, input.projectId, input.repoId, input.taskId);
-    const repoPath = remoteRepoCachePath(device.workspaceRoot, input.projectId, input.repoId);
+    const repoPath =
+      input.repoPath?.trim() ||
+      remoteRepoCachePath(device.workspaceRoot, input.projectId, input.repoId);
     const result = await this.helper.runJsonCommand<RemoteHelperWorktreeRemoveData>(
       device,
       'worktree-remove',
