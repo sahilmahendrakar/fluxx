@@ -472,6 +472,7 @@ export class SshTerminalBackend implements TerminalBackend {
       deviceKind: 'ssh',
       deviceLabel: device.displayName,
       remotePath: params.worktreePath,
+      shellPlacement: 'remote',
     };
     this.shells.set(shellId, {
       shell,

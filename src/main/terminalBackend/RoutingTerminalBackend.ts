@@ -171,15 +171,19 @@ export class RoutingTerminalBackend implements TerminalBackend {
   }
 
   createShell(params: CreateShellParams): Promise<Shell> {
-    if (this.isSshSession(params.sessionId)) {
+    if (this.isSshSession(params.sessionId) && params.placement !== 'local') {
       return this.ssh.createShell(params);
     }
     return this.local.createShell(params);
   }
 
-  listShells(sessionId: string): Promise<Shell[]> {
+  async listShells(sessionId: string): Promise<Shell[]> {
     if (this.isSshSession(sessionId)) {
-      return this.ssh.listShells(sessionId);
+      const [remote, local] = await Promise.all([
+        this.ssh.listShells(sessionId),
+        this.local.listShells(sessionId),
+      ]);
+      return [...remote, ...local];
     }
     return this.local.listShells(sessionId);
   }
@@ -212,7 +216,10 @@ export class RoutingTerminalBackend implements TerminalBackend {
 
   async closeShellsForSession(sessionId: string): Promise<void> {
     if (this.isSshSession(sessionId)) {
-      await this.ssh.closeShellsForSession(sessionId);
+      await Promise.all([
+        this.ssh.closeShellsForSession(sessionId),
+        this.local.closeShellsForSession(sessionId),
+      ]);
       return;
     }
     await this.local.closeShellsForSession(sessionId);

@@ -6,6 +6,7 @@ import type { WorktreeService } from './WorktreeService';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 import type { DeviceStore } from './DeviceStore';
 import type { GitRemoteWorkspaceProvider } from './ssh/GitRemoteWorkspaceProvider';
+import { removeLocalSyncedWorktreeForTask } from './ssh/remoteSshSyncMetadata';
 
 export type RemoteTaskTeardownDeps = {
   deviceStore: DeviceStore;
@@ -22,6 +23,7 @@ export async function deleteSessionWorkspaceAndStop(
   sessionId: string,
   resolveGitRepoRoot: (session: Session) => Promise<string | null>,
   remote?: RemoteTaskTeardownDeps,
+  repos: readonly RepoConfig[] = [],
 ): Promise<void> {
   const sessions = await terminalBackend.listSessions();
   const target = sessions.find((s) => s.id === sessionId);
@@ -46,6 +48,21 @@ export async function deleteSessionWorkspaceAndStop(
             err,
           });
         }
+      }
+    }
+    const projectDir = worktreeService.getProjectDir();
+    if (projectDir) {
+      const localErrors = await removeLocalSyncedWorktreeForTask(worktreeService, repos, {
+        projectDir,
+        taskId: target.taskId,
+        repoId: target.repoId ?? null,
+        fluxxWorkBranch: target.branch?.trim() ?? null,
+      });
+      for (const e of localErrors) {
+        console.error('[deleteSessionWorkspaceAndStop] local synced worktree cleanup', {
+          sessionId,
+          err: e,
+        });
       }
     }
     return;
@@ -140,6 +157,7 @@ export async function teardownEphemeralResourcesForTask(
         id,
         resolveStored,
         remote,
+        repos,
       );
     } catch (err) {
       errors.push(`Session ${id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -174,23 +192,14 @@ export async function teardownEphemeralResourcesForTask(
 
   const rid = taskRepoId?.trim();
   const fw = fluxxWorkBranch?.trim();
-  if (rid && fw) {
-    const fluxScoped = path.join(projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxxBranch(fw));
-    try {
-      await fs.access(fluxScoped);
-      const cfg = repos.find((r) => r.id === rid);
-      const gitRoot = cfg?.rootPath?.trim() ? path.resolve(cfg.rootPath) : null;
-      try {
-        await worktreeService.remove(fluxScoped, gitRoot);
-      } catch (err) {
-        errors.push(
-          `Worktree cleanup (flux ${rid}): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    } catch {
-      /* no flux-scoped dir */
-    }
-  }
+  errors.push(
+    ...(await removeLocalSyncedWorktreeForTask(worktreeService, repos, {
+      projectDir,
+      taskId,
+      repoId: rid ?? null,
+      fluxxWorkBranch: fw ?? null,
+    })),
+  );
 
   if (rid) {
     const repoScoped = path.join(projectDir, 'worktrees', rid, taskId);
