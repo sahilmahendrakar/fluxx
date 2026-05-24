@@ -1,12 +1,12 @@
 # Fluxx
 
-> Task-driven AI agent orchestration for developers. Like Linear, but your agents do the work.
+> AI-native project management for software development.
 
 ---
 
 ## What is Fluxx?
 
-Fluxx is a local-first desktop app that lets you manage software development tasks and run AI coding agents (Claude Code, Codex, Cursor, and others) against them — all from a single interface.
+Fluxx is a desktop app that lets you manage software development tasks and run AI coding agents (Claude Code, Codex, Cursor, and others) against them — all from a single interface.
 
 Instead of juggling multiple terminal windows and losing track of what each agent is doing, Fluxx gives you a kanban board where every task has its own isolated agent session, its own git worktree, and a clear status. A built-in planning assistant helps you break down features into agent-ready tasks and assign them intelligently.
 
