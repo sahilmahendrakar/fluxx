@@ -12,7 +12,7 @@ export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
 /** Per-CLI default `--model` for planning or new tasks (stored on project / binding). */
-export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'cursor', string>>;
+export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'codex' | 'cursor', string>>;
 
 /** Partial update for {@link LocalProject} / cloud binding agent spawn defaults. */
 export type AgentSpawnDefaultsPatch = {
