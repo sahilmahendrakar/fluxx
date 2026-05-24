@@ -30,4 +30,21 @@ describe('buildTrustPromptAutoresponderRules', () => {
     expect(r!.matches(screen)).toBe(true);
     expect(r!.matches('Workspace Trust Required only')).toBe(false);
   });
+
+  it('codex rule matches directory trust menu when cwd is allowlisted', () => {
+    const r = rules.find((x) => x.id === 'codex-trust');
+    expect(r).toBeDefined();
+    const screen =
+      'You are in /p/worktrees/t1 Do you trust the contents of this directory? 1. Yes, continue 2. No, quit Press enter to continue';
+    expect(r!.agents).toEqual(['codex']);
+    expect(r!.cwdAllowlist('/p/worktrees/t1')).toBe(true);
+    expect(r!.cwdAllowlist('/nope')).toBe(false);
+    expect(r!.matches(screen)).toBe(true);
+    expect(r!.matches('Do you trust the contents of this directory only')).toBe(false);
+    expect(r!.respondWith).toBe('\r');
+  });
+
+  it('preserves claude and cursor rules when codex rule is registered', () => {
+    expect(rules.map((r) => r.id)).toEqual(['claude-trust', 'cursor-trust', 'codex-trust']);
+  });
 });

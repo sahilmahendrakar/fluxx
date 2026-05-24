@@ -1365,8 +1365,8 @@ function ProjectConfigPane({
               title="Auto-accept agent trust prompts"
               description={
                 <>
-                  When on, Fluxx may answer the one-time trust dialog for Claude Code and Cursor only
-                  while the PTY working directory stays under this project’s{' '}
+                  When on, Fluxx may answer the one-time trust dialog for Claude Code, Cursor, and
+                  Codex only while the PTY working directory stays under this project’s{' '}
                   <code className="text-zinc-400">worktrees/</code>,{' '}
                   <code className="text-zinc-400">planning/</code>, or your{' '}
                   <code className="text-zinc-400">~/.fluxx/worktrees</code> tree. Agents you launch
