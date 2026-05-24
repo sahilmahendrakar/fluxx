@@ -18,6 +18,7 @@ import {
   postMakeWriteLatestMacYml,
 } from './src/build/macReleaseArtifacts';
 import { assertPackagedFluxCliContract } from './src/main/packagedFluxCliContract';
+import { fluxxRemoteHelperVersionedFilename } from './src/remoteHelper/constants';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const githubUpdatesOwner = 'sahilmahendrakar';
 const githubUpdatesRepo = 'fluxx';
@@ -94,6 +95,27 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
     if (name.endsWith('.sh')) {
       await fsp.chmod(dst, 0o755);
     }
+  }
+
+  const remoteHelperSrc = path.resolve(__dirname, 'scripts', 'fluxx-remote-helper.js');
+  if (!fs.existsSync(remoteHelperSrc)) {
+    throw new Error(`[forge.config] expected remote helper at ${remoteHelperSrc}`);
+  }
+  await fsp.cp(remoteHelperSrc, path.join(cliDir, 'fluxx-remote-helper.js'));
+  const versionedHelper = fluxxRemoteHelperVersionedFilename();
+  await fsp.cp(remoteHelperSrc, path.join(cliDir, versionedHelper));
+  await fsp.chmod(path.join(cliDir, 'fluxx-remote-helper.js'), 0o755);
+  await fsp.chmod(path.join(cliDir, versionedHelper), 0o755);
+
+  const remoteHelperLibDir = path.resolve(__dirname, 'scripts', 'lib');
+  const cliLibDir = path.join(cliDir, 'lib');
+  await fsp.mkdir(cliLibDir, { recursive: true });
+  for (const name of ['remoteWorktreePrep.js'] as const) {
+    const libSrc = path.join(remoteHelperLibDir, name);
+    if (!fs.existsSync(libSrc)) {
+      throw new Error(`[forge.config] expected remote helper lib at ${libSrc}`);
+    }
+    await fsp.cp(libSrc, path.join(cliLibDir, name));
   }
 
   const tmuxConfSrc = path.resolve(__dirname, 'resources', 'fluxx-tmux.conf');

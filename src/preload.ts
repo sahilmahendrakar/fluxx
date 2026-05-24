@@ -5,6 +5,7 @@ import type {
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
+  RemoteRepoBindingsOverview,
   CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
@@ -22,6 +23,11 @@ import type {
   SessionStartResult,
   Shell,
   Task,
+  TaskExecutionDeviceRef,
+  ExecutionDeviceConfig,
+  DeviceProbeResult,
+  ExecutionDeviceUpdateInput,
+  SshExecutionDeviceUpsertInput,
   TaskStatus,
   TaskGithubPr,
   TaskPullRequestIpcResult,
@@ -194,6 +200,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:syncCloudSharedRepos', sharedRepos) as Promise<
         { ok: true } | { error: string }
       >,
+    getRemoteRepoBindingsOverview: (payload: { deviceId: string; repoIds: string[] }) =>
+      ipcRenderer.invoke('project:getRemoteRepoBindingsOverview', payload) as Promise<
+        RemoteRepoBindingsOverview | { error: string }
+      >,
+    probeRemoteRepoBinding: (payload: {
+      deviceId: string;
+      repoId: string;
+      remotePath: string;
+    }) =>
+      ipcRenderer.invoke('project:probeRemoteRepoBinding', payload) as Promise<
+        | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+        | { error: string; code?: string }
+      >,
+    setRemoteRepoBinding: (payload: {
+      deviceId: string;
+      repoId: string;
+      remotePath: string;
+    }) =>
+      ipcRenderer.invoke('project:setRemoteRepoBinding', payload) as Promise<
+        | { ok: true; binding: { remotePath: string; boundAt: string } }
+        | { error: string; code?: string }
+      >,
+    clearRemoteRepoBinding: (payload: { deviceId: string; repoId: string }) =>
+      ipcRenderer.invoke('project:clearRemoteRepoBinding', payload) as Promise<
+        { ok: true } | { error: string }
+      >,
     getAutoStartSessionOnInProgress: () =>
       ipcRenderer.invoke('project:getAutoStartSessionOnInProgress') as Promise<boolean>,
     setAutoStartSessionOnInProgress: (enabled: boolean) =>
@@ -240,6 +272,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setPersistTerminalsWithTmux', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getDefaultDeviceId: () =>
+      ipcRenderer.invoke('project:getDefaultDeviceId') as Promise<string | null>,
+    setDefaultDeviceId: (deviceId: string | null) =>
+      ipcRenderer.invoke('project:setDefaultDeviceId', deviceId) as Promise<string | null>,
     getValidationEnabled: () =>
       ipcRenderer.invoke('project:getValidationEnabled') as Promise<boolean>,
     setValidationEnabled: (enabled: boolean) =>
@@ -359,6 +395,74 @@ contextBridge.exposeInMainWorld('electronAPI', {
         RepoBranchDiscoveryResponse | { error: string }
       >,
   },
+  executionDevices: {
+    list: () =>
+      ipcRenderer.invoke('executionDevices:list') as Promise<ExecutionDeviceConfig[]>,
+    getGlobalDefault: () =>
+      ipcRenderer.invoke('executionDevices:getGlobalDefault') as Promise<string | null>,
+    setGlobalDefault: (deviceId: string | null) =>
+      ipcRenderer.invoke('executionDevices:setGlobalDefault', deviceId) as Promise<
+        string | null
+      >,
+    resolveDefaultForNewTask: () =>
+      ipcRenderer.invoke(
+        'executionDevices:resolveDefaultForNewTask',
+      ) as Promise<TaskExecutionDeviceRef>,
+    createSsh: (input: SshExecutionDeviceUpsertInput) =>
+      ipcRenderer.invoke('executionDevices:createSsh', input) as Promise<ExecutionDeviceConfig>,
+    update: (deviceId: string, patch: ExecutionDeviceUpdateInput) =>
+      ipcRenderer.invoke('executionDevices:update', deviceId, patch) as Promise<
+        ExecutionDeviceConfig
+      >,
+    remove: (deviceId: string) =>
+      ipcRenderer.invoke('executionDevices:remove', deviceId) as Promise<void>,
+    probe: (deviceId: string) =>
+      ipcRenderer.invoke('executionDevices:probe', deviceId) as Promise<DeviceProbeResult>,
+    onChanged: (cb: () => void) => {
+      const handler = () => cb();
+      ipcRenderer.on('executionDevices:changed', handler);
+      return () => ipcRenderer.removeListener('executionDevices:changed', handler);
+    },
+  },
+  cloudBindings: {
+    getPerTaskDeviceOverrides: (projectId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getPerTaskDeviceOverrides',
+        projectId,
+      ) as Promise<Record<string, TaskExecutionDeviceRef>>,
+    getPerTaskDeviceOverride: (projectId: string, taskId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getPerTaskDeviceOverride',
+        projectId,
+        taskId,
+      ) as Promise<TaskExecutionDeviceRef | null>,
+    setPerTaskDeviceOverride: (
+      projectId: string,
+      taskId: string,
+      ref: TaskExecutionDeviceRef | null,
+    ) =>
+      ipcRenderer.invoke(
+        'cloudBindings:setPerTaskDeviceOverride',
+        projectId,
+        taskId,
+        ref,
+      ) as Promise<TaskExecutionDeviceRef | null>,
+    getProjectDefaultDeviceId: (projectId: string) =>
+      ipcRenderer.invoke(
+        'cloudBindings:getProjectDefaultDeviceId',
+        projectId,
+      ) as Promise<string | null>,
+    setProjectDefaultDeviceId: (projectId: string, deviceId: string | null) =>
+      ipcRenderer.invoke(
+        'cloudBindings:setProjectDefaultDeviceId',
+        projectId,
+        deviceId,
+      ) as Promise<string | null>,
+    onChanged: (handler: () => void) => {
+      ipcRenderer.on('cloudBindings:changed', handler);
+      return () => ipcRenderer.removeListener('cloudBindings:changed', handler);
+    },
+  },
   auth: {
     startGoogleLogin: () =>
       ipcRenderer.invoke('auth:startGoogleLogin') as Promise<{
@@ -390,7 +494,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       agentModel?: string;
       agentYolo?: boolean;
       repoId?: string;
+      executionDevice?: TaskExecutionDeviceRef;
     }) => ipcRenderer.invoke('tasks:create', input) as Promise<Task>,
+    resolveEffectiveExecutionDevice: (task: Task) =>
+      ipcRenderer.invoke(
+        'tasks:resolveEffectiveExecutionDevice',
+        task,
+      ) as Promise<TaskExecutionDeviceRef>,
     update: (
       id: string,
       patch: Partial<
@@ -410,10 +520,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
           | 'createSourceBranchIfMissing'
           | 'repoId'
           | 'fluxxWorkBranch'
+          | 'executionDevice'
         >
       > & {
         githubPr?: TaskGithubPr | null;
         autoStartOnUnblock?: boolean | null;
+        executionDevice?: TaskExecutionDeviceRef | null;
       },
     ) => ipcRenderer.invoke('tasks:update', id, patch) as Promise<Task>,
     assertSourceBranchEditable: (
@@ -504,6 +616,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: (taskId: string) =>
       ipcRenderer.invoke('session:get', taskId) as Promise<Session | null>,
     getAll: () => ipcRenderer.invoke('session:getAll') as Promise<Session[]>,
+    isRestoreComplete: () =>
+      ipcRenderer.invoke('sessions:isRestoreComplete') as Promise<boolean>,
+    awaitRestoreComplete: () =>
+      ipcRenderer.invoke('sessions:awaitRestoreComplete') as Promise<void>,
+    reconcileRemote: () =>
+      ipcRenderer.invoke('session:reconcileRemote') as Promise<Session[]>,
+    syncToLocal: (sessionId: string) =>
+      ipcRenderer.invoke('session:syncToLocal', sessionId) as Promise<
+        import('./types').RemoteSshSyncResult
+      >,
+    getSshLocalWorktree: (sessionId: string) =>
+      ipcRenderer.invoke('session:getSshLocalWorktree', sessionId) as Promise<{
+        path: string | null;
+        lastSyncedAt: string | null;
+      }>,
+    onRestoreComplete: (cb: () => void) => {
+      const handler = () => cb();
+      return ipcSubscribe(ipcRenderer, 'sessions:restoreComplete', handler);
+    },
     /** Warm-reattach: attach payload (`replay` and optional `snapshot`). */
     attach: (sessionId: string) =>
       ipcRenderer.invoke('session:attach', sessionId) as Promise<AttachResult | null>,
@@ -563,8 +694,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   shells: {
-    open: (sessionId: string) =>
-      ipcRenderer.invoke('shell:open', sessionId) as Promise<Shell>,
+    open: (sessionId: string, options?: import('./types').ShellOpenOptions) =>
+      ipcRenderer.invoke('shell:open', sessionId, options) as Promise<Shell>,
     close: (shellId: string) =>
       ipcRenderer.invoke('shell:close', shellId) as Promise<void>,
     list: (sessionId: string) =>

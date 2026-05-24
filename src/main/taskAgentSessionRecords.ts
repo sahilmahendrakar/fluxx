@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Session, TaskAgentSessionEndedReason, TaskAgentSessionRecord } from '../types';
+import { mapEndedReasonToRemoteLifecycle } from './ssh/remoteSessionLifecycle';
 
 const FILE_NAME = 'task-agent-sessions.json';
 const SCHEMA_VERSION = 1;
@@ -9,6 +10,8 @@ const MAX_RECORDS = 500;
 const COLD_RESUMABLE_END_REASONS: TaskAgentSessionEndedReason[] = [
   'app-quit',
   'tmux-missing',
+  'device-unreachable',
+  'helper-mismatch',
   'agent-exit-ok',
   'agent-exit-error',
 ];
@@ -283,6 +286,7 @@ export class TaskAgentSessionRecordStore {
 
   private recordToInterruptedView(r: TaskAgentSessionRecord): Session {
     const stoppedAt = r.endedAt ?? r.startedAt;
+    const lifecycle = mapEndedReasonToRemoteLifecycle(r.endedReason);
     return {
       id: r.fluxxSessionId,
       taskId: r.taskId,
@@ -294,7 +298,22 @@ export class TaskAgentSessionRecordStore {
       startedAt: r.startedAt,
       stoppedAt,
       ...(r.agentConversationId ? { agentConversationId: r.agentConversationId } : {}),
+      ...(r.deviceId ? { deviceId: r.deviceId } : {}),
+      ...(r.deviceKind ? { deviceKind: r.deviceKind } : {}),
+      ...(r.deviceLabel ? { deviceLabel: r.deviceLabel } : {}),
+      ...(r.deviceKind === 'ssh' ? { remotePath: r.worktreePath } : {}),
+      ...(lifecycle ? { remoteLifecycleStatus: lifecycle } : {}),
     };
+  }
+
+  private async worktreePresentForRecord(
+    r: TaskAgentSessionRecord,
+    worktreeStillPresent: (absPath: string) => Promise<boolean>,
+  ): Promise<boolean> {
+    const wt = r.worktreePath?.trim();
+    if (!wt) return false;
+    if (r.deviceKind === 'ssh') return true;
+    return worktreeStillPresent(wt);
   }
 
   async getColdResumeSessionById(
@@ -307,9 +326,7 @@ export class TaskAgentSessionRecordStore {
       (row) => row.projectId === projectId && row.fluxxSessionId === fluxxSessionId,
     );
     if (!r || !this.isColdResumableRecord(r)) return null;
-    const wt = r.worktreePath?.trim();
-    if (!wt) return null;
-    if (!(await worktreeStillPresent(wt))) return null;
+    if (!(await this.worktreePresentForRecord(r, worktreeStillPresent))) return null;
     return this.recordToInterruptedView(r);
   }
 
@@ -333,9 +350,7 @@ export class TaskAgentSessionRecordStore {
       });
 
     for (const r of candidates) {
-      const wt = r.worktreePath?.trim();
-      if (!wt) continue;
-      if (!(await worktreeStillPresent(wt))) continue;
+      if (!(await this.worktreePresentForRecord(r, worktreeStillPresent))) continue;
       return this.recordToInterruptedView(r);
     }
     return null;
@@ -369,9 +384,7 @@ export class TaskAgentSessionRecordStore {
 
     for (const r of newestPerTask.values()) {
       if (seen.has(r.fluxxSessionId)) continue;
-      const wt = r.worktreePath?.trim();
-      if (!wt) continue;
-      if (!(await worktreeStillPresent(wt))) continue;
+      if (!(await this.worktreePresentForRecord(r, worktreeStillPresent))) continue;
       seen.add(r.fluxxSessionId);
       rows.push(this.recordToInterruptedView(r));
     }

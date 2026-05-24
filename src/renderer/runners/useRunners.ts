@@ -5,6 +5,7 @@ import {
   writeRunner,
   type RunnerEntry,
 } from './runners';
+import { activeTaskIdsForRunnerHeartbeat } from './runnerHeartbeat';
 
 /** A runner is considered "live" if its lastSeen is within this window. */
 const STALE_THRESHOLD_MS = 2 * 60 * 1000;
@@ -58,11 +59,10 @@ export function useRunners(projectId: string | null): RunnersByTask {
 }
 
 /**
- * Heartbeat loop for the signed-in user. For every local session whose taskId
- * belongs to the active cloud project, writes a running-status doc every 30s;
- * writes an idle-status doc once when the session ends. We intentionally
- * don't mark stale runners from other machines as idle — the viewer's stale
- * check handles presentation.
+ * Heartbeat loop for the signed-in user. For every local Desktop session (not
+ * direct SSH) whose task belongs to the active cloud project, writes a running
+ * doc every 30s; writes idle once when the session ends. Direct SSH is
+ * Desktop-controlled and is not represented as a cloud runner.
  */
 export function useAgentHeartbeat(opts: {
   projectId: string | null;
@@ -87,11 +87,7 @@ export function useAgentHeartbeat(opts: {
         console.error('[heartbeat] sessions.getAll failed', err);
         return;
       }
-      const activeTaskIds = new Set(
-        sessions
-          .filter((s) => s.status === 'running' && s.projectId === projectId)
-          .map((s) => s.taskId),
-      );
+      const activeTaskIds = activeTaskIdsForRunnerHeartbeat(sessions, projectId);
       // Beat 'running' for currently-active sessions.
       for (const taskId of activeTaskIds) {
         running.add(taskId);

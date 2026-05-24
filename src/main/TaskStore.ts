@@ -2,7 +2,8 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskValidationPlan } from '../types';
+import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskExecutionDeviceRef, TaskValidationPlan } from '../types';
+import { parseTaskExecutionDeviceRef } from '../executionDevices/parse';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import { validateBlockedByTaskIds, taskIdsToClearAutoStartOnUnblockWhenAutomationEnables } from '../taskDependencies';
@@ -21,6 +22,7 @@ type TaskInput = {
   /** Multi-repo2: identity of the {@link RepoConfig} this task belongs to. Optional — falls back to primary. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  executionDevice?: TaskExecutionDeviceRef;
   validationPlan?: TaskValidationPlan;
 };
 
@@ -31,6 +33,20 @@ function errnoCode(err: unknown): string | undefined {
 }
 
 type LegacyFluxTaskRow = Task & { fluxWorkBranch?: string };
+
+function normalizeTaskExecutionDeviceRow(t: Task): Task {
+  if (!t.executionDevice) return t;
+  const parsed = parseTaskExecutionDeviceRef(t.executionDevice);
+  if (!parsed) {
+    const next = { ...t };
+    delete next.executionDevice;
+    return next;
+  }
+  if (parsed.kind === t.executionDevice.kind && parsed.deviceId === t.executionDevice.deviceId) {
+    return t;
+  }
+  return { ...t, executionDevice: parsed };
+}
 
 /** Maps pre-rebrand `fluxWorkBranch` JSON keys to `fluxxWorkBranch`. */
 function normalizeLegacyFluxxTaskRow(t: Task): Task {
@@ -100,7 +116,7 @@ export class TaskStore {
       }
       const rows = parsed as LegacyFluxTaskRow[];
       const migrated = rows.some((r) => Boolean(r.fluxWorkBranch?.trim() && !r.fluxxWorkBranch?.trim()));
-      this.tasks = rows.map(normalizeLegacyFluxxTaskRow);
+      this.tasks = rows.map((r) => normalizeLegacyFluxxTaskRow(normalizeTaskExecutionDeviceRow(r)));
       if (migrated) {
         await this.save();
       }
@@ -273,6 +289,9 @@ export class TaskStore {
         task.attachedPlanningDocs = s;
       }
     }
+    if (input.executionDevice !== undefined) {
+      task.executionDevice = input.executionDevice;
+    }
     if (input.validationPlan !== undefined) {
       task.validationPlan = input.validationPlan;
     }
@@ -300,6 +319,7 @@ export class TaskStore {
         | 'createSourceBranchIfMissing'
         | 'repoId'
         | 'fluxxWorkBranch'
+        | 'executionDevice'
         | 'validationPlan'
       >
     > & {
@@ -308,6 +328,8 @@ export class TaskStore {
       githubPr?: TaskGithubPr | null;
       /** `null` clears stored attachments. */
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      /** `null` clears execution device so the task inherits defaults at start. */
+      executionDevice?: TaskExecutionDeviceRef | null;
       /** `null` clears the validation plan. */
       validationPlan?: TaskValidationPlan | null;
     },
@@ -325,6 +347,7 @@ export class TaskStore {
       githubPr: patchGithubPr,
       autoStartOnUnblock: patchAsou,
       attachedPlanningDocs: patchAttachedDocs,
+      executionDevice: patchExecutionDevice,
       validationPlan: patchValidationPlan,
       ...patchRest
     } = patch;
@@ -371,6 +394,13 @@ export class TaskStore {
         } else {
           delete updated.attachedPlanningDocs;
         }
+      }
+    }
+    if (patchExecutionDevice !== undefined) {
+      if (patchExecutionDevice === null) {
+        delete updated.executionDevice;
+      } else {
+        updated.executionDevice = patchExecutionDevice;
       }
     }
     if (patchValidationPlan !== undefined) {

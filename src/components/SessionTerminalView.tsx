@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LayoutList, ShieldCheck } from 'lucide-react';
-import type { Agent, Session, Shell, Task } from '../types';
+import type { Agent, Session, Shell, ShellPlacement, Task } from '../types';
 import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
 import { GithubPrIconButton } from './GithubPrIconButton';
 import {
@@ -24,8 +24,37 @@ import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
 import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import Terminal, { type TerminalHandle } from './Terminal';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
+import { SessionShellAddMenu } from './SessionShellAddMenu';
+import {
+  remoteLifecycleStatusDetail,
+  remoteLifecycleStatusHeading,
+} from './remoteSessionLifecycleUi';
+import {
+  remoteSshSyncFailureDetail,
+  remoteSshSyncSuccessDetail,
+} from './remoteSshSyncUi';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
+
+function shellTabLabel(shell: Shell, shells: Shell[]): string {
+  const localShells = shells.filter((s) => s.shellPlacement === 'local');
+  const remoteShells = shells.filter((s) => s.shellPlacement !== 'local');
+  if (shell.shellPlacement === 'local') {
+    const idx = localShells.findIndex((s) => s.id === shell.id);
+    return localShells.length > 1 ? `Local ${idx + 1}` : 'Local';
+  }
+  const idx = remoteShells.findIndex((s) => s.id === shell.id);
+  return remoteShells.length > 1 ? `SSH ${idx + 1}` : 'SSH';
+}
+
+async function refreshSshLocalWorktreePath(sessionId: string): Promise<string | null> {
+  try {
+    const result = await window.electronAPI.sessions.getSshLocalWorktree(sessionId);
+    return result.path?.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 function taskAgentSupportsCliResume(agent: Agent | null): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
@@ -118,10 +147,13 @@ function AgentPane({
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
   const id = session.id;
-  const trustAutorespondNote = useTrustAutorespondNotice('session', id, running);
   const [attachReady, setAttachReady] = useState(false);
   const [restartLoading, setRestartLoading] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const [remoteRetryLoading, setRemoteRetryLoading] = useState(false);
+
+  const remoteInterrupted =
+    session.status === 'interrupted' && Boolean(session.remoteLifecycleStatus);
 
   useEffect(() => {
     setAttachReady(false);
@@ -166,9 +198,23 @@ function AgentPane({
   );
   const showRestartControls =
     !running &&
+    !remoteInterrupted &&
     task &&
     agentSessionLifecycle &&
     taskAgentSupportsCliResume(task.agent);
+
+  const handleRemoteRetry = async () => {
+    setRemoteRetryLoading(true);
+    setRestartError(null);
+    try {
+      await window.electronAPI.sessions.reconcileRemote();
+      onAgentSessionStartSuccess?.(session.taskId);
+    } catch {
+      setRestartError('Could not reconnect to the remote session.');
+    } finally {
+      setRemoteRetryLoading(false);
+    }
+  };
 
   const handleAgentRestart = async (resume: boolean) => {
     if (!task || !agentSessionLifecycle) return;
@@ -228,14 +274,6 @@ function AgentPane({
               <span className="font-medium text-zinc-300">Starting…</span>
             </div>
           ) : null}
-          {trustAutorespondNote ? (
-            <div
-              role="status"
-              className="absolute left-3 right-3 top-3 z-[5] rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-            >
-              {trustAutorespondNote}
-            </div>
-          ) : null}
           <Terminal
             ref={terminalRef}
             sessionId={session.id}
@@ -245,6 +283,35 @@ function AgentPane({
             autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
             hideCursor
           />
+        </div>
+      ) : remoteInterrupted && session.remoteLifecycleStatus ? (
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+          <p className="text-[15px] font-medium text-zinc-200">
+            {remoteLifecycleStatusHeading(session.remoteLifecycleStatus)}
+          </p>
+          <p className="max-w-lg text-[13px] leading-relaxed text-zinc-500">
+            {remoteLifecycleStatusDetail(session.remoteLifecycleStatus, session)}
+          </p>
+          {session.remoteLifecycleStatus === 'device-unreachable' ||
+          session.remoteLifecycleStatus === 'helper-mismatch' ? (
+            <button
+              type="button"
+              onClick={() => void handleRemoteRetry()}
+              disabled={remoteRetryLoading}
+              className={
+                remoteRetryLoading
+                  ? resumeBtnLoading
+                  : 'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90'
+              }
+            >
+              {remoteRetryLoading ? 'Retrying…' : 'Retry connection'}
+            </button>
+          ) : null}
+          {restartError ? (
+            <p className="max-w-sm text-xs leading-snug text-red-300/90" role="alert">
+              {restartError}
+            </p>
+          ) : null}
         </div>
       ) : showRestartControls ? (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-6 text-center">
@@ -557,7 +624,13 @@ export function SessionTerminalView({
 }: SessionTerminalViewProps) {
   const [shells, setShells] = useState<Shell[]>([]);
   const [activePane, setActivePane] = useState<PaneId>('agent');
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncIsError, setSyncIsError] = useState(false);
+  const [localWorktreePath, setLocalWorktreePath] = useState<string | null>(null);
   const running = session.status === 'running';
+  const isRemoteSshSession = session.deviceKind === 'ssh';
+  const localWorktreeAvailable = Boolean(localWorktreePath?.trim());
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
   const showCleanUp =
@@ -649,6 +722,20 @@ export function SessionTerminalView({
   }, [activePane, showDetailsTab]);
 
   useEffect(() => {
+    if (!isRemoteSshSession) {
+      setLocalWorktreePath(null);
+      return;
+    }
+    let cancelled = false;
+    void refreshSshLocalWorktreePath(session.id).then((path) => {
+      if (!cancelled) setLocalWorktreePath(path);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRemoteSshSession, session.id, task?.fluxxWorkBranch, task?.repoId]);
+
+  useEffect(() => {
     if (activePane === 'validation' && !showValidationTab) {
       setActivePane('agent');
     }
@@ -682,12 +769,24 @@ export function SessionTerminalView({
     return () => unsub();
   }, [session.id]);
 
-  const handleOpenShell = useCallback(async () => {
-    if (!running) return;
-    const shell = await window.electronAPI.shells.open(session.id);
-    setShells((prev) => [...prev, shell]);
-    setActivePane(`shell:${shell.id}`);
-  }, [running, session.id]);
+  const handleOpenShell = useCallback(
+    async (placement: ShellPlacement = isRemoteSshSession ? 'remote' : 'local') => {
+      if (!running) return;
+      try {
+        const shell = await window.electronAPI.shells.open(
+          session.id,
+          isRemoteSshSession ? { placement } : undefined,
+        );
+        setShells((prev) => [...prev, shell]);
+        setActivePane(`shell:${shell.id}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setSyncMessage(message);
+        setSyncIsError(true);
+      }
+    },
+    [isRemoteSshSession, running, session.id],
+  );
 
   const handleCloseShell = useCallback(
     async (shellId: string) => {
@@ -698,6 +797,29 @@ export function SessionTerminalView({
     },
     [],
   );
+
+  const handleSyncToLocal = useCallback(async () => {
+    if (!isRemoteSshSession || syncLoading) return;
+    setSyncLoading(true);
+    setSyncMessage(null);
+    setSyncIsError(false);
+    try {
+      const result = await window.electronAPI.sessions.syncToLocal(session.id);
+      if (result.ok) {
+        setSyncMessage(remoteSshSyncSuccessDetail(result));
+        setSyncIsError(false);
+        setLocalWorktreePath(result.localWorktreePath);
+      } else {
+        setSyncMessage(remoteSshSyncFailureDetail(result));
+        setSyncIsError(true);
+      }
+    } catch {
+      setSyncMessage('Sync to local failed unexpectedly.');
+      setSyncIsError(true);
+    } finally {
+      setSyncLoading(false);
+    }
+  }, [isRemoteSshSession, session.id, syncLoading]);
 
   const markDoneBtn =
     'shrink-0 rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
@@ -762,33 +884,57 @@ export function SessionTerminalView({
               }
             />
           ) : null}
-          {shells.map((shell, idx) => (
+          {shells.map((shell) => (
             <PaneTab
               key={shell.id}
-              label={`Terminal ${idx + 1}`}
+              label={isRemoteSshSession ? shellTabLabel(shell, shells) : `Terminal ${shells.indexOf(shell) + 1}`}
               active={activePane === `shell:${shell.id}`}
               onClick={() => setActivePane(`shell:${shell.id}`)}
               onClose={() => void handleCloseShell(shell.id)}
               status={shell.status}
             />
           ))}
-          <button
-            type="button"
-            onClick={() => void handleOpenShell()}
-            disabled={!running}
-            title={running ? 'Open a new terminal in this worktree' : 'Session is not running'}
-            aria-label="Open a new terminal in this worktree"
-            className={[
-              'ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[16px] leading-none transition',
-              running
-                ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
-                : 'cursor-not-allowed text-zinc-700',
-            ].join(' ')}
-          >
-            +
-          </button>
+          {isRemoteSshSession ? (
+            <SessionShellAddMenu
+              running={running}
+              localWorktreeAvailable={localWorktreeAvailable}
+              onOpenShell={handleOpenShell}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleOpenShell()}
+              disabled={!running}
+              title={running ? 'Open a new terminal in this worktree' : 'Session is not running'}
+              aria-label="Open a new terminal in this worktree"
+              className={[
+                'ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[16px] leading-none transition',
+                running
+                  ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
+                  : 'cursor-not-allowed text-zinc-700',
+              ].join(' ')}
+            >
+              +
+            </button>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {isRemoteSshSession ? (
+            <button
+              type="button"
+              onClick={() => void handleSyncToLocal()}
+              disabled={syncLoading}
+              title="Push the remote task branch and fetch it into your local worktree"
+              className={[
+                'shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25',
+                syncLoading
+                  ? 'cursor-wait bg-zinc-800/80 text-zinc-500 ring-white/[0.06]'
+                  : 'bg-sky-500/10 text-sky-100 ring-sky-400/25 hover:bg-sky-500/15',
+              ].join(' ')}
+            >
+              {syncLoading ? 'Syncing…' : 'Sync to local'}
+            </button>
+          ) : null}
           {validateEligibility.canValidate && task && taskDetailPanel?.onUpdate ? (
             <button
               type="button"
@@ -800,7 +946,15 @@ export function SessionTerminalView({
               Validate
             </button>
           ) : null}
-          <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
+          <OpenInWorkspaceButton
+            worktreePath={isRemoteSshSession ? localWorktreePath : session.worktreePath}
+            disabledReason={
+              isRemoteSshSession
+                ? 'Sync to local first to open the local copy in Cursor, VS Code, or Terminal.'
+                : undefined
+            }
+            size="sm"
+          />
           {task ? (
             <GithubPrIconButton
               githubPr={task.githubPr}
@@ -843,6 +997,19 @@ export function SessionTerminalView({
           ) : null}
         </div>
       </div>
+      {syncMessage ? (
+        <div
+          className={[
+            'shrink-0 border-b px-3 py-2 text-[12px] leading-snug',
+            syncIsError
+              ? 'border-red-500/20 bg-red-500/10 text-red-200/90'
+              : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100/90',
+          ].join(' ')}
+          role={syncIsError ? 'alert' : 'status'}
+        >
+          {syncMessage}
+        </div>
+      ) : null}
       <div className="relative min-h-0 flex-1">
         {showDetailsTab && task && taskDetailPanel ? (
           <div

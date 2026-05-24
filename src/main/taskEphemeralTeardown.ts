@@ -1,15 +1,28 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import type { RepoConfig, Session } from '../types';
+import { getRemoteRepoBinding } from '../remoteRepoBindings';
+import type { ExecutionDeviceConfig, RepoConfig, Session } from '../types';
+import type { LocalBindingStore } from './LocalBindingStore';
+import type { ProjectStore } from './ProjectStore';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import type { ValidationRunStore } from './ValidationRunStore';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 import { teardownValidationRunsForTask } from './teardownValidationRunsForTask';
+import type { DeviceStore } from './DeviceStore';
+import type { GitRemoteWorkspaceProvider } from './ssh/GitRemoteWorkspaceProvider';
+import { removeLocalSyncedWorktreeForTask } from './ssh/remoteSshSyncMetadata';
 
 export type TaskEphemeralTeardownValidationDeps = {
   validationRunStore: ValidationRunStore;
   notifyValidationRunChanged?: (runId: string) => void;
+};
+
+export type RemoteTaskTeardownDeps = {
+  deviceStore: DeviceStore;
+  gitRemoteWorkspace: GitRemoteWorkspaceProvider;
+  bindingStore: LocalBindingStore;
+  projectStore: ProjectStore;
 };
 
 /**
@@ -21,22 +34,91 @@ export async function deleteSessionWorkspaceAndStop(
   worktreeService: WorktreeService,
   sessionId: string,
   resolveGitRepoRoot: (session: Session) => Promise<string | null>,
+  remote?: RemoteTaskTeardownDeps,
+  repos: readonly RepoConfig[] = [],
 ): Promise<void> {
   const sessions = await terminalBackend.listSessions();
   const target = sessions.find((s) => s.id === sessionId);
   await terminalBackend.closeShellsForSession(sessionId);
   await terminalBackend.stopSession(sessionId);
-  if (target?.worktreePath) {
-    try {
-      const gitRoot = await resolveGitRepoRoot(target);
-      await worktreeService.remove(target.worktreePath, gitRoot);
-    } catch (err: unknown) {
-      console.error('[deleteSessionWorkspaceAndStop] worktree remove failed', {
-        sessionId,
-        err,
-      });
+  if (!target?.worktreePath) return;
+
+  if (target.deviceKind === 'ssh' && target.deviceId && remote) {
+    const device = remote.deviceStore.getDevice(target.deviceId);
+    if (device?.kind === 'ssh') {
+      const repoId = target.repoId?.trim();
+      if (repoId) {
+        const boundRepoPath = resolveBoundRemoteRepoPath(remote, target.projectId, device.id, repoId);
+        const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
+          projectId: target.projectId,
+          repoId,
+          taskId: target.taskId,
+          worktreePath: target.remotePath ?? target.worktreePath,
+          ...(boundRepoPath ? { repoPath: boundRepoPath } : {}),
+        });
+        if (err) {
+          console.error('[deleteSessionWorkspaceAndStop] remote worktree remove failed', {
+            sessionId,
+            err,
+          });
+        }
+      }
     }
+    const projectDir = worktreeService.getProjectDir();
+    if (projectDir) {
+      const localErrors = await removeLocalSyncedWorktreeForTask(worktreeService, repos, {
+        projectDir,
+        taskId: target.taskId,
+        repoId: target.repoId ?? null,
+        fluxxWorkBranch: target.branch?.trim() ?? null,
+      });
+      for (const e of localErrors) {
+        console.error('[deleteSessionWorkspaceAndStop] local synced worktree cleanup', {
+          sessionId,
+          err: e,
+        });
+      }
+    }
+    return;
   }
+
+  try {
+    const gitRoot = await resolveGitRepoRoot(target);
+    await worktreeService.remove(target.worktreePath, gitRoot);
+  } catch (err: unknown) {
+    console.error('[deleteSessionWorkspaceAndStop] worktree remove failed', {
+      sessionId,
+      err,
+    });
+  }
+}
+
+async function cleanupRemoteTaskOrphans(
+  remote: RemoteTaskTeardownDeps,
+  taskId: string,
+  projectId: string,
+  repoId: string | null,
+  fluxxWorkBranch: string | null,
+): Promise<string[]> {
+  const errors: string[] = [];
+  for (const device of remote.deviceStore.listDevices()) {
+    if (device.kind !== 'ssh' || !device.enabled) continue;
+    errors.push(
+      ...(await remote.gitRemoteWorkspace.stopOpenTerminalsForTask(device, taskId, projectId)),
+    );
+    if (repoId) {
+      const boundRepoPath = resolveBoundRemoteRepoPath(remote, projectId, device.id, repoId);
+      const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
+        projectId,
+        repoId,
+        taskId,
+        ...(boundRepoPath ? { repoPath: boundRepoPath } : {}),
+      });
+      if (err) errors.push(`${device.displayName}: ${err}`);
+    }
+    void fluxxWorkBranch;
+  }
+  return errors;
 }
 
 /**
@@ -54,6 +136,7 @@ export async function teardownEphemeralResourcesForTask(
   /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
   fluxxWorkBranch?: string | null,
   validation?: TaskEphemeralTeardownValidationDeps,
+  remote?: RemoteTaskTeardownDeps,
 ): Promise<string[]> {
   const errors: string[] = [];
 
@@ -70,9 +153,12 @@ export async function teardownEphemeralResourcesForTask(
   }
 
   let sessionIds: string[] = [];
+  let projectId: string | null = null;
   try {
     const sessions = await terminalBackend.listSessions();
-    sessionIds = sessions.filter((s) => s.taskId === taskId).map((s) => s.id);
+    const forTask = sessions.filter((s) => s.taskId === taskId);
+    sessionIds = forTask.map((s) => s.id);
+    projectId = forTask[0]?.projectId ?? null;
   } catch (err) {
     errors.push(
       `Could not list sessions: ${err instanceof Error ? err.message : String(err)}`,
@@ -100,10 +186,24 @@ export async function teardownEphemeralResourcesForTask(
         worktreeService,
         id,
         resolveStored,
+        remote,
+        repos,
       );
     } catch (err) {
       errors.push(`Session ${id}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (remote && projectId) {
+    errors.push(
+      ...(await cleanupRemoteTaskOrphans(
+        remote,
+        taskId,
+        projectId,
+        taskRepoId?.trim() ?? null,
+        fluxxWorkBranch?.trim() ?? null,
+      )),
+    );
   }
 
   const projectDir = worktreeService.getProjectDir();
@@ -122,23 +222,14 @@ export async function teardownEphemeralResourcesForTask(
 
   const rid = taskRepoId?.trim();
   const fw = fluxxWorkBranch?.trim();
-  if (rid && fw) {
-    const fluxScoped = path.join(projectDir, 'worktrees', rid, ...worktreePathSegmentsForFluxxBranch(fw));
-    try {
-      await fs.access(fluxScoped);
-      const cfg = repos.find((r) => r.id === rid);
-      const gitRoot = cfg?.rootPath?.trim() ? path.resolve(cfg.rootPath) : null;
-      try {
-        await worktreeService.remove(fluxScoped, gitRoot);
-      } catch (err) {
-        errors.push(
-          `Worktree cleanup (flux ${rid}): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    } catch {
-      /* no flux-scoped dir */
-    }
-  }
+  errors.push(
+    ...(await removeLocalSyncedWorktreeForTask(worktreeService, repos, {
+      projectDir,
+      taskId,
+      repoId: rid ?? null,
+      fluxxWorkBranch: fw ?? null,
+    })),
+  );
 
   if (rid) {
     const repoScoped = path.join(projectDir, 'worktrees', rid, taskId);
@@ -214,4 +305,23 @@ export async function teardownEphemeralResourcesForTask(
   }
 
   return errors;
+}
+
+export function listEnabledSshDevices(deviceStore: DeviceStore): ExecutionDeviceConfig[] {
+  return deviceStore.listDevices().filter((d) => d.kind === 'ssh' && d.enabled);
+}
+
+function resolveBoundRemoteRepoPath(
+  remote: RemoteTaskTeardownDeps,
+  projectId: string,
+  deviceId: string,
+  repoId: string,
+): string | undefined {
+  const cloudBinding = remote.bindingStore.getRemoteRepoBinding(projectId, deviceId, repoId);
+  if (cloudBinding?.remotePath) return cloudBinding.remotePath;
+  const local = remote.projectStore.get();
+  if (local?.kind === 'local' && local.id === projectId) {
+    return getRemoteRepoBinding(local.remoteRepoBindings, deviceId, repoId)?.remotePath;
+  }
+  return undefined;
 }

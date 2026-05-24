@@ -56,6 +56,29 @@ import {
 } from './cloudLocalBindingMigration';
 import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
+import { DeviceStore } from './main/DeviceStore';
+import { DeviceProbeService } from './main/ssh/DeviceProbeService';
+import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
+import { RemoteHelperClient } from './main/ssh/RemoteHelperClient';
+import {
+  formatRemoteSshReconcileLogLine,
+  reconcileRemoteSshTerminalsForProject,
+} from './main/ssh/remoteSshTerminalReconcile';
+import { mapRemoteLifecycleToEndedReason } from './main/ssh/remoteSessionLifecycle';
+import { startSshTaskSession } from './main/ssh/startSshTaskSession';
+import { RemoteRepoBindingService } from './main/ssh/RemoteRepoBindingService';
+import { resolveRemoteRepoForTaskSession } from './main/ssh/resolveRemoteRepoForTask';
+import { syncRemoteSshTaskToLocal } from './main/ssh/remoteSshBranchSync';
+import { resolveSshLocalWorktreePath, readRemoteSshSyncMetadata } from './main/ssh/remoteSshSyncMetadata';
+import {
+  type ExecutionDeviceHostContext,
+  inferLegacyLocalTmuxForDeviceBootstrap,
+  parseAndValidateExecutionDeviceInput,
+  resolveDefaultExecutionDeviceForNewTaskInContext,
+  resolveEffectiveExecutionDeviceForTaskInContext,
+  validateExecutionDeviceRefForStore,
+} from './main/executionDeviceContext';
+import type { TaskExecutionDeviceRef } from './types';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
 import {
@@ -67,11 +90,16 @@ import {
   buildPickerLastOpenedAtMap,
   touchPickerProjectLastOpened,
 } from './main/projectPickerLastOpened';
-import { createMainTerminalBackend } from './main/terminalBackend/createMainTerminalBackend';
+import {
+  createMainTerminalBackend,
+  localTerminalBackendFrom,
+  sshTerminalBackendFrom,
+} from './main/terminalBackend/createMainTerminalBackend';
 import type { TerminalBackend } from './main/terminalBackend/TerminalBackend';
 import { applyShellEnvToProcess } from './main/userShellEnv';
 import {
   deleteSessionWorkspaceAndStop,
+  listEnabledSshDevices,
   teardownEphemeralResourcesForTask,
 } from './main/taskEphemeralTeardown';
 import {
@@ -123,7 +151,6 @@ import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxS
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
 import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
-import { LocalMainProcessTerminalBackend } from './main/terminalBackend/LocalMainProcessTerminalBackend';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
 import { createValidatorSessionLauncher } from './main/validatorSessionMain';
 import {
@@ -222,6 +249,7 @@ import type {
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
   CloudSharedRepo,
+  RemoteRepoBindingsOverview,
   ProjectTabState,
   RestorableSessionIds,
   LocalProject,
@@ -616,12 +644,15 @@ app.whenReady().then(async () => {
   const taskStore = new TaskStore('');
   await taskStore.init();
 
+  const deviceStore = new DeviceStore();
+
   const worktreeService = new WorktreeService('', '');
   // Side-effecting `process.env` here means every PTY child inherits the
   // corrected env without per-call wiring. See `src/main/userShellEnv.ts`.
   await applyShellEnvToProcess();
 
   const terminalBackend = createMainTerminalBackend({
+    deviceStore,
     tmuxSpawnLauncherPath: resolveFluxxTmuxSpawnLauncherPath(app.getAppPath(), process.execPath),
   });
   mainProcessTerminalBackend = terminalBackend;
@@ -1025,6 +1056,45 @@ app.whenReady().then(async () => {
   const bindingStore = new LocalBindingStore();
   await bindingStore.init();
 
+  await deviceStore.init({
+    legacyLocalTmuxEnabled: await inferLegacyLocalTmuxForDeviceBootstrap(
+      projectStore,
+      bindingStore,
+      appStateStore.get().activeProjectKey,
+    ),
+  });
+  const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
+  const remoteRepoBindingService = new RemoteRepoBindingService(
+    bindingStore,
+    projectStore,
+    deviceStore,
+  );
+  const remoteHelperClient = new RemoteHelperClient();
+  const remoteTaskTeardownDeps = {
+    deviceStore,
+    gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+    bindingStore,
+    projectStore,
+  };
+
+  function executionDeviceHostContext(): ExecutionDeviceHostContext {
+    return {
+      deviceStore,
+      projectStore,
+      bindingStore,
+      activeKey: appStateStore.get().activeProjectKey,
+    };
+  }
+
+  function createDeviceProbeService(): DeviceProbeService {
+    return new DeviceProbeService(deviceStore, {
+      projectStore,
+      bindingStore,
+      activeKey: appStateStore.get().activeProjectKey,
+      cloudProject: null,
+    });
+  }
+
   let activeRootPath = projectStore.get()?.rootPath ?? '';
   if (activeProjectKey?.kind === 'cloud') {
     const binding = bindingStore.get(activeProjectKey.id);
@@ -1170,8 +1240,111 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function markRemoteInterruptedTerminal(
+    record: import('./types').TerminalSessionRecord,
+    device: import('./types').ExecutionDeviceConfig,
+    lifecycleStatus: import('./types').RemoteSessionLifecycleStatus,
+  ): Promise<void> {
+    const endedAt = new Date().toISOString();
+    const endReason = mapRemoteLifecycleToEndedReason(lifecycleStatus);
+    const preserveRemoteManifest =
+      lifecycleStatus === 'device-unreachable' || lifecycleStatus === 'helper-mismatch';
+
+    if (!preserveRemoteManifest && record.deviceId) {
+      await remoteHelperClient.runJsonCommand(device, 'mark-terminal-ended', {
+        terminalId: record.id,
+        deviceId: record.deviceId,
+        reason: endReason,
+      });
+    }
+
+    await terminalSessionRecordStore.markTerminalEnded(record.id, {
+      reason: endReason,
+      endedAt,
+    });
+
+    if (record.kind !== 'task' || !record.task) return;
+
+    if (!(await taskAgentSessionRecordStore.hasFluxxSessionId(record.id))) {
+      await taskAgentSessionRecordStore.recordSessionStart({
+        fluxxSessionId: record.id,
+        taskId: record.task.taskId,
+        projectId: record.projectId,
+        ...(record.repoId ? { repoId: record.repoId } : {}),
+        agent: record.task.agent,
+        worktreePath: record.task.worktreePath,
+        fluxxWorkBranch: record.task.fluxxWorkBranch,
+        ...(record.task.sourceBranchShort ? { sourceBranchShort: record.task.sourceBranchShort } : {}),
+        startedAt: record.startedAt,
+        ...(record.deviceId ? { deviceId: record.deviceId } : {}),
+        deviceKind: 'ssh',
+        ...(device.displayName ? { deviceLabel: device.displayName } : {}),
+      });
+    }
+
+    await taskAgentSessionRecordStore.markSessionEnded(
+      {
+        id: record.id,
+        taskId: record.task.taskId,
+        projectId: record.projectId,
+        worktreePath: record.task.worktreePath,
+        branch: record.task.fluxxWorkBranch,
+        status: 'interrupted',
+        startedAt: record.startedAt,
+        stoppedAt: endedAt,
+      },
+      { reason: endReason },
+    );
+  }
+
+  async function reconcileRemoteSshTerminalsForActiveProject(): Promise<void> {
+    const sshBackend = sshTerminalBackendFrom(terminalBackend);
+    if (!sshBackend) return;
+
+    const projectId = await activeProjectIdForTmuxRestore();
+    if (!projectId) return;
+
+    const sshDevices = listEnabledSshDevices(deviceStore);
+    if (sshDevices.length === 0) return;
+
+    const localSshOpenRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
+      (r) => r.deviceKind === 'ssh',
+    );
+    const project = projectStore.get();
+
+    const output = await reconcileRemoteSshTerminalsForProject({
+      projectId,
+      devices: sshDevices,
+      helper: remoteHelperClient,
+      sshBackend,
+      localOpenRecords: localSshOpenRecords,
+      autoRespondToTrustPrompts: project?.autoRespondToTrustPrompts === true,
+    });
+
+    for (const { sessionId, taskId } of output.restoredSessionTaskPairs) {
+      sessionTaskMap.set(sessionId, taskId);
+    }
+
+    for (const { record, lifecycleStatus } of output.interruptedRecords) {
+      const deviceId = record.deviceId?.trim();
+      const device = deviceId ? deviceStore.getDevice(deviceId) : undefined;
+      if (!device || device.kind !== 'ssh') continue;
+      await markRemoteInterruptedTerminal(record, device, lifecycleStatus);
+    }
+
+    if (output.untrackedFluxxSessions.length > 0) {
+      console.warn(
+        '[ssh-reconcile] untracked fluxx tmux sessions (not auto-killed):',
+        output.untrackedFluxxSessions.join(', '),
+      );
+    }
+
+    console.log(formatRemoteSshReconcileLogLine(output));
+  }
+
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
-    if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    const localTerminalBackend = localTerminalBackendFrom(terminalBackend);
+    if (!localTerminalBackend) return;
     if (isAuxDevInstance()) return;
     await syncTerminalRuntimeContext();
     if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
@@ -1186,13 +1359,15 @@ app.whenReady().then(async () => {
       return;
     }
 
-    const openRecords = await terminalSessionRecordStore.listOpenRecords(projectId);
+    const openRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
+      (r) => r.deviceKind !== 'ssh',
+    );
     const project = projectStore.get();
     const trustRoots = trustPromptAutorespondRootsForProject(projectDir);
     const trustAutorespond =
       project?.autoRespondToTrustPrompts === true && trustRoots.length > 0;
 
-    const output = await terminalBackend.reconcileTmuxPersistedTerminals({
+    const output = await localTerminalBackend.reconcileTmuxPersistedTerminals({
       projectId,
       records: openRecords,
       pathStillPresent: async (absPath) => {
@@ -1245,6 +1420,39 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function reconcileTerminalsForActiveProject(): Promise<void> {
+    await reconcileTmuxTerminalsForActiveProject();
+    await reconcileRemoteSshTerminalsForActiveProject();
+  }
+
+  let terminalRestoreGeneration = 0;
+  let terminalRestoreComplete = true;
+  let terminalRestorePromise: Promise<void> = Promise.resolve();
+
+  function broadcastSessionsRestoreComplete(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('sessions:restoreComplete');
+    }
+  }
+
+  function beginTerminalRestore(): Promise<void> {
+    const gen = ++terminalRestoreGeneration;
+    terminalRestoreComplete = false;
+    terminalRestorePromise = (async () => {
+      try {
+        await reconcileTerminalsForActiveProject();
+        await runSilenceCatchup();
+      } finally {
+        if (gen === terminalRestoreGeneration) {
+          terminalRestoreComplete = true;
+          broadcastSessionsRestoreComplete();
+        }
+      }
+    })();
+    return terminalRestorePromise;
+  }
+
   // Catchup: for sessions already silent (or already exited) when this process
   // starts, no stream event will fire until the next PTY output tick.
   async function runSilenceCatchup(): Promise<void> {
@@ -1267,8 +1475,6 @@ app.whenReady().then(async () => {
       }
     }
   }
-
-  await runSilenceCatchup();
 
   const authServer = new AuthServer();
   const emailService = new EmailService();
@@ -1512,12 +1718,10 @@ app.whenReady().then(async () => {
     }
   }
 
-  if (terminalBackend instanceof LocalMainProcessTerminalBackend) {
-    terminalBackend.setResolveTerminalRuntimeContext(() => terminalRuntimeContext);
-  }
+  localTerminalBackendFrom(terminalBackend)?.setResolveTerminalRuntimeContext(
+    () => terminalRuntimeContext,
+  );
   await syncTerminalRuntimeContext();
-  await reconcileTmuxTerminalsForActiveProject();
-  await runSilenceCatchup();
 
   ipcMain.handle(
     'project:getMcpConfig',
@@ -1866,6 +2070,185 @@ app.whenReady().then(async () => {
         projectDir,
         sharedRepos,
       });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'project:getRemoteRepoBindingsOverview',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<RemoteRepoBindingsOverview | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoIds = Array.isArray(p.repoIds)
+        ? p.repoIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : [];
+      if (!deviceId) return { error: 'deviceId is required' };
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      const bindings = await remoteRepoBindingService.resolveBindingsMap(key, projectDir);
+      return remoteRepoBindingService.buildOverview({
+        device,
+        repoIds,
+        bindings,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'project:probeRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+      | { error: string; code?: string }
+    > => {
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const remotePath = typeof p.remotePath === 'string' ? p.remotePath.trim() : '';
+      if (!deviceId || !repoId || !remotePath) {
+        return { error: 'deviceId, repoId, and remotePath are required' };
+      }
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      let project: Project;
+      try {
+        project = await resolveProjectForStart();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const repos = await projectStore.getReposAt(projectDir);
+      const cloudProject = project.kind === 'cloud' ? project : null;
+      const task = { repoId } as Task;
+      let remoteUrl: string;
+      try {
+        const ctx = await resolveRemoteRepoForTaskSession(
+          project,
+          task,
+          repos,
+          cloudProject,
+        );
+        remoteUrl = ctx.remoteUrl;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
+        device,
+        remotePath,
+        remoteUrl,
+      );
+      if (!probed.ok) {
+        return { error: probed.message, code: probed.code };
+      }
+      return {
+        ok: true,
+        hostLabel: probed.hostLabel,
+        resolvedPath: probed.data.resolvedPath,
+        originUrl: probed.data.originUrl,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'project:setRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true; binding: { remotePath: string; boundAt: string } } | { error: string; code?: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const remotePath = typeof p.remotePath === 'string' ? p.remotePath.trim() : '';
+      if (!deviceId || !repoId || !remotePath) {
+        return { error: 'deviceId, repoId, and remotePath are required' };
+      }
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      let project: Project;
+      try {
+        project = await resolveProjectForStart();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const repos = await projectStore.getReposAt(projectDir);
+      const cloudProject = project.kind === 'cloud' ? project : null;
+      let remoteUrl: string;
+      try {
+        const ctx = await resolveRemoteRepoForTaskSession(
+          project,
+          { repoId } as Task,
+          repos,
+          cloudProject,
+        );
+        remoteUrl = ctx.remoteUrl;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
+        device,
+        remotePath,
+        remoteUrl,
+      );
+      if (!probed.ok) {
+        return { error: probed.message, code: probed.code };
+      }
+      const now = new Date().toISOString();
+      const binding = {
+        remotePath: probed.data.resolvedPath,
+        boundAt: now,
+        lastValidatedAt: now,
+      };
+      await remoteRepoBindingService.setBinding(key, projectDir, deviceId, repoId, binding);
+      return { ok: true, binding };
+    },
+  );
+
+  ipcMain.handle(
+    'project:clearRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true } | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      if (!deviceId || !repoId) {
+        return { error: 'deviceId and repoId are required' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      await remoteRepoBindingService.clearBinding(key, projectDir, deviceId, repoId);
       return { ok: true };
     },
   );
@@ -2423,8 +2806,7 @@ app.whenReady().then(async () => {
         id: project.id,
       });
       await syncTerminalRuntimeContext();
-      await reconcileTmuxTerminalsForActiveProject();
-      await runSilenceCatchup();
+      await beginTerminalRestore();
       return project;
     },
   );
@@ -2557,8 +2939,7 @@ app.whenReady().then(async () => {
         });
       }
       await syncTerminalRuntimeContext();
-      await reconcileTmuxTerminalsForActiveProject();
-      await runSilenceCatchup();
+      await beginTerminalRestore();
       return { ok: true as const };
     },
   );
@@ -2765,6 +3146,144 @@ app.whenReady().then(async () => {
     },
   );
 
+  // ---- Execution devices (global registry + cloud local overrides) ----
+  function broadcastExecutionDevicesChanged(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('executionDevices:changed');
+    }
+  }
+
+  function broadcastCloudBindingsChanged(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('cloudBindings:changed');
+    }
+  }
+
+  ipcMain.handle('executionDevices:list', async () => deviceStore.listDevices());
+
+  ipcMain.handle('executionDevices:getGlobalDefault', async () =>
+    deviceStore.getGlobalDefaultDeviceId() ?? null,
+  );
+
+  ipcMain.handle(
+    'executionDevices:setGlobalDefault',
+    async (_e, deviceId: string | null) => {
+      await deviceStore.setGlobalDefaultDeviceId(deviceId);
+      broadcastExecutionDevicesChanged();
+      return deviceStore.getGlobalDefaultDeviceId() ?? null;
+    },
+  );
+
+  ipcMain.handle('executionDevices:resolveDefaultForNewTask', async () =>
+    resolveDefaultExecutionDeviceForNewTaskInContext(executionDeviceHostContext()),
+  );
+
+  ipcMain.handle(
+    'executionDevices:createSsh',
+    async (_e, input: import('./types').SshExecutionDeviceUpsertInput) => {
+      const created = await deviceStore.createSshDevice(input);
+      broadcastExecutionDevicesChanged();
+      return created;
+    },
+  );
+
+  ipcMain.handle(
+    'executionDevices:update',
+    async (
+      _e,
+      deviceId: string,
+      patch: import('./types').ExecutionDeviceUpdateInput,
+    ) => {
+      const updated = await deviceStore.updateDevice(deviceId, patch);
+      broadcastExecutionDevicesChanged();
+      return updated;
+    },
+  );
+
+  ipcMain.handle('executionDevices:remove', async (_e, deviceId: string) => {
+    await deviceStore.removeDevice(deviceId);
+    broadcastExecutionDevicesChanged();
+  });
+
+  ipcMain.handle('executionDevices:probe', async (_e, deviceId: string) => {
+    if (typeof deviceId !== 'string' || !deviceId.trim()) {
+      throw new Error('deviceId is required');
+    }
+    const result = await createDeviceProbeService().probeDevice(deviceId.trim());
+    broadcastExecutionDevicesChanged();
+    return result;
+  });
+
+  ipcMain.handle('tasks:resolveEffectiveExecutionDevice', async (_e, task: Task) =>
+    resolveEffectiveExecutionDeviceForTaskInContext(executionDeviceHostContext(), task),
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getPerTaskDeviceOverrides',
+    async (_e, projectId: string) =>
+      bindingStore.getPerTaskDeviceOverrides(projectId) ?? {},
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getPerTaskDeviceOverride',
+    async (_e, projectId: string, taskId: string) =>
+      bindingStore.getPerTaskDeviceOverride(projectId, taskId) ?? null,
+  );
+
+  ipcMain.handle(
+    'cloudBindings:setPerTaskDeviceOverride',
+    async (
+      _e,
+      projectId: string,
+      taskId: string,
+      ref: TaskExecutionDeviceRef | null,
+    ) => {
+      if (ref !== null) {
+        const parsed = parseAndValidateExecutionDeviceInput(deviceStore, ref);
+        if (!parsed.ok) {
+          throw new Error(parsed.message);
+        }
+        await bindingStore.setPerTaskDeviceOverride(projectId, taskId, parsed.ref);
+        broadcastCloudBindingsChanged();
+        return parsed.ref;
+      }
+      await bindingStore.setPerTaskDeviceOverride(projectId, taskId, null);
+      broadcastCloudBindingsChanged();
+      return null;
+    },
+  );
+
+  ipcMain.handle(
+    'cloudBindings:getProjectDefaultDeviceId',
+    async (_e, projectId: string) => bindingStore.getDefaultDeviceId(projectId) ?? null,
+  );
+
+  ipcMain.handle(
+    'cloudBindings:setProjectDefaultDeviceId',
+    async (_e, projectId: string, deviceId: string | null) => {
+      await bindingStore.setDefaultDeviceId(projectId, deviceId);
+      broadcastCloudBindingsChanged();
+      return bindingStore.getDefaultDeviceId(projectId) ?? null;
+    },
+  );
+
+  ipcMain.handle('project:getDefaultDeviceId', async () => {
+    const project = projectStore.get();
+    if (!project || project.kind !== 'local') return null;
+    return project.defaultDeviceId ?? null;
+  });
+
+  ipcMain.handle(
+    'project:setDefaultDeviceId',
+    async (_e, deviceId: string | null) => {
+      const projectDir = activeProjectDir();
+      if (!projectDir) throw new Error('No local project open');
+      return projectStore.setDefaultDeviceIdAt(projectDir, deviceId) ?? null;
+    },
+  );
+
   // ---- Tasks (local-only; cloud tasks live in Firestore in the renderer) ----
   ipcMain.handle('tasks:getAll', async () => {
     const project = projectStore.get();
@@ -2786,6 +3305,7 @@ app.whenReady().then(async () => {
         agentModel?: string;
         agentYolo?: boolean;
         repoId?: string;
+        executionDevice?: TaskExecutionDeviceRef;
       },
     ) => {
       const project = projectStore.get();
@@ -2815,6 +3335,15 @@ app.whenReady().then(async () => {
         input.agent != null
           ? mergedTaskCreateAgentFields(project, input.agent, input.agentModel, input.agentYolo)
           : {};
+      let executionDevice = input.executionDevice;
+      if (executionDevice) {
+        const v = validateExecutionDeviceRefForStore(deviceStore, executionDevice);
+        if (!v.ok) throw new Error(v.message);
+      } else {
+        executionDevice = resolveDefaultExecutionDeviceForNewTaskInContext(
+          executionDeviceHostContext(),
+        );
+      }
       return taskStore.create({
         ...input,
         ...extra,
@@ -2822,6 +3351,7 @@ app.whenReady().then(async () => {
         repoId: repoResolved.repoId,
         sourceBranch: planned.sourceBranch,
         createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+        executionDevice,
       });
     },
   );
@@ -3027,6 +3557,7 @@ app.whenReady().then(async () => {
           validationRunStore,
           notifyValidationRunChanged: broadcastValidationRunChanged,
         },
+        remoteTaskTeardownDeps,
       );
       return { errors };
     },
@@ -3805,6 +4336,11 @@ app.whenReady().then(async () => {
       };
     }
 
+    const executionDevice = resolveEffectiveExecutionDeviceForTaskInContext(
+      executionDeviceHostContext(),
+      merged,
+    );
+
     const projectDirForSession = activeProjectDir();
     let projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
     try {
@@ -3845,6 +4381,76 @@ app.whenReady().then(async () => {
       startOutcome = r;
       return r;
     };
+
+    if (executionDevice.kind === 'ssh') {
+      try {
+        const cloudProject =
+          project.kind === 'cloud'
+            ? (project as import('./types').CloudProject)
+            : null;
+        const sshBackend = sshTerminalBackendFrom(terminalBackend);
+        if (!sshBackend) {
+          return finish({
+            error: 'INTERNAL',
+            message: 'SSH terminal backend is not available.',
+          });
+        }
+        const sshResult = await startSshTaskSession(
+          {
+            deviceStore,
+            projectStore,
+            bindingStore,
+            sshTerminalBackend: sshBackend,
+            gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+            taskAgentSessionRecordStore,
+            terminalSessionRecordStore,
+            resolvePlanningDocsDir,
+            activeProjectDir,
+          },
+          {
+            task: merged,
+            project,
+            executionDevice,
+            cloudProject,
+            options,
+          },
+        );
+        if ('error' in sshResult) {
+          return finish(sshResult);
+        }
+        sessionTaskMap.set(sshResult.id, task.id);
+        const priorFw = (merged.fluxxWorkBranch ?? '').trim();
+        if (priorFw !== sshResult.branch) {
+          if (project.kind === 'local') {
+            const p = projectStore.get();
+            if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
+              try {
+                await taskStore.update(task.id, { fluxxWorkBranch: sshResult.branch });
+                broadcastLocalTasksChanged();
+              } catch (err) {
+                console.warn('[session:start] failed to persist fluxxWorkBranch', err);
+              }
+            }
+          } else if (project.kind === 'cloud') {
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (win.isDestroyed()) continue;
+              win.webContents.send('task:persistFluxxWorkBranch', {
+                taskId: task.id,
+                fluxxWorkBranch: sshResult.branch,
+              });
+            }
+          }
+        }
+        return finish(sshResult);
+      } finally {
+        const outcome: SessionStartResult = startOutcome ?? {
+          error: 'INTERNAL',
+          message: 'Session start did not return a result',
+        };
+        sendTaskStartProgress({ taskId, phase: 'settled', outcome });
+      }
+    }
+
     try {
       let worktreePath = '';
       let branch = '';
@@ -4119,6 +4725,7 @@ app.whenReady().then(async () => {
       | 'createSourceBranchIfMissing'
       | 'repoId'
       | 'fluxxWorkBranch'
+      | 'executionDevice'
     >
   > & {
     githubPr?: TaskGithubPr | null;
@@ -4126,6 +4733,7 @@ app.whenReady().then(async () => {
     autoStartOnUnblock?: boolean | null;
     /** `null` clears all attached planning docs. */
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    executionDevice?: TaskExecutionDeviceRef | null;
   };
 
   const unblockAutostartInFlight = new Set<string>();
@@ -4292,6 +4900,14 @@ app.whenReady().then(async () => {
       throw new Error(`Task not found: ${id}`);
     }
     let patchToApply = patch;
+    if (patch.executionDevice !== undefined) {
+      if (patch.executionDevice !== null) {
+        const v = validateExecutionDeviceRefForStore(deviceStore, patch.executionDevice);
+        if (!v.ok) {
+          throw new Error(v.message);
+        }
+      }
+    }
     if (patch.blockedByTaskIds !== undefined) {
       const all = taskStore.getAll(project.id);
       const v = validateBlockedByTaskIds(id, patch.blockedByTaskIds, all, false);
@@ -4418,6 +5034,7 @@ app.whenReady().then(async () => {
             validationRunStore,
             notifyValidationRunChanged: broadcastValidationRunChanged,
           },
+          remoteTaskTeardownDeps,
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {
@@ -4531,11 +5148,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
+    const deleteRepos = await projectStore.getReposAt(activeProjectDir());
     await deleteSessionWorkspaceAndStop(
       terminalBackend,
       worktreeService,
       sessionId,
       gitRootForDaemonSession,
+      remoteTaskTeardownDeps,
+      deleteRepos,
     );
     await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(sessionId);
     void terminalSessionRecordStore.markWorkspaceDeleted(sessionId);
@@ -4592,6 +5212,109 @@ app.whenReady().then(async () => {
       ...otherProjects,
       ...mergeTaskSessionsWithColdResume(forProject, cold),
     ]);
+  });
+
+  ipcMain.handle('sessions:isRestoreComplete', async () => terminalRestoreComplete);
+
+  ipcMain.handle('sessions:awaitRestoreComplete', async () => {
+    await terminalRestorePromise;
+  });
+
+  ipcMain.handle('session:reconcileRemote', async () => {
+    await reconcileRemoteSshTerminalsForActiveProject();
+    broadcastSessionsRestoreComplete();
+    const project = projectStore.get();
+    const live = await terminalBackend.listSessions();
+    if (!project) return live;
+    const forProject = live.filter((s) => s.projectId === project.id);
+    const liveIds = new Set(forProject.map((s) => s.id));
+    const cold = await taskAgentSessionRecordStore.listColdResumeTaskSessions(
+      project.id,
+      async (p) => {
+        try {
+          await fs.access(p);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { excludeFluxxSessionIds: liveIds },
+    );
+    const otherProjects = live.filter((s) => s.projectId !== project.id);
+    return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+  });
+
+  ipcMain.handle('session:syncToLocal', async (_e, rawSessionId: unknown) => {
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+    if (!sessionId) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Invalid session id.',
+      };
+    }
+    const project = await resolveProjectForStart();
+    const sessions = await terminalBackend.listSessions();
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Session not found.',
+      };
+    }
+    const tasks = taskStore.getAll(project.id);
+    const task = tasks.find((t) => t.id === session.taskId);
+    if (!task) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Task not found for this session.',
+      };
+    }
+    return syncRemoteSshTaskToLocal(
+      {
+        deviceStore,
+        helper: remoteHelperClient,
+        worktreeService,
+        resolveRepoConfigForTaskSession,
+        activeProjectDir,
+      },
+      { session, task, project },
+    );
+  });
+
+  ipcMain.handle('session:getSshLocalWorktree', async (_e, rawSessionId: unknown) => {
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+    if (!sessionId) {
+      return { path: null as string | null, lastSyncedAt: null as string | null };
+    }
+    const sessions = await terminalBackend.listSessions();
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session || session.deviceKind !== 'ssh') {
+      return { path: null, lastSyncedAt: null };
+    }
+    const projectDir = activeProjectDir();
+    if (!projectDir) {
+      return { path: null, lastSyncedAt: null };
+    }
+    const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
+    const pathResolved = await resolveSshLocalWorktreePath({
+      projectDir,
+      taskId: session.taskId,
+      repoId: session.repoId ?? task?.repoId,
+      fluxxWorkBranch: session.branch || task?.fluxxWorkBranch,
+    });
+    const meta = pathResolved
+      ? await readRemoteSshSyncMetadata(projectDir, session.taskId)
+      : null;
+    return {
+      path: pathResolved,
+      lastSyncedAt: meta?.lastSyncedAt ?? null,
+    };
   });
 
   ipcMain.handle(
@@ -4669,6 +5392,7 @@ app.whenReady().then(async () => {
     projectStore,
     appStateStore,
     bindingStore,
+    deviceStore,
     bridge: automationRendererBridge,
     validationRunStore,
     listTerminalSessions: () => terminalBackend.listSessions(),
@@ -4755,6 +5479,10 @@ app.whenReady().then(async () => {
     const taskSessionIds = [
       ...new Set([...liveTask.map((s) => s.id), ...coldTask.map((s) => s.id)]),
     ];
+    const taskSessionRefs = [
+      ...liveTask.map((s) => ({ sessionId: s.id, taskId: s.taskId })),
+      ...coldTask.map((s) => ({ sessionId: s.id, taskId: s.taskId })),
+    ];
 
     const livePlanning = (await terminalBackend.listPlanning()).filter(
       (s) => s.projectId === project.id,
@@ -4769,7 +5497,7 @@ app.whenReady().then(async () => {
       ...new Set([...livePlanning.map((s) => s.id), ...coldPlanning.map((s) => s.id)]),
     ];
 
-    return { taskSessionIds, planningSessionIds };
+    return { taskSessionIds, planningSessionIds, taskSessionRefs };
   }
 
   ipcMain.handle('projects:getRestorableSessionIds', async () => collectRestorableSessionIds());
@@ -5694,27 +6422,62 @@ app.whenReady().then(async () => {
   planningDocsWatcher.sync();
 
   // ---- Shells: plain terminals spawned inside a session's worktree ----
-  ipcMain.handle('shell:open', async (_e, sessionId: string) => {
+  ipcMain.handle('shell:open', async (_e, sessionId: string, rawOptions?: unknown) => {
     const sessions = await terminalBackend.listSessions();
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) {
       throw new Error(`No session for id: ${sessionId}`);
     }
+    const placement =
+      rawOptions &&
+      typeof rawOptions === 'object' &&
+      (rawOptions as { placement?: string }).placement === 'local'
+        ? ('local' as const)
+        : session.deviceKind === 'ssh'
+          ? ('remote' as const)
+          : ('local' as const);
+
+    let worktreePath = session.worktreePath;
+    if (session.deviceKind === 'ssh' && placement === 'local') {
+      const projectDir = activeProjectDir();
+      const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
+      const localPath = projectDir
+        ? await resolveSshLocalWorktreePath({
+            projectDir,
+            taskId: session.taskId,
+            repoId: session.repoId ?? task?.repoId,
+            fluxxWorkBranch: session.branch || task?.fluxxWorkBranch,
+          })
+        : null;
+      if (!localPath) {
+        throw new Error(
+          'Sync to local before opening a local terminal. Local worktree is not available yet.',
+        );
+      }
+      worktreePath = localPath;
+    }
+
     const shell = await terminalBackend.createShell({
       sessionId: session.id,
-      worktreePath: session.worktreePath,
+      worktreePath,
       cols: 80,
       rows: 24,
+      placement,
+      projectId: session.projectId,
     });
     const sh = process.platform === 'win32'
       ? { command: process.env.COMSPEC ?? 'cmd.exe', args: [] as string[] }
       : { command: process.env.SHELL ?? '/bin/bash', args: ['-l'] as string[] };
+    const isRemoteShell = session.deviceKind === 'ssh' && placement === 'remote';
     const shellTerminalRow = withTerminalRuntimeMeta(terminalBackend, shell.id, 'shell', {
       id: shell.id,
       kind: 'shell',
-      runtime: 'node-pty',
+      runtime: isRemoteShell ? 'tmux' : 'node-pty',
       projectId: session.projectId,
-      cwd: session.worktreePath,
+      ...(isRemoteShell && session.deviceId
+        ? { deviceId: session.deviceId, deviceKind: session.deviceKind, hostLabel: session.deviceLabel }
+        : {}),
+      cwd: worktreePath,
       command: sh.command,
       args: sh.args,
       cols: 80,
@@ -5722,7 +6485,7 @@ app.whenReady().then(async () => {
       startedAt: shell.startedAt,
       shell: {
         parentSessionId: session.id,
-        worktreePath: session.worktreePath,
+        worktreePath,
       },
     });
     void terminalSessionRecordStore.recordTerminalStart(shellTerminalRow);
@@ -5756,6 +6519,114 @@ app.whenReady().then(async () => {
   if (mainWindow && fluxAutomationRendererBridge) {
     fluxAutomationRendererBridge.attachWindow(mainWindow);
   }
+
+  try {
+    await beginTerminalRestore();
+  } catch (err) {
+    console.warn('[main] terminal restore/reconcile failed during startup', err);
+  }
+
+  app.on('before-quit', (e) => {
+    if (appQuitTeardownComplete) return;
+    e.preventDefault();
+
+    void (async () => {
+      try {
+        const backend = mainProcessTerminalBackend;
+        if (backend) {
+          try {
+            const quitConfirm = backend.getAppQuitConfirmInfo?.() ?? {
+              needsConfirm: await backend.shouldConfirmAppQuit(),
+              persistTmuxEnabled: false,
+              directPtyCount: 0,
+              tmuxBackedCount: 0,
+              remoteTmuxBackedCount: 0,
+            };
+            if (quitConfirm.needsConfirm) {
+              const focused = BrowserWindow.getFocusedWindow();
+              let quitMessage = 'Quit Fluxx and stop local agents?';
+              let quitDetail =
+                'Running task agents, terminal panes, and planning sessions in this app will end. ' +
+                'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).';
+              if (quitConfirm.persistTmuxEnabled && quitConfirm.tmuxBackedCount > 0) {
+                quitMessage = 'Quit Fluxx?';
+                if (quitConfirm.directPtyCount > 0) {
+                  quitDetail =
+                    'In-app terminals without tmux will stop. Fluxx-owned tmux sessions for task agents, planning assistants, and shell panes will keep running until you stop them from Fluxx or tmux.';
+                } else {
+                  quitDetail =
+                    'Task agents, planning assistants, and terminal panes running in Fluxx-owned tmux sessions will continue. Reopen Fluxx to reattach. Closing only the Fluxx window leaves them running until you fully quit.';
+                }
+              }
+              if ((quitConfirm.remoteTmuxBackedCount ?? 0) > 0) {
+                quitMessage = 'Quit Fluxx?';
+                const remoteNote =
+                  'Direct-SSH task sessions on remote hosts will keep running in tmux. Reopen Fluxx to reattach when the SSH host is reachable.';
+                quitDetail = quitDetail.includes('remote hosts')
+                  ? quitDetail
+                  : quitDetail.endsWith('.')
+                    ? `${quitDetail} ${remoteNote}`
+                    : `${quitDetail} ${remoteNote}`;
+              }
+              const messageOpts = {
+                type: 'warning' as const,
+                buttons: ['Quit', 'Cancel'],
+                defaultId: 1,
+                cancelId: 1,
+                title: 'Quit Fluxx?',
+                message: quitMessage,
+                detail: quitDetail,
+              };
+              const { response } =
+                focused && !focused.isDestroyed()
+                  ? await dialog.showMessageBox(focused, messageOpts)
+                  : await dialog.showMessageBox(messageOpts);
+              if (response === 1) return;
+            }
+          } catch (err) {
+            console.warn('[main] shouldConfirmAppQuit failed', err);
+          }
+        }
+
+        fluxAutomationServer?.stop();
+        fluxAutomationServer = null;
+        fluxAutomationToken = null;
+        fluxAutomationHostDeps = null;
+        planningDocsWatcher?.dispose();
+        planningDocsWatcher = null;
+
+        if (backend) {
+          try {
+            terminalQuitTeardownInProgress = true;
+            await Promise.race([
+              backend.teardownForAppQuit(APP_QUIT_TERMINAL_TEARDOWN_MS),
+              new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
+            ]);
+          } catch (err) {
+            console.warn('[main] teardownForAppQuit failed', err);
+          } finally {
+            terminalQuitTeardownInProgress = false;
+          }
+        }
+
+        if (pendingSessionExitWork.size > 0) {
+          await Promise.allSettled([...pendingSessionExitWork]);
+        }
+        await taskAgentSessionRecordStore.whenWriteIdle();
+        await planningAgentSessionRecordStore.whenWriteIdle();
+        if (validationRunStore) {
+          await validationRunStore.whenWriteIdle();
+        }
+
+        appQuitTeardownComplete = true;
+        app.quit();
+      } catch (err) {
+        console.error('[main] before-quit handler failed', err);
+        appQuitTeardownComplete = true;
+        app.quit();
+      }
+    })();
+  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -5776,101 +6647,6 @@ app.on('activate', () => {
       fluxAutomationRendererBridge.attachWindow(mainWindow);
     }
   }
-});
-
-app.on('before-quit', (e) => {
-  if (appQuitTeardownComplete) return;
-  e.preventDefault();
-
-  void (async () => {
-    try {
-      const backend = mainProcessTerminalBackend;
-      if (backend) {
-        try {
-          const quitConfirm = backend.getAppQuitConfirmInfo?.() ?? {
-            needsConfirm: await backend.shouldConfirmAppQuit(),
-            persistTmuxEnabled: false,
-            directPtyCount: 0,
-            tmuxBackedCount: 0,
-          };
-          if (quitConfirm.needsConfirm) {
-            const focused = BrowserWindow.getFocusedWindow();
-            let quitMessage = 'Quit Fluxx and stop local agents?';
-            let quitDetail =
-              'Running task agents, terminal panes, and planning sessions in this app will end. ' +
-              'Closing only the Fluxx window keeps them running until you fully quit the app (for example from the Dock or File menu).';
-            if (quitConfirm.persistTmuxEnabled && quitConfirm.tmuxBackedCount > 0) {
-              quitMessage = 'Quit Fluxx?';
-              if (quitConfirm.directPtyCount > 0) {
-                quitDetail =
-                  'In-app terminals without tmux will stop. Fluxx-owned tmux sessions for task agents, planning assistants, and shell panes will keep running until you stop them from Fluxx or tmux.';
-              } else {
-                quitDetail =
-                  'Task agents, planning assistants, and terminal panes running in Fluxx-owned tmux sessions will continue. Reopen Fluxx to reattach. Closing only the Fluxx window leaves them running until you fully quit.';
-              }
-            }
-            const messageOpts = {
-              type: 'warning' as const,
-              buttons: ['Quit', 'Cancel'],
-              defaultId: 1,
-              cancelId: 1,
-              title: 'Quit Fluxx?',
-              message: quitMessage,
-              detail: quitDetail,
-            };
-            const { response } =
-              focused && !focused.isDestroyed()
-                ? await dialog.showMessageBox(focused, messageOpts)
-                : await dialog.showMessageBox(messageOpts);
-            if (response === 1) return;
-          }
-        } catch (err) {
-          console.warn('[main] shouldConfirmAppQuit failed', err);
-        }
-      }
-
-      fluxAutomationServer?.stop();
-      fluxAutomationServer = null;
-      fluxAutomationToken = null;
-      fluxAutomationHostDeps = null;
-      planningDocsWatcher?.dispose();
-      planningDocsWatcher = null;
-
-      if (backend) {
-        try {
-          terminalQuitTeardownInProgress = true;
-          await Promise.race([
-            backend.teardownForAppQuit(APP_QUIT_TERMINAL_TEARDOWN_MS),
-            new Promise<void>((resolve) => setTimeout(resolve, APP_QUIT_TERMINAL_TEARDOWN_MS)),
-          ]);
-        } catch (err) {
-          console.warn('[main] teardownForAppQuit failed', err);
-        } finally {
-          terminalQuitTeardownInProgress = false;
-        }
-      }
-
-      if (pendingSessionExitWork.size > 0) {
-        await Promise.allSettled([...pendingSessionExitWork]);
-      }
-      if (taskAgentSessionRecordStore) {
-        await taskAgentSessionRecordStore.whenWriteIdle();
-      }
-      if (planningAgentSessionRecordStore) {
-        await planningAgentSessionRecordStore.whenWriteIdle();
-      }
-      if (validationRunStore) {
-        await validationRunStore.whenWriteIdle();
-      }
-
-      appQuitTeardownComplete = true;
-      app.quit();
-    } catch (err) {
-      console.error('[main] before-quit handler failed', err);
-      appQuitTeardownComplete = true;
-      app.quit();
-    }
-  })();
 });
 
 // In this file you can include the rest of your app's specific main process

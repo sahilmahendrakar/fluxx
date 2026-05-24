@@ -22,13 +22,22 @@ describe('buildTrustPromptAutoresponderRules', () => {
     expect(r!.matches(screen)).toBe(true);
   });
 
-  it('cursor rule matches combined phrases', () => {
+  it('cursor rule matches combined legacy phrases', () => {
     const r = rules.find((x) => x.id === 'cursor-trust');
     expect(r).toBeDefined();
     const screen =
       'Workspace Trust Required something Do you trust the contents of this directory end';
     expect(r!.matches(screen)).toBe(true);
     expect(r!.matches('Workspace Trust Required only')).toBe(false);
+  });
+
+  it('cursor menu rule matches TUI trust prompt from runtime logs', () => {
+    const r = rules.find((x) => x.id === 'cursor-trust-menu');
+    expect(r).toBeDefined();
+    const screen = collapseLikeRuntimeLogScreen();
+    expect(r!.matches(screen)).toBe(true);
+    expect(r!.respondWith).toBe('\r');
+    expect(r!.matches('Use arrow keys to navigate only')).toBe(false);
   });
 
   it('codex rule matches directory trust menu when cwd is allowlisted', () => {
@@ -45,6 +54,18 @@ describe('buildTrustPromptAutoresponderRules', () => {
   });
 
   it('preserves claude and cursor rules when codex rule is registered', () => {
-    expect(rules.map((r) => r.id)).toEqual(['claude-trust', 'cursor-trust', 'codex-trust']);
+    expect(rules.map((r) => r.id)).toEqual([
+      'claude-trust',
+      'cursor-trust',
+      'cursor-trust-menu',
+      'codex-trust',
+    ]);
   });
 });
+
+function collapseLikeRuntimeLogScreen(): string {
+  return [
+    'Workspace Trust Required',
+    'Use arrow keys to navigate, Enter to select, or press the key shown',
+  ].join(' ');
+}

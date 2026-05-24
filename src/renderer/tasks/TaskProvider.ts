@@ -1,4 +1,12 @@
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskStatus, TaskValidationPlan } from '../../types';
+import type {
+  Agent,
+  Task,
+  TaskAttachedPlanningDoc,
+  TaskExecutionDeviceRef,
+  TaskGithubPr,
+  TaskStatus,
+  TaskValidationPlan,
+} from '../../types';
 
 export type TaskPatch = Partial<
   Pick<
@@ -18,6 +26,7 @@ export type TaskPatch = Partial<
     | 'createSourceBranchIfMissing'
     | 'repoId'
     | 'fluxxWorkBranch'
+    | 'executionDevice'
   >
 > & {
   workspaceCleanedAt?: string | null;
@@ -26,6 +35,8 @@ export type TaskPatch = Partial<
   autoStartOnUnblock?: boolean | null;
   /** `null` clears all attached planning docs in Firestore. */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  /** `null` clears execution device (cloud: local override; local: task row). */
+  executionDevice?: TaskExecutionDeviceRef | null;
   /** `null` clears the validation plan. */
   validationPlan?: TaskValidationPlan | null;
 };
@@ -45,6 +56,7 @@ export type TaskCreateInput = {
   /** Multi-repo2: must belong to the active project when set; otherwise the primary repo is used. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  executionDevice?: TaskExecutionDeviceRef;
   validationPlan?: TaskValidationPlan;
 };
 

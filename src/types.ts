@@ -56,10 +56,17 @@ export interface ProjectTabState {
   minimizedTaskWorkspaceIds?: string[];
 }
 
+/** Task workspace tab identity for restore placeholders before live SSH reconcile. */
+export interface RestorableTaskSessionRef {
+  sessionId: string;
+  taskId: string;
+}
+
 /** Live plus cold-resumable session ids for tab-strip restore (per active project). */
 export interface RestorableSessionIds {
   taskSessionIds: string[];
   planningSessionIds: string[];
+  taskSessionRefs?: RestorableTaskSessionRef[];
 }
 
 /**
@@ -137,6 +144,28 @@ export type CloudRepoLocalBindingStatus =
 
 export type CloudRepoBindingOverview = Record<string, CloudRepoLocalBindingStatus>;
 
+/** Per SSH device + repo: existing folder on the remote host (local-only, not synced). */
+export interface RemoteRepoBinding {
+  remotePath: string;
+  boundAt: string;
+  lastValidatedAt?: string;
+}
+
+/** `deviceId → repoId → binding` stored in local project config or cloud localBindings.json. */
+export type RemoteRepoBindingsByDevice = Record<string, Record<string, RemoteRepoBinding>>;
+
+export type RemoteRepoBindingStatus =
+  | { kind: 'unbound' }
+  | {
+      kind: 'bound';
+      remotePath: string;
+      hostLabel: string;
+      boundAt: string;
+      lastValidatedAt?: string;
+    };
+
+export type RemoteRepoBindingsOverview = Record<string, RemoteRepoBindingStatus>;
+
 export interface LocalProject {
   id: string;
   kind: 'local';
@@ -179,6 +208,13 @@ export interface LocalProject {
    * See `docs/tmux-terminal-persistence-plan.md`.
    */
   persistTerminalsWithTmux: boolean;
+  /** Optional override of the global default device for new tasks in this project. */
+  defaultDeviceId?: string;
+  /**
+   * Per SSH device, per-repo folder on the remote host for task workspaces.
+   * Private to this Desktop install; not synced for cloud projects.
+   */
+  remoteRepoBindings?: RemoteRepoBindingsByDevice;
   /**
    * When on, Electron Playwright validation (runs, validator sessions, planning validation guidance).
    * Default off; opt in via Project settings → Experimental.
@@ -244,6 +280,18 @@ export interface CloudProjectLocalBinding {
   autoMoveToReviewWhenPrOpen?: boolean;
   /** Per-machine: persist terminals with tmux across full app quit. */
   persistTerminalsWithTmux?: boolean;
+  /** Optional override of the global default device for new tasks in this cloud project. */
+  defaultDeviceId?: string;
+  /**
+   * Per-task direct-SSH (or local) device overrides for this Desktop user only.
+   * Keyed by cloud task id; not synced to teammates.
+   */
+  perTaskDeviceOverrides?: Record<string, TaskExecutionDeviceRef>;
+  /**
+   * Per SSH device, per shared repo id: existing folder on the remote host.
+   * Private to this Desktop user; not written to Firestore.
+   */
+  remoteRepoBindings?: RemoteRepoBindingsByDevice;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
   /**
@@ -286,6 +334,7 @@ export interface CloudProject {
   autoMarkDoneWhenPrMerged?: boolean;
   autoMoveToReviewWhenPrOpen?: boolean;
   persistTerminalsWithTmux?: boolean;
+  defaultDeviceId?: string;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
   /** Electron Playwright validation opt-in (team setting from Firestore). */
@@ -305,10 +354,83 @@ export type TerminalEndedReason =
   | 'shell-exit-error'
   | 'app-quit'
   | 'tmux-missing'
+  | 'device-unreachable'
+  | 'helper-mismatch'
   | 'workspace-deleted'
   | 'replaced-by-new-session'
   | 'user-stopped'
   | 'user-archived';
+
+/** Remote SSH session health after restore/reconcile (Desktop-attached direct SSH only). */
+export type RemoteSessionLifecycleStatus =
+  | 'device-unreachable'
+  | 'tmux-missing'
+  | 'helper-mismatch'
+  | 'workspace-missing';
+
+/** Phase where branch-based SSH→local sync failed or completed. */
+export type RemoteSshSyncPhase =
+  | 'remote-status'
+  | 'remote-push'
+  | 'local-fetch'
+  | 'local-worktree'
+  | 'conflict-check'
+  | 'complete';
+
+export type RemoteSshSyncErrorCode =
+  | 'NOT_SSH_SESSION'
+  | 'DEVICE_NOT_CONFIGURED'
+  | 'REMOTE_STATUS_FAILED'
+  | 'REMOTE_PUSH_FAILED'
+  | 'LOCAL_REPO_NOT_BOUND'
+  | 'LOCAL_FETCH_FAILED'
+  | 'LOCAL_DIRTY_CONFLICT'
+  | 'LOCAL_BRANCH_DIVERGED'
+  | 'LOCAL_WORKTREE_FAILED'
+  | 'INTERNAL';
+
+/** Persisted per-task SSH branch sync metadata (project-local, not synced). */
+export interface RemoteSshSyncMetadata {
+  lastSyncedAt: string;
+  lastSyncedCommit: string;
+  deviceId: string;
+  remoteBranch: string;
+  remoteHasUnsyncedChanges: boolean;
+  localWorktreePath: string;
+}
+
+/** Where a task shell PTY runs for SSH sessions (remote tmux vs local synced worktree). */
+export type ShellPlacement = 'remote' | 'local';
+
+export type ShellOpenOptions = {
+  placement?: ShellPlacement;
+};
+
+/** Placeholders for a future dirty-workspace snapshot sync over SSH. */
+export type RemoteSshDirtySnapshotHooks = {
+  baseCommit: string;
+  binaryDiffCommand: string;
+  untrackedArchiveSupported: boolean;
+  conflictSafeApplyPlanned: boolean;
+};
+
+export type RemoteSshSyncResult =
+  | {
+      ok: true;
+      phase: 'complete';
+      localWorktreePath: string;
+      branch: string;
+      headCommit: string;
+      metadata: RemoteSshSyncMetadata;
+      dirtySnapshotHooks?: RemoteSshDirtySnapshotHooks;
+    }
+  | {
+      ok: false;
+      phase: RemoteSshSyncPhase;
+      error: RemoteSshSyncErrorCode;
+      message: string;
+      recovery?: string;
+    };
 
 export interface TerminalSessionRecord {
   id: string;
@@ -316,6 +438,10 @@ export interface TerminalSessionRecord {
   runtime: TerminalRuntime;
   projectId: string;
   repoId?: string;
+  /** Direct-SSH sessions: Fluxx desktop device id that owns the remote manifest row. */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  hostLabel?: string;
   tmuxSessionName?: string;
   cwd: string;
   command: string;
@@ -457,6 +583,123 @@ export type TaskRequestPullRequestFromAgentPayload = {
   repoId?: string;
 };
 
+/** Where a task session should run (`local` and `ssh` in v1; reserved for future runners). */
+export type TaskExecutionDeviceKind = 'local' | 'ssh' | 'runner' | 'managed-cloud';
+
+/** Task-level execution target selection (snapshotted at task creation for auto-start). */
+export interface TaskExecutionDeviceRef {
+  kind: TaskExecutionDeviceKind;
+  deviceId: string;
+  /** Future shared runner/cloud targets; not used for direct-SSH v1. */
+  ownerUid?: string;
+}
+
+/** When `enabled`, Fluxx must use tmux on this device and must not fall back to non-tmux PTYs. */
+export interface ExecutionDeviceTmuxSettings {
+  enabled: boolean;
+}
+
+export interface ExecutionDeviceSshConfig {
+  host: string;
+  user?: string;
+  port?: number;
+  /** When true, pass `-o ForwardAgent=yes` so Git on the remote can use this Mac's ssh-agent keys. */
+  forwardAgent?: boolean;
+  extraArgs?: string[];
+  connectTimeoutSeconds?: number;
+}
+
+export type DeviceProbeStatus = 'unknown' | 'available' | 'unavailable' | 'probing';
+
+/** Structured probe / SSH transport errors surfaced in Devices UI and session start. */
+export type DeviceProbeErrorCode =
+  | 'SSH_CONNECT_FAILED'
+  | 'SSH_HOST_KEY_FAILED'
+  | 'SSH_AUTH_FAILED'
+  | 'SSH_TIMEOUT'
+  | 'SSH_HELPER_MISSING'
+  | 'SSH_HELPER_VERSION_MISMATCH'
+  | 'SSH_HELPER_BOOTSTRAP_FAILED'
+  | 'REMOTE_TMUX_MISSING'
+  | 'REMOTE_GIT_MISSING'
+  | 'REMOTE_AGENT_NOT_FOUND'
+  | 'REMOTE_WORKSPACE_UNWRITABLE'
+  | 'REMOTE_REPO_ACCESS_FAILED'
+  | 'INTERNAL';
+
+export interface DeviceProbeAgentCapability {
+  command: string;
+  found: boolean;
+  path?: string;
+  version?: string;
+}
+
+export interface DeviceProbeRepoCapability {
+  repoId: string;
+  label?: string;
+  remoteUrl?: string;
+  accessible: boolean;
+  error?: string;
+}
+
+export interface DeviceProbeCapabilities {
+  os?: string;
+  arch?: string;
+  shell?: string;
+  git?: { found: boolean; path?: string; version?: string };
+  tmux?: { found: boolean; path?: string; version?: string };
+  workspaceRoot?: { path: string; writable: boolean };
+  agents?: DeviceProbeAgentCapability[];
+  repos?: DeviceProbeRepoCapability[];
+}
+
+export interface DeviceProbeResult {
+  status: DeviceProbeStatus;
+  checkedAt: string;
+  message?: string;
+  errorCode?: DeviceProbeErrorCode;
+  /** Failing step label, e.g. `ssh-connect`, `helper-bootstrap`, `probe-tmux`. */
+  phase?: string;
+  capabilities?: DeviceProbeCapabilities;
+  helperVersion?: string;
+}
+
+/** Input for creating an SSH device in the global registry. */
+export type SshExecutionDeviceUpsertInput = {
+  displayName: string;
+  host: string;
+  user?: string;
+  port?: number;
+  workspaceRoot: string;
+  tmuxEnabled: boolean;
+  forwardAgent?: boolean;
+  shell?: string;
+  extraArgs?: string[];
+  connectTimeoutSeconds?: number;
+};
+
+/** Patch for updating a device (SSH fields ignored for built-in local). */
+export type ExecutionDeviceUpdateInput = Partial<SshExecutionDeviceUpsertInput> & {
+  displayName?: string;
+  enabled?: boolean;
+};
+
+/** Per-machine device record in `userData/executionDevices.json`. */
+export interface ExecutionDeviceConfig {
+  id: string;
+  kind: 'local' | 'ssh';
+  displayName: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  lastProbe?: DeviceProbeResult;
+  tmux: ExecutionDeviceTmuxSettings;
+  workspaceRoot: string;
+  shell?: string;
+  ssh?: ExecutionDeviceSshConfig;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -537,6 +780,11 @@ export interface Task {
    */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
   /**
+   * Where this task should run. Local projects persist on the task row; cloud
+   * projects store private `local`/`ssh` refs in `localBindings.json` overrides.
+   */
+  executionDevice?: TaskExecutionDeviceRef;
+  /**
    * Optional structured validation plan for the validator agent.
    * Stored separately from {@link Task.description}.
    */
@@ -569,6 +817,18 @@ export type SessionStartErrorCode =
   | 'WORKTREE_REPO_NOT_GIT'
   /** Cloud project: shared repo exists but no local clone is bound on this machine. */
   | 'WORKTREE_REPO_NOT_BOUND'
+  | 'DEVICE_NOT_CONFIGURED'
+  | 'DEVICE_UNAVAILABLE'
+  | 'SSH_CONNECT_FAILED'
+  | 'SSH_HELPER_MISSING'
+  | 'SSH_HELPER_VERSION_MISMATCH'
+  | 'REMOTE_TMUX_MISSING'
+  | 'REMOTE_GIT_MISSING'
+  | 'REMOTE_AGENT_NOT_FOUND'
+  | 'REMOTE_WORKSPACE_UNWRITABLE'
+  | 'REMOTE_REPO_ACCESS_FAILED'
+  | 'REMOTE_NON_GIT_UNSUPPORTED'
+  | 'REMOTE_SETUP_FAILED'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
   | 'INTERNAL';
@@ -618,6 +878,14 @@ export interface Session {
    * main may attach it to the live {@link Session} row for UI hints.
    */
   agentConversationId?: string;
+  /** Execution device that owns this session (direct SSH v1). */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
+  /** Remote worktree path when {@link Session.deviceKind} is `ssh`. */
+  remotePath?: string;
+  /** Set when a direct-SSH session cannot attach after restore (host offline, missing tmux, etc.). */
+  remoteLifecycleStatus?: RemoteSessionLifecycleStatus;
   /** Validator PTY for a validation run — not a task implementation workspace. */
   kind?: 'task' | 'validator';
 }
@@ -628,6 +896,8 @@ export type TaskAgentSessionEndedReason =
   | 'agent-exit-error'
   | 'app-quit'
   | 'tmux-missing'
+  | 'device-unreachable'
+  | 'helper-mismatch'
   | 'workspace-deleted'
   | 'replaced-by-new-session'
   | 'user-archived';
@@ -647,6 +917,10 @@ export interface TaskAgentSessionRecord {
   endedReason?: TaskAgentSessionEndedReason;
   /** Parsed from CLI output when available (Claude / Cursor). */
   agentConversationId?: string;
+  /** Direct-SSH rows: device that owns the remote tmux session. */
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
 }
 
 /** Persisted metadata for planning assistant PTY sessions (cold resume). */
@@ -731,11 +1005,20 @@ export interface Shell {
   status: ShellStatus;
   startedAt: string;
   stoppedAt?: string;
+  deviceId?: string;
+  deviceKind?: TaskExecutionDeviceKind;
+  deviceLabel?: string;
+  remotePath?: string;
+  /** SSH shells: remote tmux on the device vs local PTY in the synced worktree. */
+  shellPlacement?: ShellPlacement;
 }
 
 export type RunnerStatus = 'running' | 'idle' | 'errored';
 
-/** Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}. */
+/**
+ * Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}.
+ * Desktop local sessions only — not direct SSH (see runner heartbeat filter).
+ */
 export interface RunnerDoc {
   status: RunnerStatus;
   lastSeen: string;

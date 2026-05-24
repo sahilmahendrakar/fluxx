@@ -25,10 +25,18 @@ import {
   DEFAULT_CURSOR_AGENT_MODEL,
   claudeCodeExplicitModel,
   resolvedCursorAgentModel,
+  type ExecutionDeviceConfig,
   type RepoBranchDiscovery,
   type RepoConfig,
   type ResolveTaskWorktreeIpcResult,
+  type TaskExecutionDeviceRef,
 } from '../types';
+import { ExecutionDevicePicker } from './ExecutionDevicePicker';
+import {
+  isTaskExecutionDeviceEditable,
+  sessionStartButtonLabel,
+  sessionStartErrorMessage,
+} from '../executionDevices/deviceUi';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import {
   effectiveTaskRepoId,
@@ -58,7 +66,6 @@ import {
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
-import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
@@ -141,8 +148,8 @@ export interface TaskDetailPanelProps {
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
-   * Cloud only: true when any project member has a fresh `running` runner heartbeat
-   * for this task (see `useRunners` / Firestore). Used to confirm assignee edits.
+   * Cloud only: true when any project member has a fresh Desktop runner heartbeat
+   * for this task (direct SSH is excluded). Used to confirm assignee edits.
    */
   cloudActiveRunnerSession?: boolean;
   /**
@@ -175,6 +182,8 @@ export interface TaskDetailPanelProps {
   onOpenPlanningDoc?: (relativePath: string) => void;
   projectRepoReadiness?: ProjectRepoReadiness;
   onOpenProjectSettings?: () => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
 }
 
 const TASK_DETAIL_WIDTH_KEY = 'flux.taskDetailPanelWidth';
@@ -284,8 +293,13 @@ export default function TaskDetailPanel({
   onOpenPlanningDoc,
   projectRepoReadiness = READY_PROJECT_REPO_READINESS,
   onOpenProjectSettings,
+  executionDevices = [],
+  cloudProject = false,
 }: TaskDetailPanelProps) {
   const sessionWorkspace = layout === 'sessionWorkspace';
+  const [resolvedDevice, setResolvedDevice] = useState<TaskExecutionDeviceRef | undefined>(
+    task?.executionDevice,
+  );
   const asideRef = useRef<HTMLElement>(null);
   const [detailWidth, setDetailWidth] = useState(DEFAULT_DETAIL_WIDTH);
   const titleArea = useAutosizeTextArea(task?.title ?? '');
@@ -407,6 +421,24 @@ export default function TaskDetailPanel({
     setSourceMetadataError(null);
     setAnySessionForTask(false);
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task) {
+      setResolvedDevice(undefined);
+      return;
+    }
+    if (task.executionDevice) {
+      setResolvedDevice(task.executionDevice);
+      return;
+    }
+    let cancelled = false;
+    void window.electronAPI.tasks.resolveEffectiveExecutionDevice(task).then((ref) => {
+      if (!cancelled) setResolvedDevice(ref);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [task?.id, task?.executionDevice]);
 
   useEffect(() => {
     if (!task || !primaryRepoId) return;
@@ -926,7 +958,11 @@ export default function TaskDetailPanel({
               'Choose Claude Code, Codex, or Cursor Agent for this task before starting a session.',
           );
         } else {
-          setSessionError(result.message ?? result.error);
+          setSessionError(
+            sessionStartErrorMessage(result.error, result.message) ??
+              result.message ??
+              result.error,
+          );
         }
         return;
       }
@@ -1033,11 +1069,6 @@ export default function TaskDetailPanel({
   ]);
 
   const sessionRunning = session?.status === 'running';
-  const trustAutorespondNote = useTrustAutorespondNotice(
-    'session',
-    session?.id ?? null,
-    sessionRunning,
-  );
 
   if (!task) {
     return null;
@@ -1109,7 +1140,7 @@ export default function TaskDetailPanel({
     ? 'Starting…'
     : sessionError
       ? 'Retry'
-      : 'Start session';
+      : sessionStartButtonLabel(executionDevices, resolvedDevice);
   const startBtnPrimary =
     'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed';
   const startBtnIdle = `${startBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
@@ -1523,6 +1554,31 @@ export default function TaskDetailPanel({
                   </select>
                 </div>
               </div>
+
+              {executionDevices.length > 0 ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="shrink-0">
+                    <p className="text-xs text-zinc-500">Run on</p>
+                    {sessionRunning ? (
+                      <p className="mt-0.5 text-[10px] text-zinc-600">
+                        Locked while the session is running.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0 sm:max-w-[min(18rem,100%)] sm:flex-1">
+                    <ExecutionDevicePicker
+                      id={`task-${task.id}-device`}
+                      devices={executionDevices}
+                      value={task.executionDevice ?? resolvedDevice}
+                      onChange={(ref) => onUpdate(task.id, { executionDevice: ref })}
+                      disabled={!isTaskExecutionDeviceEditable(session?.status)}
+                      cloudProject={cloudProject}
+                      hasExplicitTaskDevice={Boolean(task.executionDevice)}
+                      aria-label="Execution device"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               {projectMembers !== undefined ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -2175,12 +2231,12 @@ export default function TaskDetailPanel({
                     />
                     <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
                     <span className="min-w-0 font-medium">
-                      {remoteRunner.displayName ?? 'A teammate'} is running an agent
+                      {remoteRunner.displayName ?? 'A teammate'} has a Fluxx Desktop session
                     </span>
                   </div>
                   <p className="max-w-[18rem] text-xs leading-relaxed text-zinc-500">
-                    Terminal output stays on their machine for now. You will see status updates here as
-                    they work.
+                    Their terminal stays on their computer. Direct SSH tasks require Fluxx Desktop on
+                    the machine that owns the SSH connection — you cannot start or attach from the web.
                   </p>
                 </div>
               ) : !hasLocalSession ? (
@@ -2244,14 +2300,6 @@ export default function TaskDetailPanel({
                         aria-hidden
                       />
                       <span className="font-medium text-zinc-300">Starting…</span>
-                    </div>
-                  ) : null}
-                  {trustAutorespondNote ? (
-                    <div
-                      role="status"
-                      className="mb-2 shrink-0 rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-                    >
-                      {trustAutorespondNote}
                     </div>
                   ) : null}
                   <TerminalComponent

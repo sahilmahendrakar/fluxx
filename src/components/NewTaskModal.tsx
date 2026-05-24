@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { UserCircle2 } from 'lucide-react';
 import {
   type Agent,
+  type ExecutionDeviceConfig,
   type RepoBranchDiscovery,
   type RepoConfig,
+  type TaskExecutionDeviceRef,
   TASK_AGENT_SELECT_OPTIONS,
 } from '../types';
+import { ExecutionDevicePicker } from './ExecutionDevicePicker';
 import { repoDisplayLabel, resolvePrimaryRepoId } from '../repoIdentity';
 import { buildCreateTaskBranchPayload, gitBranchShortNameLooksValid } from '../taskBranches';
 import { TaskLabelsField } from './TaskLabelsField';
@@ -29,7 +32,10 @@ interface Props {
       createSourceBranchIfMissing?: boolean;
       repoId?: string;
     },
+    executionDevice?: TaskExecutionDeviceRef,
   ) => void;
+  executionDevices: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
   /** Union of labels on existing tasks, for the picker. */
   labelCatalog: string[];
   /** Default agent for this project (local `config.json` or cloud binding prefs). */
@@ -52,6 +58,8 @@ export default function NewTaskModal({
   projectRepos,
   multiRepo2Enabled = false,
   projectRepoReadiness,
+  executionDevices,
+  cloudProject = false,
   onOpenProjectSettings,
 }: Props) {
   const [title, setTitle] = useState('');
@@ -69,6 +77,17 @@ export default function NewTaskModal({
   const [selectedRepoId, setSelectedRepoId] = useState(primaryRepoId);
   const inputRef = useRef<HTMLInputElement>(null);
   const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+  const [executionDevice, setExecutionDevice] = useState<TaskExecutionDeviceRef | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.electronAPI.executionDevices.resolveDefaultForNewTask().then((ref) => {
+      if (!cancelled) setExecutionDevice(ref);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!showRepoPicker || !primaryRepoId) return;
@@ -140,7 +159,7 @@ export default function NewTaskModal({
       showRepoPicker && selectedRepoId
         ? { ...branch, repoId: selectedRepoId }
         : branch;
-    onCreate(trimmed, agent, labels, assigneeId, withRepo);
+    onCreate(trimmed, agent, labels, assigneeId, withRepo, executionDevice);
   };
 
   /** Defined only for cloud projects (may be empty while members load). */
@@ -238,6 +257,28 @@ export default function NewTaskModal({
             discoveryLoading={branchDiscoveryLoading}
             discoveryError={branchDiscoveryError}
           />
+        </div>
+
+        <div className="mt-4">
+          <label
+            htmlFor="new-task-device"
+            className="block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
+          >
+            Run on
+          </label>
+          <p className="mt-0.5 text-[11px] text-zinc-600">
+            Snapshotted for this task (project default → global default → local).
+          </p>
+          <div className="mt-2">
+            <ExecutionDevicePicker
+              id="new-task-device"
+              devices={executionDevices}
+              value={executionDevice}
+              onChange={setExecutionDevice}
+              cloudProject={cloudProject}
+              aria-label="Execution device for new task"
+            />
+          </div>
         </div>
 
         <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
