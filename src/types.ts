@@ -318,6 +318,70 @@ export type RemoteSessionLifecycleStatus =
   | 'helper-mismatch'
   | 'workspace-missing';
 
+/** Phase where branch-based SSH→local sync failed or completed. */
+export type RemoteSshSyncPhase =
+  | 'remote-status'
+  | 'remote-push'
+  | 'local-fetch'
+  | 'local-worktree'
+  | 'conflict-check'
+  | 'complete';
+
+export type RemoteSshSyncErrorCode =
+  | 'NOT_SSH_SESSION'
+  | 'DEVICE_NOT_CONFIGURED'
+  | 'REMOTE_STATUS_FAILED'
+  | 'REMOTE_PUSH_FAILED'
+  | 'LOCAL_REPO_NOT_BOUND'
+  | 'LOCAL_FETCH_FAILED'
+  | 'LOCAL_DIRTY_CONFLICT'
+  | 'LOCAL_BRANCH_DIVERGED'
+  | 'LOCAL_WORKTREE_FAILED'
+  | 'INTERNAL';
+
+/** Persisted per-task SSH branch sync metadata (project-local, not synced). */
+export interface RemoteSshSyncMetadata {
+  lastSyncedAt: string;
+  lastSyncedCommit: string;
+  deviceId: string;
+  remoteBranch: string;
+  remoteHasUnsyncedChanges: boolean;
+  localWorktreePath: string;
+}
+
+/** Where a task shell PTY runs for SSH sessions (remote tmux vs local synced worktree). */
+export type ShellPlacement = 'remote' | 'local';
+
+export type ShellOpenOptions = {
+  placement?: ShellPlacement;
+};
+
+/** Placeholders for a future dirty-workspace snapshot sync over SSH. */
+export type RemoteSshDirtySnapshotHooks = {
+  baseCommit: string;
+  binaryDiffCommand: string;
+  untrackedArchiveSupported: boolean;
+  conflictSafeApplyPlanned: boolean;
+};
+
+export type RemoteSshSyncResult =
+  | {
+      ok: true;
+      phase: 'complete';
+      localWorktreePath: string;
+      branch: string;
+      headCommit: string;
+      metadata: RemoteSshSyncMetadata;
+      dirtySnapshotHooks?: RemoteSshDirtySnapshotHooks;
+    }
+  | {
+      ok: false;
+      phase: RemoteSshSyncPhase;
+      error: RemoteSshSyncErrorCode;
+      message: string;
+      recovery?: string;
+    };
+
 export interface TerminalSessionRecord {
   id: string;
   kind: TerminalKind;
@@ -878,6 +942,8 @@ export interface Shell {
   deviceKind?: TaskExecutionDeviceKind;
   deviceLabel?: string;
   remotePath?: string;
+  /** SSH shells: remote tmux on the device vs local PTY in the synced worktree. */
+  shellPlacement?: ShellPlacement;
 }
 
 export type RunnerStatus = 'running' | 'idle' | 'errored';

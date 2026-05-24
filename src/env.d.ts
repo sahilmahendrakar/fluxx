@@ -429,6 +429,11 @@ declare global {
         isRestoreComplete: () => Promise<boolean>;
         awaitRestoreComplete: () => Promise<void>;
         reconcileRemote: () => Promise<Session[]>;
+        syncToLocal: (sessionId: string) => Promise<import('./types').RemoteSshSyncResult>;
+        getSshLocalWorktree: (sessionId: string) => Promise<{
+          path: string | null;
+          lastSyncedAt: string | null;
+        }>;
         onRestoreComplete: (cb: () => void) => () => void;
         attach: (sessionId: string) => Promise<AttachResult | null>;
         write: (sessionId: string, data: string) => void;
@@ -449,7 +454,7 @@ declare global {
         onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => () => void;
       };
       shells: {
-        open: (sessionId: string) => Promise<Shell>;
+        open: (sessionId: string, options?: import('./types').ShellOpenOptions) => Promise<Shell>;
         close: (shellId: string) => Promise<void>;
         list: (sessionId: string) => Promise<Shell[]>;
         attach: (shellId: string) => Promise<AttachResult | null>;

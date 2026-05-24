@@ -272,6 +272,39 @@ export type RemoteHelperMarkTerminalEndedData = {
   reason?: string;
 };
 
+export type RemoteHelperDirtySnapshotHooks = {
+  baseCommit: string;
+  binaryDiffCommand: string;
+  untrackedArchiveSupported: boolean;
+  conflictSafeApplyPlanned: boolean;
+};
+
+export type RemoteHelperGitSyncStatusData = {
+  worktreePath: string;
+  currentBranch: string;
+  fluxxWorkBranch: string;
+  sourceBranchShort?: string;
+  headCommit: string;
+  isDirty: boolean;
+  dirtyDetails: {
+    isDirty: boolean;
+    hasStaged: boolean;
+    hasUnstaged: boolean;
+    hasUntracked: boolean;
+  };
+  aheadOfOrigin: number;
+  behindOrigin: number;
+  originConfigured: boolean;
+  remoteHasUnsyncedChanges: boolean;
+  dirtySnapshotHooks: RemoteHelperDirtySnapshotHooks;
+};
+
+export type RemoteHelperPushWorkBranchData = {
+  branch: string;
+  pushed: boolean;
+  headCommit: string;
+};
+
 export type RemoteHelperJsonResult<T> =
   | { ok: true; version: string; data: T }
   | { ok: false; code: string; message: string };

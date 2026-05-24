@@ -144,6 +144,8 @@ export interface CreateShellParams {
   worktreePath: string;
   cols: number;
   rows: number;
+  placement?: import('../types').ShellPlacement;
+  projectId?: string;
 }
 
 export interface StartPlanningParams {
