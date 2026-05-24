@@ -606,10 +606,11 @@ export class TerminalRuntimeManager {
       worktreePath: params.worktreePath,
       status: 'running',
       startedAt: new Date().toISOString(),
+      ...(params.placement === 'local' ? { shellPlacement: 'local' as const } : {}),
     };
 
     const parent = this.sessions.get(params.sessionId);
-    const projectSlugSource = parent?.session.projectId ?? 'project';
+    const projectSlugSource = parent?.session.projectId ?? params.projectId ?? 'project';
 
     const { runtime, tmuxSessionName } = await createTerminalRuntime(
       this.factoryContext('shell', id, projectSlugSource),

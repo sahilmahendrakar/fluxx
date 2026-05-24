@@ -573,6 +573,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('sessions:awaitRestoreComplete') as Promise<void>,
     reconcileRemote: () =>
       ipcRenderer.invoke('session:reconcileRemote') as Promise<Session[]>,
+    syncToLocal: (sessionId: string) =>
+      ipcRenderer.invoke('session:syncToLocal', sessionId) as Promise<
+        import('./types').RemoteSshSyncResult
+      >,
+    getSshLocalWorktree: (sessionId: string) =>
+      ipcRenderer.invoke('session:getSshLocalWorktree', sessionId) as Promise<{
+        path: string | null;
+        lastSyncedAt: string | null;
+      }>,
     onRestoreComplete: (cb: () => void) => {
       const handler = () => cb();
       return ipcSubscribe(ipcRenderer, 'sessions:restoreComplete', handler);
@@ -636,8 +645,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   shells: {
-    open: (sessionId: string) =>
-      ipcRenderer.invoke('shell:open', sessionId) as Promise<Shell>,
+    open: (sessionId: string, options?: import('./types').ShellOpenOptions) =>
+      ipcRenderer.invoke('shell:open', sessionId, options) as Promise<Shell>,
     close: (shellId: string) =>
       ipcRenderer.invoke('shell:close', shellId) as Promise<void>,
     list: (sessionId: string) =>

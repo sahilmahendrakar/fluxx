@@ -17,22 +17,22 @@ const sshDevice: ExecutionDeviceConfig = {
 
 function mockHelper(): RemoteHelperClient {
   return {
-    ensureInstalled: vi.fn(async () => ({ ok: true as const, version: '0.2.1' })),
+    ensureInstalled: vi.fn(async () => ({ ok: true as const, version: '0.2.4' })),
     runJsonCommand: vi.fn(async (device, command) => {
       if (command === 'probe-agent') {
-        return { ok: true as const, version: '0.2.1', data: { found: true } };
+        return { ok: true as const, version: '0.2.4', data: { found: true } };
       }
       if (command === 'repo-ensure') {
         return {
           ok: true as const,
-          version: '0.2.1',
+          version: '0.2.4',
           data: { repoPath: '/home/user/.fluxx/workspaces/repos/p1/repo-a', action: 'cloned' },
         };
       }
       if (command === 'worktree-create') {
         return {
           ok: true as const,
-          version: '0.2.1',
+          version: '0.2.4',
           data: {
             worktreePath: '/home/user/.fluxx/workspaces/worktrees/p1/repo-a/task-1',
             branch: 'dev/task-one',
@@ -42,7 +42,7 @@ function mockHelper(): RemoteHelperClient {
       if (command === 'start-terminal') {
         return {
           ok: true as const,
-          version: '0.2.1',
+          version: '0.2.4',
           data: {
             terminalId: 'term-1',
             tmuxSessionName: 'fluxx-task-p1-abc',
@@ -51,7 +51,7 @@ function mockHelper(): RemoteHelperClient {
         };
       }
       if (command === 'list-terminals') {
-        return { ok: true as const, version: '0.2.1', data: { terminals: [] } };
+        return { ok: true as const, version: '0.2.4', data: { terminals: [] } };
       }
       throw new Error(`unexpected command ${command}`);
     }),
@@ -106,7 +106,7 @@ describe('GitRemoteWorkspaceProvider', () => {
     const helper = mockHelper();
     vi.mocked(helper.runJsonCommand).mockImplementation(async (_device, command) => {
       if (command === 'probe-agent') {
-        return { ok: true, version: '0.2.1', data: { found: true } };
+        return { ok: true, version: '0.2.4', data: { found: true } };
       }
       if (command === 'repo-ensure') {
         return {

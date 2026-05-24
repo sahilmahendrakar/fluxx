@@ -62,6 +62,8 @@ import {
 } from './main/ssh/remoteSshTerminalReconcile';
 import { mapRemoteLifecycleToEndedReason } from './main/ssh/remoteSessionLifecycle';
 import { startSshTaskSession } from './main/ssh/startSshTaskSession';
+import { syncRemoteSshTaskToLocal } from './main/ssh/remoteSshBranchSync';
+import { resolveSshLocalWorktreePath, readRemoteSshSyncMetadata } from './main/ssh/remoteSshSyncMetadata';
 import {
   type ExecutionDeviceHostContext,
   inferLegacyLocalTmuxForDeviceBootstrap,
@@ -4723,12 +4725,14 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('session:delete', async (_e, sessionId: string) => {
     sessionTaskMap.delete(sessionId);
+    const deleteRepos = await projectStore.getReposAt(activeProjectDir());
     await deleteSessionWorkspaceAndStop(
       terminalBackend,
       worktreeService,
       sessionId,
       gitRootForDaemonSession,
       remoteTaskTeardownDeps,
+      deleteRepos,
     );
     await taskAgentSessionRecordStore.markWorkspaceDeletedForFluxxSession(sessionId);
     void terminalSessionRecordStore.markWorkspaceDeleted(sessionId);
@@ -4811,6 +4815,79 @@ app.whenReady().then(async () => {
     );
     const otherProjects = live.filter((s) => s.projectId !== project.id);
     return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+  });
+
+  ipcMain.handle('session:syncToLocal', async (_e, rawSessionId: unknown) => {
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+    if (!sessionId) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Invalid session id.',
+      };
+    }
+    const project = await resolveProjectForStart();
+    const sessions = await terminalBackend.listSessions();
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Session not found.',
+      };
+    }
+    const tasks = taskStore.getAll(project.id);
+    const task = tasks.find((t) => t.id === session.taskId);
+    if (!task) {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'INTERNAL' as const,
+        message: 'Task not found for this session.',
+      };
+    }
+    return syncRemoteSshTaskToLocal(
+      {
+        deviceStore,
+        helper: remoteHelperClient,
+        worktreeService,
+        resolveRepoConfigForTaskSession,
+        activeProjectDir,
+      },
+      { session, task, project },
+    );
+  });
+
+  ipcMain.handle('session:getSshLocalWorktree', async (_e, rawSessionId: unknown) => {
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+    if (!sessionId) {
+      return { path: null as string | null, lastSyncedAt: null as string | null };
+    }
+    const sessions = await terminalBackend.listSessions();
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session || session.deviceKind !== 'ssh') {
+      return { path: null, lastSyncedAt: null };
+    }
+    const projectDir = activeProjectDir();
+    if (!projectDir) {
+      return { path: null, lastSyncedAt: null };
+    }
+    const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
+    const pathResolved = await resolveSshLocalWorktreePath({
+      projectDir,
+      taskId: session.taskId,
+      repoId: session.repoId ?? task?.repoId,
+      fluxxWorkBranch: session.branch || task?.fluxxWorkBranch,
+    });
+    const meta = pathResolved
+      ? await readRemoteSshSyncMetadata(projectDir, session.taskId)
+      : null;
+    return {
+      path: pathResolved,
+      lastSyncedAt: meta?.lastSyncedAt ?? null,
+    };
   });
 
   ipcMain.handle(
@@ -5566,30 +5643,62 @@ app.whenReady().then(async () => {
   planningDocsWatcher.sync();
 
   // ---- Shells: plain terminals spawned inside a session's worktree ----
-  ipcMain.handle('shell:open', async (_e, sessionId: string) => {
+  ipcMain.handle('shell:open', async (_e, sessionId: string, rawOptions?: unknown) => {
     const sessions = await terminalBackend.listSessions();
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) {
       throw new Error(`No session for id: ${sessionId}`);
     }
+    const placement =
+      rawOptions &&
+      typeof rawOptions === 'object' &&
+      (rawOptions as { placement?: string }).placement === 'local'
+        ? ('local' as const)
+        : session.deviceKind === 'ssh'
+          ? ('remote' as const)
+          : ('local' as const);
+
+    let worktreePath = session.worktreePath;
+    if (session.deviceKind === 'ssh' && placement === 'local') {
+      const projectDir = activeProjectDir();
+      const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
+      const localPath = projectDir
+        ? await resolveSshLocalWorktreePath({
+            projectDir,
+            taskId: session.taskId,
+            repoId: session.repoId ?? task?.repoId,
+            fluxxWorkBranch: session.branch || task?.fluxxWorkBranch,
+          })
+        : null;
+      if (!localPath) {
+        throw new Error(
+          'Sync to local before opening a local terminal. Local worktree is not available yet.',
+        );
+      }
+      worktreePath = localPath;
+    }
+
     const shell = await terminalBackend.createShell({
       sessionId: session.id,
-      worktreePath: session.worktreePath,
+      worktreePath,
       cols: 80,
       rows: 24,
+      placement,
+      projectId: session.projectId,
     });
     const sh = process.platform === 'win32'
       ? { command: process.env.COMSPEC ?? 'cmd.exe', args: [] as string[] }
       : { command: process.env.SHELL ?? '/bin/bash', args: ['-l'] as string[] };
+    const isRemoteShell = session.deviceKind === 'ssh' && placement === 'remote';
     const shellTerminalRow = withTerminalRuntimeMeta(terminalBackend, shell.id, 'shell', {
       id: shell.id,
       kind: 'shell',
-      runtime: session.deviceKind === 'ssh' ? 'tmux' : 'node-pty',
+      runtime: isRemoteShell ? 'tmux' : 'node-pty',
       projectId: session.projectId,
-      ...(session.deviceKind === 'ssh' && session.deviceId
+      ...(isRemoteShell && session.deviceId
         ? { deviceId: session.deviceId, deviceKind: session.deviceKind, hostLabel: session.deviceLabel }
         : {}),
-      cwd: session.worktreePath,
+      cwd: worktreePath,
       command: sh.command,
       args: sh.args,
       cols: 80,
@@ -5597,7 +5706,7 @@ app.whenReady().then(async () => {
       startedAt: shell.startedAt,
       shell: {
         parentSessionId: session.id,
-        worktreePath: session.worktreePath,
+        worktreePath,
       },
     });
     void terminalSessionRecordStore.recordTerminalStart(shellTerminalRow);

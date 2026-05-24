@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.4';
 
 const FLUXX_TMUX_SOCKET = 'fluxx';
 const SETUP_DEFAULT_TIMEOUT_MS = 300_000;
@@ -1001,6 +1001,142 @@ function runWorktreeRemove(params) {
   emit({ ok: true, data: { removed: true, worktreePath } });
 }
 
+function parsePorcelainDirty(statusOutput) {
+  let hasStaged = false;
+  let hasUnstaged = false;
+  let hasUntracked = false;
+  for (const line of String(statusOutput || '').split('\n')) {
+    if (!line.trim()) continue;
+    const indexStatus = line.length > 0 ? line[0] : ' ';
+    const workTreeStatus = line.length > 1 ? line[1] : ' ';
+    if (indexStatus === '?' && workTreeStatus === '?') {
+      hasUntracked = true;
+      continue;
+    }
+    if (indexStatus !== ' ' && indexStatus !== '?') hasStaged = true;
+    if (workTreeStatus !== ' ' && workTreeStatus !== '?') hasUnstaged = true;
+  }
+  return {
+    isDirty: hasStaged || hasUnstaged || hasUntracked,
+    hasStaged,
+    hasUnstaged,
+    hasUntracked,
+  };
+}
+
+function countAheadBehind(gitRoot, branchShort) {
+  gitRun(['fetch', 'origin', branchShort], { cwd: gitRoot, timeoutMs: 120_000 });
+  const localRef = gitRun(['rev-parse', '--verify', `refs/heads/${branchShort}`], {
+    cwd: gitRoot,
+  });
+  const originRef = gitRun(['rev-parse', '--verify', `refs/remotes/origin/${branchShort}`], {
+    cwd: gitRoot,
+  });
+  if (!localRef.ok) {
+    return { ahead: 0, behind: 0, originConfigured: originRef.ok };
+  }
+  if (!originRef.ok) {
+    return { ahead: 0, behind: 0, originConfigured: false };
+  }
+  const counts = gitRun(
+    ['rev-list', '--left-right', '--count', `origin/${branchShort}...${branchShort}`],
+    { cwd: gitRoot },
+  );
+  if (!counts.ok) {
+    return { ahead: 0, behind: 0, originConfigured: true };
+  }
+  const parts = counts.stdout.split(/\s+/).map((x) => Number.parseInt(x, 10));
+  const behind = Number.isFinite(parts[0]) ? parts[0] : 0;
+  const ahead = Number.isFinite(parts[1]) ? parts[1] : 0;
+  return { ahead, behind, originConfigured: true };
+}
+
+function runGitSyncStatus(params) {
+  const worktreePath =
+    typeof params.worktreePath === 'string' ? expandHome(params.worktreePath.trim()) : '';
+  const fluxxWorkBranch =
+    typeof params.fluxxWorkBranch === 'string' ? params.fluxxWorkBranch.trim() : '';
+  const sourceBranchShort =
+    typeof params.sourceBranchShort === 'string' ? params.sourceBranchShort.trim() : undefined;
+  if (!worktreePath) {
+    fail('INTERNAL', 'git-sync-status requires worktreePath');
+  }
+  if (!fs.existsSync(worktreePath)) {
+    fail('WORKSPACE_MISSING', `Worktree path does not exist: ${worktreePath}`);
+  }
+  const head = gitRun(['rev-parse', 'HEAD'], { cwd: worktreePath });
+  if (!head.ok) {
+    fail('REMOTE_GIT_MISSING', head.error || 'Could not resolve HEAD in remote worktree');
+  }
+  const branchResult = gitRun(['symbolic-ref', '--short', 'HEAD'], { cwd: worktreePath });
+  const currentBranch = branchResult.ok ? branchResult.stdout.trim() : '';
+  const workBranch = fluxxWorkBranch || currentBranch;
+  const status = gitRun(['status', '--porcelain'], { cwd: worktreePath });
+  if (!status.ok) {
+    fail('INTERNAL', status.error || 'git status failed');
+  }
+  const dirty = parsePorcelainDirty(status.stdout);
+  const gitRootResult = gitRun(['rev-parse', '--show-toplevel'], { cwd: worktreePath });
+  const gitRoot = gitRootResult.ok ? gitRootResult.stdout.trim() : worktreePath;
+  const aheadBehind = workBranch ? countAheadBehind(gitRoot, workBranch) : { ahead: 0, behind: 0, originConfigured: false };
+  emit({
+    ok: true,
+    data: {
+      worktreePath,
+      currentBranch,
+      fluxxWorkBranch: workBranch,
+      ...(sourceBranchShort ? { sourceBranchShort } : {}),
+      headCommit: head.stdout.trim(),
+      isDirty: dirty.isDirty,
+      dirtyDetails: dirty,
+      aheadOfOrigin: aheadBehind.ahead,
+      behindOrigin: aheadBehind.behind,
+      originConfigured: aheadBehind.originConfigured,
+      remoteHasUnsyncedChanges: dirty.isDirty || aheadBehind.ahead > 0,
+      dirtySnapshotHooks: {
+        baseCommit: head.stdout.trim(),
+        binaryDiffCommand: 'git diff --binary',
+        untrackedArchiveSupported: true,
+        conflictSafeApplyPlanned: true,
+      },
+    },
+  });
+}
+
+function runPushWorkBranch(params) {
+  const worktreePath =
+    typeof params.worktreePath === 'string' ? expandHome(params.worktreePath.trim()) : '';
+  const branch =
+    typeof params.fluxxWorkBranch === 'string'
+      ? params.fluxxWorkBranch.trim()
+      : typeof params.branch === 'string'
+        ? params.branch.trim()
+        : '';
+  if (!worktreePath || !branch) {
+    fail('INTERNAL', 'push-work-branch requires worktreePath and fluxxWorkBranch');
+  }
+  if (!fs.existsSync(worktreePath)) {
+    fail('WORKSPACE_MISSING', `Worktree path does not exist: ${worktreePath}`);
+  }
+  const headBefore = gitRun(['rev-parse', 'HEAD'], { cwd: worktreePath });
+  if (!headBefore.ok) {
+    fail('REMOTE_GIT_MISSING', headBefore.error || 'Could not resolve HEAD');
+  }
+  const push = gitRun(['push', 'origin', branch], { cwd: worktreePath, timeoutMs: 300_000 });
+  if (!push.ok) {
+    fail('REMOTE_PUSH_FAILED', push.error || `git push origin ${branch} failed`);
+  }
+  const headAfter = gitRun(['rev-parse', 'HEAD'], { cwd: worktreePath });
+  emit({
+    ok: true,
+    data: {
+      branch,
+      pushed: true,
+      headCommit: (headAfter.ok ? headAfter.stdout : headBefore.stdout).trim(),
+    },
+  });
+}
+
 function runMarkTerminalEnded(params) {
   const terminalId = typeof params.terminalId === 'string' ? params.terminalId.trim() : '';
   const deviceId = typeof params.deviceId === 'string' ? params.deviceId.trim() : '';
@@ -1081,6 +1217,12 @@ function main() {
       break;
     case 'mark-terminal-ended':
       runMarkTerminalEnded(readStdinJson());
+      break;
+    case 'git-sync-status':
+      runGitSyncStatus(readStdinJson());
+      break;
+    case 'push-work-branch':
+      runPushWorkBranch(readStdinJson());
       break;
     default:
       fail('INTERNAL', `Unknown helper command: ${command}`);
