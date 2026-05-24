@@ -3023,6 +3023,10 @@ app.whenReady().then(async () => {
         repos,
         taskRepoId,
         taskRow?.fluxxWorkBranch?.trim() || null,
+        {
+          validationRunStore,
+          notifyValidationRunChanged: broadcastValidationRunChanged,
+        },
       );
       return { errors };
     },
@@ -4410,6 +4414,10 @@ app.whenReady().then(async () => {
           cleanupRepos,
           updated.repoId?.trim() ?? null,
           updated.fluxxWorkBranch?.trim() ?? null,
+          {
+            validationRunStore,
+            notifyValidationRunChanged: broadcastValidationRunChanged,
+          },
         );
         if (errors.length > 0) {
           console.error('[task:auto-cleanup-workspace-on-done] teardown', {

@@ -538,6 +538,36 @@ export class ValidationRunStore {
     });
   }
 
+  /** Removes all runs for a task from disk and `validation-runs.json`. */
+  async deleteForTask(taskId: string): Promise<{ deletedRunIds: string[] }> {
+    return this.enqueueWrite(async () => {
+      const trimmedTaskId = taskId.trim();
+      if (!trimmedTaskId) {
+        return { deletedRunIds: [] };
+      }
+      const projectDir = this.requireProjectDir();
+      await this.ensureLoaded();
+      const toDelete = this.cache.filter((row) => row.taskId === trimmedTaskId);
+      const deletedRunIds = toDelete.map((row) => row.id);
+
+      for (const row of toDelete) {
+        const runDir = validationRunDir(projectDir, row.id);
+        try {
+          await fs.rm(runDir, { recursive: true, force: true });
+        } catch (err: unknown) {
+          if (errnoCode(err) !== 'ENOENT') throw err;
+        }
+      }
+
+      if (toDelete.length > 0) {
+        this.cache = this.cache.filter((row) => row.taskId !== trimmedTaskId);
+        await this.persist();
+      }
+
+      return { deletedRunIds };
+    });
+  }
+
   /** Test hook: replace in-memory state without touching disk layout. */
   _testImportRuns(runs: PersistedRunRow[]): void {
     this.cache = runs.map((r) => ({ ...r, artifacts: r.artifacts.map((a) => ({ ...a })) }));

@@ -91,6 +91,44 @@ describe('ingestValidationVerdict', () => {
     }
   });
 
+  it('re-ingests a terminal needs-human-review run when verdict.json appears', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-ingest-re-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: 't1',
+      projectId: 'p1',
+      validatorAgent: 'cursor',
+    });
+    await store.updateStatus({
+      runId: run.id,
+      status: 'needs-human-review',
+      summary: 'Awaiting verdict',
+      verdictReason: 'Verdict file missing',
+    });
+    await fs.writeFile(
+      path.join(run.artifactDir, 'verdict.json'),
+      JSON.stringify({
+        verdict: 'passed',
+        summary: 'All checks passed',
+        checks: [{ name: 'Smoke', status: 'passed' }],
+      }),
+      'utf8',
+    );
+
+    const first = await ingestValidationVerdict(store, run.id);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.ingested).toBe(true);
+    expect(first.run.status).toBe('passed');
+    expect(first.run.summary).toBe('All checks passed');
+
+    const second = await ingestValidationVerdict(store, run.id);
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.ingested).toBe(false);
+    expect(second.run.status).toBe('passed');
+  });
+
   it('maps errored verdict outcome to errored run status', async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-ingest-err-'));
     const store = new ValidationRunStore({ getProjectDir: () => tmp });

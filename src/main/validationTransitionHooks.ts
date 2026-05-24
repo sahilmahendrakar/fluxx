@@ -14,6 +14,7 @@ import {
   type LaunchValidatorSessionFn,
 } from './validationTaskTransitions';
 import { reconcileActiveValidationRun } from './reconcileValidationRun';
+import { broadcastValidationRunChanged } from './broadcastValidationRunChanged';
 
 export type ValidationTransitionHooks = {
   onEnteredValidation: (previous: Task, updated: Task, source: string) => Promise<void>;
@@ -88,6 +89,7 @@ export function buildValidationTransitionHooks(input: {
         run,
         source,
       ),
+    notifyValidationRunChanged: (runId) => broadcastValidationRunChanged(runId),
   };
 
   const getLocalTask = (taskId: string): Task | null => {

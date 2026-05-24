@@ -3,7 +3,14 @@ import fs from 'node:fs/promises';
 import type { RepoConfig, Session } from '../types';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
+import type { ValidationRunStore } from './ValidationRunStore';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
+import { teardownValidationRunsForTask } from './teardownValidationRunsForTask';
+
+export type TaskEphemeralTeardownValidationDeps = {
+  validationRunStore: ValidationRunStore;
+  notifyValidationRunChanged?: (runId: string) => void;
+};
 
 /**
  * Stop a task session, close its shells, and remove its git worktree — same
@@ -46,8 +53,22 @@ export async function teardownEphemeralResourcesForTask(
   taskRepoId?: string | null,
   /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
   fluxxWorkBranch?: string | null,
+  validation?: TaskEphemeralTeardownValidationDeps,
 ): Promise<string[]> {
   const errors: string[] = [];
+
+  if (validation) {
+    const validationResult = await teardownValidationRunsForTask({
+      validationRunStore: validation.validationRunStore,
+      terminalBackend,
+      taskId,
+    });
+    errors.push(...validationResult.errors);
+    for (const runId of validationResult.deletedRunIds) {
+      validation.notifyValidationRunChanged?.(runId);
+    }
+  }
+
   let sessionIds: string[] = [];
   try {
     const sessions = await terminalBackend.listSessions();

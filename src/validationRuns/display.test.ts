@@ -3,6 +3,8 @@ import {
   evaluateManualValidationEligibility,
   formatValidationTimestamp,
   pickLatestValidationRun,
+  validationRunPickerLabel,
+  validationRunShortId,
   validationBoardBadgeFromRuns,
   validationBoardBadgeLabel,
   validationRunStatusToBoardBadge,
@@ -101,6 +103,18 @@ describe('validationRuns/display', () => {
         validatorSession: { status: 'stopped' },
       }),
     ).toBe(false);
+  });
+
+  it('builds compact picker labels with short id and status', () => {
+    const sample = run({
+      id: 'validation-run-abcdef12',
+      status: 'passed',
+      startedAt: '2026-05-22T10:00:00.000Z',
+      completedAt: '2026-05-22T10:30:00.000Z',
+    });
+    expect(validationRunShortId(sample.id)).toBe('abcdef12');
+    expect(validationRunPickerLabel(sample)).toContain('Passed');
+    expect(validationRunPickerLabel(sample)).toContain('abcdef12');
   });
 
   it('formatValidationTimestamp returns em dash for invalid input', () => {

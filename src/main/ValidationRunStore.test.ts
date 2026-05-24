@@ -146,4 +146,33 @@ describe('ValidationRunStore', () => {
     expect(updated.gitGuardrails?.postValidationGitStatus).toBe(' M src/b.ts');
     expect(updated.gitGuardrails?.gitStatusDriftDetected).toBe(true);
   });
+
+  it('deleteForTask removes persisted rows and artifact directories', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-run-delete-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const runA = await store.create({
+      taskId: 'task-1',
+      projectId: 'proj-1',
+      validatorAgent: 'cursor',
+    });
+    const runB = await store.create({
+      taskId: 'task-2',
+      projectId: 'proj-1',
+      validatorAgent: 'cursor',
+    });
+    const artifactPath = path.join(runA.artifactDir, 'artifacts/data/proof.json');
+    await fs.mkdir(path.dirname(artifactPath), { recursive: true });
+    await fs.writeFile(artifactPath, '{}\n', 'utf8');
+
+    const deleted = await store.deleteForTask('task-1');
+    expect(deleted.deletedRunIds).toEqual([runA.id]);
+    expect(await store.listForTask('task-1')).toEqual([]);
+    expect(await store.listForTask('task-2')).toHaveLength(1);
+    await expect(fs.access(runA.artifactDir)).rejects.toThrow();
+    await expect(fs.access(runB.artifactDir)).resolves.toBeUndefined();
+
+    const store2 = new ValidationRunStore({ getProjectDir: () => tmp });
+    expect(await store2.listForTask('task-1')).toEqual([]);
+    expect(await store2.listForTask('task-2')).toHaveLength(1);
+  });
 });

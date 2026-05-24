@@ -572,6 +572,11 @@ export function SessionTerminalView({
     validationAutoSwitchRunRef.current = null;
   }, [task?.id]);
 
+  useEffect(() => {
+    if (task?.status !== 'validation') return;
+    refreshValidationRuns();
+  }, [task?.id, task?.status, refreshValidationRuns]);
+
   const showValidationTab = taskWorkspaceShouldShowValidationTab({
     latestRun,
     validatorSession,
