@@ -3,7 +3,8 @@
  * Generated for validation run: {{RUN_ID}}
  *
  * Edit task-specific checks below. Do not write artifacts outside RUN_DIR.
- * Requires: playwright (npm/pnpm dependency in the task worktree).
+ * Requires: `playwright` from the task worktree root (`pnpm install` at repo root).
+ * Requires: `.vite/build/main.js` — run `pnpm run build:validation` in the task worktree before `electron.launch`.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';

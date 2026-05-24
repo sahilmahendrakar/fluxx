@@ -39,6 +39,17 @@ Do **not** treat generic smoke tests as sufficient. Read the task title, descrip
 
 Paths in `verdict.json` must be **run-relative** (e.g. `artifacts/screenshots/foo.png`).
 
+## Prerequisites (task worktree)
+
+Before `electron.launch` or running `validate-electron.mjs`:
+
+1. **`pnpm install`** — Playwright is a root **devDependency** (`node_modules/playwright`). Do **not** install Playwright under `validation-runs/<id>/`.
+2. **`pnpm run build:validation`** — builds main + preload into `.vite/build/` (required for `electron.launch({ args: ['.'] })`; `package.json` `"main"` is `.vite/build/main.js`). Idempotent and safe to re-run.
+
+Playwright's `_electron` API drives the app's bundled Electron binary — **browser binaries** (`pnpm exec playwright install chromium`) are **not** required for Electron validation.
+
+For UI that needs the Vite dev server, use the configured `launchCommand` (e.g. `pnpm start:aux`) instead of bare `electron.launch`, or run the dev server separately before connecting.
+
 ## Launching Electron with Playwright
 
 Use Playwright's Electron driver:

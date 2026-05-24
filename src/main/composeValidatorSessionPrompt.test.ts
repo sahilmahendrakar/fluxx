@@ -41,6 +41,7 @@ describe('composeValidatorSessionPrompt', () => {
     expect(prompt).toContain('### Acceptance criteria');
     expect(prompt).toContain('Task in Review can start a validator session');
     expect(prompt).toContain('Do **not** implement product source changes');
+    expect(prompt).toContain('pnpm run build:validation');
     expect(prompt).toContain('/tmp/project/validation-runs/run-abc');
     expect(prompt).toContain('verdict.json');
     expect(prompt).toContain('fluxx validation finish');
