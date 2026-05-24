@@ -24,7 +24,6 @@ import {
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
-import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import Terminal, { type TerminalHandle } from './Terminal';
 import {
   isPlanningSessionResumable,
@@ -108,7 +107,6 @@ function PlanningTerminalPane({
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
   const warmTerminal = planningSessionHasWarmTerminal(session);
-  const trustAutorespondNote = useTrustAutorespondNotice('planning', session.id, running);
 
   useTerminalPtyStream({
     terminalRef,
@@ -161,14 +159,6 @@ function PlanningTerminalPane({
         }
       >
         <div className="min-h-0 flex-1 overflow-hidden">
-          {trustAutorespondNote ? (
-            <div
-              role="status"
-              className="mb-2 rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-            >
-              {trustAutorespondNote}
-            </div>
-          ) : null}
           <Terminal
             ref={terminalRef}
             sessionId={session.id}

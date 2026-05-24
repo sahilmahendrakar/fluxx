@@ -36,6 +36,7 @@ import { resolveRemoteRepoForTaskSession } from './resolveRemoteRepoForTask';
 import type { SshTerminalBackend } from '../terminalBackend/SshTerminalBackend';
 import type { DeviceStore } from '../DeviceStore';
 import type { ProjectStore } from '../ProjectStore';
+import { trustPromptAutorespondRootsForRemoteWorktree } from '../trustPromptAutorespondRoots';
 
 export type StartSshTaskSessionDeps = {
   deviceStore: DeviceStore;
@@ -183,6 +184,14 @@ export async function startSshTaskSession(
     agent: task.agent ?? undefined,
     cols: 80,
     rows: 24,
+  ...(project.autoRespondToTrustPrompts === true
+    ? {
+        trustPromptAutorespond: true,
+        trustPromptAutorespondRoots: trustPromptAutorespondRootsForRemoteWorktree(
+          started.session.worktreePath,
+        ),
+      }
+    : {}),
   });
 
   const sourceBranchShort = sourceOpts.sourceBranchShort || undefined;

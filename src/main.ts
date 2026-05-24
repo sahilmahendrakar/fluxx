@@ -1175,6 +1175,7 @@ app.whenReady().then(async () => {
     const localSshOpenRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
       (r) => r.deviceKind === 'ssh',
     );
+    const project = projectStore.get();
 
     const output = await reconcileRemoteSshTerminalsForProject({
       projectId,
@@ -1182,6 +1183,7 @@ app.whenReady().then(async () => {
       helper: remoteHelperClient,
       sshBackend,
       localOpenRecords: localSshOpenRecords,
+      autoRespondToTrustPrompts: project?.autoRespondToTrustPrompts === true,
     });
 
     for (const { sessionId, taskId } of output.restoredSessionTaskPairs) {

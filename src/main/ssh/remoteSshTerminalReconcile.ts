@@ -13,6 +13,7 @@ import {
   sortOpenTmuxRowsForRestore,
   type TmuxTerminalReconcileResult,
 } from '../tmux/tmuxTerminalReconcile';
+import { trustPromptAutorespondRootsForRemoteWorktree } from '../trustPromptAutorespondRoots';
 import type { RemoteHelperClient } from './RemoteHelperClient';
 import {
   isRemoteHelperVersionCompatible,
@@ -110,6 +111,7 @@ export async function reconcileRemoteSshTerminalsForProject(params: {
   helper: RemoteHelperClient;
   sshBackend: SshTerminalBackend;
   localOpenRecords?: TerminalSessionRecord[];
+  autoRespondToTrustPrompts?: boolean;
 }): Promise<RemoteSshReconcileResult> {
   const counts = emptyTmuxReconcileCounts();
   const untrackedFluxxSessions: string[] = [];
@@ -263,6 +265,12 @@ export async function reconcileRemoteSshTerminalsForProject(params: {
           agent: taskMeta.agent,
           cols: record.cols,
           rows: record.rows,
+          ...(params.autoRespondToTrustPrompts === true
+            ? {
+                trustPromptAutorespond: true,
+                trustPromptAutorespondRoots: trustPromptAutorespondRootsForRemoteWorktree(wt),
+              }
+            : {}),
         });
         counts.restored.task += 1;
         restoredSessionTaskPairs.push({ sessionId: record.id, taskId: taskMeta.taskId });

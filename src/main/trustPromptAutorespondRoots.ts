@@ -31,3 +31,21 @@ export function cwdUnderTrustPromptAutorespondRoots(
   }
   return false;
 }
+
+/**
+ * Trust roots for a remote SSH worktree (POSIX paths on the device).
+ * Includes the task worktree and its parent `…/worktrees` directory when present.
+ */
+export function trustPromptAutorespondRootsForRemoteWorktree(
+  remoteWorktreePath: string,
+): string[] {
+  const wt = remoteWorktreePath.trim().replace(/\\/g, '/');
+  if (!wt) return [];
+  const roots = new Set<string>([wt]);
+  const worktreesSuffix = '/worktrees';
+  const idx = wt.indexOf(worktreesSuffix);
+  if (idx >= 0) {
+    roots.add(wt.slice(0, idx + worktreesSuffix.length));
+  }
+  return [...roots];
+}
