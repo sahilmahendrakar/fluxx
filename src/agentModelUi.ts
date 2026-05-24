@@ -1,7 +1,7 @@
 import type { Task } from './types';
 import { claudeCodeExplicitModel, resolvedCursorAgentModel } from './types';
 
-export type AgentModelUiKind = 'cursor' | 'claude-code';
+export type AgentModelUiKind = 'cursor' | 'claude-code' | 'codex';
 
 export type AgentModelPreset = { id: string; label: string };
 
@@ -10,6 +10,13 @@ export const CLAUDE_MODEL_PRESETS: AgentModelPreset[] = [
   { id: 'claude-opus-4-7', label: 'Opus 4.7' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
   { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+];
+
+/** Shown in the task detail model picker for Codex (`codex --model`). */
+export const CODEX_MODEL_PRESETS: AgentModelPreset[] = [
+  { id: 'gpt-5.4', label: 'GPT 5.4' },
+  { id: 'gpt-5.4-mini', label: 'GPT 5.4 Mini' },
+  { id: 'o4-mini', label: 'o4 Mini' },
 ];
 
 /** Shown in the task detail model picker for Cursor Agent (`agent --model`). */
@@ -28,22 +35,31 @@ type ExtrasFile = {
   v: 1;
   cursor?: AgentModelPreset[];
   'claude-code'?: AgentModelPreset[];
+  codex?: AgentModelPreset[];
 };
 
 function presetIds(kind: AgentModelUiKind): Set<string> {
-  return new Set((kind === 'cursor' ? CURSOR_MODEL_PRESETS : CLAUDE_MODEL_PRESETS).map((p) => p.id));
+  const list =
+    kind === 'cursor'
+      ? CURSOR_MODEL_PRESETS
+      : kind === 'codex'
+        ? CODEX_MODEL_PRESETS
+        : CLAUDE_MODEL_PRESETS;
+  return new Set(list.map((p) => p.id));
 }
 
 function builtInList(kind: AgentModelUiKind): AgentModelPreset[] {
-  return kind === 'cursor' ? CURSOR_MODEL_PRESETS : CLAUDE_MODEL_PRESETS;
+  if (kind === 'cursor') return CURSOR_MODEL_PRESETS;
+  if (kind === 'codex') return CODEX_MODEL_PRESETS;
+  return CLAUDE_MODEL_PRESETS;
 }
 
 export function readAgentModelExtras(): Record<AgentModelUiKind, AgentModelPreset[]> {
   try {
     const raw = localStorage.getItem(EXTRAS_STORAGE_KEY);
-    if (!raw) return { cursor: [], 'claude-code': [] };
+    if (!raw) return { cursor: [], 'claude-code': [], codex: [] };
     const parsed = JSON.parse(raw) as ExtrasFile;
-    if (!parsed || parsed.v !== 1) return { cursor: [], 'claude-code': [] };
+    if (!parsed || parsed.v !== 1) return { cursor: [], 'claude-code': [], codex: [] };
     const norm = (arr: unknown): AgentModelPreset[] => {
       if (!Array.isArray(arr)) return [];
       const out: AgentModelPreset[] = [];
@@ -62,9 +78,10 @@ export function readAgentModelExtras(): Record<AgentModelUiKind, AgentModelPrese
     return {
       cursor: norm(parsed.cursor),
       'claude-code': norm(parsed['claude-code']),
+      codex: norm(parsed.codex),
     };
   } catch {
-    return { cursor: [], 'claude-code': [] };
+    return { cursor: [], 'claude-code': [], codex: [] };
   }
 }
 
@@ -73,6 +90,7 @@ export function writeAgentModelExtras(data: Record<AgentModelUiKind, AgentModelP
     v: 1,
     cursor: data.cursor,
     'claude-code': data['claude-code'],
+    codex: data.codex,
   };
   try {
     localStorage.setItem(EXTRAS_STORAGE_KEY, JSON.stringify(payload));
@@ -123,7 +141,7 @@ export function choicesForPicker(kind: AgentModelUiKind, currentId: string): Age
 
 export function labelForModelId(kind: AgentModelUiKind, modelId: string): string {
   const id = modelId.trim();
-  if (!id && kind === 'claude-code') return 'Default';
+  if (!id && (kind === 'claude-code' || kind === 'codex')) return 'Default';
   if (!id) return 'Auto';
   for (const p of choicesForPicker(kind, modelId)) {
     if (p.id === id) return p.label;
@@ -142,6 +160,11 @@ export function modelSummaryForTask(task: Pick<Task, 'agent' | 'agentModel' | 'a
     const id = claudeCodeExplicitModel(task);
     const base = id ? labelForModelId('claude-code', id) : 'Default';
     return `Model: ${base}${task.agentYolo ? ' · skip permissions' : ''}`;
+  }
+  if (task.agent === 'codex') {
+    const id = (task.agentModel ?? '').trim();
+    const base = id ? labelForModelId('codex', id) : 'Default';
+    return `Model: ${base}${task.agentYolo ? ' · YOLO' : ''}`;
   }
   return undefined;
 }

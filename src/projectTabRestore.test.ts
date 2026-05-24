@@ -255,6 +255,7 @@ describe('filterSessionsForWorkspaceSidebar', () => {
       baseSession('open', 't1'),
       baseSession('orphan', 't2'),
       { ...baseSession('live', 't3'), status: 'running' },
+      { ...baseSession('validator', 't1'), kind: 'validator' as const, status: 'running' },
     ];
     const out = filterSessionsForWorkspaceSidebar(
       sessions,

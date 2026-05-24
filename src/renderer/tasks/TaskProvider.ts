@@ -5,6 +5,7 @@ import type {
   TaskExecutionDeviceRef,
   TaskGithubPr,
   TaskStatus,
+  TaskValidationPlan,
 } from '../../types';
 
 export type TaskPatch = Partial<
@@ -36,6 +37,8 @@ export type TaskPatch = Partial<
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
   /** `null` clears execution device (cloud: local override; local: task row). */
   executionDevice?: TaskExecutionDeviceRef | null;
+  /** `null` clears the validation plan. */
+  validationPlan?: TaskValidationPlan | null;
 };
 
 export type TaskCreateInput = {
@@ -54,6 +57,7 @@ export type TaskCreateInput = {
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
   executionDevice?: TaskExecutionDeviceRef;
+  validationPlan?: TaskValidationPlan;
 };
 
 /**

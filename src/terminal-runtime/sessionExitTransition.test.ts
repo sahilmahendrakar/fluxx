@@ -1,30 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Session } from '../types';
-
-/**
- * Pure logic extracted from the main.ts onSessionExit handler for testability.
- * Given a session exit event and a task lookup, determines the transition.
- */
-function computeSessionExitTransition(
-  session: Pick<Session, 'id' | 'status' | 'taskId'>,
-  sessionTaskMap: Map<string, string>,
-  getTask: (taskId: string) => { status: string } | undefined,
-): { action: 'transition'; taskId: string } | { action: 'skip'; reason: string } {
-  const taskId = sessionTaskMap.get(session.id);
-  if (!taskId) return { action: 'skip', reason: 'no-task-mapping' };
-
-  if (session.status !== 'stopped') {
-    return { action: 'skip', reason: `session-status-${session.status}` };
-  }
-
-  const task = getTask(taskId);
-  if (!task) return { action: 'skip', reason: 'task-not-found' };
-  if (task.status !== 'in-progress') {
-    return { action: 'skip', reason: `task-status-${task.status}` };
-  }
-
-  return { action: 'transition', taskId };
-}
+import { computeSessionExitTransition } from '../main/validatorSessionLifecycle';
 
 describe('session exit → needs-input transition', () => {
   const makeSession = (overrides: Partial<Session> = {}): Session => ({
@@ -46,6 +22,17 @@ describe('session exit → needs-input transition', () => {
       () => ({ status: 'in-progress' }),
     );
     expect(result).toEqual({ action: 'transition', taskId: 'task-1' });
+  });
+
+  it('skips validator sessions', () => {
+    const map = new Map([['sess-1', 'task-1']]);
+    const result = computeSessionExitTransition(
+      makeSession({ status: 'stopped' }),
+      map,
+      () => ({ status: 'in-progress' }),
+      (id) => id === 'sess-1',
+    );
+    expect(result).toEqual({ action: 'skip', reason: 'validator-session' });
   });
 
   it('skips when session exited with error', () => {

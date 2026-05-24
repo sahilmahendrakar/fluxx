@@ -7,6 +7,7 @@ import type {
   TaskExecutionDeviceRef,
   TaskGithubPr,
   TaskStatus,
+  TaskValidationPlan,
 } from './types';
 
 export const AUTOMATION_BRIDGE_REQUEST_CHANNEL = 'automation:rendererBridge:request';
@@ -49,6 +50,7 @@ export interface AutomationBridgeTaskCreateInput {
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
   executionDevice?: TaskExecutionDeviceRef;
+  validationPlan?: TaskValidationPlan;
 }
 
 export interface AutomationBridgeTaskPatch {
@@ -66,6 +68,7 @@ export interface AutomationBridgeTaskPatch {
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
   executionDevice?: TaskExecutionDeviceRef | null;
+  validationPlan?: TaskValidationPlan | null;
 }
 
 export interface AutomationBridgeTasksCreatePayload {
@@ -135,6 +138,7 @@ export interface AutomationBridgeProjectInfoResult {
     backlog: number;
     'in-progress': number;
     'needs-input': number;
+    validation: number;
     review: number;
     done: number;
     total: number;
@@ -150,6 +154,8 @@ export interface AutomationBridgeProjectInfoResult {
   repos?: AutomationBridgeProjectInfoRepoSummary[];
   /** Multi-repo2: stable id of the primary repo (same as {@link AutomationBridgeProjectInfoRepoSummary.isPrimary}). */
   primaryRepoId?: string;
+  /** Electron Playwright validation opt-in for this project. */
+  validationEnabled: boolean;
 }
 
 export interface AutomationBridgeRepoBranchDiscoveryPayload {

@@ -2,7 +2,7 @@
 
 ## CLI `fluxx tasks list`
 
-`fluxx tasks list --json` supports optional repeated **`--exclude-status`**: board column ids (`backlog`, `in-progress`, `needs-input`, `done`). Tasks in those statuses are omitted from the result. Omit the flag to return the full board. Example: `fluxx tasks list --json --exclude-status done` for active work only. Filtering happens in the Fluxx desktop app after tasks are loaded, for both local and cloud projects.
+`fluxx tasks list --json` supports optional repeated **`--exclude-status`**: board column ids (`backlog`, `in-progress`, `needs-input`, `validation`, `done`). Tasks in those statuses are omitted from the result. Omit the flag to return the full board. Example: `fluxx tasks list --json --exclude-status done` for active work only. Filtering happens in the Fluxx desktop app after tasks are loaded, for both local and cloud projects.
 
 Planning workspaces created by Fluxx also ship `planning/AGENTS.md` (and `planning/CLAUDE.md`) with the same command list; user planning markdown for the Docs UI and cloud sync lives under `planning/docs/**`. Keep assistant files aligned when editing guidance.
 

@@ -15,11 +15,21 @@ import {
 } from '../types';
 import { RemoteSshRepoBindingPanel } from './RemoteSshRepoBindingPanel';
 import { defaultTaskAgentForProject } from '../cloudBindingPrefs';
+import {
+  AUTO_TRANSITION_NOTIFICATION_DESTINATIONS,
+  DEFAULT_AUTO_TRANSITION_NOTIFICATION_PREFS,
+  type AutoTransitionNotificationDestination,
+  type AutoTransitionNotificationPrefs,
+} from '../taskAutoTransitionNotificationPrefs';
+import { COLUMNS } from '../types';
 import { deriveRepoIdForRootPath, repoRootBasename } from '../repoIdentity';
-import { updateCloudProjectRepos } from '../renderer/projects/cloudProjects';
+import {
+  updateCloudProjectRepos,
+  updateCloudProjectValidationEnabled,
+} from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
 import { SettingsSwitch } from './SettingsSwitch';
-import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
+import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
 
@@ -36,7 +46,7 @@ interface Props {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
-type Category = 'project' | 'devices' | 'team';
+type Category = 'project' | 'devices' | 'global' | 'team';
 
 function isRepoManagementStatesError(
   result:
@@ -245,13 +255,18 @@ export function ProjectSettingsView({
       >
         <CategoryButton
           active={category === 'project'}
-          label="Project Config"
+          label="Project"
           onClick={() => setCategory('project')}
         />
         <CategoryButton
           active={category === 'devices'}
           label="Devices"
           onClick={() => setCategory('devices')}
+        />
+        <CategoryButton
+          active={category === 'global'}
+          label="Global"
+          onClick={() => setCategory('global')}
         />
         {teamAvailable ? (
           <CategoryButton
@@ -271,6 +286,8 @@ export function ProjectSettingsView({
           />
         ) : category === 'devices' ? (
           <DevicesSettingsPane project={project} />
+        ) : category === 'global' ? (
+          <GlobalSettingsPane />
         ) : teamAvailable && project.kind === 'cloud' && currentUid ? (
           <TeamView
             project={project}
@@ -307,6 +324,152 @@ function CategoryButton({
     >
       {label}
     </button>
+  );
+}
+
+function GlobalSettingsPane() {
+  const [autoNotifyPrefs, setAutoNotifyPrefs] = useState<AutoTransitionNotificationPrefs>(
+    DEFAULT_AUTO_TRANSITION_NOTIFICATION_PREFS,
+  );
+  const [autoNotifyLoading, setAutoNotifyLoading] = useState(true);
+  const [autoNotifySaveState, setAutoNotifySaveState] = useState<SaveState>('idle');
+  const [autoNotifyError, setAutoNotifyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAutoNotifyLoading(true);
+    setAutoNotifyError(null);
+    void window.electronAPI.notifications
+      .getAutoTransitionPrefs()
+      .then((prefs) => {
+        if (!cancelled) {
+          setAutoNotifyPrefs(prefs);
+          setAutoNotifySaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAutoNotifyError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAutoNotifyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistAutoNotifyPrefs = useCallback(async (next: AutoTransitionNotificationPrefs) => {
+    setAutoNotifyPrefs(next);
+    setAutoNotifySaveState('saving');
+    setAutoNotifyError(null);
+    try {
+      const result = await window.electronAPI.notifications.setAutoTransitionPrefs(next);
+      setAutoNotifyPrefs(result.prefs);
+      setAutoNotifySaveState('saved');
+      window.setTimeout(() => {
+        setAutoNotifySaveState((state) => (state === 'saved' ? 'idle' : state));
+      }, 1500);
+    } catch (err) {
+      setAutoNotifySaveState('error');
+      setAutoNotifyError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  const handleAutoNotifyEnabledChange = useCallback(
+    (enabled: boolean) => {
+      void persistAutoNotifyPrefs({
+        ...autoNotifyPrefs,
+        enabled,
+      });
+    },
+    [autoNotifyPrefs, persistAutoNotifyPrefs],
+  );
+
+  const handleAutoNotifyDestinationChange = useCallback(
+    (dest: AutoTransitionNotificationDestination, enabled: boolean) => {
+      void persistAutoNotifyPrefs({
+        ...autoNotifyPrefs,
+        destinations: {
+          ...autoNotifyPrefs.destinations,
+          [dest]: enabled,
+        },
+      });
+    },
+    [autoNotifyPrefs, persistAutoNotifyPrefs],
+  );
+
+  const autoNotifyDestinationLabel = (dest: AutoTransitionNotificationDestination): string =>
+    COLUMNS.find((c) => c.id === dest)?.label ?? dest;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="mx-auto w-full max-w-2xl px-8 py-10">
+        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">Global</h1>
+        <p className="mt-1 text-[13px] text-zinc-500">
+          Preferences stored for Fluxx on this Mac. They apply across all projects.
+        </p>
+
+        <section
+          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="global-settings-notifications-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="global-settings-notifications-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Notifications
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              macOS alerts when Fluxx moves a task automatically (not when you drag cards or submit
+              queries).
+            </p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key="global-auto-notify-enabled"
+              title="Automatic task status notifications"
+              description={
+                <>
+                  When off, Fluxx will not show desktop notifications for automation-driven board
+                  moves. Manual status changes never trigger these alerts.
+                </>
+              }
+              checked={autoNotifyPrefs.enabled}
+              onCheckedChange={(next) => void handleAutoNotifyEnabledChange(next)}
+              switchDisabled={autoNotifyLoading || autoNotifySaveState === 'saving'}
+              loading={autoNotifyLoading}
+              saveState={autoNotifySaveState}
+              error={autoNotifyError}
+            />
+            {AUTO_TRANSITION_NOTIFICATION_DESTINATIONS.map((dest) => (
+              <AutomationSettingRow
+                key={`global-auto-notify-${dest}`}
+                title={`Notify when moved to ${autoNotifyDestinationLabel(dest)}`}
+                description={
+                  <>
+                    Includes automatic moves into {autoNotifyDestinationLabel(dest)} from dependency
+                    unblock, agent silence, PR refresh, and related automations.
+                  </>
+                }
+                checked={autoNotifyPrefs.destinations[dest]}
+                onCheckedChange={(next) => void handleAutoNotifyDestinationChange(dest, next)}
+                switchDisabled={
+                  !autoNotifyPrefs.enabled ||
+                  autoNotifyLoading ||
+                  autoNotifySaveState === 'saving'
+                }
+                loading={autoNotifyLoading}
+                saveState={autoNotifySaveState}
+                error={null}
+              />
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
 
@@ -360,6 +523,12 @@ function ProjectConfigPane({
   const [persistTmuxLoading, setPersistTmuxLoading] = useState(true);
   const [persistTmuxSaveState, setPersistTmuxSaveState] = useState<SaveState>('idle');
   const [persistTmuxError, setPersistTmuxError] = useState<string | null>(null);
+  const [validationEnabled, setValidationEnabled] = useState(
+    () => project.validationEnabled === true,
+  );
+  const [validationLoading, setValidationLoading] = useState(true);
+  const [validationSaveState, setValidationSaveState] = useState<SaveState>('idle');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [tmuxAvailabilityMessage, setTmuxAvailabilityMessage] = useState<string | null>(null);
   const [tmuxPlatformSupported, setTmuxPlatformSupported] = useState(true);
   const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
@@ -368,9 +537,11 @@ function ProjectConfigPane({
   const [defaultTaskAgentError, setDefaultTaskAgentError] = useState<string | null>(null);
   const [planClaudeModel, setPlanClaudeModel] = useState('');
   const [planCursorModel, setPlanCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [planCodexModel, setPlanCodexModel] = useState('');
   const [planYolo, setPlanYolo] = useState(false);
   const [taskClaudeModel, setTaskClaudeModel] = useState('');
   const [taskCursorModel, setTaskCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [taskCodexModel, setTaskCodexModel] = useState('');
   const [taskYolo, setTaskYolo] = useState(false);
   const [planSpawnSaveState, setPlanSpawnSaveState] = useState<SaveState>('idle');
   const [planSpawnError, setPlanSpawnError] = useState<string | null>(null);
@@ -462,6 +633,7 @@ function ProjectConfigPane({
         ? (project.planningModels.cursor as string)
         : DEFAULT_CURSOR_AGENT_MODEL,
     );
+    setPlanCodexModel(project.planningModels?.codex ?? '');
     setPlanYolo(project.planningAgentYolo === true);
     setTaskClaudeModel(project.taskDefaultModels?.['claude-code'] ?? '');
     setTaskCursorModel(
@@ -469,6 +641,7 @@ function ProjectConfigPane({
         ? (project.taskDefaultModels.cursor as string)
         : DEFAULT_CURSOR_AGENT_MODEL,
     );
+    setTaskCodexModel(project.taskDefaultModels?.codex ?? '');
     setTaskYolo(project.defaultTaskAgentYolo === true);
   }, [
     project.id,
@@ -688,6 +861,37 @@ function ProjectConfigPane({
   }, [project.id]);
 
   useEffect(() => {
+    setValidationEnabled(project.validationEnabled === true);
+    setValidationSaveState('idle');
+    setValidationError(null);
+  }, [project.id, project.validationEnabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setValidationLoading(true);
+    setValidationError(null);
+    void window.electronAPI.project
+      .getValidationEnabled()
+      .then((enabled) => {
+        if (!cancelled) {
+          setValidationEnabled(enabled);
+          setValidationSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setValidationError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setValidationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
     let cancelled = false;
     setMcpConfigLoading(true);
     setMcpConfigError(null);
@@ -715,6 +919,37 @@ function ProjectConfigPane({
       cancelled = true;
     };
   }, [project.id]);
+
+  const handleValidationEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      setValidationEnabled(enabled);
+      setValidationSaveState('saving');
+      setValidationError(null);
+      try {
+        if (project.kind === 'cloud') {
+          await updateCloudProjectValidationEnabled(project.id, enabled);
+        }
+        const result = await window.electronAPI.project.setValidationEnabled(enabled);
+        if ('error' in result) {
+          setValidationSaveState('error');
+          setValidationError(result.error);
+          setValidationEnabled((prev) => !prev);
+          return;
+        }
+        setValidationEnabled(result.enabled);
+        setValidationSaveState('saved');
+        await onProjectAgentPrefsRefresh?.();
+        window.setTimeout(() => {
+          setValidationSaveState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+      } catch (err) {
+        setValidationSaveState('error');
+        setValidationError(err instanceof Error ? err.message : String(err));
+        setValidationEnabled((prev) => !prev);
+      }
+    },
+    [onProjectAgentPrefsRefresh, project],
+  );
 
   const handleWhenUnblockedChange = useCallback(async (enabled: boolean) => {
     setWhenUnblockedEnabled(enabled);
@@ -798,6 +1033,7 @@ function ProjectConfigPane({
       planningModels: {
         'claude-code': planClaudeModel,
         cursor: planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+        codex: planCodexModel,
       },
       planningAgentYolo: planYolo,
     };
@@ -812,7 +1048,7 @@ function ProjectConfigPane({
     window.setTimeout(() => {
       setPlanSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
     }, 1500);
-  }, [onProjectAgentPrefsRefresh, planClaudeModel, planCursorModel, planYolo]);
+  }, [onProjectAgentPrefsRefresh, planClaudeModel, planCursorModel, planCodexModel, planYolo]);
 
   const handleSaveTaskSpawnRow = useCallback(async () => {
     setTaskSpawnSaveState('saving');
@@ -821,6 +1057,7 @@ function ProjectConfigPane({
       taskDefaultModels: {
         'claude-code': taskClaudeModel,
         cursor: taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+        codex: taskCodexModel,
       },
       defaultTaskAgentYolo: taskYolo,
     };
@@ -835,7 +1072,7 @@ function ProjectConfigPane({
     window.setTimeout(() => {
       setTaskSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
     }, 1500);
-  }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskYolo]);
+  }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskCodexModel, taskYolo]);
 
   const handleAddMcpConfig = useCallback(async () => {
     setMcpConfigSaveState('saving');
@@ -1104,7 +1341,7 @@ function ProjectConfigPane({
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
         <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">
-          Project Config
+          Project
         </h1>
         <p className="mt-1 text-[13px] text-zinc-500">
           Configure how new task workspaces are created for {project.name}.
@@ -1169,8 +1406,8 @@ function ProjectConfigPane({
               title="Auto-accept agent trust prompts"
               description={
                 <>
-                  When on, Fluxx may answer the one-time trust dialog for Claude Code and Cursor only
-                  while the PTY working directory stays under this project’s{' '}
+                  When on, Fluxx may answer the one-time trust dialog for Claude Code, Cursor, and
+                  Codex only while the PTY working directory stays under this project’s{' '}
                   <code className="text-zinc-400">worktrees/</code>,{' '}
                   <code className="text-zinc-400">planning/</code>, or your{' '}
                   <code className="text-zinc-400">~/.fluxx/worktrees</code> tree. Agents you launch
@@ -1275,7 +1512,9 @@ function ProjectConfigPane({
                   <code className="text-zinc-400">tmux</code> on PATH. Fluxx will reattach
                   terminals on reopen when possible and fall back to agent resume for task/planning
                   agents if reattach fails. Turning on affects new terminals only; existing
-                  direct PTYs stay as-is until restarted. For cloud projects this preference is
+                  direct PTYs stay as-is until restarted. On macOS with tmux mouse mode,
+                  normal drag is handled by tmux; use Option+drag or Shift+drag to select
+                  terminal output for Cmd+C copy. For cloud projects this preference is
                   stored per machine (local binding).
                   {tmuxAvailabilityMessage ? (
                     <span className="mt-2 block text-amber-400/90">{tmuxAvailabilityMessage}</span>
@@ -1302,7 +1541,9 @@ function ProjectConfigPane({
             These apply to this project on this machine. Each row sets the default agent, the same
             model dropdown as tasks (choices follow the selected provider), and optional YOLO (
             <span className="font-mono text-zinc-400">--yolo</span> /{' '}
-            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span>). Agent
+            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span> /{' '}
+            <span className="font-mono text-zinc-400">--dangerously-bypass-approvals-and-sandbox</span>
+            ). Agent
             changes save immediately; use Save on the same row to persist models and YOLO for that
             flow.
           </p>
@@ -1316,7 +1557,7 @@ function ProjectConfigPane({
                 Planning assistant
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
-                Same defaults as the Planning panel. Codex ignores model/YOLO here.
+                Same defaults as the Planning panel.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
@@ -1345,25 +1586,22 @@ function ProjectConfigPane({
                   <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     Model
                   </span>
-                  {planningAgentValue === 'codex' ? (
-                    <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
-                      title="Model selection is not wired for Codex in this version."
-                    >
-                      Default model
-                    </span>
-                  ) : (
+                  {agentModelUiKindForAgent(planningAgentValue) ? (
                     <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
                       <AgentModelPicker
-                        kind={planningAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        kind={agentModelUiKindForAgent(planningAgentValue)!}
                         modelId={
                           planningAgentValue === 'cursor'
                             ? planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
-                            : planClaudeModel
+                            : planningAgentValue === 'codex'
+                              ? planCodexModel
+                              : planClaudeModel
                         }
                         onModelIdChange={(id) => {
                           if (planningAgentValue === 'cursor') {
                             setPlanCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else if (planningAgentValue === 'codex') {
+                            setPlanCodexModel(id.trim());
                           } else {
                             setPlanClaudeModel(id.trim());
                           }
@@ -1371,12 +1609,12 @@ function ProjectConfigPane({
                         aria-label="Planning default model"
                       />
                     </div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
                     className="text-[10px] text-zinc-500"
-                    title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                    title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
                   </span>
@@ -1424,7 +1662,7 @@ function ProjectConfigPane({
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
                 New tasks and{' '}
                 <code className="font-mono text-zinc-500">fluxx tasks create</code> when no agent is
-                given. Codex ignores model/YOLO here.
+                given.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
@@ -1453,25 +1691,22 @@ function ProjectConfigPane({
                   <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     Model
                   </span>
-                  {defaultTaskAgentValue === 'codex' ? (
-                    <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
-                      title="Model selection is not wired for Codex in this version."
-                    >
-                      Default model
-                    </span>
-                  ) : (
+                  {agentModelUiKindForAgent(defaultTaskAgentValue) ? (
                     <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
                       <AgentModelPicker
-                        kind={defaultTaskAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        kind={agentModelUiKindForAgent(defaultTaskAgentValue)!}
                         modelId={
                           defaultTaskAgentValue === 'cursor'
                             ? taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
-                            : taskClaudeModel
+                            : defaultTaskAgentValue === 'codex'
+                              ? taskCodexModel
+                              : taskClaudeModel
                         }
                         onModelIdChange={(id) => {
                           if (defaultTaskAgentValue === 'cursor') {
                             setTaskCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else if (defaultTaskAgentValue === 'codex') {
+                            setTaskCodexModel(id.trim());
                           } else {
                             setTaskClaudeModel(id.trim());
                           }
@@ -1479,12 +1714,12 @@ function ProjectConfigPane({
                         aria-label="Default task model"
                       />
                     </div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
                     className="text-[10px] text-zinc-500"
-                    title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                    title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
                   </span>
@@ -1756,6 +1991,44 @@ function ProjectConfigPane({
               </div>
             </>
           )}
+        </section>
+
+        <section
+          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="project-settings-experimental-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="project-settings-experimental-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Experimental
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              Early features that may change. Validation requires Playwright and a working Electron
+              dev launch on this machine.
+            </p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key={`${project.id}-validation-enabled`}
+              title="Validation Agents"
+              description={
+                <>
+                  When on, tasks can use validation runs, validator agents, and planning guidance
+                  for the Electron Playwright pack. When off, validation UI and{' '}
+                  <code className="text-zinc-400">fluxx validation</code> commands are disabled for
+                  this project. For cloud projects this setting is shared with your team.
+                </>
+              }
+              checked={validationEnabled}
+              onCheckedChange={(next) => void handleValidationEnabledChange(next)}
+              switchDisabled={validationLoading || validationSaveState === 'saving'}
+              loading={validationLoading}
+              saveState={validationSaveState}
+              error={validationError}
+            />
+          </div>
         </section>
       </div>
     </div>

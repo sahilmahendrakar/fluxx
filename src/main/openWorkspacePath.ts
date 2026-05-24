@@ -6,6 +6,7 @@ import { shell } from 'electron';
 import type { OpenWorkspaceTarget, Session } from '../types';
 import { discoverMacEditor } from './discoverMacEditor';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
+import { isValidatorSessionId } from './validatorSessionLifecycle';
 
 const execFile = promisify(execFileCallback);
 
@@ -320,7 +321,13 @@ export function pickSessionForTaskWorktree(
 ): Session | undefined {
   const tid = taskId.trim();
   const rid = repoId?.trim();
-  const candidates = sessions.filter((s) => s.taskId === tid && Boolean(s.worktreePath?.trim()));
+  const candidates = sessions.filter(
+    (s) =>
+      s.taskId === tid &&
+      Boolean(s.worktreePath?.trim()) &&
+      !isValidatorSessionId(s.id) &&
+      s.kind !== 'validator',
+  );
   if (candidates.length === 0) return undefined;
   if (!rid) return candidates[0];
   const exact = candidates.find((s) => s.repoId?.trim() === rid);

@@ -4,7 +4,11 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
 import { TaskStore } from './main/TaskStore';
-import { ProjectStore } from './main/ProjectStore';
+import { ProjectStore, ensurePlanningAssistantMarkdownFiles } from './main/ProjectStore';
+import {
+  VALIDATION_DISABLED_CODE,
+  VALIDATION_DISABLED_MESSAGE,
+} from './validation/validationEnabled';
 import {
   getPlanningInitStatus,
   planningDocsAreInitialized,
@@ -122,14 +126,50 @@ import {
 } from './main/agentConversationIdParse';
 import { PlanningAgentSessionRecordStore } from './main/planningAgentSessionRecords';
 import { TaskAgentSessionRecordStore } from './main/taskAgentSessionRecords';
+import { ValidationRunStore } from './main/ValidationRunStore';
+import {
+  openValidationArtifactExternally,
+  readValidationArtifactForUi,
+  readValidationVerdictForUi,
+} from './main/validationArtifactIpc';
+import {
+  getValidationPackById,
+  listValidationPacks,
+} from './validationPacks/registry';
+import { loadValidationPacksProjectConfig } from './validationPacks/projectConfig';
+import { resolveValidationPackInstructions } from './validationPacks/buildInstructions';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
+import { isAuxDevInstance } from './main/auxDevInstance';
 import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
 import type { TerminalRuntimeContext } from './main/TerminalRuntimeManager';
 import { composeTaskSessionInitialPrompt } from './main/composeTaskSessionInitialPrompt';
+import { createValidatorSessionLauncher } from './main/validatorSessionMain';
+import {
+  buildValidationTransitionHooks,
+  handleValidationRunFinalized,
+  type ValidationTransitionHooks,
+} from './main/validationTransitionHooks';
+import { broadcastValidationRunChanged } from './main/broadcastValidationRunChanged';
+import { reconcileActiveValidationRunsForTask } from './main/reconcileValidationRun';
+import {
+  completeValidatorSessionOnExit,
+  cancelValidatorSession,
+} from './main/startValidatorSession';
+import {
+  computeSessionExitTransition,
+  getValidatorSessionBinding,
+  hydrateValidatorSessionBindings,
+  isValidatorSessionId,
+} from './main/validatorSessionLifecycle';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
 import { listCursorAgentModels } from './main/listCursorAgentModels';
 import { openWorkspacePath, pickSessionForTaskWorktree, resolveTaskWorktreePath } from './main/openWorkspacePath';
@@ -224,6 +264,7 @@ import type {
   SessionStartOptions,
   SessionStartResult,
   Task,
+  TaskStatus,
   PlanningAgentSessionRecord,
   PlanningSession,
   Shell,
@@ -257,6 +298,7 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
+import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
 import { installMacApplicationMenu } from './main/macApplicationMenu';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
@@ -295,6 +337,9 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
     if (typeof pm.cursor === 'string') {
       next.cursor = pm.cursor;
     }
+    if (typeof pm.codex === 'string') {
+      next.codex = pm.codex;
+    }
     if (Object.keys(next).length > 0) {
       patch.planningModels = next;
     }
@@ -307,6 +352,9 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
     }
     if (typeof tm.cursor === 'string') {
       next.cursor = tm.cursor;
+    }
+    if (typeof tm.codex === 'string') {
+      next.codex = tm.codex;
     }
     if (Object.keys(next).length > 0) {
       patch.taskDefaultModels = next;
@@ -519,6 +567,14 @@ let appQuitTeardownComplete = false;
 /** When true, PTY exits during `teardownForAppQuit` are recorded as app-quit (cold resume). */
 let terminalQuitTeardownInProgress = false;
 
+/** Session exit hooks enqueue async record writes; `before-quit` awaits these. */
+const pendingSessionExitWork = new Set<Promise<void>>();
+
+/** Assigned during `app.whenReady`; used by `before-quit` to flush agent session records. */
+let taskAgentSessionRecordStore!: TaskAgentSessionRecordStore;
+let planningAgentSessionRecordStore!: PlanningAgentSessionRecordStore;
+let validationRunStore!: ValidationRunStore;
+
 const APP_QUIT_TERMINAL_TEARDOWN_MS = 3000;
 
 const createWindow = () => {
@@ -582,6 +638,7 @@ app.whenReady().then(async () => {
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();
+  const taskAutoTransitionNotify = registerTaskAutoTransitionNotificationIpc(appStateStore);
 
   const projectStore = new ProjectStore(fluxxBaseDir);
   const taskStore = new TaskStore('');
@@ -607,15 +664,38 @@ app.whenReady().then(async () => {
 
   const resolveRecordProjectDir = (): string =>
     worktreeService.getProjectDir()?.trim() || projectStore.getProjectDir()?.trim() || '';
-  const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
+  taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
-  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+  planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
   const terminalSessionRecordStore = new TerminalSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
+  validationRunStore = new ValidationRunStore({
+    getProjectDir: resolveRecordProjectDir,
+  });
+  let validationTransitionHooks: ValidationTransitionHooks | null = null;
+  let validatorBindingsHydrated = false;
+
+  async function ensureValidatorSessionBindingsHydrated(): Promise<void> {
+    if (validatorBindingsHydrated) return;
+    try {
+      const runs = await validationRunStore.listAll();
+      const live = await terminalBackend.listSessions();
+      hydrateValidatorSessionBindings(runs, live);
+      validatorBindingsHydrated = true;
+    } catch (err) {
+      console.warn('[validation] hydrate validator session bindings failed', err);
+    }
+  }
+
+  function annotateValidatorSessionKinds(sessions: Session[]): Session[] {
+    return sessions.map((s) =>
+      isValidatorSessionId(s.id) ? { ...s, kind: 'validator' as const } : s,
+    );
+  }
 
   async function buildTerminalInventorySnapshotForActiveProject(): Promise<TerminalInventorySnapshot> {
     const sessions = await terminalBackend.listSessions();
@@ -660,7 +740,6 @@ app.whenReady().then(async () => {
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
   const conversationAgentBySessionId = new Map<string, Agent>();
-  const pendingSessionExitWork = new Set<Promise<void>>();
 
   function trackSessionExitWork(work: Promise<void>): void {
     pendingSessionExitWork.add(work);
@@ -725,6 +804,7 @@ app.whenReady().then(async () => {
   }
 
   terminalBackend.setSessionPtyDataHook?.((payload) => {
+    if (isValidatorSessionId(payload.sessionId)) return;
     captureAgentConversationIdFromPty(payload.sessionId, payload.agent, payload.data, (parsed) => {
       void taskAgentSessionRecordStore.mergeConversationId(payload.sessionId, parsed);
       void terminalSessionRecordStore.mergeTaskConversationId(payload.sessionId, parsed);
@@ -751,6 +831,7 @@ app.whenReady().then(async () => {
   }
 
   async function applyAgentState(sessionId: string, state: AgentState): Promise<void> {
+    if (isValidatorSessionId(sessionId)) return;
     // Only handle the silent transition. needs-input → in-progress is
     // triggered exclusively by session:write (user submitting a query).
     if (state !== 'silent') return;
@@ -768,6 +849,12 @@ app.whenReady().then(async () => {
       console.log('[task:status] in-progress → needs-input (silence detected, local)', { taskId });
       await taskStore.update(taskId, { status: 'needs-input' });
       broadcastLocalTasksChanged();
+      taskAutoTransitionNotify.dispatch({
+        taskTitle: task.title,
+        previousStatus: 'in-progress',
+        nextStatus: 'needs-input',
+        reason: 'agent-silence',
+      });
     }
   }
 
@@ -787,6 +874,27 @@ app.whenReady().then(async () => {
     onSilenceStatesSnapshot: reconcileSilenceStatesFromTerminal,
     onSessionExit: (session) => {
       trackSessionExitWork((async () => {
+        const validatorBinding = getValidatorSessionBinding(session.id);
+        if (validatorBinding) {
+          const finalized = await completeValidatorSessionOnExit(
+            { validationRunStore, terminalBackend },
+            session,
+            validatorBinding.runId,
+          );
+          await handleValidationRunFinalized(
+            finalized,
+            validationTransitionHooks,
+            'validator:session-exit',
+          );
+          await terminalSessionRecordStore.markTerminalEnded(session.id, {
+            reason: mapSessionExitToTerminalReason(session, terminalQuitTeardownInProgress),
+            endedAt: session.stoppedAt,
+          });
+          scheduleConversationCaptureCleanup(session.id);
+          broadcastValidationRunChanged(validatorBinding.runId);
+          return;
+        }
+
         const endReason = terminalQuitTeardownInProgress
           ? ('app-quit' as const)
           : session.status === 'stopped'
@@ -806,19 +914,31 @@ app.whenReady().then(async () => {
         const project = projectStore.get();
         if (!project) return;
 
-        if (session.status === 'stopped') {
-          const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-          if (task && task.status === 'in-progress') {
-            console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
-              taskId,
+        const transition = computeSessionExitTransition(
+          session,
+          sessionTaskMap,
+          (id) => taskStore.getAll(project.id).find((t) => t.id === id),
+        );
+        if (transition.action === 'transition') {
+          const task = taskStore.getAll(project.id).find((t) => t.id === transition.taskId);
+          console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
+            taskId: transition.taskId,
+          });
+          await taskStore.update(transition.taskId, { status: 'needs-input' });
+          broadcastLocalTasksChanged();
+          if (task) {
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: task.title,
+              previousStatus: 'in-progress',
+              nextStatus: 'needs-input',
+              reason: 'agent-exited',
             });
-            await taskStore.update(taskId, { status: 'needs-input' });
-            broadcastLocalTasksChanged();
           }
         } else if (session.status === 'error') {
           console.warn('[task:status] agent exited with error, not transitioning task', {
             taskId,
             sessionId: session.id,
+            reason: transition.reason,
           });
         }
       })());
@@ -1225,6 +1345,7 @@ app.whenReady().then(async () => {
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
     const localTerminalBackend = localTerminalBackendFrom(terminalBackend);
     if (!localTerminalBackend) return;
+    if (isAuxDevInstance()) return;
     await syncTerminalRuntimeContext();
     if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
 
@@ -1532,6 +1653,41 @@ app.whenReady().then(async () => {
     const fromWorktree = worktreeService.getProjectDir();
     if (fromWorktree) return fromWorktree;
     throw new Error('No active project');
+  }
+
+  async function refreshPlanningAssistantForValidationToggle(
+    enabled: boolean,
+  ): Promise<void> {
+    const projectDir = activeProjectDir();
+    const config = await projectStore.readStoredProjectConfig(projectDir);
+    const repos = await projectStore.getReposAt(projectDir);
+    const planningRoot =
+      repos[0]?.rootPath ?? config?.rootPath ?? projectDir;
+    const projectName = config?.name ?? projectStore.get()?.name ?? 'Project';
+    await ensurePlanningAssistantMarkdownFiles(
+      path.join(projectDir, 'planning'),
+      projectName,
+      planningRoot,
+      {
+        multiRepoGuide: repos.length > 1,
+        validationEnabled: enabled === true,
+      },
+    );
+  }
+
+  async function requireValidationEnabledIpc(): Promise<
+    { error: string; code: typeof VALIDATION_DISABLED_CODE } | null
+  > {
+    try {
+      const enabled = await projectStore.getValidationEnabledAt(activeProjectDir());
+      if (!enabled) {
+        return { error: VALIDATION_DISABLED_MESSAGE, code: VALIDATION_DISABLED_CODE };
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { error: message, code: VALIDATION_DISABLED_CODE };
+    }
+    return null;
   }
 
   const terminalRuntimeContext: TerminalRuntimeContext = {
@@ -2453,6 +2609,30 @@ app.whenReady().then(async () => {
           enabled,
         );
         await syncTerminalRuntimeContext();
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle('project:getValidationEnabled', async () => {
+    try {
+      return await projectStore.getValidationEnabledAt(activeProjectDir());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(message);
+    }
+  });
+  ipcMain.handle(
+    'project:setValidationEnabled',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const next = await projectStore.setValidationEnabledAt(
+          activeProjectDir(),
+          enabled === true,
+        );
+        await refreshPlanningAssistantForValidationToggle(next);
         return { ok: true, enabled: next };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -3456,8 +3636,8 @@ app.whenReady().then(async () => {
     const project = projectStore.get();
     if (project) {
       const task = taskStore.getAll(project.id).find((t) => t.id === taskId);
-      if (task?.status === 'needs-input' || task?.status === 'review') {
-        console.log('[task:status] needs-input/review → in-progress (user submitted query, local)', {
+      if (task?.status === 'needs-input' || task?.status === 'review' || task?.status === 'validation') {
+        console.log('[task:status] needs-input/review/validation → in-progress (user submitted query, local)', {
           taskId,
           from: task.status,
         });
@@ -3777,6 +3957,12 @@ app.whenReady().then(async () => {
               'pr:mergedRefresh',
             );
             broadcastLocalTasksChanged();
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: rowForAuto.title,
+              previousStatus: rowForAuto.status,
+              nextStatus: 'done',
+              reason: 'pr-merged',
+            });
           } catch (err) {
             console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
           }
@@ -3797,6 +3983,12 @@ app.whenReady().then(async () => {
                 'github-pr:refresh-open',
               );
               broadcastLocalTasksChanged();
+              taskAutoTransitionNotify.dispatch({
+                taskTitle: rowForAuto.title,
+                previousStatus: rowForAuto.status,
+                nextStatus: 'review',
+                reason: 'pr-opened',
+              });
             } catch (err: unknown) {
               console.warn('[github-pr:auto-review] move after refresh failed', taskId, err);
             }
@@ -4637,20 +4829,39 @@ app.whenReady().then(async () => {
       },
       startSession: (task, all) => startSessionForTask(task, all),
       moveBacklogToInProgress: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
         );
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
       },
       moveBacklogToInProgressThenStartSessionWithoutImplicitInProg: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
           { skipInProgressAutostart: true },
         );
-        const p = projectStore.get();
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
         if (!p) return;
         const all = taskStore.getAll(p.id);
         const fresh = all.find((t) => t.id === id);
@@ -4791,6 +5002,7 @@ app.whenReady().then(async () => {
 
     const updated = await taskStore.update(id, patchToApply);
     await maybeAutoStartSessionOnInProgressTransition(previous, updated, source, options);
+    await validationTransitionHooks?.onEnteredValidation(previous, updated, source);
     if (updated.status === 'done' && previous.status !== 'done') {
       await processDependentsUnblockedAfterBlockerDone(previous, updated, source);
     }
@@ -4969,8 +5181,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:getAll', async () => {
+    await ensureValidatorSessionBindingsHydrated();
     const project = projectStore.get();
-    const live = await terminalBackend.listSessions();
+    const live = annotateValidatorSessionKinds(await terminalBackend.listSessions());
     if (!project) return live;
     const forProject = live.filter((s) => s.projectId === project.id);
     const liveIds = new Set(forProject.map((s) => s.id));
@@ -4987,7 +5200,10 @@ app.whenReady().then(async () => {
       { excludeFluxxSessionIds: liveIds },
     );
     const otherProjects = live.filter((s) => s.projectId !== project.id);
-    return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+    return annotateValidatorSessionKinds([
+      ...otherProjects,
+      ...mergeTaskSessionsWithColdResume(forProject, cold),
+    ]);
   });
 
   ipcMain.handle('sessions:isRestoreComplete', async () => terminalRestoreComplete);
@@ -5125,6 +5341,44 @@ app.whenReady().then(async () => {
       worktreeService.getProjectDir(),
     );
 
+  const launchValidatorSession = createValidatorSessionLauncher({
+    validationRunStore,
+    terminalBackend,
+    listTerminalSessions: () => terminalBackend.listSessions(),
+    getRecordProjectDir: resolveRecordProjectDir,
+    getProject: () => projectStore.get(),
+    getValidationEnabled: async () => {
+      const dir = resolveRecordProjectDir()?.trim();
+      if (!dir) return false;
+      try {
+        return await projectStore.getValidationEnabledAt(dir);
+      } catch {
+        return false;
+      }
+    },
+    getActiveProjectKey: () => appStateStore.get().activeProjectKey,
+    getFluxAutomation: () => ({
+      server: fluxAutomationServer,
+      token: fluxAutomationToken,
+    }),
+  });
+
+  validationTransitionHooks = buildValidationTransitionHooks({
+    validationRunStore,
+    launchValidatorSession,
+    projectStore,
+    taskStore,
+    terminalBackend,
+    getRecordProjectDir: resolveRecordProjectDir,
+    getActiveProjectKey: () => appStateStore.get().activeProjectKey,
+    bridge: automationRendererBridge,
+    updateLocalTask: (id, patch, source) => updateTaskWithTransitionHandling(id, patch, source),
+    broadcastLocalTasksChanged,
+    ensureValidatorBindingsHydrated: ensureValidatorSessionBindingsHydrated,
+  });
+
+  void ensureValidatorSessionBindingsHydrated();
+
   fluxAutomationHostDeps = {
     taskStore,
     projectStore,
@@ -5132,7 +5386,15 @@ app.whenReady().then(async () => {
     bindingStore,
     deviceStore,
     bridge: automationRendererBridge,
+    validationRunStore,
+    listTerminalSessions: () => terminalBackend.listSessions(),
+    getRecordProjectDir: resolveRecordProjectDir,
     getMainWindow: () => mainWindow,
+    notifyValidationRunChanged: (runId) => broadcastValidationRunChanged(runId),
+    launchValidatorSession,
+    onValidationRunFinalized: async (run, source) => {
+      await validationTransitionHooks?.onRunPassed(run, source);
+    },
     taskActions: {
       updateTask: (id, patch) =>
         updateTaskWithTransitionHandling(id, patch, 'cli:fluxx tasks update'),
@@ -5368,10 +5630,16 @@ app.whenReady().then(async () => {
       const { ensurePlanningAssistantMarkdownFiles } = await import(
         './main/ProjectStore'
       );
+      const planningRepos = await projectStore.getReposAt(projectDir);
+      const validationEnabled = await projectStore.getValidationEnabledAt(projectDir);
       await ensurePlanningAssistantMarkdownFiles(
         planningDir,
         project.name,
-        project.rootPath,
+        planningRepos[0]?.rootPath ?? project.rootPath,
+        {
+          multiRepoGuide: planningRepos.length > 1,
+          validationEnabled,
+        },
       );
 
       const spawnModel = resumeRecord?.agentModel?.trim()
@@ -5584,6 +5852,306 @@ app.whenReady().then(async () => {
         if (!s || s.projectId !== pid) return;
         terminalBackend.resizePlanning(sessionId, cols, rows);
       })();
+    },
+  );
+
+  ipcMain.handle(
+    'validationTasks:onEnteredValidation',
+    async (
+      _e,
+      payload: { previousStatus?: TaskStatus; task?: Task },
+    ) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      const task = payload?.task;
+      const previousStatus = payload?.previousStatus;
+      if (!task || typeof task.id !== 'string' || !previousStatus) {
+        return { error: 'previousStatus and task are required' };
+      }
+      if (task.status !== 'validation') {
+        return { ok: true as const };
+      }
+      try {
+        await validationTransitionHooks?.onEnteredValidation(
+          { ...task, status: previousStatus },
+          task,
+          'ipc:validationTasks:onEnteredValidation',
+        );
+        return { ok: true as const };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:launchValidator',
+    async (_e, payload: { runId?: string; task?: Task }) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      const runId = payload?.runId?.trim();
+      const task = payload?.task;
+      if (!runId) return { error: 'runId is required' };
+      if (!task || typeof task.id !== 'string') return { error: 'task is required' };
+      try {
+        const launched = await launchValidatorSession({ task, runId });
+        if (!launched.ok) {
+          const errored = await validationRunStore.updateStatus({
+            runId,
+            status: 'errored',
+            verdictReason: launched.error,
+          });
+          broadcastValidationRunChanged(runId);
+          return { error: launched.error, run: errored };
+        }
+        broadcastValidationRunChanged(runId);
+        return {
+          ok: true as const,
+          run: launched.run,
+          validatorSessionId: launched.sessionId,
+        };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:cancelValidator',
+    async (_e, payload: { runId?: string; sessionId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const sessionId = payload?.sessionId?.trim();
+      if (!runId || !sessionId) {
+        return { error: 'runId and sessionId are required' };
+      }
+      try {
+        const run = await cancelValidatorSession(
+          { validationRunStore, terminalBackend, runId, sessionId },
+        );
+        broadcastValidationRunChanged(runId);
+        return { ok: true as const, run };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:create',
+    async (_e, input: ValidationRunCreateInput) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      try {
+        const run = await validationRunStore.create(input);
+        broadcastValidationRunChanged(run.id);
+        return { ok: true as const, run };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:updateStatus',
+    async (_e, patch: ValidationRunStatusUpdate) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      try {
+        const run = await validationRunStore.updateStatus(patch);
+        broadcastValidationRunChanged(patch.runId);
+        return { ok: true as const, run };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('validationRuns:listForTask', async (_e, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.trim().length === 0) {
+      return { error: 'Invalid task id' };
+    }
+    try {
+      await ensureValidatorSessionBindingsHydrated();
+      const before = await validationRunStore.listForTask(taskId.trim());
+      const runs = await reconcileActiveValidationRunsForTask(
+        { validationRunStore, terminalBackend },
+        taskId.trim(),
+        'ipc:validationRuns:listForTask',
+      );
+      const latestBefore = before[0];
+      const latestAfter = runs[0];
+      if (
+        latestBefore &&
+        latestAfter &&
+        latestBefore.id === latestAfter.id &&
+        latestBefore.status !== latestAfter.status
+      ) {
+        broadcastValidationRunChanged(latestAfter.id);
+      }
+      return { ok: true as const, runs };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle('validationRuns:get', async (_e, runId: string) => {
+    if (typeof runId !== 'string' || runId.trim().length === 0) {
+      return { error: 'Invalid run id' };
+    }
+    try {
+      const run = await validationRunStore.get(runId.trim());
+      if (!run) return { error: 'Validation run not found' };
+      return { ok: true as const, run };
+    } catch (err) {
+      return {
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  ipcMain.handle(
+    'validationRuns:readArtifact',
+    async (_e, payload: { runId?: string; artifactId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const artifactId = payload?.artifactId?.trim();
+      if (!runId || !artifactId) {
+        return { ok: false as const, error: 'runId and artifactId are required', code: 'NOT_FOUND' as const };
+      }
+      try {
+        return await readValidationArtifactForUi(validationRunStore, runId, artifactId);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+          code: 'UNREADABLE' as const,
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'validationRuns:openArtifact',
+    async (_e, payload: { runId?: string; artifactId?: string }) => {
+      const runId = payload?.runId?.trim();
+      const artifactId = payload?.artifactId?.trim();
+      if (!runId || !artifactId) {
+        return { ok: false as const, error: 'runId and artifactId are required', code: 'NOT_FOUND' as const };
+      }
+      try {
+        return await openValidationArtifactExternally(validationRunStore, runId, artifactId);
+      } catch (err) {
+        return {
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+          code: 'OPEN_FAILED' as const,
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('validationRuns:readVerdict', async (_e, runIdRaw: unknown) => {
+    const runId = typeof runIdRaw === 'string' ? runIdRaw.trim() : '';
+    if (!runId) {
+      return { ok: false as const, error: 'Invalid run id', code: 'NOT_FOUND' as const };
+    }
+    try {
+      return await readValidationVerdictForUi(validationRunStore, runId);
+    } catch (err) {
+      return {
+        ok: false as const,
+        error: err instanceof Error ? err.message : String(err),
+        code: 'UNREADABLE' as const,
+      };
+    }
+  });
+
+  ipcMain.handle(
+    'validationRuns:registerArtifact',
+    async (_e, input: ValidationArtifactRegisterInput) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      try {
+        const run = await validationRunStore.registerArtifact(input);
+        broadcastValidationRunChanged(input.runId);
+        return { ok: true as const, run };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('validationPacks:list', async () => {
+    const gate = await requireValidationEnabledIpc();
+    if (gate) return gate;
+    try {
+      return { ok: true as const, packs: listValidationPacks() };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('validationPacks:get', async (_e, packId: string) => {
+    const gate = await requireValidationEnabledIpc();
+    if (gate) return gate;
+    if (typeof packId !== 'string' || packId.trim().length === 0) {
+      return { error: 'Invalid pack id' };
+    }
+    try {
+      const pack = getValidationPackById(packId.trim());
+      if (!pack) return { error: `Validation pack not found: ${packId}` };
+      return {
+        ok: true as const,
+        pack: {
+          id: pack.manifest.id,
+          displayName: pack.manifest.displayName,
+          description: pack.manifest.description,
+          supportedArtifactKinds: pack.manifest.supportedArtifactKinds,
+          defaultInstructions: pack.manifest.defaultInstructions,
+          verdictSchemaJson: pack.verdictSchemaJson,
+          skillMarkdown: pack.skillMarkdown,
+        },
+      };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(
+    'validationPacks:resolveInstructions',
+    async (_e, payload: { packId: string; projectDir?: string }) => {
+      const gate = await requireValidationEnabledIpc();
+      if (gate) return gate;
+      if (typeof payload?.packId !== 'string' || payload.packId.trim().length === 0) {
+        return { error: 'Invalid pack id' };
+      }
+      try {
+        const pack = getValidationPackById(payload.packId.trim());
+        if (!pack) return { error: `Validation pack not found: ${payload.packId}` };
+        const projectDir = payload.projectDir?.trim();
+        const projectConfig = projectDir
+          ? loadValidationPacksProjectConfig(projectDir, pack.manifest.id)
+          : undefined;
+        return {
+          ok: true as const,
+          resolved: resolveValidationPackInstructions(pack, projectConfig),
+        };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
     },
   );
 
@@ -6038,6 +6606,9 @@ app.whenReady().then(async () => {
         }
         await taskAgentSessionRecordStore.whenWriteIdle();
         await planningAgentSessionRecordStore.whenWriteIdle();
+        if (validationRunStore) {
+          await validationRunStore.whenWriteIdle();
+        }
 
         appQuitTeardownComplete = true;
         app.quit();

@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
 
+export type ConfirmDialogDontShowAgain = {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+};
+
 interface ConfirmDialogProps {
   title: string;
   description: string;
@@ -7,6 +13,7 @@ interface ConfirmDialogProps {
   confirmLabel: string;
   cancelLabel?: string;
   destructive?: boolean;
+  dontShowAgain?: ConfirmDialogDontShowAgain;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,6 +25,7 @@ export default function ConfirmDialog({
   confirmLabel,
   cancelLabel = 'Cancel',
   destructive = false,
+  dontShowAgain,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -56,6 +64,17 @@ export default function ConfirmDialog({
               </li>
             ))}
           </ul>
+        ) : null}
+        {dontShowAgain ? (
+          <label className="mt-4 flex cursor-pointer items-center gap-2 text-[13px] text-zinc-400">
+            <input
+              type="checkbox"
+              checked={dontShowAgain.checked}
+              onChange={(e) => dontShowAgain.onChange(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.04] text-zinc-100 accent-zinc-200"
+            />
+            <span>{dontShowAgain.label}</span>
+          </label>
         ) : null}
         <div className="mt-6 flex justify-end gap-2 border-t border-white/[0.06] pt-4">
           <button

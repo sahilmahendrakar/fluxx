@@ -43,6 +43,7 @@ import {
   DEFAULT_AUTO_START_WHEN_UNBLOCKED,
   DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
 } from '../cloudBindingPrefs';
+import { normalizeValidationEnabled } from '../validation/validationEnabled';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
 import type { ProjectPlanningDefaultsInput } from '../projectCreate';
 
@@ -71,6 +72,7 @@ export interface ConfigFile {
   persistTerminalsWithTmux?: boolean;
   defaultDeviceId?: string;
   remoteRepoBindings?: RemoteRepoBindingsByDevice;
+  validationEnabled?: boolean;
   repos: RepoConfig[];
 }
 
@@ -106,6 +108,9 @@ function parseAgentSessionModelDefaultsField(raw: unknown): AgentSessionModelDef
   if (typeof o.cursor === 'string') {
     out.cursor = o.cursor;
   }
+  if (typeof o.codex === 'string') {
+    out.codex = o.codex;
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -125,6 +130,7 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     autoMarkDoneWhenPrMerged: c.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: c.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: c.persistTerminalsWithTmux === true,
+    validationEnabled: normalizeValidationEnabled(c.validationEnabled),
     repos: c.repos,
   };
   if (typeof c.defaultDeviceId === 'string' && c.defaultDeviceId.trim()) {
@@ -299,6 +305,9 @@ function parseConfig(raw: string): ConfigFile | null {
     autoMarkDoneWhenPrMerged: p.autoMarkDoneWhenPrMerged === true,
     autoMoveToReviewWhenPrOpen: p.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: p.persistTerminalsWithTmux === true,
+    validationEnabled: normalizeValidationEnabled(
+      (p as { validationEnabled?: unknown }).validationEnabled,
+    ),
     repos,
     ...(typeof p.defaultDeviceId === 'string' && p.defaultDeviceId.trim()
       ? { defaultDeviceId: p.defaultDeviceId.trim() }
@@ -863,6 +872,33 @@ export class ProjectStore {
     return parsed.defaultDeviceId;
   }
 
+  async getValidationEnabledAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return normalizeValidationEnabled(parsed.validationEnabled);
+  }
+
+  async setValidationEnabledAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      validationEnabled: enabled === true,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return normalizeValidationEnabled(next.validationEnabled);
+  }
+
   async getRemoteRepoBindingsAt(projectDir: string): Promise<RemoteRepoBindingsByDevice | undefined> {
     const configPath = path.join(projectDir, 'config.json');
     const raw = await fs.readFile(configPath, 'utf8');
@@ -1093,6 +1129,7 @@ export class ProjectStore {
           autoMoveToReviewWhenPrOpen:
             defaults.autoMoveToReviewWhenPrOpen ?? DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
           persistTerminalsWithTmux: DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
+          validationEnabled: false,
           repos,
           ...(defaults.planningModels && Object.keys(defaults.planningModels).length > 0
             ? { planningModels: defaults.planningModels }
@@ -1111,7 +1148,7 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       name,
       planningContextRoot,
-      { multiRepoGuide: repos.length > 1 },
+      { multiRepoGuide: repos.length > 1, validationEnabled: false },
     );
 
     const project = configToLocalProject(config);
@@ -1153,7 +1190,10 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       config.name,
       planningRoot,
-      { multiRepoGuide: config.repos.length > 1 },
+      {
+        multiRepoGuide: config.repos.length > 1,
+        validationEnabled: normalizeValidationEnabled(config.validationEnabled),
+      },
     );
 
     return { projectDir, project: configToLocalProject(config) };
@@ -1359,6 +1399,10 @@ export class ProjectStore {
       path.join(projectDir, 'planning'),
       projectName,
       resolvedRoot,
+      {
+        multiRepoGuide: config.repos.length > 1,
+        validationEnabled: normalizeValidationEnabled(config.validationEnabled),
+      },
     );
 
     return { projectDir, project: configToLocalProject(config) };

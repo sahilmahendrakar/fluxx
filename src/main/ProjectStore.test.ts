@@ -42,6 +42,7 @@ async function writeLegacyConfig(
     autoCleanupWorkspaceWhenDone: false,
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
+    validationEnabled: false,
     repos: [{ rootPath, baseBranch: 'develop', setupScript: 'echo hi', env: 'X=1' }],
     ...body,
   };
@@ -720,12 +721,12 @@ describe('ensurePlanningAssistantMarkdownFiles (multi-repo2 planning copy)', () 
     });
     expect((await fs.stat(path.join(dir, 'docs'))).isDirectory()).toBe(true);
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('<!-- fluxx-planning-template 5 -->');
+    expect(claude).toContain(`<!-- fluxx-planning-template ${PLANNING_ASSISTANT_TEMPLATE_VERSION} -->`);
     expect(claude).toContain('## Multi-task features (required)');
     expect(claude).toContain('fluxx project info --json');
     expect(claude).toContain('repos[]');
     expect(claude).toContain('--repo-id');
-    expect(claude).toContain('do **not** create a `FLUXX_BIN` variable');
+    expect(claude).toContain('FLUXX_BIN');
     expect(claude).not.toContain('flux__');
   });
 
@@ -761,7 +762,7 @@ Planning sessions inject bridge env.
     });
 
     const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('<!-- fluxx-planning-template 5 -->');
+    expect(claude).toContain(`<!-- fluxx-planning-template ${PLANNING_ASSISTANT_TEMPLATE_VERSION} -->`);
     expect(claude).toContain('## Multi-task features (required)');
     expect(claude).toContain('--depends-on-task-id');
   });
@@ -822,7 +823,7 @@ You have access to the following Flux tools for task management:
 
   it('upgrades legacy unwrapped templates to wrapped managed blocks', async () => {
     const legacy = stripFluxPlanningTemplateVersionComment(
-      planningAssistantMarkdown('Legacy', '/other/root', true),
+      planningAssistantMarkdown('Legacy', '/other/root', true, false),
     );
     await fs.writeFile(path.join(dir, 'CLAUDE.md'), legacy, 'utf8');
     await fs.writeFile(path.join(dir, 'AGENTS.md'), legacy, 'utf8');
@@ -854,12 +855,34 @@ You have access to the following Flux tools for task management:
   it('upgrades only the Flux template file when CLAUDE is manual and AGENTS is legacy', async () => {
     await fs.writeFile(path.join(dir, 'CLAUDE.md'), 'manual-only', 'utf8');
     const legacyAgents = stripFluxPlanningTemplateVersionComment(
-      planningAssistantMarkdown('Split', '/tmp/s', true),
+      planningAssistantMarkdown('Split', '/tmp/s', true, false),
     );
     await fs.writeFile(path.join(dir, 'AGENTS.md'), legacyAgents, 'utf8');
     await ensurePlanningAssistantMarkdownFiles(dir, 'Split', '/tmp/s', { multiRepoGuide: true });
     expect(await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8')).toBe('manual-only');
     const agents = await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8');
     expect(agents).toContain(FLUXX_PLANNING_INSTRUCTIONS_BEGIN);
+  });
+
+  it('includes validation guidance when validationEnabled is true', async () => {
+    await ensurePlanningAssistantMarkdownFiles(dir, 'ValOn', '/tmp/v', {
+      multiRepoGuide: false,
+      validationEnabled: true,
+    });
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(claude).toContain('## Validation (electron-playwright)');
+    expect(claude).toContain('fluxx validation run');
+    expect(claude).toContain('validationEnabled');
+  });
+
+  it('omits validation guidance when validationEnabled is false', async () => {
+    await ensurePlanningAssistantMarkdownFiles(dir, 'ValOff', '/tmp/v', {
+      multiRepoGuide: false,
+      validationEnabled: false,
+    });
+    const claude = await fs.readFile(path.join(dir, 'CLAUDE.md'), 'utf8');
+    expect(claude).not.toContain('## Validation (electron-playwright)');
+    expect(claude).not.toContain('fluxx validation run');
+    expect(claude).toContain('validationEnabled');
   });
 });

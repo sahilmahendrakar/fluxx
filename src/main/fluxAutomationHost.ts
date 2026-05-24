@@ -21,6 +21,8 @@ import type { LocalBindingStore } from './LocalBindingStore';
 import type { ProjectStore } from './ProjectStore';
 import type { RendererAutomationBridge, AutomationBridgeResult } from './RendererAutomationBridge';
 import type { TaskStore } from './TaskStore';
+import type { ValidationRunStore } from './ValidationRunStore';
+import type { Session } from '../types';
 import { repoDisplayLabel, resolvePrimaryRepoIdFromList } from '../repoIdentity';
 
 export type FluxAutomationHostDeps = {
@@ -30,7 +32,22 @@ export type FluxAutomationHostDeps = {
   bindingStore: LocalBindingStore;
   deviceStore: DeviceStore;
   bridge: RendererAutomationBridge;
+  validationRunStore: ValidationRunStore;
+  listTerminalSessions: () => Promise<Session[]>;
+  getRecordProjectDir: () => string;
   getMainWindow: () => BrowserWindow | null;
+  notifyValidationRunChanged?: (runId: string) => void;
+  launchValidatorSession?: (input: {
+    task: import('../types').Task;
+    runId: string;
+  }) => Promise<
+    | { ok: true; run: import('../validationRuns/types').ValidationRun; sessionId: string }
+    | { ok: false; error: string }
+  >;
+  onValidationRunFinalized?: (
+    run: import('../validationRuns/types').ValidationRun,
+    source: string,
+  ) => Promise<void>;
   taskActions: {
     updateTask: (
       id: string,
@@ -157,6 +174,18 @@ export function createFluxAutomationHost(deps: FluxAutomationHostDeps): FluxAuto
     bindingStore: deps.bindingStore,
     deviceStore: deps.deviceStore,
     getActiveProjectKey: () => deps.appStateStore.get().activeProjectKey,
+    validationRunStore: deps.validationRunStore,
+    listTerminalSessions: deps.listTerminalSessions,
+    getRecordProjectDir: deps.getRecordProjectDir,
+    ...(deps.notifyValidationRunChanged
+      ? { notifyValidationRunChanged: deps.notifyValidationRunChanged }
+      : {}),
+    ...(deps.launchValidatorSession
+      ? { launchValidatorSession: deps.launchValidatorSession }
+      : {}),
+    ...(deps.onValidationRunFinalized
+      ? { onValidationRunFinalized: deps.onValidationRunFinalized }
+      : {}),
     taskActions: deps.taskActions,
     bridgeFailureToInvoke: (result: Extract<AutomationBridgeResult<unknown>, { ok: false }>) =>
       automationBridgeFailureToInvoke(result),

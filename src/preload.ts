@@ -28,6 +28,7 @@ import type {
   DeviceProbeResult,
   ExecutionDeviceUpdateInput,
   SshExecutionDeviceUpsertInput,
+  TaskStatus,
   TaskGithubPr,
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentPayload,
@@ -65,6 +66,17 @@ import type {
 } from './planningDocs/types';
 import { ipcSubscribe } from './ipcSubscribe';
 import type { AppUpdateState } from './appUpdateState';
+import type {
+  ValidationPackDetail,
+  ValidationPackResolvedInstructions,
+  ValidationPackSummary,
+} from './validationPacks/types';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRun,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 
 type PlanningStartResult = PlanningSession | { error: string; message?: string };
 
@@ -264,6 +276,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:getDefaultDeviceId') as Promise<string | null>,
     setDefaultDeviceId: (deviceId: string | null) =>
       ipcRenderer.invoke('project:setDefaultDeviceId', deviceId) as Promise<string | null>,
+    getValidationEnabled: () =>
+      ipcRenderer.invoke('project:getValidationEnabled') as Promise<boolean>,
+    setValidationEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setValidationEnabled', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
   },
   terminal: {
     inventorySnapshot: () =>
@@ -765,6 +783,85 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listModels: () =>
       ipcRenderer.invoke('cursor:listAgentModels') as Promise<ListCursorAgentModelsResult>,
   },
+  validationRuns: {
+    create: (input: ValidationRunCreateInput) =>
+      ipcRenderer.invoke('validationRuns:create', input) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    updateStatus: (patch: ValidationRunStatusUpdate) =>
+      ipcRenderer.invoke('validationRuns:updateStatus', patch) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    listForTask: (taskId: string) =>
+      ipcRenderer.invoke('validationRuns:listForTask', taskId) as Promise<
+        { ok: true; runs: ValidationRun[] } | { error: string }
+      >,
+    get: (runId: string) =>
+      ipcRenderer.invoke('validationRuns:get', runId) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    readArtifact: (payload: { runId: string; artifactId: string }) =>
+      ipcRenderer.invoke('validationRuns:readArtifact', payload) as Promise<
+        | { ok: true; encoding: 'utf8'; content: string }
+        | { ok: true; encoding: 'base64'; content: string; mimeType: string }
+        | { ok: false; error: string; code: string }
+      >,
+    openArtifact: (payload: { runId: string; artifactId: string }) =>
+      ipcRenderer.invoke('validationRuns:openArtifact', payload) as Promise<
+        { ok: true } | { ok: false; error: string; code: string }
+      >,
+    readVerdict: (runId: string) =>
+      ipcRenderer.invoke('validationRuns:readVerdict', runId) as Promise<
+        | {
+            ok: true;
+            verdict: {
+              summary: string;
+              risks?: string[];
+              checks?: { name: string; status: string }[];
+            };
+          }
+        | { ok: false; error: string; code: string }
+      >,
+    registerArtifact: (input: ValidationArtifactRegisterInput) =>
+      ipcRenderer.invoke('validationRuns:registerArtifact', input) as Promise<
+        { ok: true; run: ValidationRun } | { error: string }
+      >,
+    launchValidator: (payload: { runId: string; task: Task }) =>
+      ipcRenderer.invoke('validationRuns:launchValidator', payload) as Promise<
+        | { ok: true; run: ValidationRun; validatorSessionId: string }
+        | { error: string }
+      >,
+    cancelValidator: (payload: { runId: string; sessionId: string }) =>
+      ipcRenderer.invoke('validationRuns:cancelValidator', payload) as Promise<
+        { ok: true; run: ValidationRun | null } | { error: string }
+      >,
+    onChanged: (cb: (payload: { runId: string }) => void) => {
+      const channel = 'validationRuns:changed';
+      const handler = (_e: Electron.IpcRendererEvent, payload: { runId: string }) =>
+        cb(payload);
+      return ipcSubscribe(ipcRenderer, channel, handler);
+    },
+  },
+  validationTasks: {
+    onEnteredValidation: (payload: { previousStatus: TaskStatus; task: Task }) =>
+      ipcRenderer.invoke('validationTasks:onEnteredValidation', payload) as Promise<
+        { ok: true } | { error: string }
+      >,
+  },
+  validationPacks: {
+    list: () =>
+      ipcRenderer.invoke('validationPacks:list') as Promise<
+        { ok: true; packs: ValidationPackSummary[] } | { error: string }
+      >,
+    get: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:get', packId) as Promise<
+        { ok: true; pack: ValidationPackDetail } | { error: string }
+      >,
+    resolveInstructions: (payload: { packId: string; projectDir?: string }) =>
+      ipcRenderer.invoke('validationPacks:resolveInstructions', payload) as Promise<
+        { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+      >,
+  },
   planningDocs: {
     list: () =>
       ipcRenderer.invoke('planningDocs:list') as Promise<PlanningDocsListResult>,
@@ -849,6 +946,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
           payload,
         ) as Promise<{ ok: true } | { error: string }>,
     },
+  },
+  notifications: {
+    getAutoTransitionPrefs: () =>
+      ipcRenderer.invoke('notifications:getAutoTransitionPrefs') as Promise<
+        import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs
+      >,
+    setAutoTransitionPrefs: (
+      prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs,
+    ) =>
+      ipcRenderer.invoke('notifications:setAutoTransitionPrefs', prefs) as Promise<{
+        ok: true;
+        prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs;
+      }>,
+    notifyAutoTransition: (
+      payload: import('./taskAutoTransitionNotification').AutoTransitionNotifyInput,
+    ) =>
+      ipcRenderer.invoke('notifications:notifyAutoTransition', payload) as Promise<
+        { ok: true } | { ok: false; error: string }
+      >,
   },
   /**
    * macOS packaged builds — GitHub Releases via `electron-updater`; downloads only after `startDownload`.

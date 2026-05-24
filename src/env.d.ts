@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import type {
   Task,
+  TaskStatus,
   Agent,
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
@@ -62,6 +63,17 @@ import type {
   PlanningDocsWriteResult,
 } from './planningDocs/types';
 import type { AppUpdateState } from './appUpdateState';
+import type {
+  ValidationPackDetail,
+  ValidationPackResolvedInstructions,
+  ValidationPackSummary,
+} from './validationPacks/types';
+import type {
+  ValidationArtifactRegisterInput,
+  ValidationRun,
+  ValidationRunCreateInput,
+  ValidationRunStatusUpdate,
+} from './validationRuns/types';
 
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY?: string;
@@ -244,6 +256,10 @@ declare global {
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
         getDefaultDeviceId: () => Promise<string | null>;
         setDefaultDeviceId: (deviceId: string | null) => Promise<string | null>;
+        getValidationEnabled: () => Promise<boolean>;
+        setValidationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
       terminal: {
         inventorySnapshot: () => Promise<import('./types').TerminalInventorySnapshot>;
@@ -269,6 +285,7 @@ declare global {
         clearActive: () => Promise<void>;
         getTabs: (key: ActiveProjectKey) => Promise<ProjectTabState>;
         setTabs: (key: ActiveProjectKey, tabs: ProjectTabState) => Promise<void>;
+        getRestorableSessionIds: () => Promise<import('./types').RestorableSessionIds>;
         getLocalBinding: (
           cloudProjectId: string,
         ) => Promise<CloudProjectLocalBinding | null>;
@@ -523,6 +540,78 @@ declare global {
       cursorAgent: {
         listModels: () => Promise<ListCursorAgentModelsResult>;
       };
+      validationRuns: {
+        create: (
+          input: ValidationRunCreateInput,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        updateStatus: (
+          patch: ValidationRunStatusUpdate,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        listForTask: (
+          taskId: string,
+        ) => Promise<{ ok: true; runs: ValidationRun[] } | { error: string }>;
+        get: (
+          runId: string,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        readArtifact: (payload: {
+          runId: string;
+          artifactId: string;
+        }) => Promise<
+          | { ok: true; encoding: 'utf8'; content: string }
+          | { ok: true; encoding: 'base64'; content: string; mimeType: string }
+          | { ok: false; error: string; code: string }
+        >;
+        openArtifact: (payload: {
+          runId: string;
+          artifactId: string;
+        }) => Promise<{ ok: true } | { ok: false; error: string; code: string }>;
+        readVerdict: (
+          runId: string,
+        ) => Promise<
+          | {
+              ok: true;
+              verdict: {
+                summary: string;
+                risks?: string[];
+                checks?: { name: string; status: string; plannedCheckIndex?: number }[];
+              };
+            }
+          | { ok: false; error: string; code: string }
+        >;
+        registerArtifact: (
+          input: ValidationArtifactRegisterInput,
+        ) => Promise<{ ok: true; run: ValidationRun } | { error: string }>;
+        launchValidator: (payload: {
+          runId: string;
+          task: Task;
+        }) => Promise<
+          | { ok: true; run: ValidationRun; validatorSessionId: string }
+          | { error: string }
+        >;
+        cancelValidator: (payload: {
+          runId: string;
+          sessionId: string;
+        }) => Promise<{ ok: true; run: ValidationRun | null } | { error: string }>;
+        onChanged: (cb: (payload: { runId: string }) => void) => () => void;
+      };
+      validationTasks: {
+        onEnteredValidation: (payload: {
+          previousStatus: TaskStatus;
+          task: Task;
+        }) => Promise<{ ok: true } | { error: string }>;
+      };
+      validationPacks: {
+        list: () => Promise<{ ok: true; packs: ValidationPackSummary[] } | { error: string }>;
+        get: (
+          packId: string,
+        ) => Promise<{ ok: true; pack: ValidationPackDetail } | { error: string }>;
+        resolveInstructions: (payload: {
+          packId: string;
+          projectDir?: string;
+        }) => Promise<
+          { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+        >;
+      };
       planningDocs: {
         list: () => Promise<PlanningDocsListResult>;
         read: (relativePath: string) => Promise<
@@ -580,6 +669,20 @@ declare global {
             plan: FirestoreHydrationWritePlan;
           }) => Promise<{ ok: true } | { error: string }>;
         };
+      };
+      notifications: {
+        getAutoTransitionPrefs: () => Promise<
+          import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs
+        >;
+        setAutoTransitionPrefs: (
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs,
+        ) => Promise<{
+          ok: true;
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs;
+        }>;
+        notifyAutoTransition: (
+          payload: import('./taskAutoTransitionNotification').AutoTransitionNotifyInput,
+        ) => Promise<{ ok: true } | { ok: false; error: string }>;
       };
       /**
        * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.

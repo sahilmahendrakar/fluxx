@@ -19,6 +19,50 @@ export type AgentSpawnResumeOptions =
       mcpConfigPath?: string;
     };
 
+export type CodexSpawnResume = {
+  sessionId?: string;
+};
+
+export type CodexSpawnInput = {
+  prompt?: string;
+  model?: string;
+  yolo?: boolean;
+  resume?: CodexSpawnResume;
+};
+
+/** Shared argv for `codex` task/planning spawn and `codex resume` cold restore. */
+export function codexSpawnArgs(input: CodexSpawnInput): string[] {
+  const args: string[] = [];
+  const model = (input.model ?? '').trim();
+  if (model) {
+    args.push('--model', model);
+  }
+  if (input.yolo === true) {
+    args.push('--yolo');
+  } else {
+    args.push('--sandbox', 'workspace-write');
+  }
+  if (input.resume) {
+    args.push('resume');
+    const sessionId = (input.resume.sessionId ?? '').trim();
+    if (sessionId) {
+      args.push(sessionId);
+    } else {
+      args.push('--last');
+    }
+  }
+  const prompt = (input.prompt ?? '').trim();
+  if (prompt) {
+    args.push(prompt);
+  }
+  return args;
+}
+
+function codexModelArg(model?: string): string | undefined {
+  const trimmed = (model ?? '').trim();
+  return trimmed || undefined;
+}
+
 export function agentSpawnSpec(
   task: AgentSpawnTaskInput,
   initialPrompt: string,
@@ -48,7 +92,14 @@ export function agentSpawnSpec(
       return { command: 'claude', args };
     }
     case 'codex':
-      return { command: 'codex', args: [] };
+      return {
+        command: 'codex',
+        args: codexSpawnArgs({
+          model: codexModelArg(task.agentModel),
+          yolo: task.agentYolo,
+          prompt: initialPrompt,
+        }),
+      };
     case 'cursor': {
       const model = resolvedCursorAgentModel(task);
       const args: string[] = ['--model', model, '--approve-mcps'];
@@ -98,7 +149,14 @@ export function agentSpawnResumeSpec(
       return { command: 'claude', args };
     }
     case 'codex':
-      return { command: 'codex', args: ['--resume'] };
+      return {
+        command: 'codex',
+        args: codexSpawnArgs({
+          model: codexModelArg(task.agentModel),
+          yolo: task.agentYolo,
+          resume: { sessionId: resumeId },
+        }),
+      };
     case 'cursor': {
       const model = resolvedCursorAgentModel(task);
       const args: string[] = ['--model', model, '--approve-mcps'];
@@ -121,8 +179,8 @@ export function agentSpawnResumeSpec(
  *
  * All planning agents read `planning/CLAUDE.md` and `planning/AGENTS.md` for Fluxx CLI usage.
  *
- * @param agentModel — For `claude-code`, non-empty → `--model`; for `cursor`, passed to
- *   `--model` (default `auto` when blank). Ignored for `codex`.
+ * @param agentModel — For `claude-code` / `codex`, non-empty → `--model`; for `cursor`, passed to
+ *   `--model` (default `auto` when blank).
  */
 export type PlanningSpawnResumeOptions = {
   agentConversationId?: string;
@@ -157,7 +215,14 @@ export function planningSpawnResumeSpec(
       return { command: 'claude', args };
     }
     case 'codex':
-      return { command: 'codex', args: ['--resume'] };
+      return {
+        command: 'codex',
+        args: codexSpawnArgs({
+          model: codexModelArg(agentModel),
+          yolo: agentYolo,
+          resume: { sessionId: resumeId },
+        }),
+      };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
       const args: string[] = ['--model', model];
@@ -199,7 +264,11 @@ export function planningSpawnSpec(
     case 'codex':
       return {
         command: 'codex',
-        args: prompt ? [prompt] : [],
+        args: codexSpawnArgs({
+          model: codexModelArg(agentModel),
+          yolo: agentYolo,
+          prompt,
+        }),
       };
     case 'cursor': {
       const model = (agentModel ?? '').trim() || 'auto';
@@ -224,6 +293,9 @@ export function agentNotFoundMessage(agent: Agent, command: string): string {
   }
   if (agent === 'cursor') {
     return `${command} not found on PATH. Install Cursor Agent CLI: https://cursor.com/docs/cli/installation`;
+  }
+  if (agent === 'codex') {
+    return `${command} not found on PATH. Install Codex CLI: https://developers.openai.com/codex/cli/ (e.g. npm install -g @openai/codex)`;
   }
   return `${command} not found on PATH`;
 }

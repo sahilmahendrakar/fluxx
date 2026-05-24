@@ -4,14 +4,29 @@ import { getFluxxTmuxConfigPath } from './resolveFluxxTmuxConfigPath';
 
 const execFileAsync = promisify(execFile);
 
+import { isAuxDevInstance } from '../auxDevInstance';
+
 /** Isolated tmux server so `-f fluxx-tmux.conf` is not ignored by a user default server. */
 export const FLUXX_TMUX_SOCKET_NAME = 'fluxx';
 
-/** Prefix every Fluxx tmux invocation with `-L fluxx -f <bundled fluxx-tmux.conf>`. */
+/** Secondary dev instance socket (`pnpm run start:aux`). */
+export const FLUXX_TMUX_AUX_SOCKET_NAME = 'fluxx-aux';
+
+/** Env override for tests; `start:aux` sets this to {@link FLUXX_TMUX_AUX_SOCKET_NAME}. */
+export const FLUXX_TMUX_SOCKET_NAME_ENV = 'FLUXX_TMUX_SOCKET_NAME';
+
+export function resolveFluxxTmuxSocketName(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env[FLUXX_TMUX_SOCKET_NAME_ENV]?.trim();
+  if (explicit) return explicit;
+  if (isAuxDevInstance(env)) return FLUXX_TMUX_AUX_SOCKET_NAME;
+  return FLUXX_TMUX_SOCKET_NAME;
+}
+
+/** Prefix every Fluxx tmux invocation with `-L <socket> -f <bundled fluxx-tmux.conf>`. */
 export function buildFluxxTmuxArgv(subcommandArgs: string[]): string[] {
   return [
     '-L',
-    FLUXX_TMUX_SOCKET_NAME,
+    resolveFluxxTmuxSocketName(),
     '-f',
     getFluxxTmuxConfigPath(undefined, process.execPath),
     ...subcommandArgs,

@@ -13,11 +13,12 @@ import {
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, FileText, Pencil, Settings, Terminal, UserCircle2, X } from 'lucide-react';
+import { ChevronDown, FileText, Pencil, Settings, ShieldCheck, Terminal, UserCircle2, X } from 'lucide-react';
 import {
   Task,
   TaskStatus,
   COLUMNS,
+  boardColumns,
   TASK_AGENT_SELECT_OPTIONS,
   Agent,
   Session,
@@ -78,6 +79,9 @@ import {
   compactPlanningDocPathLabel,
 } from '../taskPlanningDocAttachments';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
+import TaskValidationSection from './validation/TaskValidationSection';
+import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
+import { evaluateValidateActionEligibility } from '../validationRuns/validateTaskAction';
 import {
   buildTaskSourceBranchPersistPatch,
   effectiveTaskSourceBranchShort,
@@ -134,8 +138,13 @@ export interface TaskDetailPanelProps {
   onMarkAsDone?: () => void;
   /** True when dependencies block finishing; shows a disabled Mark as done control. */
   markAsDoneBlocked?: boolean;
+  /** Done task with workspace not yet cleaned — same flow as board broom / session chrome. */
+  onRequestCleanupTask?: () => void;
+  cleanupLoading?: boolean;
   /** Project “auto-start when unblocked” (from local config / cloud binding). */
   autoStartWhenUnblockedProject?: boolean;
+  /** Electron Playwright validation opt-in for this project. */
+  validationEnabledProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
@@ -219,6 +228,7 @@ const STATUS_CHIP: Record<TaskStatus, string> = {
   backlog: 'bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]',
   'in-progress': 'bg-emerald-500/[0.12] text-emerald-200/95 ring-1 ring-inset ring-emerald-500/15',
   'needs-input': 'bg-amber-500/[0.12] text-amber-200/90 ring-1 ring-inset ring-amber-500/18',
+  validation: 'bg-violet-500/[0.12] text-violet-200/95 ring-1 ring-inset ring-violet-500/18',
   review: 'bg-sky-500/[0.12] text-sky-200/95 ring-1 ring-inset ring-sky-500/18',
   done: 'bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.05]',
 };
@@ -264,7 +274,10 @@ export default function TaskDetailPanel({
   onMinimizeSession,
   onMarkAsDone,
   markAsDoneBlocked = false,
+  onRequestCleanupTask,
+  cleanupLoading = false,
   autoStartWhenUnblockedProject = false,
+  validationEnabledProject = false,
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
@@ -300,6 +313,14 @@ export default function TaskDetailPanel({
   const [depSearch, setDepSearch] = useState('');
   const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
   const [descriptionEditing, setDescriptionEditing] = useState(false);
+  const [detailContentTab, setDetailContentTab] = useState<'implementation' | 'validation'>(
+    'implementation',
+  );
+  useEffect(() => {
+    if (!validationEnabledProject && detailContentTab === 'validation') {
+      setDetailContentTab('implementation');
+    }
+  }, [validationEnabledProject, detailContentTab]);
   const terminalRef = useRef<TerminalHandle | null>(null);
   const taskFormSplitRef = useRef<HTMLDivElement>(null);
   const [sessionPaneHeightPx, setSessionPaneHeightPx] = useState(
@@ -328,9 +349,31 @@ export default function TaskDetailPanel({
   const [sourceMetadataError, setSourceMetadataError] = useState<string | null>(null);
   const [anySessionForTask, setAnySessionForTask] = useState(false);
 
+  useEffect(() => {
+    setDetailContentTab('implementation');
+  }, [task?.id]);
+
   const primaryRepoId = useMemo(
     () => resolvePrimaryRepoId(projectRepos ?? []) ?? '',
     [projectRepos],
+  );
+  const statusColumnOptions = useMemo(
+    () => boardColumns(validationEnabledProject),
+    [validationEnabledProject],
+  );
+  const { latestRun: validationLatestRun } = useTaskValidationRuns(task?.id);
+  const repoBlockedForValidation = projectRepoActionsBlocked(projectRepoReadiness);
+  const validateEligibility = useMemo(
+    () =>
+      task
+        ? evaluateValidateActionEligibility({
+            validationEnabled: validationEnabledProject,
+            task,
+            latestRun: validationLatestRun,
+            repoBlocked: repoBlockedForValidation,
+          })
+        : { canValidate: false },
+    [task, validationEnabledProject, validationLatestRun, repoBlockedForValidation],
   );
   const showRepoSection = Boolean(
     multiRepo2Enabled && projectRepos && projectRepos.length > 1,
@@ -1109,6 +1152,10 @@ export default function TaskDetailPanel({
     'rounded-lg bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
   const markDoneBtnDisabled =
     'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+  const validateBtnFilled =
+    'inline-flex items-center gap-2 rounded-lg bg-violet-500/90 px-4 py-2 text-[13px] font-medium text-violet-50 shadow-sm transition hover:bg-violet-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none';
+  const validateBtnOutline =
+    'inline-flex items-center gap-2 rounded-lg bg-violet-500/[0.08] px-4 py-2 text-[13px] font-medium text-violet-200 ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:ring-white/[0.06]';
 
   const propertySelectClass =
     'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
@@ -1125,6 +1172,9 @@ export default function TaskDetailPanel({
 
   const showMarkAsDone = task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
+  const showCleanUp =
+    task.status === 'done' && !task.workspaceCleanedAt && Boolean(onRequestCleanupTask);
+  const cleanUpDisabled = showCleanUp && (cleanupLoading || !onRequestCleanupTask);
 
   const panelShell = (
     <>
@@ -1154,6 +1204,17 @@ export default function TaskDetailPanel({
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {validateEligibility.canValidate ? (
+                <button
+                  type="button"
+                  onClick={() => onUpdate(task.id, { status: 'validation' })}
+                  title={validateEligibility.message}
+                  className={task.status === 'needs-input' ? validateBtnFilled : validateBtnOutline}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  Validate
+                </button>
+              ) : null}
               {showMarkAsDone ? (
                 <button
                   type="button"
@@ -1167,6 +1228,21 @@ export default function TaskDetailPanel({
                   className={markDoneDisabled ? markDoneBtnDisabled : markDoneBtn}
                 >
                   Mark as done
+                </button>
+              ) : null}
+              {showCleanUp ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestCleanupTask?.()}
+                  disabled={cleanUpDisabled}
+                  title={
+                    cleanupLoading
+                      ? 'Cleaning up workspace…'
+                      : 'Tear down agent session, terminals, and worktree for this task'
+                  }
+                  className={cleanUpDisabled ? markDoneBtnDisabled : markDoneBtn}
+                >
+                  {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
                 </button>
               ) : null}
               <OpenInWorkspaceButton
@@ -1364,12 +1440,14 @@ export default function TaskDetailPanel({
                         />
                       </div>
                     ) : task.agent === 'codex' ? (
-                      <span
-                        className="text-xs text-zinc-500"
-                        title="Model selection is not wired for Codex in this version."
-                      >
-                        Default model
-                      </span>
+                      <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                        <AgentModelPicker
+                          kind="codex"
+                          modelId={(task.agentModel ?? '').trim()}
+                          onModelIdChange={(id) => onUpdate(task.id, { agentModel: id.trim() })}
+                          aria-label="Codex model"
+                        />
+                      </div>
                     ) : null}
                     {task.agent != null ? (
                       <div ref={agentSettingsWrapRef} className="relative shrink-0">
@@ -1426,9 +1504,28 @@ export default function TaskDetailPanel({
                                   </span>
                                 </span>
                               </label>
+                            ) : task.agent === 'codex' ? (
+                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                  checked={task.agentYolo === true}
+                                  onChange={(e) =>
+                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  }
+                                />
+                                <span className="leading-snug">
+                                  <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
+                                  <span className="mt-1 block text-[11px] text-zinc-500">
+                                    Passes Codex <code className="text-zinc-400">--yolo</code> (alias for{' '}
+                                    <code className="text-zinc-400">--dangerously-bypass-approvals-and-sandbox</code>
+                                    ): fewer approval prompts and broader sandbox access.
+                                  </span>
+                                </span>
+                              </label>
                             ) : (
                               <p className="leading-relaxed text-zinc-500">
-                                No spawn toggles for Codex in this version.
+                                No spawn toggles for this agent.
                               </p>
                             )}
                           </div>
@@ -1449,7 +1546,7 @@ export default function TaskDetailPanel({
                     style={{ colorScheme: 'dark' } as CSSProperties}
                     aria-label="Change status"
                   >
-                    {COLUMNS.map((c) => (
+                    {statusColumnOptions.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.label}
                       </option>
@@ -1629,6 +1726,39 @@ export default function TaskDetailPanel({
               </div>
             </div>
 
+            <div
+              className="flex gap-1 border-b border-white/[0.04] px-5 pt-1"
+              role="tablist"
+              aria-label="Task detail sections"
+            >
+              {(
+                [
+                  ['implementation', 'Implementation'],
+                  ...(validationEnabledProject
+                    ? ([['validation', 'Validation']] as const)
+                    : []),
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={detailContentTab === id}
+                  onClick={() => setDetailContentTab(id)}
+                  className={[
+                    'rounded-t-lg px-3 py-2 text-[12px] font-medium transition',
+                    detailContentTab === id
+                      ? 'bg-white/[0.04] text-zinc-100 ring-1 ring-inset ring-white/[0.06] ring-b-transparent'
+                      : 'text-zinc-500 hover:text-zinc-300',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {detailContentTab === 'implementation' ? (
+              <>
             {/* Description: read-first, edit on demand */}
             <section
               className="border-t border-white/[0.04] bg-white/[0.02] px-5 py-5"
@@ -2004,6 +2134,35 @@ export default function TaskDetailPanel({
                 </div>
               </section>
             </div>
+              </>
+            ) : null}
+
+            {detailContentTab === 'validation' ? (
+              validationEnabledProject ? (
+                <TaskValidationSection
+                  task={task}
+                  primaryRepoId={primaryRepoId}
+                  worktreePath={resolvedWorktreePath}
+                  projectRepoReadiness={projectRepoReadiness}
+                  onUpdate={onUpdate}
+                />
+              ) : (
+                <section className="border-t border-white/[0.04] px-5 py-8 text-center">
+                  <p className="text-sm text-zinc-400">
+                    Validation is disabled for this project.
+                  </p>
+                  {onOpenProjectSettings ? (
+                    <button
+                      type="button"
+                      onClick={onOpenProjectSettings}
+                      className="mt-3 text-[13px] font-medium text-sky-400/90 underline-offset-2 hover:underline"
+                    >
+                      Enable in Project settings → Experimental
+                    </button>
+                  ) : null}
+                </section>
+              )
+            ) : null}
           </div>
 
           {!sessionWorkspace ? (

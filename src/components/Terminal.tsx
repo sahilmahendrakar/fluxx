@@ -8,6 +8,13 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { installMacShiftDragSelectionBypass } from './terminalSelectionBypass';
+import {
+  containerHasUsableSize,
+  LAYOUT_FIT_DEBOUNCE_MS,
+  shouldDeferTerminalFit,
+  shouldImmediateLayoutFit,
+} from '../terminal/terminalFitScheduling';
 
 export interface TerminalProps {
   sessionId: string | null;
@@ -36,17 +43,6 @@ export interface TerminalHandle {
    * resize the node-pty — parents wire `onResize` only when PTY should track UI.
    */
   setSnapshotGeometry: (cols: number, rows: number) => void;
-}
-
-const MIN_CONTAINER_PX = 8;
-/** Layout-driven (ResizeObserver / window) refits: debounce so we do not
- * clear+resize the xterm grid on every frame while a splitter is dragging. */
-const LAYOUT_FIT_DEBOUNCE_MS = 100;
-
-function containerHasUsableSize(el: HTMLElement): boolean {
-  return (
-    el.clientWidth >= MIN_CONTAINER_PX && el.clientHeight >= MIN_CONTAINER_PX
-  );
 }
 
 const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
@@ -144,6 +140,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       // Preserve PTY/snapshot cursor semantics exactly; the PTY is responsible
       // for CRLF translation when terminal output needs it.
       convertEol: false,
+      // With tmux `mouse on`, xterm receives mouse-reporting events and disables
+      // normal drag selection. Option+drag forces xterm selection on macOS.
+      macOptionClickForcesSelection: true,
     });
 
     const fitAddon = new FitAddon();
@@ -156,6 +155,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     term.loadAddon(webLinksAddon);
 
     term.open(container);
+    const removeMacShiftDragSelectionBypass = installMacShiftDragSelectionBypass(term);
     termRef.current = term;
 
     // Swap xterm's default DOM renderer for the GPU-accelerated WebGL one.
@@ -181,6 +181,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         });
         term.loadAddon(addon);
         webglAddon = addon;
+        if (autoFit) {
+          scheduleResizeFit();
+        }
       } catch {
         // WebGL unavailable (e.g. blocked GPU, headless context) — leave
         // the DOM renderer in place. Functional, just slightly less crisp.
@@ -190,22 +193,25 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
     let cancelled = false;
     let immediateRaf = 0;
+    let deferredFitRaf = 0;
     let layoutRaf = 0;
     let layoutDebounce: ReturnType<typeof setTimeout> | undefined;
+    let layoutFitEstablished = false;
 
-    const doFit = () => {
-      if (cancelled) return;
-      if (!autoFit) return;
-      if (!containerHasUsableSize(container)) return;
+    const doFit = (): boolean => {
+      if (cancelled) return false;
+      if (!autoFit) return false;
+      if (!containerHasUsableSize(container)) return false;
       try {
         fitAddon.fit();
+        layoutFitEstablished = true;
+        return true;
       } catch {
-        // noop
+        return false;
       }
     };
 
-    /** Imminent refit: after attach, tab focus, or imperative `fit()`. */
-    const scheduleResizeFit = (afterFit?: () => void) => {
+    const cancelPendingLayoutFit = () => {
       if (layoutDebounce !== undefined) {
         clearTimeout(layoutDebounce);
         layoutDebounce = undefined;
@@ -214,23 +220,43 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         cancelAnimationFrame(layoutRaf);
         layoutRaf = 0;
       }
+    };
+
+    const runDeferredFit = (afterFit?: () => void, attempt = 0) => {
+      if (deferredFitRaf) {
+        cancelAnimationFrame(deferredFitRaf);
+        deferredFitRaf = 0;
+      }
+      deferredFitRaf = requestAnimationFrame(() => {
+        deferredFitRaf = 0;
+        if (cancelled) return;
+        if (doFit()) {
+          afterFit?.();
+          return;
+        }
+        if (shouldDeferTerminalFit(container, attempt)) {
+          runDeferredFit(afterFit, attempt + 1);
+        }
+      });
+    };
+
+    /** Imminent refit: after attach, tab focus, or imperative `fit()`. */
+    const scheduleResizeFit = (afterFit?: () => void) => {
+      cancelPendingLayoutFit();
       if (immediateRaf) cancelAnimationFrame(immediateRaf);
       immediateRaf = requestAnimationFrame(() => {
         immediateRaf = 0;
-        doFit();
-        if (!cancelled) {
-          afterFit?.();
-        }
+        if (cancelled) return;
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          runDeferredFit(afterFit);
+        });
       });
     };
     scheduleFitRef.current = scheduleResizeFit;
 
     const scheduleLayoutFit = () => {
-      if (layoutDebounce !== undefined) clearTimeout(layoutDebounce);
-      if (layoutRaf) {
-        cancelAnimationFrame(layoutRaf);
-        layoutRaf = 0;
-      }
+      cancelPendingLayoutFit();
       layoutDebounce = setTimeout(() => {
         layoutDebounce = undefined;
         if (cancelled) return;
@@ -242,11 +268,25 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }, LAYOUT_FIT_DEBOUNCE_MS);
     };
 
+    const afterInitFit = () => {
+      if (term.rows > 0) {
+        term.refresh(0, term.rows - 1);
+      }
+      term.scrollToBottom();
+      scrollContainerToBottom(container);
+      // Only focus interactive terminals. Read-only mirrors (onData=undefined)
+      // must NOT steal focus — and must not trigger focus-tracking escape
+      // sequences that the agent would interpret as activity, causing a
+      // false needs-input → in-progress reversion.
+      if (onDataRef.current) {
+        term.focus();
+      }
+    };
+
     // xterm measures the rendered font to compute cols/rows. If the
     // configured fonts ("JetBrains Mono" etc.) haven't loaded yet the
     // cell metrics are wrong and fit() produces a garbled layout.
-    // Wait for fonts + two rAF ticks (browser needs a
-    // layout pass after fonts swap) before the first fit.
+    // Wait for fonts, then scheduleResizeFit (double-rAF + deferred retry).
     const initFit = async () => {
       try {
         await document.fonts.ready;
@@ -254,27 +294,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         // fonts.ready not supported — fall through
       }
       if (cancelled) return;
-      // Double-rAF: first rAF gets us to after layout, second ensures
-      // the browser has actually painted with the loaded font metrics.
-      requestAnimationFrame(() => {
-        if (cancelled) return;
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          doFit();
-          if (term.rows > 0) {
-            term.refresh(0, term.rows - 1);
-          }
-          term.scrollToBottom();
-          scrollContainerToBottom(container);
-          // Only focus interactive terminals. Read-only mirrors (onData=undefined)
-          // must NOT steal focus — and must not trigger focus-tracking escape
-          // sequences that the agent would interpret as activity, causing a
-          // false needs-input → in-progress reversion.
-          if (onDataRef.current) {
-            term.focus();
-          }
-        });
-      });
+      scheduleResizeFit(afterInitFit);
     };
 
     void initFit();
@@ -293,6 +313,10 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
     const ro = autoFit
       ? new ResizeObserver(() => {
+          if (shouldImmediateLayoutFit(layoutFitEstablished, container)) {
+            scheduleResizeFit();
+            return;
+          }
           scheduleLayoutFit();
         })
       : null;
@@ -315,6 +339,10 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         cancelAnimationFrame(immediateRaf);
         immediateRaf = 0;
       }
+      if (deferredFitRaf) {
+        cancelAnimationFrame(deferredFitRaf);
+        deferredFitRaf = 0;
+      }
       cancelAnimationFrame(webglRaf);
       // Dispose BEFORE term.dispose() — WebglAddon holds GPU resources tied
       // to the terminal's <canvas>, and disposing it after the terminal
@@ -325,6 +353,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       ro?.disconnect();
       d1.dispose();
       d2.dispose();
+      removeMacShiftDragSelectionBypass();
       term.dispose();
       termRef.current = null;
     };

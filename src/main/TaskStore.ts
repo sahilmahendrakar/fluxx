@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskExecutionDeviceRef } from '../types';
+import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskExecutionDeviceRef, TaskValidationPlan } from '../types';
 import { parseTaskExecutionDeviceRef } from '../executionDevices/parse';
 import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
@@ -23,6 +23,7 @@ type TaskInput = {
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
   executionDevice?: TaskExecutionDeviceRef;
+  validationPlan?: TaskValidationPlan;
 };
 
 function errnoCode(err: unknown): string | undefined {
@@ -291,6 +292,9 @@ export class TaskStore {
     if (input.executionDevice !== undefined) {
       task.executionDevice = input.executionDevice;
     }
+    if (input.validationPlan !== undefined) {
+      task.validationPlan = input.validationPlan;
+    }
     this.tasks.push(task);
     await this.save();
     return task;
@@ -316,6 +320,7 @@ export class TaskStore {
         | 'repoId'
         | 'fluxxWorkBranch'
         | 'executionDevice'
+        | 'validationPlan'
       >
     > & {
       autoStartOnUnblock?: boolean | null;
@@ -325,6 +330,8 @@ export class TaskStore {
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
       /** `null` clears execution device so the task inherits defaults at start. */
       executionDevice?: TaskExecutionDeviceRef | null;
+      /** `null` clears the validation plan. */
+      validationPlan?: TaskValidationPlan | null;
     },
   ): Promise<Task> {
     if (!this.filePath) {
@@ -341,6 +348,7 @@ export class TaskStore {
       autoStartOnUnblock: patchAsou,
       attachedPlanningDocs: patchAttachedDocs,
       executionDevice: patchExecutionDevice,
+      validationPlan: patchValidationPlan,
       ...patchRest
     } = patch;
     const updated: Task = {
@@ -393,6 +401,13 @@ export class TaskStore {
         delete updated.executionDevice;
       } else {
         updated.executionDevice = patchExecutionDevice;
+      }
+    }
+    if (patchValidationPlan !== undefined) {
+      if (patchValidationPlan === null) {
+        delete updated.validationPlan;
+      } else {
+        updated.validationPlan = patchValidationPlan;
       }
     }
     if (patch.sourceBranch !== undefined) {

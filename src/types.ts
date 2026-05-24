@@ -1,4 +1,10 @@
-export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'review' | 'done';
+export type TaskStatus =
+  | 'backlog'
+  | 'in-progress'
+  | 'needs-input'
+  | 'validation'
+  | 'review'
+  | 'done';
 
 /** Where a normalized short branch name exists in the clone; see `classifyGitBranchPresence`. */
 export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
@@ -6,7 +12,7 @@ export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
 /** Per-CLI default `--model` for planning or new tasks (stored on project / binding). */
-export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'cursor', string>>;
+export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'codex' | 'cursor', string>>;
 
 /** Partial update for {@link LocalProject} / cloud binding agent spawn defaults. */
 export type AgentSpawnDefaultsPatch = {
@@ -178,7 +184,7 @@ export interface LocalProject {
   defaultTaskAgentYolo?: boolean;
   /** Auto-start a task session when status moves from Backlog to in-progress. */
   autoStartSessionOnInProgress: boolean;
-  /** When enabled, Flux may auto-accept Claude/Cursor trust prompts in Flux-owned worktrees and the planning directory only. */
+  /** When enabled, Flux may auto-accept Claude/Cursor/Codex trust prompts in Flux-owned worktrees and the planning directory only. */
   autoRespondToTrustPrompts: boolean;
   /** When on, a task in backlog (or in progress without a running session) may auto-start once its last blocker is completed. */
   autoStartWhenUnblocked: boolean;
@@ -209,6 +215,11 @@ export interface LocalProject {
    * Private to this Desktop install; not synced for cloud projects.
    */
   remoteRepoBindings?: RemoteRepoBindingsByDevice;
+  /**
+   * When on, Electron Playwright validation (runs, validator sessions, planning validation guidance).
+   * Default off; opt in via Project settings → Experimental.
+   */
+  validationEnabled: boolean;
   repos: RepoConfig[];
 }
 
@@ -283,6 +294,11 @@ export interface CloudProjectLocalBinding {
   remoteRepoBindings?: RemoteRepoBindingsByDevice;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
+  /**
+   * Team-wide validation opt-in (Firestore). Mirrored to the cloud project `config.json`
+   * on this machine for CLI/automation guards.
+   */
+  validationEnabled?: boolean;
 }
 
 /** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
@@ -321,6 +337,8 @@ export interface CloudProject {
   defaultDeviceId?: string;
   /** @deprecated */
   autoDeleteTaskWhenDone?: boolean;
+  /** Electron Playwright validation opt-in (team setting from Firestore). */
+  validationEnabled?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;
@@ -495,6 +513,16 @@ export type TaskGithubPrState = 'open' | 'closed' | 'merged';
 /** One planning markdown doc attached to a task (paths are relative to the project `planning/` root). */
 export interface TaskAttachedPlanningDoc {
   relativePath: string;
+}
+
+/** Task-specific validation plan for the validator agent (separate from implementation description). */
+export interface TaskValidationPlan {
+  goal: string;
+  pack: 'electron-playwright';
+  checks: string[];
+  requiredArtifacts: string[];
+  risks?: string[];
+  notes?: string;
 }
 
 /** GitHub pull request linked to a task (persisted locally and in Firestore). */
@@ -756,6 +784,11 @@ export interface Task {
    * projects store private `local`/`ssh` refs in `localBindings.json` overrides.
    */
   executionDevice?: TaskExecutionDeviceRef;
+  /**
+   * Optional structured validation plan for the validator agent.
+   * Stored separately from {@link Task.description}.
+   */
+  validationPlan?: TaskValidationPlan;
 }
 
 export type SessionStatus = 'idle' | 'running' | 'stopped' | 'error' | 'interrupted';
@@ -853,6 +886,8 @@ export interface Session {
   remotePath?: string;
   /** Set when a direct-SSH session cannot attach after restore (host offline, missing tmux, etc.). */
   remoteLifecycleStatus?: RemoteSessionLifecycleStatus;
+  /** Validator PTY for a validation run — not a task implementation workspace. */
+  kind?: 'task' | 'validator';
 }
 
 /** Persisted metadata for task agent PTY sessions (cold resume, audit). */
@@ -995,9 +1030,16 @@ export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
   { id: 'in-progress', label: 'In progress' },
   { id: 'needs-input', label: 'Needs input' },
+  { id: 'validation', label: 'Validation' },
   { id: 'review', label: 'Review' },
   { id: 'done', label: 'Done' },
 ];
+
+/** Board columns visible for the current project (Validation omitted when validation is off). */
+export function boardColumns(validationEnabled = false): { id: TaskStatus; label: string }[] {
+  if (validationEnabled) return COLUMNS;
+  return COLUMNS.filter((c) => c.id !== 'validation');
+}
 
 export const AGENTS: { id: Agent; label: string }[] = [
   { id: 'claude-code', label: 'Claude Code' },

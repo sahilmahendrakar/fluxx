@@ -5,6 +5,13 @@ export type FluxCliCommand =
   | { kind: 'tasks'; action: 'update'; json: boolean; payload: Record<string, unknown> }
   | { kind: 'tasks'; action: 'start'; json: boolean; id: string }
   | { kind: 'tasks'; action: 'delete'; json: boolean; id: string; confirm: boolean }
+  | { kind: 'validation'; action: 'run'; json: boolean; taskId: string; packId?: string; validatorAgent?: string; launch?: boolean }
+  | { kind: 'validation'; action: 'launch'; json: boolean; runId: string; taskId?: string }
+  | { kind: 'validation'; action: 'list'; json: boolean; taskId: string }
+  | { kind: 'validation'; action: 'show'; json: boolean; runId: string }
+  | { kind: 'validation'; action: 'artifacts'; json: boolean; runId: string }
+  | { kind: 'validation'; action: 'ingest'; json: boolean; runId: string }
+  | { kind: 'validation'; action: 'finish'; json: boolean; runId: string }
   | { kind: 'members'; action: 'list'; json: boolean }
   | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string };
 
@@ -184,8 +191,12 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
     '--attach-docs',
     '--attach-planning-doc',
   ]);
+  const { value: validationPlanRaw, rest: withoutValidationPlan } = takeFlagAliases(
+    withoutAttachDoc,
+    ['--validation-plan'],
+  );
 
-  const payload = parseKeyValuePayload(withoutAttachDoc);
+  const payload = parseKeyValuePayload(withoutValidationPlan);
   const labels = splitListValues(labelsRaw);
   const blockedByTaskIds = splitListValues(blockedByRaw);
   const attachDocPaths = splitListValues(attachDocRaw);
@@ -196,6 +207,7 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
     payload.clearDependencies === true;
   const clearAttachedDocs =
     payload.clearAttachedDocs === true || payload.clearAttachDocs === true;
+  const clearValidationPlan = payload.clearValidationPlan === true;
 
   if (clearLabels && labels.length > 0) {
     return { ok: false, message: 'Pass either --label/--labels or --clear-labels, not both' };
@@ -212,6 +224,12 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
       message: 'Pass either --attach-doc/--attach-docs or --clear-attached-docs, not both',
     };
   }
+  if (clearValidationPlan && validationPlanRaw !== undefined) {
+    return {
+      ok: false,
+      message: 'Pass either --validation-plan or --clear-validation-plan, not both',
+    };
+  }
 
   delete payload.clearLabels;
   delete payload.clearBlockedBy;
@@ -219,12 +237,18 @@ function parseTaskPayload(argv: string[]): TaskPayloadParseResult {
   delete payload.clearDependencies;
   delete payload.clearAttachedDocs;
   delete payload.clearAttachDocs;
+  delete payload.clearValidationPlan;
   if (labels.length > 0 || clearLabels) payload.labels = labels;
   if (blockedByTaskIds.length > 0 || clearBlockedBy) payload.blockedByTaskIds = blockedByTaskIds;
   if (attachDocPaths.length > 0) {
     payload.attachedPlanningDocs = attachDocPaths.map((relativePath) => ({ relativePath }));
   } else if (clearAttachedDocs) {
     payload.attachedPlanningDocs = null;
+  }
+  if (validationPlanRaw !== undefined) {
+    payload.validationPlan = validationPlanRaw;
+  } else if (clearValidationPlan) {
+    payload.validationPlan = null;
   }
   if (repoId !== undefined) payload.repoId = repoId;
   if (sourceBranch !== undefined) payload.sourceBranch = sourceBranch;
@@ -235,7 +259,7 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
   const json = hasFlag(argv, '--json');
   const positional = argv.filter((a) => a !== '--json');
   if (positional.length === 0) {
-    return { ok: false, message: 'Usage: flux <project|tasks|members|repo> ...' };
+    return { ok: false, message: 'Usage: flux <project|tasks|validation|members|repo> ...' };
   }
 
   const [domain, action, ...rest] = positional;
@@ -269,6 +293,65 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
         ...(classifyBranch !== undefined ? { classifyBranch } : {}),
       },
     };
+  }
+
+  if (domain === 'validation') {
+    if (action === 'run') {
+      const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--task']);
+      const { value: packId, rest: r2 } = takeFlag(r1, '--pack');
+      const { value: validatorAgent, rest: r3 } = takeFlag(r2, '--validator-agent');
+      const noLaunch = r3.includes('--no-launch');
+      const r4 = noLaunch ? r3.filter((a) => a !== '--no-launch') : r3;
+      if (!taskId || r4.length > 0) {
+        return { ok: false, message: 'validation run requires --task-id' };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'validation',
+          action: 'run',
+          json,
+          taskId,
+          ...(packId !== undefined ? { packId } : {}),
+          ...(validatorAgent !== undefined ? { validatorAgent } : {}),
+          ...(noLaunch ? { launch: false } : {}),
+        },
+      };
+    }
+    if (action === 'launch') {
+      const { value: runId, rest: r1 } = takeFlagAliases(rest, ['--run-id', '--run']);
+      const { value: taskId, rest: r2 } = takeFlagAliases(r1, ['--task-id', '--task']);
+      if (!runId || r2.length > 0) {
+        return { ok: false, message: 'validation launch requires --run-id' };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'validation',
+          action: 'launch',
+          json,
+          runId,
+          ...(taskId !== undefined ? { taskId } : {}),
+        },
+      };
+    }
+    if (action === 'list') {
+      const { value: taskId, rest: r } = takeFlagAliases(rest, ['--task-id', '--task']);
+      if (!taskId || r.length > 0) {
+        return { ok: false, message: 'validation list requires --task-id' };
+      }
+      return { ok: true, command: { kind: 'validation', action: 'list', json, taskId } };
+    }
+    if (action === 'show' || action === 'artifacts' || action === 'ingest' || action === 'finish') {
+      const { value: runId, rest: r } = takeFlagAliases(rest, ['--run-id', '--run']);
+      if (!runId || r.length > 0) {
+        return { ok: false, message: `validation ${action} requires --run-id` };
+      }
+      return {
+        ok: true,
+        command: { kind: 'validation', action, json, runId },
+      };
+    }
   }
 
   if (domain === 'tasks') {
@@ -329,6 +412,6 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
   return {
     ok: false,
     message:
-      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx members list, fluxx repo branches',
+      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx validation run|list|show|artifacts|ingest|finish, fluxx members list, fluxx repo branches',
   };
 }

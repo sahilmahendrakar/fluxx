@@ -47,6 +47,10 @@ import {
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
 import { taskDeleteNeedsWorkspaceConfirmation } from './taskDeleteWorkspaceConfirmation';
+import {
+  readTaskCleanupSkipConfirmation,
+  writeTaskCleanupSkipConfirmation,
+} from './taskCleanupConfirmationPrefs';
 import { useAuth } from './renderer/auth/useAuth';
 import { useCloudProjects } from './renderer/projects/useCloudProjects';
 import { useMembers } from './renderer/projects/useMembers';
@@ -92,9 +96,12 @@ import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlannin
 import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { isFirebaseConfigured } from './renderer/firebase';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
+import { notifyCloudValidationEntryIfNeeded } from './validationRuns/notifyValidationEntry';
+import { isValidatorWorkspaceSession } from './validationSessions';
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
 import { assigneePatchForCloudAutoStartOnUnblock } from './cloudAutoStartUnblockAssignee';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
+import { notifyAutoTaskTransition } from './renderer/notifyAutoTaskTransition';
 import type { UnblockAutostartPolicy } from './unblockAutostart';
 import {
   defaultTaskAgentForProject,
@@ -235,6 +242,7 @@ export default function App() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [taskDeleteConfirmId, setTaskDeleteConfirmId] = useState<string | null>(null);
   const [cleanupConfirmTaskId, setCleanupConfirmTaskId] = useState<string | null>(null);
+  const [cleanupDontShowAgain, setCleanupDontShowAgain] = useState(false);
   const [cleanupLoadingTaskId, setCleanupLoadingTaskId] = useState<string | null>(null);
   const [cleanupError, setCleanupError] = useState<string | null>(null);
   const [prLoadingTaskId, setPrLoadingTaskId] = useState<string | null>(null);
@@ -763,6 +771,14 @@ export default function App() {
             const patch: TaskPatch = { status: 'in-progress' };
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
+            if (task && task.status !== 'in-progress') {
+              notifyAutoTaskTransition({
+                task,
+                previousStatus: task.status,
+                nextStatus: 'in-progress',
+                reason: 'dependency-unblocked',
+              });
+            }
             if (inProg) {
               const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
               const r = await window.electronAPI.sessions.start(
@@ -783,6 +799,14 @@ export default function App() {
             const patch: TaskPatch = { status: 'in-progress' };
             if (uidRef.current && !task?.assigneeId) patch.assigneeId = uidRef.current;
             const updated = await provider.update(id, patch);
+            if (task && task.status !== 'in-progress') {
+              notifyAutoTaskTransition({
+                task,
+                previousStatus: task.status,
+                nextStatus: 'in-progress',
+                reason: 'dependency-unblocked',
+              });
+            }
             const all = tasksRef.current.map((x) => (x.id === id ? updated : x));
             const r = await window.electronAPI.sessions.start(
               updated,
@@ -1034,19 +1058,28 @@ export default function App() {
     const reposChanged =
       fresh.repos !== undefined &&
       JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
+    const validationEnabled = fresh.validationEnabled === true;
+    const validationChanged = validationEnabled !== (project.validationEnabled === true);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
       fresh.createdAt !== project.createdAt ||
-      reposChanged;
+      reposChanged ||
+      validationChanged;
     if (!changed) return;
+    if (validationChanged) {
+      void window.electronAPI.project.setValidationEnabled(validationEnabled).catch((err) => {
+        console.warn('[App] sync validationEnabled to disk', err);
+      });
+    }
     setProject({
       ...project,
       name: fresh.name,
       ownerId: fresh.ownerId,
       memberIds: fresh.memberIds,
       createdAt: fresh.createdAt,
+      validationEnabled,
       ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
     });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
@@ -1098,6 +1131,12 @@ export default function App() {
       setTasks((prev) =>
         prev.map((t) => (t.id === exited.taskId ? { ...t, status: 'needs-input' } : t)),
       );
+      notifyAutoTaskTransition({
+        task,
+        previousStatus: 'in-progress',
+        nextStatus: 'needs-input',
+        reason: 'agent-exited',
+      });
       void providerRef.current
         ?.update(exited.taskId, { status: 'needs-input' })
         .catch((err) => {
@@ -1204,6 +1243,12 @@ export default function App() {
         setTasks((prev) =>
           prev.map((t) => (t.id === taskId ? { ...t, status: 'needs-input' } : t)),
         );
+        notifyAutoTaskTransition({
+          task,
+          previousStatus: 'in-progress',
+          nextStatus: 'needs-input',
+          reason: 'agent-silence',
+        });
         void providerRef.current
           ?.update(taskId, { status: 'needs-input' })
           .catch((err) => {
@@ -1227,7 +1272,7 @@ export default function App() {
     if (project?.kind !== 'cloud') return;
     return window.electronAPI.tasks.onUserInput(({ taskId }) => {
       const task = tasksRef.current.find((t) => t.id === taskId);
-      if (!task || (task.status !== 'needs-input' && task.status !== 'review')) return;
+      if (!task || (task.status !== 'needs-input' && task.status !== 'review' && task.status !== 'validation')) return;
 
       const currentUid = uidRef.current;
       if (!currentUid || task.assigneeId !== currentUid) return;
@@ -1522,8 +1567,18 @@ export default function App() {
         const normalized = normalizeRestoredProjectTabState(persisted, restorable, {
           keepPersistedOpenTaskIds: keepPersistedOpen,
         });
-        const openTabs = new Set(normalized.openTaskIds);
-        const minimized = new Set(normalized.minimizedTaskWorkspaceIds);
+        const openTabs = new Set(
+          normalized.openTaskIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
+        const minimized = new Set(
+          normalized.minimizedTaskWorkspaceIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
         const hydratedIds = new Set(projectSessions.map((s) => s.id));
         const pendingRestoreIds = new Set(
           [...openTabs, ...minimized].filter((id) => !hydratedIds.has(id)),
@@ -2068,6 +2123,7 @@ export default function App() {
                 actorUid: uidRef.current,
               },
             );
+            await notifyCloudValidationEntryIfNeeded(preFlushTask, mergedTask);
             if (preFlushTask.status !== 'done' && mergedTask.status === 'done') {
               const follow = await runCloudDoneTransitionFollowUp({
                 previous: preFlushTask,
@@ -2410,6 +2466,7 @@ export default function App() {
                   actorUid: uid,
                 },
               );
+              await notifyCloudValidationEntryIfNeeded(previous, merged);
               if (previous.status !== 'done' && merged.status === 'done') {
                 const follow = await runCloudDoneTransitionFollowUp({
                   previous,
@@ -2687,14 +2744,49 @@ export default function App() {
     void handleDeleteTask(id);
   }, [taskDeleteConfirmId, handleDeleteTask]);
 
+  const runCleanupTask = useCallback(
+    async (taskId: string) => {
+      setCleanupLoadingTaskId(taskId);
+      setCleanupError(null);
+      try {
+        const { errors } = await window.electronAPI.tasks.cleanupResources(taskId);
+        stripLocalSessionStateForTask(taskId);
+        if (errors.length > 0) {
+          setCleanupError(errors.join('\n'));
+        } else if (provider) {
+          try {
+            const updated = await provider.update(taskId, {
+              workspaceCleanedAt: new Date().toISOString(),
+            });
+            setTasks((prev) =>
+              prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
+            );
+          } catch (err) {
+            console.error('[tasks.update] workspaceCleanedAt failed', err);
+          }
+        }
+      } catch (err) {
+        setCleanupError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCleanupLoadingTaskId(null);
+      }
+    },
+    [provider, stripLocalSessionStateForTask],
+  );
+
   const requestCleanupTask = useCallback(
     (taskId: string) => {
       const task = tasks.find((t) => t.id === taskId);
       if (!task || task.status !== 'done' || task.workspaceCleanedAt) return;
       setCleanupError(null);
+      if (readTaskCleanupSkipConfirmation()) {
+        void runCleanupTask(taskId);
+        return;
+      }
+      setCleanupDontShowAgain(false);
       setCleanupConfirmTaskId(taskId);
     },
-    [tasks],
+    [tasks, runCleanupTask],
   );
 
   const handleTaskPrClick = useCallback(
@@ -2749,43 +2841,26 @@ export default function App() {
 
   const cancelCleanupTask = useCallback(() => {
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
   }, []);
 
-  const confirmCleanupTask = useCallback(async () => {
+  const confirmCleanupTask = useCallback(() => {
     const taskId = cleanupConfirmTaskId;
     if (!taskId) return;
     setCleanupConfirmTaskId(null);
-    setCleanupLoadingTaskId(taskId);
-    setCleanupError(null);
-    try {
-      const { errors } = await window.electronAPI.tasks.cleanupResources(taskId);
-      stripLocalSessionStateForTask(taskId);
-      if (errors.length > 0) {
-        setCleanupError(errors.join('\n'));
-      } else if (provider) {
-        try {
-          const updated = await provider.update(taskId, {
-            workspaceCleanedAt: new Date().toISOString(),
-          });
-          setTasks((prev) =>
-            prev.map((t) => (t.id === taskId ? mergeTaskRowPreserveMissing(t, updated) : t)),
-          );
-        } catch (err) {
-          console.error('[tasks.update] workspaceCleanedAt failed', err);
-        }
-      }
-    } catch (err) {
-      setCleanupError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCleanupLoadingTaskId(null);
+    if (cleanupDontShowAgain) {
+      writeTaskCleanupSkipConfirmation(true);
     }
-  }, [cleanupConfirmTaskId, provider, stripLocalSessionStateForTask]);
+    setCleanupDontShowAgain(false);
+    void runCleanupTask(taskId);
+  }, [cleanupConfirmTaskId, cleanupDontShowAgain, runCleanupTask]);
 
   const handleProjectActivated = useCallback((p: ActiveProject) => {
     setProject(p);
     setSelectedTaskId(null);
     setTaskDeleteConfirmId(null);
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPrLoadingTaskId(null);
@@ -2817,6 +2892,7 @@ export default function App() {
     setSelectedTaskId(null);
     setTaskDeleteConfirmId(null);
     setCleanupConfirmTaskId(null);
+    setCleanupDontShowAgain(false);
     setCleanupLoadingTaskId(null);
     setCleanupError(null);
     setPrLoadingTaskId(null);
@@ -3578,6 +3654,14 @@ export default function App() {
                         ? () => void handleMarkTaskDone(item.session.taskId, { goToBoard: true })
                         : undefined
                     }
+                    onRequestCleanupTask={
+                      tabTask &&
+                      tabTask.status === 'done' &&
+                      !tabTask.workspaceCleanedAt
+                        ? () => requestCleanupTask(item.session.taskId)
+                        : undefined
+                    }
+                    cleanupLoading={cleanupLoadingTaskId === item.session.taskId}
                     onTaskPrClick={(id) => void handleTaskPrClick(id)}
                     prLoading={prLoadingTaskId === item.session.taskId}
                     prAgentAwaiting={Boolean(prAgentAwaitingByTaskId[item.session.taskId])}
@@ -3618,6 +3702,11 @@ export default function App() {
                                     })
                                 : undefined,
                             markAsDoneBlocked: tabTaskBlocked,
+                            onRequestCleanupTask:
+                              tabTask.status === 'done' && !tabTask.workspaceCleanedAt
+                                ? () => requestCleanupTask(item.session.taskId)
+                                : undefined,
+                            cleanupLoading: cleanupLoadingTaskId === item.session.taskId,
                             autoStartWhenUnblockedProject,
                             projectMembers,
                             cloudActiveRunnerSession:
@@ -3635,6 +3724,7 @@ export default function App() {
                             onOpenPlanningDoc: handleSelectPlanningDoc,
                             projectRepoReadiness,
                             onOpenProjectSettings: handleOpenProjectSettings,
+                            validationEnabledProject: project.validationEnabled === true,
                           }
                         : undefined
                     }
@@ -3696,6 +3786,7 @@ export default function App() {
                         cleanupLoadingTaskId={cleanupLoadingTaskId}
                         onCardClick={(id) => setSelectedTaskId(id)}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        validationEnabledProject={project.validationEnabled === true}
                         onPatchTaskAutoStartOnUnblock={(id, patch) =>
                           void handleUpdateTask(id, patch)
                         }
@@ -3761,6 +3852,7 @@ export default function App() {
                           selectedTask && isTaskBlocked(selectedTask, tasks),
                         )}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+                        validationEnabledProject={project.validationEnabled === true}
                         remoteRunner={remoteRunnerForSelected}
                         cloudActiveRunnerSession={
                           project.kind === 'cloud' && selectedTask
@@ -3921,7 +4013,12 @@ export default function App() {
           ]}
           confirmLabel="Clean up"
           destructive={false}
-          onConfirm={() => void confirmCleanupTask()}
+          dontShowAgain={{
+            label: "Don't show this again",
+            checked: cleanupDontShowAgain,
+            onChange: setCleanupDontShowAgain,
+          }}
+          onConfirm={confirmCleanupTask}
           onCancel={cancelCleanupTask}
         />
       ) : null}

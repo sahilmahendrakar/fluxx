@@ -5,6 +5,7 @@ export const FLUX_TASK_STATUS_VALUES = [
   'backlog',
   'in-progress',
   'needs-input',
+  'validation',
   'done',
 ] as const satisfies readonly TaskStatus[];
 

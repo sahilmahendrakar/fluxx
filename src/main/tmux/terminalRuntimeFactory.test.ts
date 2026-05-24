@@ -34,7 +34,7 @@ vi.mock('node-pty', () => ({
     ptyState.instances.push(fake);
     if (command === 'tmux') {
       expect(args[0]).toBe('-L');
-      expect(args[1]).toBe('fluxx');
+      expect(args[1]).toBe(process.env.FLUXX_TMUX_SOCKET_NAME ?? 'fluxx');
       expect(args[2]).toBe('-f');
       expect(args[4]).toBe('attach-session');
       expect(args[5]).toBe('-t');
@@ -48,7 +48,12 @@ import { spawnFluxxTmuxSession } from './tmuxSpawn';
 import { createTerminalRuntime, shouldUseTmuxRuntime } from './terminalRuntimeFactory';
 
 describe('terminalRuntimeFactory', () => {
+  const priorEnv = { ...process.env };
+
   beforeEach(() => {
+    process.env = { ...priorEnv };
+    delete process.env.FLUX_AUX_DEV_SERVER_PORT;
+    delete process.env.FLUXX_TMUX_SOCKET_NAME;
     ptyState.instances.length = 0;
     vi.mocked(spawnFluxxTmuxSession).mockClear();
   });
@@ -93,6 +98,35 @@ describe('terminalRuntimeFactory', () => {
     );
     expect(runtime.isTmuxBacked).toBe(true);
     expect(tmuxSessionName).toMatch(/^fluxx-planning-/);
+    expect(spawnFluxxTmuxSession).toHaveBeenCalledOnce();
+    expect(ptyState.instances.length).toBeGreaterThan(0);
+  });
+
+  it('uses tmux on aux dev with the isolated fluxx-aux socket', async () => {
+    process.env.FLUX_AUX_DEV_SERVER_PORT = '5180';
+    process.env.FLUXX_TMUX_SOCKET_NAME = 'fluxx-aux';
+    expect(
+      await shouldUseTmuxRuntime({
+        kind: 'task',
+        terminalId: 't1',
+        projectSlugSource: 'demo',
+        persistTerminalsWithTmux: true,
+        tmuxSpawnLauncherPath: '/launcher.cjs',
+      }),
+    ).toBe(true);
+    const { runtime, tmuxSessionName } = await createTerminalRuntime(
+      {
+        kind: 'task',
+        terminalId: 't1',
+        projectSlugSource: 'demo',
+        persistTerminalsWithTmux: true,
+        tmuxSpawnLauncherPath: '/launcher.cjs',
+      },
+      { command: 'echo', args: ['hi'], cwd: '/tmp', cols: 40, rows: 12 },
+      { onData: () => undefined, onExit: () => undefined },
+    );
+    expect(tmuxSessionName).toMatch(/^fluxx-task-/);
+    expect(runtime.isTmuxBacked).toBe(true);
     expect(spawnFluxxTmuxSession).toHaveBeenCalledOnce();
     expect(ptyState.instances.length).toBeGreaterThan(0);
   });

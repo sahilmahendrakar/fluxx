@@ -15,6 +15,7 @@ Optional:
   --assignee-email <email>       Cloud projects; resolve uid via fluxx members list
   --attach-doc <relativePath>    Repeat; planning markdown path (e.g. docs/plan.md)
                                  (aliases: --attach-docs, --attach-planning-doc)
+  --validation-plan <json>       Task-specific validator instructions (JSON object)
   --agent-model <model>
   --agent-yolo=true|false
   --json                         JSON on stdout`;
@@ -27,7 +28,7 @@ Required:
 Optional:
   --title <text>
   --description <text>
-  --status <backlog|in-progress|needs-input|review|done>
+  --status <backlog|in-progress|needs-input|validation|review|done>
   --agent <claude-code|cursor|codex|none>
   --label <name>                 Replaces all labels when any --label is passed
   --clear-labels                 Remove all labels
@@ -36,6 +37,8 @@ Optional:
   --attach-doc <relativePath>    Replaces all attachments when any --attach-doc is passed
                                  (aliases: --attach-docs, --attach-planning-doc)
   --clear-attached-docs          Remove all planning doc attachments (alias: --clear-attach-docs)
+  --validation-plan <json>       Replace validation plan (JSON object for the validator agent)
+  --clear-validation-plan        Remove the validation plan
   --source-branch <git-branch>   Alias: --feature-branch, --branch
   --create-source-branch-if-missing=true|false
   --repo-id <id>                 Only before session/worktree/PR exists
@@ -47,7 +50,7 @@ Optional:
 const TASK_LIST_FLAGS = `Usage: fluxx tasks list [--json] [options]
 
 Optional:
-  --exclude-status <column>      Repeat: backlog, in-progress, needs-input, done
+  --exclude-status <column>      Repeat: backlog, in-progress, needs-input, validation, done
   --json`;
 
 const TASK_START_FLAGS = `Usage: fluxx tasks start [--json] --id <taskId>
@@ -59,11 +62,73 @@ const TASK_DELETE_FLAGS = `Usage: fluxx tasks delete [--json] --id <taskId> --co
   --confirm                      Required; only after explicit user intent to delete
   --json`;
 
+const VALIDATION_RUN_FLAGS = `Usage: fluxx validation run [--json] --task-id <taskId> [options]
+
+Required:
+  --task-id <taskId>             Task to validate (alias: --task)
+
+Optional:
+  --pack <packId>                Validation pack (default: electron-playwright)
+  --validator-agent <agent>      claude-code | codex | cursor (default: cursor)
+  --no-launch                    Create the run record only (do not start validator agent)
+  --json`;
+
+const VALIDATION_LAUNCH_FLAGS = `Usage: fluxx validation launch [--json] --run-id <runId> [options]
+
+Required:
+  --run-id <runId>               Queued validation run to launch (alias: --run)
+
+Optional:
+  --task-id <taskId>             Task id when disambiguation is needed (alias: --task)
+  --json`;
+
+const VALIDATION_LIST_FLAGS = `Usage: fluxx validation list [--json] --task-id <taskId>
+
+Required:
+  --task-id <taskId>             Task whose runs to list (alias: --task)
+  --json`;
+
+const VALIDATION_SHOW_FLAGS = `Usage: fluxx validation show [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Notes:
+  Ingests verdict.json when the run is not terminal and the file is present.
+  --json`;
+
+const VALIDATION_ARTIFACTS_FLAGS = `Usage: fluxx validation artifacts [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Notes:
+  Ingests verdict.json when the run is not terminal and the file is present.
+  --json`;
+
+const VALIDATION_INGEST_FLAGS = `Usage: fluxx validation ingest [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Reads <artifactDir>/verdict.json, registers artifacts, and updates run status.
+  --json`;
+
+const VALIDATION_FINISH_FLAGS = `Usage: fluxx validation finish [--json] --run-id <runId>
+
+Required:
+  --run-id <runId>               Validation run id (alias: --run)
+
+Finalizes a validation run after the validator writes verdict.json. Registers artifacts,
+updates run status, and refreshes the Fluxx UI. Keep the validator session open for follow-up.
+  --json`;
+
 const TOP_LEVEL = `Fluxx CLI — board automation for planning sessions
 
 Usage:
   fluxx project info [--json]
   fluxx tasks list|create|update|start|delete [--json] ...
+  fluxx validation run|launch|list|show|artifacts|ingest|finish [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
 
@@ -72,6 +137,40 @@ Global:
   -h, --help                     Show command help
 
 Run \`fluxx <command> --help\` for subcommand flags (e.g. fluxx tasks create --help).`;
+
+function helpForValidationAction(action: string | undefined): string | null {
+  switch (action) {
+    case 'run':
+      return VALIDATION_RUN_FLAGS;
+    case 'launch':
+      return VALIDATION_LAUNCH_FLAGS;
+    case 'list':
+      return VALIDATION_LIST_FLAGS;
+    case 'show':
+      return VALIDATION_SHOW_FLAGS;
+    case 'artifacts':
+      return VALIDATION_ARTIFACTS_FLAGS;
+    case 'ingest':
+      return VALIDATION_INGEST_FLAGS;
+    case 'finish':
+      return VALIDATION_FINISH_FLAGS;
+    case undefined:
+      return `Usage: fluxx validation <run|launch|list|show|artifacts|ingest|finish> [options]
+
+Subcommands:
+  run        Create a validation run and start the validator agent (use --no-launch to skip)
+  launch     Start the validator agent for an existing queued run
+  list       List validation runs for a task
+  show       Show one run (ingests verdict when applicable)
+  artifacts  List artifacts for a run (ingests verdict when applicable)
+  ingest     Parse verdict.json and update run status
+  finish     Finalize a validation run after verdict.json is written (preferred for validators)
+
+Run \`fluxx validation <subcommand> --help\` for flags.`;
+    default:
+      return null;
+  }
+}
 
 function helpForTasksAction(action: string | undefined): string | null {
   switch (action) {
@@ -126,6 +225,9 @@ export function printFluxCliHelp(argv: string[]): boolean {
   } else if (domain === 'tasks') {
     const sub = helpForTasksAction(action);
     text = sub ?? `Unknown tasks subcommand. ${helpForTasksAction(undefined) ?? ''}`;
+  } else if (domain === 'validation') {
+    const sub = helpForValidationAction(action);
+    text = sub ?? `Unknown validation subcommand. ${helpForValidationAction(undefined) ?? ''}`;
   } else {
     text = TOP_LEVEL;
   }

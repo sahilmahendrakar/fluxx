@@ -3,7 +3,16 @@ import type { ActiveProjectKey } from '../types';
 import type { AutomationBridgeErrorCode, AutomationBridgeOp } from '../rendererAutomationBridge';
 import { activeProjectKeysEqual } from './activeProjectKey';
 
-export type FluxAutomationHttpOp = AutomationBridgeOp | 'tasks.start';
+export type FluxAutomationHttpOp =
+  | AutomationBridgeOp
+  | 'tasks.start'
+  | 'validation.run'
+  | 'validation.launch'
+  | 'validation.list'
+  | 'validation.show'
+  | 'validation.artifacts'
+  | 'validation.ingest'
+  | 'validation.finish';
 
 export interface FluxAutomationInvokeBody {
   op: FluxAutomationHttpOp;
@@ -13,7 +22,11 @@ export interface FluxAutomationInvokeBody {
 
 export type FluxAutomationInvokeResponse =
   | { ok: true; data: unknown }
-  | { ok: false; error: string; code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' };
+  | {
+      ok: false;
+      error: string;
+      code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' | 'VALIDATION_DISABLED';
+    };
 
 function readJsonBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

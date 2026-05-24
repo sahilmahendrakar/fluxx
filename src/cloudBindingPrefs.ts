@@ -16,6 +16,7 @@ import {
   normalizeRepoRootPathForIdentity,
   repoRootBasename,
 } from './repoIdentity';
+import { normalizeValidationEnabled } from './validation/validationEnabled';
 
 export { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
 
@@ -173,6 +174,7 @@ export function hydrateCloudProject(
     memberIds: string[];
     createdAt: string;
     repos?: CloudSharedRepo[];
+    validationEnabled?: boolean;
   },
   binding: CloudProjectLocalBinding,
   options?: { materializationRootPath?: string },
@@ -200,6 +202,7 @@ export function hydrateCloudProject(
     rootPath,
     sharedRepos,
     repoMachineBindings: repoMachineBindingsForHydration(sharedRepos, migrated),
+    validationEnabled: normalizeValidationEnabled(summary.validationEnabled),
     ...prefs,
     ...(migrated.defaultDeviceId ? { defaultDeviceId: migrated.defaultDeviceId } : {}),
   };

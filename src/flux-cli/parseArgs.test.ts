@@ -82,6 +82,29 @@ describe('parseFluxCliArgs', () => {
     }
   });
 
+  it('parses validation-plan on create and update', () => {
+    const plan =
+      '{"goal":"Verify UI","pack":"electron-playwright","checks":["Open details"],"requiredArtifacts":["shot"]}';
+    const create = parseFluxCliArgs([
+      'tasks',
+      'create',
+      '--title',
+      'Ship',
+      '--validation-plan',
+      plan,
+    ]);
+    expect(create.ok).toBe(true);
+    if (create.ok && create.command.kind === 'tasks' && create.command.action === 'create') {
+      expect(create.command.payload.validationPlan).toBe(plan);
+    }
+
+    const update = parseFluxCliArgs(['tasks', 'update', '--id', 't1', '--clear-validation-plan']);
+    expect(update.ok).toBe(true);
+    if (update.ok && update.command.kind === 'tasks' && update.command.action === 'update') {
+      expect(update.command.payload.validationPlan).toBeNull();
+    }
+  });
+
   it('parses task create and update attach-doc flags', () => {
     const create = parseFluxCliArgs([
       'tasks',
@@ -159,5 +182,76 @@ describe('parseFluxCliArgs', () => {
       expect(r.command.id).toBe('t1');
       expect(r.command.confirm).toBe(true);
     }
+  });
+
+  it('parses validation run list show and artifacts', () => {
+    const run = parseFluxCliArgs([
+      'validation',
+      'run',
+      '--json',
+      '--task-id',
+      'task-1',
+      '--pack',
+      'electron-playwright',
+    ]);
+    expect(run.ok).toBe(true);
+    if (run.ok) {
+      expect(run.command).toEqual({
+        kind: 'validation',
+        action: 'run',
+        json: true,
+        taskId: 'task-1',
+        packId: 'electron-playwright',
+      });
+    }
+
+    const list = parseFluxCliArgs(['validation', 'list', '--task', 'task-1', '--json']);
+    expect(list.ok).toBe(true);
+    if (list.ok) {
+      expect(list.command).toMatchObject({
+        kind: 'validation',
+        action: 'list',
+        taskId: 'task-1',
+        json: true,
+      });
+    }
+
+    const show = parseFluxCliArgs(['validation', 'show', '--run-id', 'run-1', '--json']);
+    expect(show.ok).toBe(true);
+    if (show.ok) {
+      expect(show.command).toEqual({
+        kind: 'validation',
+        action: 'show',
+        json: true,
+        runId: 'run-1',
+      });
+    }
+
+    const artifacts = parseFluxCliArgs(['validation', 'artifacts', '--run', 'run-1']);
+    expect(artifacts.ok).toBe(true);
+    if (artifacts.ok) {
+      expect(artifacts.command).toMatchObject({
+        kind: 'validation',
+        action: 'artifacts',
+        runId: 'run-1',
+      });
+    }
+
+    const finish = parseFluxCliArgs(['validation', 'finish', '--run-id', 'run-1', '--json']);
+    expect(finish.ok).toBe(true);
+    if (finish.ok) {
+      expect(finish.command).toEqual({
+        kind: 'validation',
+        action: 'finish',
+        json: true,
+        runId: 'run-1',
+      });
+    }
+  });
+
+  it('requires task-id for validation run and rejects unknown pack at parse time only via run', () => {
+    expect(parseFluxCliArgs(['validation', 'run']).ok).toBe(false);
+    expect(parseFluxCliArgs(['validation', 'list']).ok).toBe(false);
+    expect(parseFluxCliArgs(['validation', 'show']).ok).toBe(false);
   });
 });
