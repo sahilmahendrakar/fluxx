@@ -1,0 +1,2 @@
+{"type":"thread","session_id":"17bbdd09-92ba-4bdb-9870-5ccec471226c","status":"running"}
+{"type":"turn","conversation_id":"17bbdd09-92ba-4bdb-9870-5ccec471226c"}
