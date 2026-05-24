@@ -90,6 +90,7 @@ import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlannin
 import { isFirebaseConfigured } from './renderer/firebase';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
 import { notifyCloudValidationEntryIfNeeded } from './validationRuns/notifyValidationEntry';
+import { isValidatorWorkspaceSession } from './validationSessions';
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
 import { assigneePatchForCloudAutoStartOnUnblock } from './cloudAutoStartUnblockAssignee';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
@@ -1504,8 +1505,18 @@ export default function App() {
           project.id,
         );
         const normalized = normalizeRestoredProjectTabState(persisted, restorable);
-        const openTabs = new Set(normalized.openTaskIds);
-        const minimized = new Set(normalized.minimizedTaskWorkspaceIds);
+        const openTabs = new Set(
+          normalized.openTaskIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
+        const minimized = new Set(
+          normalized.minimizedTaskWorkspaceIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
         setSessions(
           filterSessionsForWorkspaceSidebar(
             projectSessions,

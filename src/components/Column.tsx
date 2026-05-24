@@ -92,7 +92,7 @@ export default function Column({
   const headerTint = isNeedsInput
     ? 'text-amber-400/90'
     : isValidation
-      ? 'text-violet-400/90'
+      ? 'text-purple-400/90'
       : isReview
         ? 'text-sky-400/90'
         : isDone
@@ -102,7 +102,7 @@ export default function Column({
   const countClass = isNeedsInput
     ? 'bg-amber-500/10 text-amber-400/90 ring-1 ring-amber-500/15'
     : isValidation
-      ? 'bg-violet-500/10 text-violet-300/95 ring-1 ring-violet-500/18'
+      ? 'bg-purple-500/10 text-purple-300/95 ring-1 ring-purple-500/20'
       : isReview
         ? 'bg-sky-500/10 text-sky-300/95 ring-1 ring-sky-500/18'
         : isDone

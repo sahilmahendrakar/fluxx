@@ -11,7 +11,7 @@ export function formatValidationPlanForValidatorPrompt(plan: TaskValidationPlan)
     '',
     '### Planned checks',
     '',
-    ...plan.checks.map((c) => `- ${c}`),
+    ...plan.checks.map((check, index) => `- [${index}] ${check}`),
     '',
   ];
   if (plan.requiredArtifacts.length > 0) {
@@ -25,6 +25,8 @@ export function formatValidationPlanForValidatorPrompt(plan: TaskValidationPlan)
   }
   lines.push(
     'Adapt these steps to the actual UI if labels or layout differ. Capture evidence for each planned check in `verdict.json` checks.',
+    'Each verdict check that maps to a planned check **must** include `plannedCheckIndex` (0-based, matching the `[n]` labels above). You may emit multiple verdict checks for the same index (e.g. static + runtime).',
+    'Use descriptive `name` values for humans; Fluxx aligns rows by `plannedCheckIndex`, not by name.',
     '',
   );
   return lines.join('\n');

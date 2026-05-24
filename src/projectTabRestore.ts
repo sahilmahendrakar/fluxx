@@ -6,6 +6,7 @@ import type {
   Session,
 } from './types';
 import { isPlanningSessionResumable } from './components/planningResumeUi';
+import { isValidatorWorkspaceSession } from './validationSessions';
 
 const STATIC_TAB_IDS = new Set(['board', 'plan', 'docs']);
 const PLAN_TAB_PREFIX = 'plan:';
@@ -36,7 +37,7 @@ export function mergeRestorableSessionIdSets(
 ): RestorableSessionIdSets {
   const taskSessionIds = new Set(fromIpc.taskSessionIds);
   for (const s of projectSessions) {
-    if (s.projectId === projectId) taskSessionIds.add(s.id);
+    if (s.projectId === projectId && !isValidatorWorkspaceSession(s)) taskSessionIds.add(s.id);
   }
   const planningSessionIds = new Set(fromIpc.planningSessionIds);
   for (const s of planningSessions) {
@@ -148,6 +149,7 @@ export function filterSessionsForWorkspaceSidebar(
   minimizedWorkspaceIds: ReadonlySet<string>,
 ): Session[] {
   return sessions.filter((s) => {
+    if (isValidatorWorkspaceSession(s)) return false;
     if (s.projectId !== projectId) return false;
     if (s.status === 'running') return true;
     return openTabIds.has(s.id) || minimizedWorkspaceIds.has(s.id);

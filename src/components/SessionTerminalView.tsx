@@ -303,11 +303,14 @@ function ValidationPane({
   session,
   visible,
   runPending,
+  awaitingPty,
 }: {
   session: Session | null;
   visible: boolean;
-  /** Run is active but validator PTY has not been attached yet. */
+  /** Queued run — validator launch has not returned a session id yet. */
   runPending: boolean;
+  /** Running run with session id, but PTY row not visible yet (or ended). */
+  awaitingPty: boolean;
 }) {
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session?.status === 'running';
@@ -361,6 +364,18 @@ function ValidationPane({
             aria-hidden
           />
           <span className="font-medium text-zinc-300">Starting validator…</span>
+        </div>
+      ) : awaitingPty && !session ? (
+        <div
+          className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-zinc-400"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span
+            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
+            aria-hidden
+          />
+          <span className="font-medium text-zinc-300">Connecting to validator…</span>
         </div>
       ) : running && session ? (
         <div className="relative h-full min-h-0">
@@ -554,7 +569,16 @@ export function SessionTerminalView({
     validatorSession,
   });
   const validationRunPending = Boolean(
-    task && latestRun && validationRunIsActive(latestRun.status) && !validatorSession,
+    task &&
+      latestRun?.status === 'queued' &&
+      !latestRun.validatorSessionId?.trim() &&
+      !validatorSession,
+  );
+  const validationRunAwaitingPty = Boolean(
+    task &&
+      latestRun?.status === 'running' &&
+      latestRun.validatorSessionId?.trim() &&
+      !validatorSession,
   );
 
   useEffect(() => {
@@ -590,6 +614,20 @@ export function SessionTerminalView({
       unsubValidation();
     };
   }, [task?.id, latestRun?.id, latestRun?.validatorSessionId, refreshValidationRuns]);
+
+  useEffect(() => {
+    if (!task?.id || !latestRun || !validationRunIsActive(latestRun.status)) return;
+    if (validatorSession) return;
+    const timer = window.setInterval(() => refreshValidationRuns(), 2000);
+    return () => window.clearInterval(timer);
+  }, [
+    task?.id,
+    latestRun?.id,
+    latestRun?.status,
+    latestRun?.validatorSessionId,
+    validatorSession,
+    refreshValidationRuns,
+  ]);
 
   useEffect(() => {
     if (activePane === 'details' && !showDetailsTab) {
@@ -804,6 +842,7 @@ export function SessionTerminalView({
             session={validatorSession}
             visible={visible && activePane === 'validation'}
             runPending={validationRunPending}
+            awaitingPty={validationRunAwaitingPty}
           />
         ) : null}
         {shells.map((shell) => (

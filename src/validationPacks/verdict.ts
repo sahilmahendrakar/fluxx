@@ -4,6 +4,8 @@ import type { ValidationCheckStatus, ValidationVerdictOutcome } from './types';
 export interface ValidationVerdictCheck {
   name: string;
   status: ValidationCheckStatus;
+  /** 0-based index into plan.json `checks[]` for this validation run. */
+  plannedCheckIndex?: number;
   detail?: string;
   artifactPaths?: string[];
 }
@@ -60,6 +62,13 @@ function parseCheck(raw: unknown): ValidationVerdictCheck | null {
     status: r.status as ValidationCheckStatus,
   };
   if (typeof r.detail === 'string' && r.detail.trim()) out.detail = r.detail.trim();
+  if (
+    typeof r.plannedCheckIndex === 'number' &&
+    Number.isInteger(r.plannedCheckIndex) &&
+    r.plannedCheckIndex >= 0
+  ) {
+    out.plannedCheckIndex = r.plannedCheckIndex;
+  }
   if (Array.isArray(r.artifactPaths)) {
     const paths = r.artifactPaths.filter(isNonEmptyString).map((p) => p.trim());
     if (paths.length > 0) out.artifactPaths = paths;

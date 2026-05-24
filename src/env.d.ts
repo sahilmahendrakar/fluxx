@@ -492,7 +492,7 @@ declare global {
               verdict: {
                 summary: string;
                 risks?: string[];
-                checks?: { name: string; status: string }[];
+                checks?: { name: string; status: string; plannedCheckIndex?: number }[];
               };
             }
           | { ok: false; error: string; code: string }

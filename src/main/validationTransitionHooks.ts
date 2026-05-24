@@ -13,6 +13,7 @@ import {
   maybeMoveTaskToReviewAfterValidationPass,
   type LaunchValidatorSessionFn,
 } from './validationTaskTransitions';
+import { reconcileActiveValidationRun } from './reconcileValidationRun';
 
 export type ValidationTransitionHooks = {
   onEnteredValidation: (previous: Task, updated: Task, source: string) => Promise<void>;
@@ -34,6 +35,7 @@ export function buildValidationTransitionHooks(input: {
     source: string,
   ) => Promise<Task>;
   broadcastLocalTasksChanged: () => void;
+  ensureValidatorBindingsHydrated: () => Promise<void>;
 }): ValidationTransitionHooks {
   const getValidationEnabled = async (): Promise<boolean> => {
     const dir = input.getRecordProjectDir()?.trim();
@@ -75,6 +77,17 @@ export function buildValidationTransitionHooks(input: {
     getValidationEnabled,
     getPrimaryRepoId,
     resolveWorktreePath,
+    listTerminalSessions: () => input.terminalBackend.listSessions(),
+    ensureValidatorBindingsHydrated: input.ensureValidatorBindingsHydrated,
+    reconcileActiveRun: (run, source) =>
+      reconcileActiveValidationRun(
+        {
+          validationRunStore: input.validationRunStore,
+          terminalBackend: input.terminalBackend,
+        },
+        run,
+        source,
+      ),
   };
 
   const getLocalTask = (taskId: string): Task | null => {

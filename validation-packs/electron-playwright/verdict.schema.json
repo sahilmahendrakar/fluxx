@@ -48,6 +48,11 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "status": { "$ref": "#/$defs/checkStatus" },
+        "plannedCheckIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-based index into plan.json checks[] for this run. Required when a plan is present."
+        },
         "detail": { "type": "string" },
         "artifactPaths": {
           "type": "array",

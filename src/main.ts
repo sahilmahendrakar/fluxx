@@ -131,6 +131,7 @@ import {
   type ValidationTransitionHooks,
 } from './main/validationTransitionHooks';
 import { broadcastValidationRunChanged } from './main/broadcastValidationRunChanged';
+import { reconcileActiveValidationRunsForTask } from './main/reconcileValidationRun';
 import {
   completeValidatorSessionOnExit,
   cancelValidatorSession,
@@ -138,6 +139,7 @@ import {
 import {
   computeSessionExitTransition,
   getValidatorSessionBinding,
+  hydrateValidatorSessionBindings,
   isValidatorSessionId,
 } from './main/validatorSessionLifecycle';
 import { resolvePlanningDocsDirFromSources } from './planningDocs/resolvePlanningDocsDir';
@@ -627,6 +629,25 @@ app.whenReady().then(async () => {
     getProjectDir: resolveRecordProjectDir,
   });
   let validationTransitionHooks: ValidationTransitionHooks | null = null;
+  let validatorBindingsHydrated = false;
+
+  async function ensureValidatorSessionBindingsHydrated(): Promise<void> {
+    if (validatorBindingsHydrated) return;
+    try {
+      const runs = await validationRunStore.listAll();
+      const live = await terminalBackend.listSessions();
+      hydrateValidatorSessionBindings(runs, live);
+      validatorBindingsHydrated = true;
+    } catch (err) {
+      console.warn('[validation] hydrate validator session bindings failed', err);
+    }
+  }
+
+  function annotateValidatorSessionKinds(sessions: Session[]): Session[] {
+    return sessions.map((s) =>
+      isValidatorSessionId(s.id) ? { ...s, kind: 'validator' as const } : s,
+    );
+  }
 
   async function buildTerminalInventorySnapshotForActiveProject(): Promise<TerminalInventorySnapshot> {
     const sessions = await terminalBackend.listSessions();
@@ -4477,8 +4498,9 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:getAll', async () => {
+    await ensureValidatorSessionBindingsHydrated();
     const project = projectStore.get();
-    const live = await terminalBackend.listSessions();
+    const live = annotateValidatorSessionKinds(await terminalBackend.listSessions());
     if (!project) return live;
     const forProject = live.filter((s) => s.projectId === project.id);
     const liveIds = new Set(forProject.map((s) => s.id));
@@ -4495,7 +4517,10 @@ app.whenReady().then(async () => {
       { excludeFluxxSessionIds: liveIds },
     );
     const otherProjects = live.filter((s) => s.projectId !== project.id);
-    return [...otherProjects, ...mergeTaskSessionsWithColdResume(forProject, cold)];
+    return annotateValidatorSessionKinds([
+      ...otherProjects,
+      ...mergeTaskSessionsWithColdResume(forProject, cold),
+    ]);
   });
 
   ipcMain.handle(
@@ -4563,7 +4588,10 @@ app.whenReady().then(async () => {
     bridge: automationRendererBridge,
     updateLocalTask: (id, patch, source) => updateTaskWithTransitionHandling(id, patch, source),
     broadcastLocalTasksChanged,
+    ensureValidatorBindingsHydrated: ensureValidatorSessionBindingsHydrated,
   });
+
+  void ensureValidatorSessionBindingsHydrated();
 
   fluxAutomationHostDeps = {
     taskStore,
@@ -5078,7 +5106,15 @@ app.whenReady().then(async () => {
       if (!task || typeof task.id !== 'string') return { error: 'task is required' };
       try {
         const launched = await launchValidatorSession({ task, runId });
-        if (!launched.ok) return { error: launched.error };
+        if (!launched.ok) {
+          const errored = await validationRunStore.updateStatus({
+            runId,
+            status: 'errored',
+            verdictReason: launched.error,
+          });
+          broadcastValidationRunChanged(runId);
+          return { error: launched.error, run: errored };
+        }
         broadcastValidationRunChanged(runId);
         return {
           ok: true as const,
@@ -5154,7 +5190,23 @@ app.whenReady().then(async () => {
       return { error: 'Invalid task id' };
     }
     try {
-      const runs = await validationRunStore.listForTask(taskId.trim());
+      await ensureValidatorSessionBindingsHydrated();
+      const before = await validationRunStore.listForTask(taskId.trim());
+      const runs = await reconcileActiveValidationRunsForTask(
+        { validationRunStore, terminalBackend },
+        taskId.trim(),
+        'ipc:validationRuns:listForTask',
+      );
+      const latestBefore = before[0];
+      const latestAfter = runs[0];
+      if (
+        latestBefore &&
+        latestAfter &&
+        latestBefore.id === latestAfter.id &&
+        latestBefore.status !== latestAfter.status
+      ) {
+        broadcastValidationRunChanged(latestAfter.id);
+      }
       return { ok: true as const, runs };
     } catch (err) {
       return {

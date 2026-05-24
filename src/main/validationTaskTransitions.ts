@@ -1,4 +1,4 @@
-import type { Task } from '../types';
+import type { Session, Task } from '../types';
 import { effectiveTaskRepoId } from '../repoIdentity';
 import {
   pickLatestValidationRun,
@@ -7,6 +7,10 @@ import {
 import type { ValidationRun } from '../validationRuns/types';
 import type { ValidationRunStore } from './ValidationRunStore';
 import { defaultValidatorAgent } from './startValidatorSession';
+import {
+  getValidatorSessionBinding,
+  isValidatorSessionId,
+} from './validatorSessionLifecycle';
 
 export type LaunchValidatorSessionFn = (input: {
   task: Task;
@@ -22,6 +26,9 @@ export type AutoStartValidationOnEntryDeps = {
   getValidationEnabled: () => Promise<boolean>;
   getPrimaryRepoId: () => Promise<string | undefined>;
   resolveWorktreePath: (task: Task) => Promise<string | undefined>;
+  listTerminalSessions?: () => Promise<Session[]>;
+  ensureValidatorBindingsHydrated?: () => Promise<void>;
+  reconcileActiveRun?: (run: ValidationRun, source: string) => Promise<ValidationRun>;
 };
 
 /**
@@ -39,6 +46,8 @@ export async function autoStartValidationOnEntry(
   if (updated.status !== 'validation') return;
   if (!(await deps.getValidationEnabled())) return;
 
+  await deps.ensureValidatorBindingsHydrated?.();
+
   if (updated.agent == null) {
     console.warn('[validation:auto-start] skipped — no agent', {
       source,
@@ -48,7 +57,10 @@ export async function autoStartValidationOnEntry(
   }
 
   const runs = await deps.validationRunStore.listForTask(updated.id);
-  const latest = pickLatestValidationRun(runs);
+  let latest = pickLatestValidationRun(runs);
+  if (latest && validationRunIsActive(latest.status) && deps.reconcileActiveRun) {
+    latest = await deps.reconcileActiveRun(latest, source);
+  }
   if (validationRunIsActive(latest?.status)) {
     console.warn('[validation:auto-start] skipped — run already active', {
       source,
@@ -57,11 +69,31 @@ export async function autoStartValidationOnEntry(
     return;
   }
 
-  const primaryRepoId = await deps.getPrimaryRepoId();
-  const repoId = primaryRepoId ? effectiveTaskRepoId(updated, primaryRepoId) : undefined;
-  const worktreeCwd = await deps.resolveWorktreePath(updated);
+  if (deps.listTerminalSessions) {
+    const sessions = await deps.listTerminalSessions();
+    const liveValidator = sessions.find((s) => {
+      if (s.kind === 'validator' || isValidatorSessionId(s.id)) {
+        const binding = getValidatorSessionBinding(s.id);
+        return binding?.taskId === updated.id;
+      }
+      return false;
+    });
+    if (liveValidator && liveValidator.status !== 'stopped' && liveValidator.status !== 'error') {
+      console.warn('[validation:auto-start] skipped — validator session still live', {
+        source,
+        taskId: updated.id,
+        validatorSessionId: liveValidator.id,
+        status: liveValidator.status,
+      });
+      return;
+    }
+  }
 
   try {
+    const primaryRepoId = await deps.getPrimaryRepoId();
+    const repoId = primaryRepoId ? effectiveTaskRepoId(updated, primaryRepoId) : undefined;
+    const worktreeCwd = await deps.resolveWorktreePath(updated);
+
     const run = await deps.validationRunStore.create({
       taskId: updated.id,
       projectId: updated.projectId,
@@ -74,6 +106,11 @@ export async function autoStartValidationOnEntry(
 
     const launched = await deps.launchValidatorSession({ task: updated, runId: run.id });
     if (!launched.ok) {
+      await deps.validationRunStore.updateStatus({
+        runId: run.id,
+        status: 'errored',
+        verdictReason: launched.error,
+      });
       console.error('[validation:auto-start] launch failed', {
         source,
         taskId: updated.id,

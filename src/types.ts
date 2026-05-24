@@ -618,6 +618,8 @@ export interface Session {
    * main may attach it to the live {@link Session} row for UI hints.
    */
   agentConversationId?: string;
+  /** Validator PTY for a validation run — not a task implementation workspace. */
+  kind?: 'task' | 'validator';
 }
 
 /** Persisted metadata for task agent PTY sessions (cold resume, audit). */

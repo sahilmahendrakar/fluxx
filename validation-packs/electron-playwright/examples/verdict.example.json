@@ -5,11 +5,13 @@
     {
       "name": "Task detail exposes Validation section",
       "status": "passed",
+      "plannedCheckIndex": 0,
       "artifactPaths": ["artifacts/screenshots/task-detail-validation-section.png"]
     },
     {
       "name": "Validation run status visible after manual trigger",
       "status": "needs-human-review",
+      "plannedCheckIndex": 1,
       "detail": "UI showed running state but run did not finish within timeout."
     }
   ],
