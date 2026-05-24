@@ -12,9 +12,9 @@ export const GRACEFUL_QUIT_AGENT_INTERRUPT_COUNT = 2;
 /** Pause between Ctrl+C sends so the PTY can render the resume line. */
 export const GRACEFUL_QUIT_INTERRUPT_GAP_MS = 350;
 
-/** Agents whose CLIs may emit `--resume` conversation ids on graceful exit. */
+/** Agents whose CLIs may emit resume conversation ids on graceful exit. */
 export function agentSupportsGracefulQuitCapture(agent: Agent): boolean {
-  return agent === 'cursor' || agent === 'claude-code';
+  return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
 }
 
 export function sleepMs(ms: number): Promise<void> {

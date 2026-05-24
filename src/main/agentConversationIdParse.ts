@@ -9,6 +9,9 @@ export function stripTerminalControlSequences(data: string): string {
   return withoutCsi;
 }
 
+const UUID_CAPTURE =
+  '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})';
+
 function lastUuidFromMatches(text: string, re: RegExp): string | undefined {
   let last: string | undefined;
   let m: RegExpExecArray | null;
@@ -27,12 +30,12 @@ export function parseCursorConversationId(raw: string): string | undefined {
   const text = stripTerminalControlSequences(raw);
   const fromHint = lastUuidFromMatches(
     text,
-    /(?:^|[\s>])agent\s+--resume(?:=|\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+    new RegExp(`(?:^|[\\s>])agent\\s+--resume(?:=|\\s+)${UUID_CAPTURE}\\b`, 'gi'),
   );
   if (fromHint) return fromHint;
   const fromJson = lastUuidFromMatches(
     text,
-    /["']session_id["']\s*:\s*["']([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["']/gi,
+    new RegExp(`["']session_id["']\\s*:\\s*["']${UUID_CAPTURE}["']`, 'gi'),
   );
   if (fromJson) return fromJson;
   return undefined;
@@ -45,12 +48,46 @@ export function parseClaudeConversationId(raw: string): string | undefined {
   const text = stripTerminalControlSequences(raw);
   const fromCli = lastUuidFromMatches(
     text,
-    /(?:^|[\s>])claude(?:\.exe)?\s+--resume(?:=|\s+)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+    new RegExp(`(?:^|[\\s>])claude(?:\\.exe)?\\s+--resume(?:=|\\s+)${UUID_CAPTURE}\\b`, 'gi'),
   );
   if (fromCli) return fromCli;
   const labeled = lastUuidFromMatches(
     text,
-    /(?:conversation|session)\s+id\s*[:#]\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi,
+    new RegExp(`(?:conversation|session)\\s+id\\s*[:#]\\s*${UUID_CAPTURE}\\b`, 'gi'),
+  );
+  if (labeled) return labeled;
+  return undefined;
+}
+
+/**
+ * Codex CLI prints `codex resume <uuid>` hints on exit and may emit session ids in JSONL.
+ */
+export function parseCodexConversationId(raw: string): string | undefined {
+  const text = stripTerminalControlSequences(raw);
+  const fromResumeHint = lastUuidFromMatches(
+    text,
+    new RegExp(`(?:^|[\\s>\`])codex\\s+resume(?:=|\\s+)${UUID_CAPTURE}\\b`, 'gi'),
+  );
+  if (fromResumeHint) return fromResumeHint;
+  const fromContinueHint = lastUuidFromMatches(
+    text,
+    new RegExp(
+      `(?:to\\s+continue\\s+this\\s+session,\\s+run|to\\s+resume\\s+this\\s+thread\\s+run)[^\\n]*codex\\s+resume\\s+${UUID_CAPTURE}\\b`,
+      'gi',
+    ),
+  );
+  if (fromContinueHint) return fromContinueHint;
+  const fromJson = lastUuidFromMatches(
+    text,
+    new RegExp(
+      `["'](?:session_id|conversation_id|sessionId)["']\\s*:\\s*["']${UUID_CAPTURE}["']`,
+      'gi',
+    ),
+  );
+  if (fromJson) return fromJson;
+  const labeled = lastUuidFromMatches(
+    text,
+    new RegExp(`(?:reviewed\\s+codex\\s+session\\s+id|session\\s+id)\\s*[:#]\\s*${UUID_CAPTURE}\\b`, 'gi'),
   );
   if (labeled) return labeled;
   return undefined;
@@ -62,6 +99,8 @@ export function parseAgentConversationId(agent: Agent, raw: string): string | un
       return parseCursorConversationId(raw);
     case 'claude-code':
       return parseClaudeConversationId(raw);
+    case 'codex':
+      return parseCodexConversationId(raw);
     default:
       return undefined;
   }
