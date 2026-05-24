@@ -1,10 +1,21 @@
-import type { Session, Task, TaskStatus } from '../types';
+import type {
+  ExecutionDeviceConfig,
+  Session,
+  Task,
+  TaskExecutionDeviceRef,
+  TaskStatus,
+} from '../types';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
+import { ExecutionDeviceChip } from './ExecutionDeviceChip';
+import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 
 export interface SessionTabMeta {
   session: Session;
   title: string;
   taskStatus?: TaskStatus;
+  executionDevice?: TaskExecutionDeviceRef;
+  restoring?: boolean;
 }
 
 export interface PlanningTabMeta {
@@ -17,6 +28,8 @@ interface TabBarProps {
   activeTabId: string;
   openSessions: SessionTabMeta[];
   openPlanningTabs: PlanningTabMeta[];
+  executionDevices?: ExecutionDeviceConfig[];
+  cloudProject?: boolean;
   settingsRouteActive: boolean;
   onSelectTab: (tabId: string) => void;
   onCloseSessionTab: (sessionId: string) => void;
@@ -28,13 +41,26 @@ interface TabBarProps {
 export function buildSessionTabs(
   openSessions: Session[],
   tasks: Task[],
+  executionDeviceDefaults?: ExecutionDeviceDefaults,
+  restoringSessionIds?: ReadonlySet<string>,
+  opts?: { cloudProject?: boolean },
 ): SessionTabMeta[] {
   return openSessions.map((session) => {
     const task = tasks.find((t) => t.id === session.taskId);
+    const executionDevice =
+      session.deviceKind && session.deviceId
+        ? { kind: session.deviceKind, deviceId: session.deviceId }
+        : task
+          ? resolveTaskChipExecutionDevice(task, executionDeviceDefaults, {
+              cloudProject: opts?.cloudProject,
+            })
+          : undefined;
     return {
       session,
       title: task?.title ?? 'Session',
       taskStatus: task?.status,
+      executionDevice,
+      restoring: restoringSessionIds?.has(session.id),
     };
   });
 }
@@ -45,6 +71,8 @@ export function TabBar({
   activeTabId,
   openSessions,
   openPlanningTabs,
+  executionDevices = [],
+  cloudProject = false,
   settingsRouteActive,
   onSelectTab,
   onCloseSessionTab,
@@ -96,7 +124,7 @@ export function TabBar({
       {openSessions.length > 0 ? (
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}
-      {openSessions.map(({ session, title, taskStatus }) => {
+      {openSessions.map(({ session, title, taskStatus, executionDevice, restoring }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
         const running = session.status === 'running';
         return (
@@ -106,14 +134,29 @@ export function TabBar({
               onClick={() => onSelectTab(session.id)}
               className="flex min-w-0 items-center gap-1.5"
             >
-              <span
-                className={[
-                  'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  workspaceSessionStatusDotClass(taskStatus, running),
-                ].join(' ')}
-                aria-hidden
-              />
-              <span className="max-w-[180px] truncate">{title}</span>
+              {restoring ? (
+                <span
+                  className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-zinc-500"
+                  title="Connecting workspace…"
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  className={[
+                    'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                    workspaceSessionStatusDotClass(taskStatus, running),
+                  ].join(' ')}
+                  aria-hidden
+                />
+              )}
+              <span className="max-w-[140px] truncate">{title}</span>
+              {executionDevices.length > 0 && executionDevice ? (
+                <ExecutionDeviceChip
+                  devices={executionDevices}
+                  deviceRef={executionDevice}
+                  cloudProject={cloudProject}
+                />
+              ) : null}
             </button>
             <button
               type="button"

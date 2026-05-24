@@ -17,9 +17,16 @@ import type {
   RepoConfig,
   Task,
   TaskAttachedPlanningDoc,
+  TaskExecutionDeviceRef,
   TaskGithubPr,
   TaskValidationPlan,
 } from '../types';
+import {
+  resolveDefaultExecutionDeviceForNewTaskInContext,
+  validateExecutionDeviceRefForStore,
+  type ExecutionDeviceHostContext,
+} from './executionDeviceContext';
+import type { DeviceStore } from './DeviceStore';
 import { parseTaskAttachedPlanningDocsForMcp } from '../taskAttachedPlanningDocs';
 import { parseCliValidationPlanInput } from '../validationPlans/persist';
 import {
@@ -74,6 +81,8 @@ export type FluxAutomationHost = {
   taskStore: TaskStore;
   projectStore: ProjectStore;
   bindingStore: LocalBindingStore;
+  deviceStore: DeviceStore;
+  getActiveProjectKey: () => ActiveProjectKey | null;
   validationRunStore: ValidationRunStore;
   listTerminalSessions: () => Promise<import('../types').Session[]>;
   getRecordProjectDir: () => string;
@@ -158,8 +167,18 @@ type CreateTaskMcpShape = {
   agentYolo?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  executionDevice?: TaskExecutionDeviceRef;
   validationPlan?: TaskValidationPlan | unknown;
 };
+
+function executionDeviceContextForHost(h: FluxAutomationHost): ExecutionDeviceHostContext {
+  return {
+    deviceStore: h.deviceStore,
+    projectStore: h.projectStore,
+    bindingStore: h.bindingStore,
+    activeKey: h.getActiveProjectKey(),
+  };
+}
 
 function parseAutomationAttachedPlanningDocs(
   raw: unknown,
@@ -282,6 +301,15 @@ export async function automationRunCreateTask(
     if (!branchOk.ok) {
       return { ok: false, error: branchOk.message };
     }
+    let executionDevice = input.executionDevice;
+    if (executionDevice) {
+      const v = validateExecutionDeviceRefForStore(h.deviceStore, executionDevice);
+      if (!v.ok) return { ok: false, error: v.message };
+    } else {
+      executionDevice = resolveDefaultExecutionDeviceForNewTaskInContext(
+        executionDeviceContextForHost(h),
+      );
+    }
     let task = await h.taskStore.create({
       title: input.title,
       agent,
@@ -289,10 +317,11 @@ export async function automationRunCreateTask(
       repoId: repoResolved.repoId,
       sourceBranch: planned.sourceBranch,
       createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+      executionDevice,
       ...modelYolo,
       ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
       ...(input.labels !== undefined ? { labels: input.labels } : {}),
-      ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
+      ...(attachedPlanningDocs != null && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
       ...(validationPlan !== undefined ? { validationPlan } : {}),
@@ -325,8 +354,11 @@ export async function automationRunCreateTask(
         ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
         : {}),
       ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
-      ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
+      ...(attachedPlanningDocs != null && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
+        : {}),
+      ...(input.executionDevice !== undefined
+        ? { executionDevice: input.executionDevice }
         : {}),
       ...(validationPlan !== undefined ? { validationPlan } : {}),
     },

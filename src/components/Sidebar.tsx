@@ -60,6 +60,7 @@ interface SidebarProps {
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
   sessionLayout: SidebarSessionLayout;
+  restoringWorkspaceIds?: ReadonlySet<string>;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
@@ -228,6 +229,7 @@ function WorkspaceSidebarRow({
   session,
   title,
   taskStatus,
+  restoring,
   active,
   onOpenSession,
   onMinimizeSession,
@@ -236,6 +238,7 @@ function WorkspaceSidebarRow({
   session: SessionTabMeta['session'];
   title: string;
   taskStatus?: SessionTabMeta['taskStatus'];
+  restoring?: boolean;
   active: boolean;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
@@ -257,13 +260,21 @@ function WorkspaceSidebarRow({
         onClick={() => onOpenSession(session.id)}
         title={title}
       >
-        <span
-          className={[
-            'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-            workspaceSessionStatusDotClass(taskStatus, running),
-          ].join(' ')}
-          aria-hidden
-        />
+        {restoring ? (
+          <span
+            className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-zinc-500"
+            title="Connecting workspace…"
+            aria-hidden
+          />
+        ) : (
+          <span
+            className={[
+              'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+              workspaceSessionStatusDotClass(taskStatus, running),
+            ].join(' ')}
+            aria-hidden
+          />
+        )}
         <span className="min-w-0 flex-1 truncate">{title}</span>
       </button>
       <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
@@ -299,6 +310,7 @@ function WorkspaceSidebarRow({
 function TaskWorkspaceSidebarList({
   projectId,
   sessionLayout,
+  restoringWorkspaceIds,
   activeTabId,
   settingsRouteActive,
   onOpenSession,
@@ -307,6 +319,7 @@ function TaskWorkspaceSidebarList({
 }: {
   projectId: string;
   sessionLayout: SidebarSessionLayout;
+  restoringWorkspaceIds?: ReadonlySet<string>;
   activeTabId: string;
   settingsRouteActive: boolean;
   onOpenSession: (sessionId: string) => void;
@@ -334,9 +347,10 @@ function TaskWorkspaceSidebarList({
     });
   };
 
-  const renderItem = ({ session, title, taskStatus }: SessionTabMeta) => (
+  const renderItem = ({ session, title, taskStatus, restoring }: SessionTabMeta) => (
     <WorkspaceSidebarRow
       key={session.id}
+      restoring={restoring ?? restoringWorkspaceIds?.has(session.id)}
       session={session}
       title={title}
       taskStatus={taskStatus}
@@ -428,6 +442,7 @@ export function Sidebar({
   selectedPlanningDocPath,
   onSelectPlanningDoc,
   sessionLayout,
+  restoringWorkspaceIds,
   onOpenSession,
   onMinimizeSession,
   onDeleteWorkspace,
@@ -615,6 +630,7 @@ export function Sidebar({
                 <TaskWorkspaceSidebarList
                   projectId={project.id}
                   sessionLayout={sessionLayout}
+                  restoringWorkspaceIds={restoringWorkspaceIds}
                   activeTabId={activeTabId}
                   settingsRouteActive={settingsRouteActive}
                   onOpenSession={onOpenSession}

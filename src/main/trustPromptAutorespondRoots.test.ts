@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fluxxBaseDirPath, legacyFluxBaseDirPath } from './fluxxBaseDir';
-import { cwdUnderTrustPromptAutorespondRoots, trustPromptAutorespondRootsForProject } from './trustPromptAutorespondRoots';
+import { cwdUnderTrustPromptAutorespondRoots, trustPromptAutorespondRootsForProject, trustPromptAutorespondRootsForRemoteWorktree } from './trustPromptAutorespondRoots';
 
 describe('trustPromptAutorespondRoots', () => {
   it('rootsForProject includes worktrees, planning, and ~/.fluxx/worktrees (plus legacy ~/.flux)', () => {
@@ -21,5 +21,13 @@ describe('trustPromptAutorespondRoots', () => {
     );
     expect(cwdUnderTrustPromptAutorespondRoots('/other', roots)).toBe(false);
     expect(cwdUnderTrustPromptAutorespondRoots('', [])).toBe(false);
+  });
+
+  it('trustPromptAutorespondRootsForRemoteWorktree includes worktree and parent worktrees dir', () => {
+    const wt =
+      '/home/ec2-user/.fluxx/workspaces/worktrees/hash/repo/task-id';
+    const roots = trustPromptAutorespondRootsForRemoteWorktree(wt);
+    expect(roots).toContain(wt);
+    expect(roots).toContain('/home/ec2-user/.fluxx/workspaces/worktrees');
   });
 });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { taskEligibleForGithubPrBoardRefresh } from '../../githubPrBoardRefreshEligibility';
 import type { Task } from '../../types';
 import { notifyAutoTaskTransition } from '../notifyAutoTaskTransition';
 import { buildCloudGithubPrRefreshPatch } from './cloudGithubPrRefreshReconcile';
@@ -29,9 +30,10 @@ async function runPool<T>(items: T[], concurrency: number, fn: (item: T) => Prom
 /**
  * Refreshes GitHub PR metadata for tasks with a linked PR URL (debounced), and
  * optionally runs branch-level discovery for tasks awaiting a first link after
- * agent-driven `gh pr create`. Local rows persist in the main process when the
- * IPC row exists; cloud tasks get `githubPr` updates when metadata changes, and
- * may get status-only writes when metadata already matches GitHub but merge/review
+ * agent-driven `gh pr create`. Only tasks in in-progress, needs-input, validation,
+ * or review are included — backlog and done are skipped. Local rows persist in the
+ * main process when the IPC row exists; cloud tasks get `githubPr` updates when
+ * metadata changes, and may get status-only writes when metadata already matches GitHub but merge/review
  * prefs still require a move.
  */
 export function useGithubPrBoardRefresh(input: {
@@ -99,7 +101,11 @@ export function useGithubPrBoardRefresh(input: {
 
   const tasksGithubPrKey = useMemo(() => {
     return tasks
-      .filter((t) => Boolean(t.githubPr?.url?.trim()))
+      .filter(
+        (t) =>
+          taskEligibleForGithubPrBoardRefresh(t.status) &&
+          Boolean(t.githubPr?.url?.trim()),
+      )
       .map((t) => {
         const g = t.githubPr;
         const url = g?.url?.trim();
@@ -117,16 +123,29 @@ export function useGithubPrBoardRefresh(input: {
     if (!enabled || !projectId || !kind || !prov) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     const snapshot = tasksRef.current;
-    const hasLinkedPr = snapshot.some((t) => Boolean(t.githubPr?.url?.trim()));
+    const hasLinkedPr = snapshot.some(
+      (t) =>
+        taskEligibleForGithubPrBoardRefresh(t.status) && Boolean(t.githubPr?.url?.trim()),
+    );
     const awaitingSet = new Set(awaitingGithubPrLinkTaskIdsRef.current);
     const hasAwaitingBranchDiscovery = [...awaitingSet].some((id) => {
       const row = snapshot.find((t) => t.id === id);
-      return row && !row.githubPr?.url?.trim();
+      return (
+        row &&
+        taskEligibleForGithubPrBoardRefresh(row.status) &&
+        !row.githubPr?.url?.trim()
+      );
     });
     if (!surfaceActiveRef.current && !hasLinkedPr && !hasAwaitingBranchDiscovery) return;
-    const linked = snapshot.filter((t) => Boolean(t.githubPr?.url?.trim()));
+    const linked = snapshot.filter(
+      (t) =>
+        taskEligibleForGithubPrBoardRefresh(t.status) && Boolean(t.githubPr?.url?.trim()),
+    );
     const branchAwaiting = snapshot.filter(
-      (t) => !t.githubPr?.url?.trim() && awaitingSet.has(t.id),
+      (t) =>
+        taskEligibleForGithubPrBoardRefresh(t.status) &&
+        !t.githubPr?.url?.trim() &&
+        awaitingSet.has(t.id),
     );
     const seen = new Set<string>();
     const list: Task[] = [];
@@ -199,11 +218,18 @@ export function useGithubPrBoardRefresh(input: {
     if (!enabled || !projectId || !projectKind || !provider) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     const snap = tasksRef.current;
-    const hasLinkedPr = snap.some((t) => Boolean(t.githubPr?.url?.trim()));
+    const hasLinkedPr = snap.some(
+      (t) =>
+        taskEligibleForGithubPrBoardRefresh(t.status) && Boolean(t.githubPr?.url?.trim()),
+    );
     const awaitingSet = new Set(awaitingGithubPrLinkTaskIdsRef.current);
     const hasAwaitingBranchDiscovery = [...awaitingSet].some((id) => {
       const row = snap.find((t) => t.id === id);
-      return row && !row.githubPr?.url?.trim();
+      return (
+        row &&
+        taskEligibleForGithubPrBoardRefresh(row.status) &&
+        !row.githubPr?.url?.trim()
+      );
     });
     if (!surfaceActiveRef.current && !hasLinkedPr && !hasAwaitingBranchDiscovery) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -268,11 +294,18 @@ export function useGithubPrBoardRefresh(input: {
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       const snap = tasksRef.current;
-      const hasLinkedPr = snap.some((t) => Boolean(t.githubPr?.url?.trim()));
+      const hasLinkedPr = snap.some(
+        (t) =>
+          taskEligibleForGithubPrBoardRefresh(t.status) && Boolean(t.githubPr?.url?.trim()),
+      );
       const awaitingSet = new Set(awaitingGithubPrLinkTaskIdsRef.current);
       const hasAwaitingBranchDiscovery = [...awaitingSet].some((id) => {
         const row = snap.find((t) => t.id === id);
-        return row && !row.githubPr?.url?.trim();
+        return (
+          row &&
+          taskEligibleForGithubPrBoardRefresh(row.status) &&
+          !row.githubPr?.url?.trim()
+        );
       });
       if (!surfaceActiveRef.current && !hasLinkedPr && !hasAwaitingBranchDiscovery) return;
       schedule();

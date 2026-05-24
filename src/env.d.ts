@@ -7,6 +7,7 @@ import type {
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
   CloudSharedRepo,
+  RemoteRepoBindingsOverview,
   LocalProject,
   OpenWorkspaceTarget,
   RepoBranchDiscoveryRequest,
@@ -29,6 +30,11 @@ import type {
   TaskRequestPullRequestFromAgentResult,
   TaskSessionStartProgress,
   TaskAttachedPlanningDoc,
+  TaskExecutionDeviceRef,
+  ExecutionDeviceConfig,
+  DeviceProbeResult,
+  ExecutionDeviceUpdateInput,
+  SshExecutionDeviceUpsertInput,
 } from './types';
 import type {
   AgentState,
@@ -195,6 +201,30 @@ declare global {
         syncCloudSharedRepos: (
           sharedRepos: CloudSharedRepo[],
         ) => Promise<{ ok: true } | { error: string }>;
+        getRemoteRepoBindingsOverview: (payload: {
+          deviceId: string;
+          repoIds: string[];
+        }) => Promise<RemoteRepoBindingsOverview | { error: string }>;
+        probeRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+          remotePath: string;
+        }) => Promise<
+          | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+          | { error: string; code?: string }
+        >;
+        setRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+          remotePath: string;
+        }) => Promise<
+          | { ok: true; binding: { remotePath: string; boundAt: string } }
+          | { error: string; code?: string }
+        >;
+        clearRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+        }) => Promise<{ ok: true } | { error: string }>;
         getAutoStartSessionOnInProgress: () => Promise<boolean>;
         setAutoStartSessionOnInProgress: (
           enabled: boolean,
@@ -224,6 +254,8 @@ declare global {
         setPersistTerminalsWithTmux: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getDefaultDeviceId: () => Promise<string | null>;
+        setDefaultDeviceId: (deviceId: string | null) => Promise<string | null>;
         getValidationEnabled: () => Promise<boolean>;
         setValidationEnabled: (
           enabled: boolean,
@@ -310,6 +342,40 @@ declare global {
           arg?: string | RepoBranchDiscoveryRequest,
         ) => Promise<RepoBranchDiscoveryResponse | { error: string }>;
       };
+      executionDevices: {
+        list: () => Promise<ExecutionDeviceConfig[]>;
+        getGlobalDefault: () => Promise<string | null>;
+        setGlobalDefault: (deviceId: string | null) => Promise<string | null>;
+        resolveDefaultForNewTask: () => Promise<TaskExecutionDeviceRef>;
+        createSsh: (input: SshExecutionDeviceUpsertInput) => Promise<ExecutionDeviceConfig>;
+        update: (
+          deviceId: string,
+          patch: ExecutionDeviceUpdateInput,
+        ) => Promise<ExecutionDeviceConfig>;
+        remove: (deviceId: string) => Promise<void>;
+        probe: (deviceId: string) => Promise<DeviceProbeResult>;
+        onChanged: (cb: () => void) => () => void;
+      };
+      cloudBindings: {
+        getPerTaskDeviceOverrides: (
+          projectId: string,
+        ) => Promise<Record<string, TaskExecutionDeviceRef>>;
+        getPerTaskDeviceOverride: (
+          projectId: string,
+          taskId: string,
+        ) => Promise<TaskExecutionDeviceRef | null>;
+        setPerTaskDeviceOverride: (
+          projectId: string,
+          taskId: string,
+          ref: TaskExecutionDeviceRef | null,
+        ) => Promise<TaskExecutionDeviceRef | null>;
+        getProjectDefaultDeviceId: (projectId: string) => Promise<string | null>;
+        setProjectDefaultDeviceId: (
+          projectId: string,
+          deviceId: string | null,
+        ) => Promise<string | null>;
+        onChanged: (cb: () => void) => () => void;
+      };
       tasks: {
         getAll: () => Promise<Task[]>;
         create: (input: {
@@ -323,7 +389,9 @@ declare global {
           agentYolo?: boolean;
           repoId?: string;
           attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+          executionDevice?: TaskExecutionDeviceRef;
         }) => Promise<Task>;
+        resolveEffectiveExecutionDevice: (task: Task) => Promise<TaskExecutionDeviceRef>;
         update: (
           id: string,
           patch: Partial<
@@ -343,11 +411,13 @@ declare global {
               | 'createSourceBranchIfMissing'
               | 'repoId'
               | 'fluxxWorkBranch'
+              | 'executionDevice'
             >
           > & {
             githubPr?: TaskGithubPr | null;
             autoStartOnUnblock?: boolean | null;
             attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+            executionDevice?: TaskExecutionDeviceRef | null;
           },
         ) => Promise<Task>;
         assertSourceBranchEditable: (
@@ -398,6 +468,15 @@ declare global {
         archive: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;
         getAll: () => Promise<Session[]>;
+        isRestoreComplete: () => Promise<boolean>;
+        awaitRestoreComplete: () => Promise<void>;
+        reconcileRemote: () => Promise<Session[]>;
+        syncToLocal: (sessionId: string) => Promise<import('./types').RemoteSshSyncResult>;
+        getSshLocalWorktree: (sessionId: string) => Promise<{
+          path: string | null;
+          lastSyncedAt: string | null;
+        }>;
+        onRestoreComplete: (cb: () => void) => () => void;
         attach: (sessionId: string) => Promise<AttachResult | null>;
         write: (sessionId: string, data: string) => void;
         resize: (sessionId: string, cols: number, rows: number) => void;
@@ -417,7 +496,7 @@ declare global {
         onTaskStartProgress: (cb: (p: TaskSessionStartProgress) => void) => () => void;
       };
       shells: {
-        open: (sessionId: string) => Promise<Shell>;
+        open: (sessionId: string, options?: import('./types').ShellOpenOptions) => Promise<Shell>;
         close: (shellId: string) => Promise<void>;
         list: (sessionId: string) => Promise<Shell[]>;
         attach: (shellId: string) => Promise<AttachResult | null>;

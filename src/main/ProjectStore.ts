@@ -6,9 +6,12 @@ import type {
   AgentSessionModelDefaults,
   AgentSpawnDefaultsPatch,
   LocalProject,
+  RemoteRepoBinding,
+  RemoteRepoBindingsByDevice,
   RepoConfig,
   RepoSettingsPatch,
 } from '../types';
+import { parseRemoteRepoBindingsByDevice } from '../remoteRepoBindings';
 import {
   deriveRepoIdForRootPath,
   deriveStablePrimaryRepoIdForProject,
@@ -67,6 +70,8 @@ export interface ConfigFile {
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
   persistTerminalsWithTmux?: boolean;
+  defaultDeviceId?: string;
+  remoteRepoBindings?: RemoteRepoBindingsByDevice;
   validationEnabled?: boolean;
   repos: RepoConfig[];
 }
@@ -128,6 +133,12 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     validationEnabled: normalizeValidationEnabled(c.validationEnabled),
     repos: c.repos,
   };
+  if (typeof c.defaultDeviceId === 'string' && c.defaultDeviceId.trim()) {
+    lp.defaultDeviceId = c.defaultDeviceId.trim();
+  }
+  if (c.remoteRepoBindings && Object.keys(c.remoteRepoBindings).length > 0) {
+    lp.remoteRepoBindings = JSON.parse(JSON.stringify(c.remoteRepoBindings)) as RemoteRepoBindingsByDevice;
+  }
   if (c.planningModels && Object.keys(c.planningModels).length > 0) {
     lp.planningModels = { ...c.planningModels };
   }
@@ -298,6 +309,16 @@ function parseConfig(raw: string): ConfigFile | null {
       (p as { validationEnabled?: unknown }).validationEnabled,
     ),
     repos,
+    ...(typeof p.defaultDeviceId === 'string' && p.defaultDeviceId.trim()
+      ? { defaultDeviceId: p.defaultDeviceId.trim() }
+      : {}),
+    ...(parseRemoteRepoBindingsByDevice((p as { remoteRepoBindings?: unknown }).remoteRepoBindings)
+      ? {
+          remoteRepoBindings: parseRemoteRepoBindingsByDevice(
+            (p as { remoteRepoBindings?: unknown }).remoteRepoBindings,
+          ),
+        }
+      : {}),
     ...(planningModels ? { planningModels } : {}),
     ...(py === true ? { planningAgentYolo: true } : {}),
     ...(taskDefaultModels ? { taskDefaultModels } : {}),
@@ -843,6 +864,14 @@ export class ProjectStore {
     return next.persistTerminalsWithTmux === true;
   }
 
+  async getDefaultDeviceIdAt(projectDir: string): Promise<string | undefined> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.defaultDeviceId;
+  }
+
   async getValidationEnabledAt(projectDir: string): Promise<boolean> {
     const configPath = path.join(projectDir, 'config.json');
     const raw = await fs.readFile(configPath, 'utf8');
@@ -868,6 +897,103 @@ export class ProjectStore {
       this.project = configToLocalProject(next);
     }
     return normalizeValidationEnabled(next.validationEnabled);
+  }
+
+  async getRemoteRepoBindingsAt(projectDir: string): Promise<RemoteRepoBindingsByDevice | undefined> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return parsed.remoteRepoBindings
+      ? (JSON.parse(JSON.stringify(parsed.remoteRepoBindings)) as RemoteRepoBindingsByDevice)
+      : undefined;
+  }
+
+  getRemoteRepoBindings(): RemoteRepoBindingsByDevice | undefined {
+    return this.project?.remoteRepoBindings
+      ? (JSON.parse(JSON.stringify(this.project.remoteRepoBindings)) as RemoteRepoBindingsByDevice)
+      : undefined;
+  }
+
+  async setRemoteRepoBindingAt(
+    projectDir: string,
+    deviceId: string,
+    repoId: string,
+    binding: RemoteRepoBinding,
+  ): Promise<void> {
+    const did = deviceId.trim();
+    const rid = repoId.trim();
+    if (!did || !rid) throw new Error('deviceId and repoId are required');
+    await this.mutateConfigAt(projectDir, (c) => {
+      const next: ConfigFile = { ...c };
+      if (!next.remoteRepoBindings) next.remoteRepoBindings = {};
+      if (!next.remoteRepoBindings[did]) next.remoteRepoBindings[did] = {};
+      next.remoteRepoBindings[did][rid] = binding;
+      return next;
+    });
+  }
+
+  async clearRemoteRepoBindingAt(
+    projectDir: string,
+    deviceId: string,
+    repoId: string,
+  ): Promise<void> {
+    const did = deviceId.trim();
+    const rid = repoId.trim();
+    if (!did || !rid) return;
+    await this.mutateConfigAt(projectDir, (c) => {
+      const map = c.remoteRepoBindings;
+      if (!map?.[did]?.[rid]) return c;
+      const next: ConfigFile = { ...c, remoteRepoBindings: { ...map } };
+      const perDevice = { ...next.remoteRepoBindings![did] };
+      delete perDevice[rid];
+      if (Object.keys(perDevice).length === 0) {
+        delete next.remoteRepoBindings![did];
+      } else {
+        next.remoteRepoBindings![did] = perDevice;
+      }
+      if (Object.keys(next.remoteRepoBindings!).length === 0) {
+        delete next.remoteRepoBindings;
+      }
+      return next;
+    });
+  }
+
+  private async mutateConfigAt(
+    projectDir: string,
+    fn: (c: ConfigFile) => ConfigFile,
+  ): Promise<void> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next = fn(parsed);
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+  }
+
+  async setDefaultDeviceIdAt(
+    projectDir: string,
+    deviceId: string | null | undefined,
+  ): Promise<string | undefined> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const trimmed = deviceId?.trim();
+    const next: ConfigFile = { ...parsed };
+    if (!trimmed) {
+      delete next.defaultDeviceId;
+    } else {
+      next.defaultDeviceId = trimmed;
+    }
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return next.defaultDeviceId;
   }
 
   private async mutateConfig(

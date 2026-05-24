@@ -4,6 +4,7 @@ import type { PlanningSession } from './types';
 import {
   activeProjectKeyString,
   filterSessionsForWorkspaceSidebar,
+  mergeSessionsWithRestoringPlaceholders,
   normalizeRestoredProjectTabState,
   resolvePlanningSidebarActiveId,
   restorableSessionIdSets,
@@ -209,6 +210,34 @@ describe('resolvePlanningSidebarActiveId', () => {
       normalized,
     );
     expect(id).toBe('cold-1');
+  });
+});
+
+describe('normalizeRestoredProjectTabState keepPersistedOpenTaskIds', () => {
+  it('keeps persisted open tabs before restorable ids are known', () => {
+    const out = normalizeRestoredProjectTabState(
+      { openTaskIds: ['ssh-s1'], activeTaskId: 'ssh-s1' },
+      { taskSessionIds: new Set(), planningSessionIds: new Set() },
+      { keepPersistedOpenTaskIds: true },
+    );
+    expect(out.openTaskIds).toEqual(['ssh-s1']);
+    expect(out.activeTabId).toBe('ssh-s1');
+  });
+});
+
+describe('mergeSessionsWithRestoringPlaceholders', () => {
+  it('adds placeholder rows for open tabs missing from getAll', () => {
+    const merged = mergeSessionsWithRestoringPlaceholders(
+      [],
+      new Set(['pending-s1']),
+      new Set(),
+      'p1',
+      new Map([['pending-s1', 'task-1']]),
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe('pending-s1');
+    expect(merged[0]?.taskId).toBe('task-1');
+    expect(merged[0]?.status).toBe('idle');
   });
 });
 

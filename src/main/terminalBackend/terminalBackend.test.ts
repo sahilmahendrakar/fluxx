@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TerminalBackend } from './TerminalBackend';
 import { createMainTerminalBackend } from './createMainTerminalBackend';
 import { LocalMainProcessTerminalBackend } from './LocalMainProcessTerminalBackend';
+import { RoutingTerminalBackend } from './RoutingTerminalBackend';
 
 describe('TerminalBackend', () => {
   it('LocalMainProcessTerminalBackend satisfies TerminalBackend for callers', async () => {
@@ -13,7 +14,12 @@ describe('TerminalBackend', () => {
     await backend.teardownForAppQuit();
   });
 
-  it('createMainTerminalBackend returns local main-process backend', () => {
+  it('createMainTerminalBackend returns local backend without deviceStore', () => {
     expect(createMainTerminalBackend()).toBeInstanceOf(LocalMainProcessTerminalBackend);
+  });
+
+  it('createMainTerminalBackend returns routing backend with deviceStore', () => {
+    const deviceStore = { getDevice: vi.fn() } as never;
+    expect(createMainTerminalBackend({ deviceStore })).toBeInstanceOf(RoutingTerminalBackend);
   });
 });

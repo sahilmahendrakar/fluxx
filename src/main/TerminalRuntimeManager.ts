@@ -76,6 +76,8 @@ export interface AppQuitConfirmInfo {
   persistTmuxEnabled: boolean;
   directPtyCount: number;
   tmuxBackedCount: number;
+  /** Direct-SSH tmux sessions on remote hosts (not stopped by quitting Desktop). */
+  remoteTmuxBackedCount?: number;
 }
 
 export interface TerminalRuntimeMeta {
@@ -628,10 +630,11 @@ export class TerminalRuntimeManager {
       worktreePath: params.worktreePath,
       status: 'running',
       startedAt: new Date().toISOString(),
+      ...(params.placement === 'local' ? { shellPlacement: 'local' as const } : {}),
     };
 
     const parent = this.sessions.get(params.sessionId);
-    const projectSlugSource = parent?.session.projectId ?? 'project';
+    const projectSlugSource = parent?.session.projectId ?? params.projectId ?? 'project';
 
     const { runtime, tmuxSessionName } = await createTerminalRuntime(
       this.factoryContext('shell', id, projectSlugSource),

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Draggable } from '@hello-pangea/dnd';
 import { broom } from '@lucide/lab';
@@ -15,7 +15,10 @@ import {
   Terminal,
   UserCircle2,
 } from 'lucide-react';
-import { Task } from '../types';
+import { ExecutionDeviceConfig, Task } from '../types';
+import { ExecutionDeviceChip } from './ExecutionDeviceChip';
+import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
+import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
@@ -236,6 +239,9 @@ interface Props {
   canOpenTaskWorkspaceTab: boolean;
   /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
+  executionDevices?: ExecutionDeviceConfig[];
+  executionDeviceDefaults?: ExecutionDeviceDefaults;
+  cloudProject?: boolean;
 }
 
 export default function TaskCard({
@@ -264,7 +270,18 @@ export default function TaskCard({
   onTaskAgentSpawnPrefsChange,
   canOpenTaskWorkspaceTab,
   onOpenTaskWorkspaceTab,
+  executionDevices = [],
+  executionDeviceDefaults,
+  cloudProject = false,
 }: Props) {
+  const chipDeviceRef = useMemo(
+    () =>
+      resolveTaskChipExecutionDevice(task, executionDeviceDefaults, {
+        cloudProject,
+      }),
+    [task, task.executionDevice, executionDeviceDefaults, cloudProject],
+  );
+
   const isNeedsInput = task.status === 'needs-input';
   const isValidation = task.status === 'validation';
   const isReview = task.status === 'review';
@@ -398,6 +415,13 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
+                  {executionDevices.length > 0 && chipDeviceRef ? (
+                    <ExecutionDeviceChip
+                      devices={executionDevices}
+                      deviceRef={chipDeviceRef}
+                      cloudProject={cloudProject}
+                    />
+                  ) : null}
                   <button
                     type="button"
                     disabled={!canOpenTaskWorkspaceTab}

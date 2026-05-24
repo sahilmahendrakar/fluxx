@@ -204,6 +204,7 @@ export function hydrateCloudProject(
     repoMachineBindings: repoMachineBindingsForHydration(sharedRepos, migrated),
     validationEnabled: normalizeValidationEnabled(summary.validationEnabled),
     ...prefs,
+    ...(migrated.defaultDeviceId ? { defaultDeviceId: migrated.defaultDeviceId } : {}),
   };
 }
 
