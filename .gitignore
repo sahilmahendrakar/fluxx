@@ -91,7 +91,7 @@ typings/
 # Vite
 .vite/
 
-# Secondary Flux dev instance (`pnpm run start:aux`) — isolated daemon + profile
+# Secondary Flux dev instance (`pnpm run start:aux`) — isolated profile + tmux socket (`fluxx-aux`)
 .flux-test-userdata/
 .fluxx-test-userdata/
 

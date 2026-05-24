@@ -2,6 +2,8 @@ import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { ActiveProjectKey, ProjectTabState } from '../types';
+import type { AutoTransitionNotificationPrefs } from '../taskAutoTransitionNotificationPrefs';
+import { normalizeAutoTransitionNotificationPrefs } from '../taskAutoTransitionNotificationPrefs';
 import { parseProjectTabStateDiskValue } from './projectTabStateDiskParse';
 
 export type { ProjectTabState };
@@ -14,6 +16,8 @@ export interface AppState {
   projectTabs: Record<string, ProjectTabState>;
   /** ISO timestamps for project picker recency sort (`local:` / `cloud:` keys). */
   projectLastOpenedAt: Record<string, string>;
+  /** App-wide macOS notifications for automatic task status transitions. */
+  autoTransitionNotifications?: AutoTransitionNotificationPrefs;
 }
 
 export function projectStateKey(key: ActiveProjectKey): string {
@@ -89,6 +93,11 @@ export class AppStateStore {
         if (typeof value === 'string' && value) recents[key] = value;
       }
       this.state.projectLastOpenedAt = recents;
+    }
+    if (o.autoTransitionNotifications !== undefined) {
+      this.state.autoTransitionNotifications = normalizeAutoTransitionNotificationPrefs(
+        o.autoTransitionNotifications,
+      );
     }
   }
 

@@ -253,6 +253,7 @@ declare global {
         clearActive: () => Promise<void>;
         getTabs: (key: ActiveProjectKey) => Promise<ProjectTabState>;
         setTabs: (key: ActiveProjectKey, tabs: ProjectTabState) => Promise<void>;
+        getRestorableSessionIds: () => Promise<import('./types').RestorableSessionIds>;
         getLocalBinding: (
           cloudProjectId: string,
         ) => Promise<CloudProjectLocalBinding | null>;
@@ -394,6 +395,7 @@ declare global {
           options?: SessionStartOptions,
         ) => Promise<SessionStartResult>;
         deleteWorkspace: (sessionId: string) => Promise<void>;
+        archive: (sessionId: string) => Promise<void>;
         get: (taskId: string) => Promise<Session | null>;
         getAll: () => Promise<Session[]>;
         attach: (sessionId: string) => Promise<AttachResult | null>;
@@ -588,6 +590,20 @@ declare global {
             plan: FirestoreHydrationWritePlan;
           }) => Promise<{ ok: true } | { error: string }>;
         };
+      };
+      notifications: {
+        getAutoTransitionPrefs: () => Promise<
+          import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs
+        >;
+        setAutoTransitionPrefs: (
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs,
+        ) => Promise<{
+          ok: true;
+          prefs: import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs;
+        }>;
+        notifyAutoTransition: (
+          payload: import('./taskAutoTransitionNotification').AutoTransitionNotifyInput,
+        ) => Promise<{ ok: true } | { ok: false; error: string }>;
       };
       /**
        * macOS packaged builds — GitHub Releases via `electron-updater`; download starts only via `startDownload`.

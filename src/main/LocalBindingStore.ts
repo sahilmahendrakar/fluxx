@@ -322,6 +322,9 @@ export class LocalBindingStore {
       if (prevM.autoMoveToReviewWhenPrOpen !== undefined) {
         binding.autoMoveToReviewWhenPrOpen = prevM.autoMoveToReviewWhenPrOpen;
       }
+      if (prevM.persistTerminalsWithTmux !== undefined) {
+        binding.persistTerminalsWithTmux = prevM.persistTerminalsWithTmux;
+      }
     }
     const normalized = stripLegacyRootPathForPersistence(binding);
     this.bindings[projectId] = normalized;
@@ -388,6 +391,9 @@ export class LocalBindingStore {
       }
       if (prev.autoMoveToReviewWhenPrOpen !== undefined) {
         binding.autoMoveToReviewWhenPrOpen = prev.autoMoveToReviewWhenPrOpen;
+      }
+      if (prev.persistTerminalsWithTmux !== undefined) {
+        binding.persistTerminalsWithTmux = prev.persistTerminalsWithTmux;
       }
     }
     const normalized = stripLegacyRootPathForPersistence(binding);

@@ -118,6 +118,7 @@ import type {
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
+import { isAuxDevInstance } from './main/auxDevInstance';
 import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
@@ -269,6 +270,7 @@ import {
   taskSourceBranchSettingsWouldChange,
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
+import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
 import { installMacApplicationMenu } from './main/macApplicationMenu';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
@@ -531,6 +533,14 @@ let appQuitTeardownComplete = false;
 /** When true, PTY exits during `teardownForAppQuit` are recorded as app-quit (cold resume). */
 let terminalQuitTeardownInProgress = false;
 
+/** Session exit hooks enqueue async record writes; `before-quit` awaits these. */
+const pendingSessionExitWork = new Set<Promise<void>>();
+
+/** Assigned during `app.whenReady`; used by `before-quit` to flush agent session records. */
+let taskAgentSessionRecordStore!: TaskAgentSessionRecordStore;
+let planningAgentSessionRecordStore!: PlanningAgentSessionRecordStore;
+let validationRunStore!: ValidationRunStore;
+
 const APP_QUIT_TERMINAL_TEARDOWN_MS = 3000;
 
 const createWindow = () => {
@@ -594,6 +604,7 @@ app.whenReady().then(async () => {
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();
+  const taskAutoTransitionNotify = registerTaskAutoTransitionNotificationIpc(appStateStore);
 
   const projectStore = new ProjectStore(fluxxBaseDir);
   const taskStore = new TaskStore('');
@@ -616,16 +627,16 @@ app.whenReady().then(async () => {
 
   const resolveRecordProjectDir = (): string =>
     worktreeService.getProjectDir()?.trim() || projectStore.getProjectDir()?.trim() || '';
-  const taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
+  taskAgentSessionRecordStore = new TaskAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
-  const planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
+  planningAgentSessionRecordStore = new PlanningAgentSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
   const terminalSessionRecordStore = new TerminalSessionRecordStore({
     getProjectDir: resolveRecordProjectDir,
   });
-  const validationRunStore = new ValidationRunStore({
+  validationRunStore = new ValidationRunStore({
     getProjectDir: resolveRecordProjectDir,
   });
   let validationTransitionHooks: ValidationTransitionHooks | null = null;
@@ -692,7 +703,6 @@ app.whenReady().then(async () => {
   const conversationParseTails = new Map<string, string>();
   const conversationCaptured = new Set<string>();
   const conversationAgentBySessionId = new Map<string, Agent>();
-  const pendingSessionExitWork = new Set<Promise<void>>();
 
   function trackSessionExitWork(work: Promise<void>): void {
     pendingSessionExitWork.add(work);
@@ -802,6 +812,12 @@ app.whenReady().then(async () => {
       console.log('[task:status] in-progress → needs-input (silence detected, local)', { taskId });
       await taskStore.update(taskId, { status: 'needs-input' });
       broadcastLocalTasksChanged();
+      taskAutoTransitionNotify.dispatch({
+        taskTitle: task.title,
+        previousStatus: 'in-progress',
+        nextStatus: 'needs-input',
+        reason: 'agent-silence',
+      });
     }
   }
 
@@ -867,11 +883,20 @@ app.whenReady().then(async () => {
           (id) => taskStore.getAll(project.id).find((t) => t.id === id),
         );
         if (transition.action === 'transition') {
+          const task = taskStore.getAll(project.id).find((t) => t.id === transition.taskId);
           console.log('[task:status] in-progress → needs-input (agent exited cleanly, local)', {
             taskId: transition.taskId,
           });
           await taskStore.update(transition.taskId, { status: 'needs-input' });
           broadcastLocalTasksChanged();
+          if (task) {
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: task.title,
+              previousStatus: 'in-progress',
+              nextStatus: 'needs-input',
+              reason: 'agent-exited',
+            });
+          }
         } else if (session.status === 'error') {
           console.warn('[task:status] agent exited with error, not transitioning task', {
             taskId,
@@ -1141,6 +1166,7 @@ app.whenReady().then(async () => {
 
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
     if (!(terminalBackend instanceof LocalMainProcessTerminalBackend)) return;
+    if (isAuxDevInstance()) return;
     await syncTerminalRuntimeContext();
     if (!terminalRuntimeContext.persistTerminalsWithTmux) return;
 
@@ -3394,6 +3420,12 @@ app.whenReady().then(async () => {
               'pr:mergedRefresh',
             );
             broadcastLocalTasksChanged();
+            taskAutoTransitionNotify.dispatch({
+              taskTitle: rowForAuto.title,
+              previousStatus: rowForAuto.status,
+              nextStatus: 'done',
+              reason: 'pr-merged',
+            });
           } catch (err) {
             console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
           }
@@ -3414,6 +3446,12 @@ app.whenReady().then(async () => {
                 'github-pr:refresh-open',
               );
               broadcastLocalTasksChanged();
+              taskAutoTransitionNotify.dispatch({
+                taskTitle: rowForAuto.title,
+                previousStatus: rowForAuto.status,
+                nextStatus: 'review',
+                reason: 'pr-opened',
+              });
             } catch (err: unknown) {
               console.warn('[github-pr:auto-review] move after refresh failed', taskId, err);
             }
@@ -4177,20 +4215,39 @@ app.whenReady().then(async () => {
       },
       startSession: (task, all) => startSessionForTask(task, all),
       moveBacklogToInProgress: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
         );
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
       },
       moveBacklogToInProgressThenStartSessionWithoutImplicitInProg: async (id) => {
+        const p = projectStore.get();
+        const prev = p ? taskStore.getAll(p.id).find((t) => t.id === id) : undefined;
         await updateTaskWithTransitionHandling(
           id,
           { status: 'in-progress' },
           `unblock-backlog:${source}`,
           { skipInProgressAutostart: true },
         );
-        const p = projectStore.get();
+        if (prev && prev.status !== 'in-progress') {
+          taskAutoTransitionNotify.dispatch({
+            taskTitle: prev.title,
+            previousStatus: prev.status,
+            nextStatus: 'in-progress',
+            reason: 'dependency-unblocked',
+          });
+        }
         if (!p) return;
         const all = taskStore.getAll(p.id);
         const fresh = all.find((t) => t.id === id);
@@ -5782,9 +5839,15 @@ app.on('before-quit', (e) => {
       if (pendingSessionExitWork.size > 0) {
         await Promise.allSettled([...pendingSessionExitWork]);
       }
-      await taskAgentSessionRecordStore.whenWriteIdle();
-      await planningAgentSessionRecordStore.whenWriteIdle();
-      await validationRunStore.whenWriteIdle();
+      if (taskAgentSessionRecordStore) {
+        await taskAgentSessionRecordStore.whenWriteIdle();
+      }
+      if (planningAgentSessionRecordStore) {
+        await planningAgentSessionRecordStore.whenWriteIdle();
+      }
+      if (validationRunStore) {
+        await validationRunStore.whenWriteIdle();
+      }
 
       appQuitTeardownComplete = true;
       app.quit();

@@ -1,13 +1,22 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildFluxxTmuxArgv } from './tmuxCommands';
+import {
+  buildFluxxTmuxArgv,
+  FLUXX_TMUX_AUX_SOCKET_NAME,
+  FLUXX_TMUX_SOCKET_NAME,
+  FLUXX_TMUX_SOCKET_NAME_ENV,
+  resolveFluxxTmuxSocketName,
+} from './tmuxCommands';
 import {
   resolveFluxxTmuxConfigPath,
   setFluxxTmuxConfigPathOverride,
 } from './resolveFluxxTmuxConfigPath';
 
 describe('buildFluxxTmuxArgv', () => {
+  const priorEnv = { ...process.env };
+
   afterEach(() => {
+    process.env = { ...priorEnv };
     setFluxxTmuxConfigPathOverride(undefined);
   });
 
@@ -38,6 +47,30 @@ describe('buildFluxxTmuxArgv', () => {
       '-t',
       'fluxx-shell-p-xyz',
     ]);
+  });
+
+  it('uses FLUXX_TMUX_SOCKET_NAME when set', () => {
+    process.env[FLUXX_TMUX_SOCKET_NAME_ENV] = 'fluxx-test';
+    delete process.env.FLUX_AUX_DEV_SERVER_PORT;
+    expect(resolveFluxxTmuxSocketName()).toBe('fluxx-test');
+  });
+
+  it('defaults aux dev to fluxx-aux socket when port env is set', () => {
+    delete process.env[FLUXX_TMUX_SOCKET_NAME_ENV];
+    process.env.FLUX_AUX_DEV_SERVER_PORT = '5180';
+    expect(resolveFluxxTmuxSocketName()).toBe(FLUXX_TMUX_AUX_SOCKET_NAME);
+  });
+
+  it('prefers explicit socket env over aux dev default', () => {
+    process.env[FLUXX_TMUX_SOCKET_NAME_ENV] = 'custom';
+    process.env.FLUX_AUX_DEV_SERVER_PORT = '5180';
+    expect(resolveFluxxTmuxSocketName()).toBe('custom');
+  });
+
+  it('uses primary socket name by default', () => {
+    delete process.env[FLUXX_TMUX_SOCKET_NAME_ENV];
+    delete process.env.FLUX_AUX_DEV_SERVER_PORT;
+    expect(resolveFluxxTmuxSocketName()).toBe(FLUXX_TMUX_SOCKET_NAME);
   });
 });
 

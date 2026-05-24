@@ -47,8 +47,10 @@ vi.mock('node-pty', () => ({
 }));
 
 import path from 'node:path';
+import { wrapAsXtermBracketedPaste } from './sessionInputDebug';
 import { tmuxKillSession } from './tmux/tmuxCommands';
 import { setFluxxTmuxConfigPathOverride } from './tmux/resolveFluxxTmuxConfigPath';
+import { tmuxAttachWriteSettleMs } from './tmux/tmuxAttachWriteSettle';
 
 const fluxxTmuxConf = path.resolve(process.cwd(), 'resources', 'fluxx-tmux.conf');
 
@@ -135,6 +137,48 @@ describe('TerminalRuntimeManager tmux', () => {
     expect(attachPty?.kill).toHaveBeenCalled();
     expect(attachPty?.write).not.toHaveBeenCalledWith('\x03');
     expect(mgr.listSessions()).toEqual([]);
+  });
+
+  it('writeSessionAwait pauses between paste and submit on tmux attach bridge', async () => {
+    const graceful = await import('./gracefulAgentExit');
+    const sleepSpy = vi.spyOn(graceful, 'sleepMs').mockResolvedValue(undefined);
+
+    const { TerminalRuntimeManager } = await import('./TerminalRuntimeManager');
+    const mgr = new TerminalRuntimeManager({
+      deliverStreamFrame: vi.fn(),
+      resolveTerminalRuntimeContext: () => ({
+        persistTerminalsWithTmux: true,
+        projectSlugSource: 'demo',
+      }),
+      tmuxSpawnLauncherPath: '/launcher.cjs',
+    });
+
+    const created = await mgr.createSession({
+      worktreePath: '/tmp/wt',
+      branch: 'main',
+      taskId: 't1',
+      projectId: 'demo',
+      agent: 'claude-code',
+      command: 'echo',
+      args: ['hi'],
+      cols: 40,
+      rows: 12,
+    });
+    if (!('id' in created)) throw new Error('expected session');
+
+    const attachIdx = ptyState.calls.findIndex((c) => c.command === 'tmux');
+    expect(attachIdx).toBeGreaterThanOrEqual(0);
+    const attachPty = ptyState.instances[attachIdx];
+
+    const paste = wrapAsXtermBracketedPaste('line one\nline two');
+    await mgr.writeSessionAwait(created.id, paste);
+    await mgr.writeSessionAwait(created.id, '\r');
+
+    expect(sleepSpy).toHaveBeenCalledWith(tmuxAttachWriteSettleMs(paste));
+    expect(sleepSpy).toHaveBeenCalledWith(tmuxAttachWriteSettleMs('\r'));
+    expect(attachPty.write.mock.calls.map(([d]) => d)).toEqual([paste, '\r']);
+
+    sleepSpy.mockRestore();
   });
 
   it('stopSession kills tmux session for explicit cleanup', async () => {
