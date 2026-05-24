@@ -3312,8 +3312,9 @@ export default function App() {
         tasks,
         executionDeviceDefaults,
         restoringWorkspaceIds,
+        { cloudProject: project?.kind === 'cloud' },
       ),
-    [sidebarSessions, tasks, executionDeviceDefaults, restoringWorkspaceIds],
+    [sidebarSessions, tasks, executionDeviceDefaults, restoringWorkspaceIds, project?.kind],
   );
 
   const sidebarSessionItems = useMemo(

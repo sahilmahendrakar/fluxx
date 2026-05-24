@@ -413,6 +413,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         projectId,
         deviceId,
       ) as Promise<string | null>,
+    onChanged: (handler: () => void) => {
+      ipcRenderer.on('cloudBindings:changed', handler);
+      return () => ipcRenderer.removeListener('cloudBindings:changed', handler);
+    },
   },
   auth: {
     startGoogleLogin: () =>

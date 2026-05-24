@@ -49,12 +49,12 @@ describe('remoteSshTerminalReconcile', () => {
 
   it('restores running remote task sessions when tmux and worktree exist', async () => {
     const helper = {
-      ensureInstalled: vi.fn(async () => ({ ok: true, version: '0.2.4' })),
+      ensureInstalled: vi.fn(async () => ({ ok: true, version: '0.2.6' })),
       runJsonCommand: vi.fn(async (_device, command: string) => {
         if (command === 'list-terminals') {
           return {
             ok: true,
-            version: '0.2.4',
+            version: '0.2.6',
             data: {
               terminals: [
                 {
@@ -83,12 +83,12 @@ describe('remoteSshTerminalReconcile', () => {
         if (command === 'list-tmux-sessions') {
           return {
             ok: true,
-            version: '0.2.4',
+            version: '0.2.6',
             data: { sessionNames: ['fluxx-task-p1-term1', 'fluxx-untracked'] },
           };
         }
         if (command === 'path-exists') {
-          return { ok: true, version: '0.2.4', data: { exists: true } };
+          return { ok: true, version: '0.2.6', data: { exists: true } };
         }
         return { ok: false, code: 'INTERNAL', message: 'unexpected' };
       }),
@@ -167,12 +167,12 @@ describe('remoteSshTerminalReconcile', () => {
 
   it('reports tmux-missing without registering a warm session', async () => {
     const helper = {
-      ensureInstalled: vi.fn(async () => ({ ok: true, version: '0.2.4' })),
+      ensureInstalled: vi.fn(async () => ({ ok: true, version: '0.2.6' })),
       runJsonCommand: vi.fn(async (_device, command: string) => {
         if (command === 'list-terminals') {
           return {
             ok: true,
-            version: '0.2.4',
+            version: '0.2.6',
             data: {
               terminals: [
                 {
@@ -198,10 +198,10 @@ describe('remoteSshTerminalReconcile', () => {
           };
         }
         if (command === 'list-tmux-sessions') {
-          return { ok: true, version: '0.2.4', data: { sessionNames: [] } };
+          return { ok: true, version: '0.2.6', data: { sessionNames: [] } };
         }
         if (command === 'path-exists') {
-          return { ok: true, version: '0.2.4', data: { exists: true } };
+          return { ok: true, version: '0.2.6', data: { exists: true } };
         }
         return { ok: false, code: 'INTERNAL', message: 'unexpected' };
       }),

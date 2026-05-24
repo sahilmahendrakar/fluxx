@@ -51,10 +51,16 @@ export function useExecutionDeviceDefaults(
   }, [reload]);
 
   useEffect(() => {
-    const unsub = window.electronAPI.executionDevices.onChanged(() => {
+    const unsubDevices = window.electronAPI.executionDevices.onChanged(() => {
       void reload();
     });
-    return unsub;
+    const unsubBindings = window.electronAPI.cloudBindings.onChanged(() => {
+      void reload();
+    });
+    return () => {
+      unsubDevices();
+      unsubBindings();
+    };
   }, [reload]);
 
   return { projectDefaultDeviceId, globalDefaultDeviceId, cloudPerTaskOverrides };

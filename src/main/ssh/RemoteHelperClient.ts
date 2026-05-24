@@ -8,31 +8,39 @@ import {
   type OpenSshRunner,
 } from './opensshRunner';
 import {
-  isRemoteHelperVersionCompatible,
+  isBrokenRemoteHelperInstallError,
+  isRemoteHelperInstallComplete,
   mapSshFailureToProbeError,
   parseRemoteHelperEnvelope,
   type RemoteHelperProbeData,
   type RemoteHelperVersionData,
 } from './remoteHelperProtocol';
-import { readBundledRemoteHelperSource, remoteHelperInstallPaths } from './remoteHelperPath';
+import {
+  readBundledRemoteHelperLibSources,
+  readBundledRemoteHelperSource,
+  remoteHelperInstallPaths,
+} from './remoteHelperPath';
 import { FLUXX_REMOTE_HELPER_VERSION } from '../../remoteHelper/constants';
 
 export type RemoteHelperClientDeps = {
   runner?: OpenSshRunner;
   readHelperSource?: () => Promise<string>;
+  readHelperLibSources?: typeof readBundledRemoteHelperLibSources;
 };
 
 export class RemoteHelperClient {
   private runner: OpenSshRunner;
   private readHelperSource: () => Promise<string>;
+  private readHelperLibSources: typeof readBundledRemoteHelperLibSources;
 
   constructor(deps: RemoteHelperClientDeps = {}) {
     this.runner = deps.runner ?? createOpenSshRunner();
     this.readHelperSource = deps.readHelperSource ?? readBundledRemoteHelperSource;
+    this.readHelperLibSources = deps.readHelperLibSources ?? readBundledRemoteHelperLibSources;
   }
 
   async runVersion(device: ExecutionDeviceConfig): Promise<
-    | { ok: true; version: string }
+    | { ok: true; version: string; features?: RemoteHelperVersionData['features'] }
     | { ok: false; missing: true; sshError: ReturnType<typeof mapSshFailureToProbeError> }
     | { ok: false; missing: false; sshError: ReturnType<typeof mapSshFailureToProbeError> }
   > {
@@ -46,7 +54,19 @@ export class RemoteHelperClient {
       timeoutMs: defaultProbeTimeoutMs(ssh),
     });
     if (result.exitCode !== 0 || result.timedOut || result.error) {
+      const combinedOutput = `${result.stderr}\n${result.stdout}`.trim();
+      const brokenInstall = isBrokenRemoteHelperInstallError(combinedOutput);
       const sshError = mapSshFailureToProbeError(result);
+      if (brokenInstall) {
+        return {
+          ok: false,
+          missing: true,
+          sshError: {
+            code: 'SSH_HELPER_MISSING',
+            message: combinedOutput || sshError.message,
+          },
+        };
+      }
       return { ok: false, missing: sshError.code === 'SSH_HELPER_MISSING', sshError };
     }
     try {
@@ -58,7 +78,11 @@ export class RemoteHelperClient {
           sshError: { code: 'INTERNAL', message: envelope.error.message },
         };
       }
-      return { ok: true, version: envelope.data.version };
+      return {
+        ok: true,
+        version: envelope.data.version,
+        features: envelope.data.features,
+      };
     } catch (err) {
       return {
         ok: false,
@@ -71,28 +95,40 @@ export class RemoteHelperClient {
     }
   }
 
-  async ensureInstalled(device: ExecutionDeviceConfig): Promise<
+  async ensureInstalled(
+    device: ExecutionDeviceConfig,
+    options?: { forceRebootstrap?: boolean },
+  ): Promise<
     | { ok: true; version: string }
     | { ok: false; phase: 'helper-handshake' | 'helper-bootstrap'; message: string }
   > {
-    const versionCheck = await this.runVersion(device);
-    if (versionCheck.ok && isRemoteHelperVersionCompatible(versionCheck.version)) {
-      return versionCheck;
-    }
-
-    if (!versionCheck.ok && !versionCheck.missing) {
-      const code = versionCheck.sshError.code;
+    let versionCheck:
+      | Awaited<ReturnType<RemoteHelperClient['runVersion']>>
+      | undefined;
+    if (!options?.forceRebootstrap) {
+      versionCheck = await this.runVersion(device);
       if (
-        code === 'SSH_AUTH_FAILED' ||
-        code === 'SSH_HOST_KEY_FAILED' ||
-        code === 'SSH_TIMEOUT' ||
-        code === 'SSH_CONNECT_FAILED'
+        versionCheck.ok &&
+        isRemoteHelperInstallComplete(versionCheck.version, versionCheck.features)
       ) {
-        return {
-          ok: false,
-          phase: 'helper-handshake',
-          message: `${deviceProbeHostLabel(device)} (${code}): ${versionCheck.sshError.message}`,
-        };
+        return versionCheck;
+      }
+      if (!versionCheck.ok && !versionCheck.missing) {
+        const code = versionCheck.sshError.code;
+        const brokenInstall = isBrokenRemoteHelperInstallError(versionCheck.sshError.message);
+        if (
+          !brokenInstall &&
+          code === 'SSH_AUTH_FAILED' ||
+          code === 'SSH_HOST_KEY_FAILED' ||
+          code === 'SSH_TIMEOUT' ||
+          code === 'SSH_CONNECT_FAILED'
+        ) {
+          return {
+            ok: false,
+            phase: 'helper-handshake',
+            message: `${deviceProbeHostLabel(device)} (${code}): ${versionCheck.sshError.message}`,
+          };
+        }
       }
     }
 
@@ -114,11 +150,11 @@ export class RemoteHelperClient {
         message: `${deviceProbeHostLabel(device)}: ${after.sshError.message}`,
       };
     }
-    if (!isRemoteHelperVersionCompatible(after.version)) {
+    if (!isRemoteHelperInstallComplete(after.version, after.features)) {
       return {
         ok: false,
         phase: 'helper-bootstrap',
-        message: `${deviceProbeHostLabel(device)}: helper version mismatch (remote ${after.version}, expected ${FLUXX_REMOTE_HELPER_VERSION})`,
+        message: `${deviceProbeHostLabel(device)}: helper install incomplete (remote ${after.version}, expected ${FLUXX_REMOTE_HELPER_VERSION} with worktree reclaim)`,
       };
     }
     return after;
@@ -198,6 +234,7 @@ export class RemoteHelperClient {
   private async bootstrap(device: ExecutionDeviceConfig): Promise<void> {
     const ssh = requireSsh(device);
     const source = await this.readHelperSource();
+    const libSources = await this.readHelperLibSources();
     const paths = remoteHelperInstallPaths();
     const mkdirArgv = buildOpenSshArgv({
       ssh,
@@ -209,6 +246,19 @@ export class RemoteHelperClient {
     });
     if (mkdirResult.exitCode !== 0 || mkdirResult.timedOut || mkdirResult.error) {
       const mapped = mapSshFailureToProbeError(mkdirResult);
+      throw new Error(mapped.message);
+    }
+
+    const libMkdirArgv = buildOpenSshArgv({
+      ssh,
+      remoteCommand: ['sh', '-c', paths.libMkdirScript],
+    });
+    const libMkdirResult = await this.runner.run({
+      argv: libMkdirArgv,
+      timeoutMs: defaultProbeTimeoutMs(ssh),
+    });
+    if (libMkdirResult.exitCode !== 0 || libMkdirResult.timedOut || libMkdirResult.error) {
+      const mapped = mapSshFailureToProbeError(libMkdirResult);
       throw new Error(mapped.message);
     }
 
@@ -224,6 +274,22 @@ export class RemoteHelperClient {
     if (uploadResult.exitCode !== 0 || uploadResult.timedOut || uploadResult.error) {
       const mapped = mapSshFailureToProbeError(uploadResult);
       throw new Error(mapped.message);
+    }
+
+    for (const [libFilename, libSource] of Object.entries(libSources)) {
+      const libUploadArgv = buildOpenSshArgv({
+        ssh,
+        remoteCommand: ['sh', '-c', paths.libUploadScript(libFilename)],
+      });
+      const libUploadResult = await this.runner.run({
+        argv: libUploadArgv,
+        stdin: libSource,
+        timeoutMs: defaultProbeTimeoutMs(ssh) + 30_000,
+      });
+      if (libUploadResult.exitCode !== 0 || libUploadResult.timedOut || libUploadResult.error) {
+        const mapped = mapSshFailureToProbeError(libUploadResult);
+        throw new Error(mapped.message);
+      }
     }
 
     const linkArgv = buildOpenSshArgv({

@@ -7,7 +7,10 @@ import {
   shouldPersistExecutionDeviceToFirestore,
   validateTaskExecutionDeviceRef,
 } from './parse';
-import { parseSharedExecutionDeviceFromFirestore } from './firestoreTaskDevice';
+import {
+  executionDeviceFieldForFirestoreWrite,
+  parseSharedExecutionDeviceFromFirestore,
+} from './firestoreTaskDevice';
 
 describe('parseTaskExecutionDeviceRef', () => {
   it('parses local and ssh refs', () => {
@@ -80,6 +83,22 @@ describe('firestore execution device visibility', () => {
         ownerUid: 'uid',
       }),
     ).toBe(true);
+  });
+
+  it('omits private ssh from Firestore write helper', () => {
+    expect(
+      executionDeviceFieldForFirestoreWrite({ kind: 'ssh', deviceId: 'devbox' }),
+    ).toBeUndefined();
+    expect(
+      executionDeviceFieldForFirestoreWrite({ kind: 'local', deviceId: 'local' }),
+    ).toBeUndefined();
+    expect(
+      executionDeviceFieldForFirestoreWrite({
+        kind: 'runner',
+        deviceId: 'r1',
+        ownerUid: 'u1',
+      }),
+    ).toEqual({ kind: 'runner', deviceId: 'r1', ownerUid: 'u1' });
   });
 
   it('does not expose private ssh from Firestore parse', () => {

@@ -17,3 +17,13 @@ export function parseSharedExecutionDeviceFromFirestore(
 }
 
 export { shouldPersistExecutionDeviceToFirestore };
+
+/** Value for Firestore `executionDevice` on create/update (omits private local/ssh v1). */
+export function executionDeviceFieldForFirestoreWrite(
+  ref: TaskExecutionDeviceRef | undefined | null,
+): TaskExecutionDeviceRef | undefined {
+  if (!ref || !shouldPersistExecutionDeviceToFirestore(ref)) {
+    return undefined;
+  }
+  return ref;
+}

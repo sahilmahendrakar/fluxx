@@ -332,6 +332,7 @@ declare global {
           projectId: string,
           deviceId: string | null,
         ) => Promise<string | null>;
+        onChanged: (cb: () => void) => () => void;
       };
       tasks: {
         getAll: () => Promise<Task[]>;
