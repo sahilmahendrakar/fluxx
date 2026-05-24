@@ -22,13 +22,17 @@ export const AGENT_SPAWN_AGENT_SELECT_CLASS =
 
 export function agentModelUiKindForAgent(agent: Agent | null): AgentModelUiKind | null {
   if (agent == null) return null;
-  return agent === 'cursor' ? 'cursor' : agent === 'claude-code' ? 'claude-code' : null;
+  if (agent === 'cursor') return 'cursor';
+  if (agent === 'claude-code') return 'claude-code';
+  if (agent === 'codex') return 'codex';
+  return null;
 }
 
 export type AgentSessionPrefsMenuContentProps = {
   selectedAgent: Agent | null;
   claudeModelId: string;
   cursorModelId: string;
+  codexModelId: string;
   agentYolo: boolean;
   onPickAgent: (agent: Agent | null) => void;
   onPickModel: (kind: AgentModelUiKind, modelId: string) => void;
@@ -44,6 +48,7 @@ export function AgentSessionPrefsMenuContent({
   selectedAgent,
   claudeModelId,
   cursorModelId,
+  codexModelId,
   agentYolo,
   onPickAgent,
   onPickModel,
@@ -61,10 +66,14 @@ export function AgentSessionPrefsMenuContent({
       ? cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL
       : selectedAgent === 'claude-code'
         ? claudeModelId.trim()
-        : '';
+        : selectedAgent === 'codex'
+          ? codexModelId.trim()
+          : '';
 
   const yoloTitle =
-    'Fewer permission prompts for spawns (Cursor --yolo / --force; Claude Code --dangerously-skip-permissions).';
+    selectedAgent === 'codex'
+      ? 'Fewer permission prompts for Codex spawns (--yolo / --dangerously-bypass-approvals-and-sandbox).'
+      : 'Fewer permission prompts for spawns (Cursor --yolo / --force; Claude Code --dangerously-skip-permissions).';
 
   const darkSelectStyle = { colorScheme: 'dark' } as CSSProperties;
 
@@ -106,14 +115,7 @@ export function AgentSessionPrefsMenuContent({
               onModelIdChange={(id) => onPickModel(modelPickerKind, id)}
               aria-label="Model"
             />
-          ) : (
-            <div
-              className="flex h-8 items-center rounded-md border border-dashed border-zinc-800/70 bg-zinc-950/30 px-2 text-[11px] text-zinc-500"
-              title="Model selection is not wired for Codex in this version."
-            >
-              Default model
-            </div>
-          )}
+          ) : null}
 
           <div className="flex items-center justify-between gap-2 border-t border-zinc-800/60 pt-1.5">
             <span id={yoloLabelId} className="text-[10px] font-medium text-zinc-500" title={yoloTitle}>

@@ -103,6 +103,9 @@ function parseAgentSessionModelDefaultsField(raw: unknown): AgentSessionModelDef
   if (typeof o.cursor === 'string') {
     out.cursor = o.cursor;
   }
+  if (typeof o.codex === 'string') {
+    out.codex = o.codex;
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

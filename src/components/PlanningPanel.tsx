@@ -12,6 +12,10 @@ import {
   readPlanningModelsForProject,
 } from '../planningSessionModelPrefs';
 import {
+  buildPlanningResumePayload,
+  buildPlanningStartPayload,
+} from '../planningSessionStartPayload';
+import {
   AGENTS,
   DEFAULT_CURSOR_AGENT_MODEL,
   type Agent,
@@ -207,6 +211,7 @@ export function PlanningPanel({
   const [selectedAgent, setSelectedAgent] = useState<Agent>(() => defaultPlanningAgent(project));
   const [claudeModelId, setClaudeModelId] = useState('');
   const [cursorModelId, setCursorModelId] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [codexModelId, setCodexModelId] = useState('');
   const [planningYolo, setPlanningYolo] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const outputBufferRef = useRef('');
@@ -225,7 +230,9 @@ export function PlanningPanel({
       ? cursorModelId
       : selectedAgent === 'claude-code'
         ? claudeModelId
-        : '';
+        : selectedAgent === 'codex'
+          ? codexModelId
+          : '';
 
   useEffect(() => {
     setSelectedAgent(defaultPlanningAgent(project));
@@ -251,8 +258,11 @@ export function PlanningPanel({
         typeof project.planningModels?.cursor === 'string'
           ? project.planningModels.cursor
           : fallback.cursor;
+      const codex =
+        typeof project.planningModels?.codex === 'string' ? project.planningModels.codex : '';
       setClaudeModelId(claude);
       setCursorModelId(cursor);
+      setCodexModelId(codex);
       setPlanningYolo(project.planningAgentYolo === true);
       setError(null);
       setNeedsInput(false);
@@ -320,6 +330,8 @@ export function PlanningPanel({
   const handleModelPick = (kind: AgentModelUiKind, id: string) => {
     if (kind === 'claude-code') {
       setClaudeModelId(id);
+    } else if (kind === 'codex') {
+      setCodexModelId(id);
     } else {
       const norm = id.trim() || DEFAULT_CURSOR_AGENT_MODEL;
       setCursorModelId(norm);
@@ -328,11 +340,13 @@ export function PlanningPanel({
       const patch =
         kind === 'claude-code'
           ? { planningModels: { 'claude-code': id } as const }
-          : {
-              planningModels: {
-                cursor: (id.trim() || DEFAULT_CURSOR_AGENT_MODEL) as string,
-              },
-            };
+          : kind === 'codex'
+            ? { planningModels: { codex: id.trim() } as const }
+            : {
+                planningModels: {
+                  cursor: (id.trim() || DEFAULT_CURSOR_AGENT_MODEL) as string,
+                },
+              };
       const res = await window.electronAPI.project.patchAgentSpawnDefaults(patch);
       if ('error' in res) {
         setError(res.error);
@@ -360,35 +374,24 @@ export function PlanningPanel({
     [onLocalProjectRefresh],
   );
 
-  const buildStartPayload = (
-    agent: Agent = selectedAgent,
-  ):
-    | Agent
-    | { agent: Agent; agentModel?: string; agentYolo?: boolean } => {
-    if (agent === 'codex') {
-      return { agent, agentYolo: planningYolo };
-    }
-    if (agent === 'cursor') {
-      return {
-        agent,
-        agentModel: cursorModelId.trim() || DEFAULT_CURSOR_AGENT_MODEL,
-        agentYolo: planningYolo,
-      };
-    }
-    return {
-      agent,
-      agentModel: claudeModelId.trim(),
-      agentYolo: planningYolo,
-    };
+  const planningModelIds = {
+    cursor: cursorModelId,
+    'claude-code': claudeModelId,
+    codex: codexModelId,
   };
 
-  const buildResumePayload = (session: PlanningSession) => {
-    const base = buildStartPayload(session.agent);
-    if (typeof base === 'string') {
-      return { resume: true as const, sessionId: session.id, agent: base };
-    }
-    return { ...base, resume: true as const, sessionId: session.id };
-  };
+  const buildStartPayload = (agent: Agent = selectedAgent) =>
+    buildPlanningStartPayload({
+      agent,
+      modelIds: planningModelIds,
+      planningYolo,
+    });
+
+  const buildResumePayload = (session: PlanningSession) =>
+    buildPlanningResumePayload(session, {
+      modelIds: planningModelIds,
+      planningYolo,
+    });
 
   const handleStart = async () => {
     if (!planningApi) {
@@ -510,6 +513,7 @@ export function PlanningPanel({
         selectedAgent={selectedAgent}
         claudeModelId={claudeModelId}
         cursorModelId={cursorModelId}
+        codexModelId={codexModelId}
         agentYolo={planningYolo}
         onPickAgent={handleAgentPick}
         onPickModel={handleModelPick}

@@ -41,6 +41,7 @@ export function TaskCardAgentSpawnMenu({
   const cursorModelId =
     task.agent === 'cursor' ? resolvedCursorAgentModel(task) : DEFAULT_CURSOR_AGENT_MODEL;
   const claudeModelId = task.agent === 'claude-code' ? (task.agentModel ?? '').trim() : '';
+  const codexModelId = task.agent === 'codex' ? (task.agentModel ?? '').trim() : '';
 
   const summaryLine = modelSummaryForTask(task);
   const agentLabel =
@@ -64,7 +65,7 @@ export function TaskCardAgentSpawnMenu({
   };
 
   const handleModelPick = (kind: AgentModelUiKind, id: string) => {
-    if (kind === 'claude-code') {
+    if (kind === 'claude-code' || kind === 'codex') {
       onPatch({ agentModel: id.trim() });
     } else {
       onPatch({ agentModel: id.trim() || DEFAULT_CURSOR_AGENT_MODEL });
@@ -110,6 +111,7 @@ export function TaskCardAgentSpawnMenu({
           selectedAgent={selectedAgent}
           claudeModelId={claudeModelId}
           cursorModelId={cursorModelId}
+          codexModelId={codexModelId}
           agentYolo={task.agentYolo === true}
           onPickAgent={handleAgentPick}
           onPickModel={handleModelPick}

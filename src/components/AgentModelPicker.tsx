@@ -57,7 +57,7 @@ export default function AgentModelPicker({
     [kind, modelId, extrasGen],
   );
   const displayLabel =
-    kind === 'claude-code' && !modelId.trim()
+    (kind === 'claude-code' || kind === 'codex') && !modelId.trim()
       ? 'Default'
       : labelForModelId(kind, modelId);
 
@@ -153,7 +153,7 @@ export default function AgentModelPicker({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            {kind === 'claude-code' ? (
+            {kind === 'claude-code' || kind === 'codex' ? (
               <button
                 type="button"
                 role="option"
@@ -172,7 +172,9 @@ export default function AgentModelPicker({
             ) : null}
             {choices.map((p) => {
               const selected =
-                kind === 'claude-code' ? modelId.trim() === p.id : modelId.trim() === p.id;
+                kind === 'claude-code' || kind === 'codex'
+                  ? modelId.trim() === p.id
+                  : modelId.trim() === p.id;
               return (
                 <button
                   key={p.id}

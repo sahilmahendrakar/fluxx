@@ -309,6 +309,9 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
     if (typeof pm.cursor === 'string') {
       next.cursor = pm.cursor;
     }
+    if (typeof pm.codex === 'string') {
+      next.codex = pm.codex;
+    }
     if (Object.keys(next).length > 0) {
       patch.planningModels = next;
     }
@@ -321,6 +324,9 @@ function parseAgentSpawnDefaultsPatch(payload: unknown): AgentSpawnDefaultsPatch
     }
     if (typeof tm.cursor === 'string') {
       next.cursor = tm.cursor;
+    }
+    if (typeof tm.codex === 'string') {
+      next.codex = tm.codex;
     }
     if (Object.keys(next).length > 0) {
       patch.taskDefaultModels = next;
