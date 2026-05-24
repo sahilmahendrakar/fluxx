@@ -83,7 +83,17 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error('[start:aux]', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[start:aux]', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  DEFAULT_MAX_ATTEMPTS,
+  DEFAULT_START_PORT,
+  findAvailablePort,
+  isPortAvailable,
+  parsePositiveInt,
+};
