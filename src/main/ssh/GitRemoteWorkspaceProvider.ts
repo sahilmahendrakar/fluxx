@@ -13,9 +13,10 @@ import type {
   RemoteHelperRepoEnsureData,
   RemoteHelperStartTerminalData,
   RemoteHelperWorktreeCreateData,
+  RemoteHelperWorktreeRemoveData,
 } from './remoteHelperProtocol';
 import { mapRemoteHelperCodeToSessionStart } from './remoteSessionErrors';
-import { remoteTaskWorktreePath } from './remoteWorkspacePaths';
+import { remoteRepoCachePath, remoteTaskWorktreePath } from './remoteWorkspacePaths';
 import { deviceProbeHostLabel } from './opensshRunner';
 import type { RemoteRepoSessionContext } from './resolveRemoteRepoForTask';
 
@@ -244,6 +245,66 @@ export class GitRemoteWorkspaceProvider {
       return result;
     }
     return { ok: true, terminals: result.data.terminals };
+  }
+
+  async stopOpenTerminalsForTask(
+    device: ExecutionDeviceConfig,
+    taskId: string,
+    projectId: string,
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    const listed = await this.listRemoteTerminals(device);
+    if (!listed.ok) {
+      errors.push(listed.message);
+      return errors;
+    }
+    const matches = listed.terminals.filter((row) => {
+      if (row.projectId !== projectId) return false;
+      if (row.endedAt) return false;
+      if (row.kind === 'task' && row.task?.taskId === taskId) return true;
+      if (row.kind === 'shell' && row.shell) {
+        const parent = listed.terminals.find((t) => t.id === row.shell!.parentSessionId);
+        return parent?.task?.taskId === taskId;
+      }
+      return false;
+    });
+
+    const shellRows = matches.filter((r) => r.kind === 'shell');
+    const taskRows = matches.filter((r) => r.kind === 'task');
+    for (const row of [...shellRows, ...taskRows]) {
+      const stopped = await this.helper.runJsonCommand(device, 'stop-terminal', {
+        terminalId: row.id,
+        deviceId: device.id,
+        reason: 'workspace-deleted',
+      });
+      if (!stopped.ok) {
+        errors.push(`stop-terminal ${row.id}: ${stopped.message}`);
+      }
+    }
+    return errors;
+  }
+
+  async removeTaskWorktree(
+    device: ExecutionDeviceConfig,
+    input: {
+      projectId: string;
+      repoId: string;
+      taskId: string;
+      worktreePath?: string;
+    },
+  ): Promise<string | null> {
+    if (device.kind !== 'ssh') return 'Device is not SSH';
+    const worktreePath =
+      input.worktreePath?.trim() ||
+      remoteTaskWorktreePath(device.workspaceRoot, input.projectId, input.repoId, input.taskId);
+    const repoPath = remoteRepoCachePath(device.workspaceRoot, input.projectId, input.repoId);
+    const result = await this.helper.runJsonCommand<RemoteHelperWorktreeRemoveData>(
+      device,
+      'worktree-remove',
+      { worktreePath, repoPath },
+    );
+    if (!result.ok) return result.message;
+    return null;
   }
 }
 

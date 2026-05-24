@@ -1,9 +1,16 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import type { RepoConfig, Session } from '../types';
+import type { ExecutionDeviceConfig, RepoConfig, Session } from '../types';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
+import type { DeviceStore } from './DeviceStore';
+import type { GitRemoteWorkspaceProvider } from './ssh/GitRemoteWorkspaceProvider';
+
+export type RemoteTaskTeardownDeps = {
+  deviceStore: DeviceStore;
+  gitRemoteWorkspace: GitRemoteWorkspaceProvider;
+};
 
 /**
  * Stop a task session, close its shells, and remove its git worktree — same
@@ -14,22 +21,71 @@ export async function deleteSessionWorkspaceAndStop(
   worktreeService: WorktreeService,
   sessionId: string,
   resolveGitRepoRoot: (session: Session) => Promise<string | null>,
+  remote?: RemoteTaskTeardownDeps,
 ): Promise<void> {
   const sessions = await terminalBackend.listSessions();
   const target = sessions.find((s) => s.id === sessionId);
   await terminalBackend.closeShellsForSession(sessionId);
   await terminalBackend.stopSession(sessionId);
-  if (target?.worktreePath) {
-    try {
-      const gitRoot = await resolveGitRepoRoot(target);
-      await worktreeService.remove(target.worktreePath, gitRoot);
-    } catch (err: unknown) {
-      console.error('[deleteSessionWorkspaceAndStop] worktree remove failed', {
-        sessionId,
-        err,
-      });
+  if (!target?.worktreePath) return;
+
+  if (target.deviceKind === 'ssh' && target.deviceId && remote) {
+    const device = remote.deviceStore.getDevice(target.deviceId);
+    if (device?.kind === 'ssh') {
+      const repoId = target.repoId?.trim();
+      if (repoId) {
+        const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
+          projectId: target.projectId,
+          repoId,
+          taskId: target.taskId,
+          worktreePath: target.remotePath ?? target.worktreePath,
+        });
+        if (err) {
+          console.error('[deleteSessionWorkspaceAndStop] remote worktree remove failed', {
+            sessionId,
+            err,
+          });
+        }
+      }
     }
+    return;
   }
+
+  try {
+    const gitRoot = await resolveGitRepoRoot(target);
+    await worktreeService.remove(target.worktreePath, gitRoot);
+  } catch (err: unknown) {
+    console.error('[deleteSessionWorkspaceAndStop] worktree remove failed', {
+      sessionId,
+      err,
+    });
+  }
+}
+
+async function cleanupRemoteTaskOrphans(
+  remote: RemoteTaskTeardownDeps,
+  taskId: string,
+  projectId: string,
+  repoId: string | null,
+  fluxxWorkBranch: string | null,
+): Promise<string[]> {
+  const errors: string[] = [];
+  for (const device of remote.deviceStore.listDevices()) {
+    if (device.kind !== 'ssh' || !device.enabled) continue;
+    errors.push(
+      ...(await remote.gitRemoteWorkspace.stopOpenTerminalsForTask(device, taskId, projectId)),
+    );
+    if (repoId) {
+      const err = await remote.gitRemoteWorkspace.removeTaskWorktree(device, {
+        projectId,
+        repoId,
+        taskId,
+      });
+      if (err) errors.push(`${device.displayName}: ${err}`);
+    }
+    void fluxxWorkBranch;
+  }
+  return errors;
 }
 
 /**
@@ -46,12 +102,16 @@ export async function teardownEphemeralResourcesForTask(
   taskRepoId?: string | null,
   /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
   fluxxWorkBranch?: string | null,
+  remote?: RemoteTaskTeardownDeps,
 ): Promise<string[]> {
   const errors: string[] = [];
   let sessionIds: string[] = [];
+  let projectId: string | null = null;
   try {
     const sessions = await terminalBackend.listSessions();
-    sessionIds = sessions.filter((s) => s.taskId === taskId).map((s) => s.id);
+    const forTask = sessions.filter((s) => s.taskId === taskId);
+    sessionIds = forTask.map((s) => s.id);
+    projectId = forTask[0]?.projectId ?? null;
   } catch (err) {
     errors.push(
       `Could not list sessions: ${err instanceof Error ? err.message : String(err)}`,
@@ -79,10 +139,23 @@ export async function teardownEphemeralResourcesForTask(
         worktreeService,
         id,
         resolveStored,
+        remote,
       );
     } catch (err) {
       errors.push(`Session ${id}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  if (remote && projectId) {
+    errors.push(
+      ...(await cleanupRemoteTaskOrphans(
+        remote,
+        taskId,
+        projectId,
+        taskRepoId?.trim() ?? null,
+        fluxxWorkBranch?.trim() ?? null,
+      )),
+    );
   }
 
   const projectDir = worktreeService.getProjectDir();
@@ -193,4 +266,8 @@ export async function teardownEphemeralResourcesForTask(
   }
 
   return errors;
+}
+
+export function listEnabledSshDevices(deviceStore: DeviceStore): ExecutionDeviceConfig[] {
+  return deviceStore.listDevices().filter((d) => d.kind === 'ssh' && d.enabled);
 }

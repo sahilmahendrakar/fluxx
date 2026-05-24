@@ -13,10 +13,22 @@ export type AutoresponderRule = {
 
 const CLAUDE_PATTERN = 'Is this a project you created or one you trust';
 
-function cursorTrustMatches(screenText: string): boolean {
+function cursorTrustLegacyMatches(screenText: string): boolean {
   return (
     screenText.includes('Workspace Trust Required') &&
     screenText.includes('Do you trust the contents of this directory')
+  );
+}
+
+/** Cursor CLI menu-style workspace trust (TUI with arrow/Enter hints). */
+function cursorTrustMenuMatches(screenText: string): boolean {
+  const hasMenuHint =
+    screenText.includes('Use arrow keys to navigate') &&
+    screenText.includes('Enter to select');
+  if (!hasMenuHint) return false;
+  return (
+    screenText.includes('Workspace Trust Required') ||
+    /trust/i.test(screenText)
   );
 }
 
@@ -30,9 +42,17 @@ function assertCwdGate(rule: AutoresponderRule): void {
  * Builds v1 trust rules with cwd gates bound to resolved path prefixes from main.
  * Registry load rejects rules without a cwd allowlist function.
  */
+/** Default window after attach/spawn during which trust prompts are auto-answered. */
+export const TRUST_PROMPT_AUTORESPOND_TTL_MS = 30_000;
+
+/** SSH attach can happen long after the remote agent starts; allow a longer window. */
+export const TRUST_PROMPT_AUTORESPOND_SSH_TTL_MS = 5 * 60_000;
+
 export function buildTrustPromptAutoresponderRules(
   trustRoots: readonly string[],
+  opts?: { ttlMsFromSpawn?: number },
 ): AutoresponderRule[] {
+  const ttlMsFromSpawn = opts?.ttlMsFromSpawn ?? TRUST_PROMPT_AUTORESPOND_TTL_MS;
   const cwdGate = (cwd: string): boolean => {
     if (trustRoots.length === 0) return false;
     const r = path.resolve(cwd);
@@ -49,16 +69,25 @@ export function buildTrustPromptAutoresponderRules(
       cwdAllowlist: cwdGate,
       matches: (t) => t.includes(CLAUDE_PATTERN),
       respondWith: '\r',
-      ttlMsFromSpawn: 30_000,
+      ttlMsFromSpawn,
       oncePerSession: true,
     },
     {
       id: 'cursor-trust',
       agents: ['cursor'],
       cwdAllowlist: cwdGate,
-      matches: (t) => cursorTrustMatches(t),
+      matches: (t) => cursorTrustLegacyMatches(t),
       respondWith: 'a',
-      ttlMsFromSpawn: 30_000,
+      ttlMsFromSpawn,
+      oncePerSession: true,
+    },
+    {
+      id: 'cursor-trust-menu',
+      agents: ['cursor'],
+      cwdAllowlist: cwdGate,
+      matches: (t) => cursorTrustMenuMatches(t),
+      respondWith: '\r',
+      ttlMsFromSpawn,
       oncePerSession: true,
     },
   ];

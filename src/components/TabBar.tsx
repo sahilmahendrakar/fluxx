@@ -15,6 +15,7 @@ export interface SessionTabMeta {
   title: string;
   taskStatus?: TaskStatus;
   executionDevice?: TaskExecutionDeviceRef;
+  restoring?: boolean;
 }
 
 export interface PlanningTabMeta {
@@ -41,6 +42,7 @@ export function buildSessionTabs(
   openSessions: Session[],
   tasks: Task[],
   executionDeviceDefaults?: ExecutionDeviceDefaults,
+  restoringSessionIds?: ReadonlySet<string>,
 ): SessionTabMeta[] {
   return openSessions.map((session) => {
     const task = tasks.find((t) => t.id === session.taskId);
@@ -52,6 +54,7 @@ export function buildSessionTabs(
       title: task?.title ?? 'Session',
       taskStatus: task?.status,
       executionDevice,
+      restoring: restoringSessionIds?.has(session.id),
     };
   });
 }
@@ -115,7 +118,7 @@ export function TabBar({
       {openSessions.length > 0 ? (
         <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
       ) : null}
-      {openSessions.map(({ session, title, taskStatus, executionDevice }) => {
+      {openSessions.map(({ session, title, taskStatus, executionDevice, restoring }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
         const running = session.status === 'running';
         return (
@@ -125,13 +128,21 @@ export function TabBar({
               onClick={() => onSelectTab(session.id)}
               className="flex min-w-0 items-center gap-1.5"
             >
-              <span
-                className={[
-                  'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  workspaceSessionStatusDotClass(taskStatus, running),
-                ].join(' ')}
-                aria-hidden
-              />
+              {restoring ? (
+                <span
+                  className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-zinc-500"
+                  title="Connecting workspace…"
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  className={[
+                    'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                    workspaceSessionStatusDotClass(taskStatus, running),
+                  ].join(' ')}
+                  aria-hidden
+                />
+              )}
               <span className="max-w-[140px] truncate">{title}</span>
               {executionDevices.length > 0 ? (
                 <ExecutionDeviceChip

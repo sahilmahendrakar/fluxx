@@ -15,9 +15,12 @@ import {
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
-import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import Terminal, { type TerminalHandle } from './Terminal';
 import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
+import {
+  remoteLifecycleStatusDetail,
+  remoteLifecycleStatusHeading,
+} from './remoteSessionLifecycleUi';
 
 export { invalidateSessionAttachCache, invalidateShellAttachCache };
 
@@ -109,10 +112,13 @@ function AgentPane({
   const terminalRef = useRef<TerminalHandle | null>(null);
   const running = session.status === 'running';
   const id = session.id;
-  const trustAutorespondNote = useTrustAutorespondNotice('session', id, running);
   const [attachReady, setAttachReady] = useState(false);
   const [restartLoading, setRestartLoading] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const [remoteRetryLoading, setRemoteRetryLoading] = useState(false);
+
+  const remoteInterrupted =
+    session.status === 'interrupted' && Boolean(session.remoteLifecycleStatus);
 
   useEffect(() => {
     setAttachReady(false);
@@ -157,9 +163,23 @@ function AgentPane({
   );
   const showRestartControls =
     !running &&
+    !remoteInterrupted &&
     task &&
     agentSessionLifecycle &&
     taskAgentSupportsCliResume(task.agent);
+
+  const handleRemoteRetry = async () => {
+    setRemoteRetryLoading(true);
+    setRestartError(null);
+    try {
+      await window.electronAPI.sessions.reconcileRemote();
+      onAgentSessionStartSuccess?.(session.taskId);
+    } catch {
+      setRestartError('Could not reconnect to the remote session.');
+    } finally {
+      setRemoteRetryLoading(false);
+    }
+  };
 
   const handleAgentRestart = async (resume: boolean) => {
     if (!task || !agentSessionLifecycle) return;
@@ -219,14 +239,6 @@ function AgentPane({
               <span className="font-medium text-zinc-300">Starting…</span>
             </div>
           ) : null}
-          {trustAutorespondNote ? (
-            <div
-              role="status"
-              className="absolute left-3 right-3 top-3 z-[5] rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-            >
-              {trustAutorespondNote}
-            </div>
-          ) : null}
           <Terminal
             ref={terminalRef}
             sessionId={session.id}
@@ -236,6 +248,35 @@ function AgentPane({
             autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
             hideCursor
           />
+        </div>
+      ) : remoteInterrupted && session.remoteLifecycleStatus ? (
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
+          <p className="text-[15px] font-medium text-zinc-200">
+            {remoteLifecycleStatusHeading(session.remoteLifecycleStatus)}
+          </p>
+          <p className="max-w-lg text-[13px] leading-relaxed text-zinc-500">
+            {remoteLifecycleStatusDetail(session.remoteLifecycleStatus, session)}
+          </p>
+          {session.remoteLifecycleStatus === 'device-unreachable' ||
+          session.remoteLifecycleStatus === 'helper-mismatch' ? (
+            <button
+              type="button"
+              onClick={() => void handleRemoteRetry()}
+              disabled={remoteRetryLoading}
+              className={
+                remoteRetryLoading
+                  ? resumeBtnLoading
+                  : 'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90'
+              }
+            >
+              {remoteRetryLoading ? 'Retrying…' : 'Retry connection'}
+            </button>
+          ) : null}
+          {restartError ? (
+            <p className="max-w-sm text-xs leading-snug text-red-300/90" role="alert">
+              {restartError}
+            </p>
+          ) : null}
         </div>
       ) : showRestartControls ? (
         <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-6 text-center">

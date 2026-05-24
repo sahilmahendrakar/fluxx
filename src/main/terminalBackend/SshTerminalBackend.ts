@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import path from 'node:path';
 import type {
   Agent,
   ExecutionDeviceConfig,
@@ -19,6 +20,11 @@ import type {
   StreamFrame,
 } from '../../terminal-runtime/protocol';
 import { SilenceDetector } from '../../terminal-runtime/SilenceDetector';
+import { PromptAutoresponder } from '../../terminal-runtime/PromptAutoresponder';
+import {
+  buildTrustPromptAutoresponderRules,
+  TRUST_PROMPT_AUTORESPOND_SSH_TTL_MS,
+} from '../../terminal-runtime/trustPromptAutoresponderRules';
 import { buildFluxxTmuxSessionName } from '../tmux/tmuxSessionName';
 import type { DeviceStore } from '../DeviceStore';
 import type {
@@ -30,6 +36,7 @@ import { deliverTerminalStreamFrameToRenderers } from '../TerminalRuntimeManager
 import { RemoteHelperClient } from '../ssh/RemoteHelperClient';
 import { SshAttachBridge } from '../ssh/SshAttachBridge';
 import { deviceProbeHostLabel } from '../ssh/opensshRunner';
+import { collapsedBottomScreenText } from '../../terminal-runtime/renderedScreenText';
 import type {
   RemoteHelperStartShellData,
   RemoteHelperStopTerminalData,
@@ -42,6 +49,9 @@ type SshTaskEntry = {
   agent?: Agent;
   bridge: SshAttachBridge | null;
   detector: SilenceDetector | null;
+  autoresponder: PromptAutoresponder | null;
+  trustPromptAutorespond: boolean;
+  trustPromptAutorespondRoots: string[];
   cols: number;
   rows: number;
 };
@@ -66,6 +76,16 @@ export type RegisterRemoteTaskSessionInput = {
   deviceId: string;
   tmuxSessionName: string;
   agent?: Agent;
+  cols?: number;
+  rows?: number;
+  trustPromptAutorespond?: boolean;
+  trustPromptAutorespondRoots?: string[];
+};
+
+export type RegisterRemoteShellSessionInput = {
+  shell: Shell;
+  deviceId: string;
+  tmuxSessionName: string;
   cols?: number;
   rows?: number;
 };
@@ -94,12 +114,19 @@ export class SshTerminalBackend implements TerminalBackend {
 
   registerTaskSession(input: RegisterRemoteTaskSessionInput): void {
     const { session, deviceId, tmuxSessionName, agent } = input;
+    const trustPromptAutorespond = input.trustPromptAutorespond === true;
+    const trustPromptAutorespondRoots = trustPromptAutorespond
+      ? (input.trustPromptAutorespondRoots ?? []).map((r) => path.resolve(r))
+      : [];
     this.sessions.set(session.id, {
       session: { ...session },
       deviceId,
       tmuxSessionName,
       agent,
       bridge: null,
+      autoresponder: null,
+      trustPromptAutorespond,
+      trustPromptAutorespondRoots,
       detector: agent
         ? new SilenceDetector(
             (state) => this.emitFrame({ kind: 'agent-state', id: session.id, state }),
@@ -110,6 +137,27 @@ export class SshTerminalBackend implements TerminalBackend {
       cols: input.cols ?? 80,
       rows: input.rows ?? 24,
     });
+  }
+
+  registerShellSession(input: RegisterRemoteShellSessionInput): void {
+    const { shell, deviceId, tmuxSessionName } = input;
+    this.shells.set(shell.id, {
+      shell: { ...shell },
+      deviceId,
+      tmuxSessionName,
+      bridge: null,
+      cols: input.cols ?? 80,
+      rows: input.rows ?? 24,
+    });
+  }
+
+  /** Running SSH task sessions only (excludes shells). */
+  countRunningTaskSessions(): number {
+    let n = 0;
+    for (const entry of this.sessions.values()) {
+      if (entry.session.status === 'running') n += 1;
+    }
+    return n;
   }
 
   ensureReady(): Promise<void> {
@@ -172,6 +220,47 @@ export class SshTerminalBackend implements TerminalBackend {
     }
   }
 
+  private wireAutoresponderIfNeeded(entry: SshTaskEntry, bridge: SshAttachBridge): void {
+    if (entry.autoresponder || !entry.agent || !entry.trustPromptAutorespond) return;
+    if (entry.trustPromptAutorespondRoots.length === 0) return;
+    const trustRules = buildTrustPromptAutoresponderRules(entry.trustPromptAutorespondRoots, {
+      ttlMsFromSpawn: TRUST_PROMPT_AUTORESPOND_SSH_TTL_MS,
+    });
+    if (trustRules.length === 0) return;
+
+    const worktreePath = entry.session.worktreePath;
+    const runtimeAdapter = {
+      get currentCwd() {
+        return worktreePath;
+      },
+      flushHeadlessParser: () =>
+        new Promise<void>((resolve) => {
+          bridge.headless.write('', () => resolve());
+        }),
+      getCollapsedBottomScreenText: (maxLines = 40) =>
+        collapsedBottomScreenText(bridge.headless, maxLines),
+      write: (data: string) => bridge.write(data),
+    };
+
+    entry.autoresponder = new PromptAutoresponder(
+      entry.session.id,
+      entry.agent,
+      true,
+      trustRules,
+      runtimeAdapter,
+      (payload) =>
+        this.emitFrame({
+          kind: 'auto-responded',
+          target: 'session',
+          id: entry.session.id,
+          sessionId: payload.sessionId,
+          ruleId: payload.ruleId,
+          agent: payload.agent,
+        }),
+    );
+    entry.autoresponder.notifyPtyData();
+  }
+
   private ensureTaskBridge(entry: SshTaskEntry): SshAttachBridge {
     if (entry.bridge?.isBridgeAttached) {
       return entry.bridge;
@@ -197,13 +286,17 @@ export class SshTerminalBackend implements TerminalBackend {
             seq,
           });
           entry.detector?.onData();
+          entry.autoresponder?.notifyPtyData();
         },
         onBridgeDetach: () => {
+          entry.autoresponder?.dispose();
+          entry.autoresponder = null;
           entry.bridge?.dispose();
           entry.bridge = null;
         },
       },
     );
+    this.wireAutoresponderIfNeeded(entry, entry.bridge);
     return entry.bridge;
   }
 
@@ -274,13 +367,16 @@ export class SshTerminalBackend implements TerminalBackend {
     const entry = this.sessions.get(id);
     if (!entry || entry.session.status !== 'running') return null;
     const bridge = this.ensureTaskBridge(entry);
-    return bridge.snapshot();
+    const result = await bridge.snapshot();
+    entry.autoresponder?.notifyPtyData();
+    return result;
   }
 
   async stopSession(id: string): Promise<void> {
     const entry = this.sessions.get(id);
     if (!entry) return;
     entry.detector?.dispose();
+    entry.autoresponder?.dispose();
     entry.bridge?.killBridge();
     entry.bridge?.dispose();
     entry.bridge = null;

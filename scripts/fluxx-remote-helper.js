@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const VERSION = '0.2.2';
+const VERSION = '0.2.3';
 
 const FLUXX_TMUX_SOCKET = 'fluxx';
 const SETUP_DEFAULT_TIMEOUT_MS = 300_000;
@@ -959,6 +959,72 @@ function runProbeAgent(params) {
   emit({ ok: true, data: { found, command } });
 }
 
+function runListTmuxSessions() {
+  const result = runCapture('tmux', tmuxArgs(['list-sessions', '-F', '#{session_name}']));
+  if (!result.ok) {
+    emit({ ok: true, data: { sessionNames: [] } });
+    return;
+  }
+  const sessionNames = result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  emit({ ok: true, data: { sessionNames } });
+}
+
+function runPathExists(params) {
+  const raw = typeof params.path === 'string' ? params.path.trim() : '';
+  if (!raw) {
+    fail('INTERNAL', 'path-exists requires path');
+  }
+  const target = expandHome(raw);
+  emit({ ok: true, data: { exists: fs.existsSync(target) } });
+}
+
+function runWorktreeRemove(params) {
+  const worktreePath = expandHome(
+    typeof params.worktreePath === 'string' ? params.worktreePath.trim() : '',
+  );
+  const repoPath = expandHome(typeof params.repoPath === 'string' ? params.repoPath.trim() : '');
+  if (!worktreePath || !repoPath) {
+    fail('INTERNAL', 'worktree-remove requires worktreePath and repoPath');
+  }
+  if (!fs.existsSync(worktreePath)) {
+    emit({ ok: true, data: { removed: false, reason: 'not-found' } });
+    return;
+  }
+  const remove = gitRun(['worktree', 'remove', '--force', worktreePath], { cwd: repoPath });
+  if (!remove.ok) {
+    fail('WORKTREE_FAILED', remove.error || 'git worktree remove failed');
+  }
+  gitRun(['worktree', 'prune'], { cwd: repoPath });
+  emit({ ok: true, data: { removed: true, worktreePath } });
+}
+
+function runMarkTerminalEnded(params) {
+  const terminalId = typeof params.terminalId === 'string' ? params.terminalId.trim() : '';
+  const deviceId = typeof params.deviceId === 'string' ? params.deviceId.trim() : '';
+  const reason =
+    typeof params.reason === 'string' && params.reason.trim()
+      ? params.reason.trim()
+      : 'user-stopped';
+  if (!terminalId || !deviceId) {
+    fail('INTERNAL', 'mark-terminal-ended requires terminalId and deviceId');
+  }
+  const rows = readManifest(deviceId);
+  const row = rows.find((t) => t.id === terminalId && !t.endedAt);
+  if (!row) {
+    emit({ ok: true, data: { marked: false, terminalId, reason: 'not-found' } });
+    return;
+  }
+  const endedAt = new Date().toISOString();
+  const remaining = rows.map((t) =>
+    t.id === terminalId ? { ...t, endedAt, endedReason: reason } : t,
+  );
+  writeManifest(deviceId, remaining);
+  emit({ ok: true, data: { marked: true, terminalId, endedAt, reason } });
+}
+
 function main() {
   const command = process.argv[2];
   if (!command) {
@@ -1003,6 +1069,18 @@ function main() {
       break;
     case 'start-shell':
       runStartShell(readStdinJson());
+      break;
+    case 'list-tmux-sessions':
+      runListTmuxSessions();
+      break;
+    case 'path-exists':
+      runPathExists(readStdinJson());
+      break;
+    case 'worktree-remove':
+      runWorktreeRemove(readStdinJson());
+      break;
+    case 'mark-terminal-ended':
+      runMarkTerminalEnded(readStdinJson());
       break;
     default:
       fail('INTERNAL', `Unknown helper command: ${command}`);

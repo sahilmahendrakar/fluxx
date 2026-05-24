@@ -31,6 +31,7 @@ interface AppShellProps {
   selectedPlanningDocPath: string | null;
   onSelectPlanningDoc: (relativePath: string) => void;
   sessionLayout: SidebarSessionLayout;
+  restoringWorkspaceIds?: ReadonlySet<string>;
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
@@ -78,6 +79,7 @@ export function AppShell({
   selectedPlanningDocPath,
   onSelectPlanningDoc,
   sessionLayout,
+  restoringWorkspaceIds,
   onOpenSession,
   onMinimizeSession,
   onDeleteWorkspace,
@@ -106,6 +108,7 @@ export function AppShell({
           selectedPlanningDocPath={selectedPlanningDocPath}
           onSelectPlanningDoc={onSelectPlanningDoc}
           sessionLayout={sessionLayout}
+          restoringWorkspaceIds={restoringWorkspaceIds}
           onOpenSession={onOpenSession}
           onMinimizeSession={onMinimizeSession}
           onDeleteWorkspace={onDeleteWorkspace}

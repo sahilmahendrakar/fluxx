@@ -207,6 +207,8 @@ export type RemoteHelperListTerminalsData = {
     command: string;
     args: string[];
     startedAt: string;
+    endedAt?: string;
+    endedReason?: string;
     task?: {
       taskId: string;
       agent: string;
@@ -214,7 +216,32 @@ export type RemoteHelperListTerminalsData = {
       fluxxWorkBranch: string;
       sourceBranchShort?: string;
     };
+    shell?: {
+      parentSessionId: string;
+      worktreePath: string;
+    };
   }>;
+};
+
+export type RemoteHelperListTmuxSessionsData = {
+  sessionNames: string[];
+};
+
+export type RemoteHelperPathExistsData = {
+  exists: boolean;
+};
+
+export type RemoteHelperWorktreeRemoveData = {
+  removed: boolean;
+  reason?: string;
+  worktreePath?: string;
+};
+
+export type RemoteHelperMarkTerminalEndedData = {
+  marked: boolean;
+  terminalId: string;
+  endedAt?: string;
+  reason?: string;
 };
 
 export type RemoteHelperJsonResult<T> =

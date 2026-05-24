@@ -61,7 +61,6 @@ import {
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
-import { useTrustAutorespondNotice } from '../hooks/useTrustAutorespondNotice';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
@@ -1019,11 +1018,6 @@ export default function TaskDetailPanel({
   ]);
 
   const sessionRunning = session?.status === 'running';
-  const trustAutorespondNote = useTrustAutorespondNotice(
-    'session',
-    session?.id ?? null,
-    sessionRunning,
-  );
 
   if (!task) {
     return null;
@@ -2139,14 +2133,6 @@ export default function TaskDetailPanel({
                         aria-hidden
                       />
                       <span className="font-medium text-zinc-300">Starting…</span>
-                    </div>
-                  ) : null}
-                  {trustAutorespondNote ? (
-                    <div
-                      role="status"
-                      className="mb-2 shrink-0 rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-                    >
-                      {trustAutorespondNote}
                     </div>
                   ) : null}
                   <TerminalComponent
