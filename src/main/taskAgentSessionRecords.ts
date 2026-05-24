@@ -260,7 +260,6 @@ export class TaskAgentSessionRecordStore {
   }
 
   async getResumeConversationId(taskId: string, agent: Agent): Promise<string | undefined> {
-    if (agent === 'codex') return undefined;
     await this.ensureLoaded();
     const rows = this.cache
       .filter((r) => r.taskId === taskId && r.agent === agent)

@@ -1409,12 +1409,14 @@ export default function TaskDetailPanel({
                         />
                       </div>
                     ) : task.agent === 'codex' ? (
-                      <span
-                        className="text-xs text-zinc-500"
-                        title="Model selection is not wired for Codex in this version."
-                      >
-                        Default model
-                      </span>
+                      <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
+                        <AgentModelPicker
+                          kind="codex"
+                          modelId={(task.agentModel ?? '').trim()}
+                          onModelIdChange={(id) => onUpdate(task.id, { agentModel: id.trim() })}
+                          aria-label="Codex model"
+                        />
+                      </div>
                     ) : null}
                     {task.agent != null ? (
                       <div ref={agentSettingsWrapRef} className="relative shrink-0">
@@ -1471,9 +1473,28 @@ export default function TaskDetailPanel({
                                   </span>
                                 </span>
                               </label>
+                            ) : task.agent === 'codex' ? (
+                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                                  checked={task.agentYolo === true}
+                                  onChange={(e) =>
+                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  }
+                                />
+                                <span className="leading-snug">
+                                  <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
+                                  <span className="mt-1 block text-[11px] text-zinc-500">
+                                    Passes Codex <code className="text-zinc-400">--yolo</code> (alias for{' '}
+                                    <code className="text-zinc-400">--dangerously-bypass-approvals-and-sandbox</code>
+                                    ): fewer approval prompts and broader sandbox access.
+                                  </span>
+                                </span>
+                              </label>
                             ) : (
                               <p className="leading-relaxed text-zinc-500">
-                                No spawn toggles for Codex in this version.
+                                No spawn toggles for this agent.
                               </p>
                             )}
                           </div>

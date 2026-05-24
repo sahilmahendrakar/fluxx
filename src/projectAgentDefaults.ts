@@ -25,6 +25,10 @@ export function resolvedPlanningModelForSpawn(
     if (typeof m === 'string' && m.trim()) return m.trim();
     return DEFAULT_CURSOR_AGENT_MODEL;
   }
+  if (agent === 'codex') {
+    const m = src.planningModels?.codex;
+    return typeof m === 'string' && m.trim() ? m.trim() : undefined;
+  }
   return undefined;
 }
 
@@ -53,6 +57,10 @@ export function resolvedTaskModelForCreate(
     if (typeof m === 'string' && m.trim()) return m.trim();
     return DEFAULT_CURSOR_AGENT_MODEL;
   }
+  if (agent === 'codex') {
+    const m = src.taskDefaultModels?.codex;
+    return typeof m === 'string' && m.trim() ? m.trim() : undefined;
+  }
   return undefined;
 }
 
@@ -76,6 +84,9 @@ export function taskRowModelFields(
   } else if (agent === 'cursor') {
     const t = (model ?? '').trim() || DEFAULT_CURSOR_AGENT_MODEL;
     out.agentModel = t;
+  } else if (agent === 'codex') {
+    const t = (model ?? '').trim();
+    if (t) out.agentModel = t;
   }
   return out;
 }

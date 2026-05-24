@@ -1,0 +1,6 @@
+]0;fluxx-task-worktree
+Token usage: total=749 input=369 output=379
+
+To continue this session, run codex resume 019c2f73-78db-72a1-b16e-bb7527184391
+
+]0;

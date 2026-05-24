@@ -21,7 +21,7 @@ export default function AgentBadge({
   variant = 'label',
 }: {
   agent: Agent;
-  /** Model / YOLO line from `modelSummaryForTask` (undefined for Codex today). */
+  /** Model / YOLO line from `modelSummaryForTask`. */
   summary?: string;
   variant?: AgentBadgeVariant;
 }) {

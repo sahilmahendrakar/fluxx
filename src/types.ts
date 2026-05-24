@@ -12,7 +12,7 @@ export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
 export type Agent = 'claude-code' | 'codex' | 'cursor';
 
 /** Per-CLI default `--model` for planning or new tasks (stored on project / binding). */
-export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'cursor', string>>;
+export type AgentSessionModelDefaults = Partial<Record<'claude-code' | 'codex' | 'cursor', string>>;
 
 /** Partial update for {@link LocalProject} / cloud binding agent spawn defaults. */
 export type AgentSpawnDefaultsPatch = {
@@ -155,7 +155,7 @@ export interface LocalProject {
   defaultTaskAgentYolo?: boolean;
   /** Auto-start a task session when status moves from Backlog to in-progress. */
   autoStartSessionOnInProgress: boolean;
-  /** When enabled, Flux may auto-accept Claude/Cursor trust prompts in Flux-owned worktrees and the planning directory only. */
+  /** When enabled, Flux may auto-accept Claude/Cursor/Codex trust prompts in Flux-owned worktrees and the planning directory only. */
   autoRespondToTrustPrompts: boolean;
   /** When on, a task in backlog (or in progress without a running session) may auto-start once its last blocker is completed. */
   autoStartWhenUnblocked: boolean;

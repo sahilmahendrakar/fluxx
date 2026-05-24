@@ -27,7 +27,7 @@ import {
 } from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
 import { SettingsSwitch } from './SettingsSwitch';
-import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
+import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
 
 interface Props {
@@ -526,9 +526,11 @@ function ProjectConfigPane({
   const [defaultTaskAgentError, setDefaultTaskAgentError] = useState<string | null>(null);
   const [planClaudeModel, setPlanClaudeModel] = useState('');
   const [planCursorModel, setPlanCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [planCodexModel, setPlanCodexModel] = useState('');
   const [planYolo, setPlanYolo] = useState(false);
   const [taskClaudeModel, setTaskClaudeModel] = useState('');
   const [taskCursorModel, setTaskCursorModel] = useState(DEFAULT_CURSOR_AGENT_MODEL);
+  const [taskCodexModel, setTaskCodexModel] = useState('');
   const [taskYolo, setTaskYolo] = useState(false);
   const [planSpawnSaveState, setPlanSpawnSaveState] = useState<SaveState>('idle');
   const [planSpawnError, setPlanSpawnError] = useState<string | null>(null);
@@ -620,6 +622,7 @@ function ProjectConfigPane({
         ? (project.planningModels.cursor as string)
         : DEFAULT_CURSOR_AGENT_MODEL,
     );
+    setPlanCodexModel(project.planningModels?.codex ?? '');
     setPlanYolo(project.planningAgentYolo === true);
     setTaskClaudeModel(project.taskDefaultModels?.['claude-code'] ?? '');
     setTaskCursorModel(
@@ -627,6 +630,7 @@ function ProjectConfigPane({
         ? (project.taskDefaultModels.cursor as string)
         : DEFAULT_CURSOR_AGENT_MODEL,
     );
+    setTaskCodexModel(project.taskDefaultModels?.codex ?? '');
     setTaskYolo(project.defaultTaskAgentYolo === true);
   }, [
     project.id,
@@ -994,6 +998,7 @@ function ProjectConfigPane({
       planningModels: {
         'claude-code': planClaudeModel,
         cursor: planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+        codex: planCodexModel,
       },
       planningAgentYolo: planYolo,
     };
@@ -1008,7 +1013,7 @@ function ProjectConfigPane({
     window.setTimeout(() => {
       setPlanSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
     }, 1500);
-  }, [onProjectAgentPrefsRefresh, planClaudeModel, planCursorModel, planYolo]);
+  }, [onProjectAgentPrefsRefresh, planClaudeModel, planCursorModel, planCodexModel, planYolo]);
 
   const handleSaveTaskSpawnRow = useCallback(async () => {
     setTaskSpawnSaveState('saving');
@@ -1017,6 +1022,7 @@ function ProjectConfigPane({
       taskDefaultModels: {
         'claude-code': taskClaudeModel,
         cursor: taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL,
+        codex: taskCodexModel,
       },
       defaultTaskAgentYolo: taskYolo,
     };
@@ -1031,7 +1037,7 @@ function ProjectConfigPane({
     window.setTimeout(() => {
       setTaskSpawnSaveState((s) => (s === 'saved' ? 'idle' : s));
     }, 1500);
-  }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskYolo]);
+  }, [onProjectAgentPrefsRefresh, taskClaudeModel, taskCursorModel, taskCodexModel, taskYolo]);
 
   const handleAddMcpConfig = useCallback(async () => {
     setMcpConfigSaveState('saving');
@@ -1365,8 +1371,8 @@ function ProjectConfigPane({
               title="Auto-accept agent trust prompts"
               description={
                 <>
-                  When on, Fluxx may answer the one-time trust dialog for Claude Code and Cursor only
-                  while the PTY working directory stays under this project’s{' '}
+                  When on, Fluxx may answer the one-time trust dialog for Claude Code, Cursor, and
+                  Codex only while the PTY working directory stays under this project’s{' '}
                   <code className="text-zinc-400">worktrees/</code>,{' '}
                   <code className="text-zinc-400">planning/</code>, or your{' '}
                   <code className="text-zinc-400">~/.fluxx/worktrees</code> tree. Agents you launch
@@ -1500,7 +1506,9 @@ function ProjectConfigPane({
             These apply to this project on this machine. Each row sets the default agent, the same
             model dropdown as tasks (choices follow the selected provider), and optional YOLO (
             <span className="font-mono text-zinc-400">--yolo</span> /{' '}
-            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span>). Agent
+            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span> /{' '}
+            <span className="font-mono text-zinc-400">--dangerously-bypass-approvals-and-sandbox</span>
+            ). Agent
             changes save immediately; use Save on the same row to persist models and YOLO for that
             flow.
           </p>
@@ -1514,7 +1522,7 @@ function ProjectConfigPane({
                 Planning assistant
               </label>
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
-                Same defaults as the Planning panel. Codex ignores model/YOLO here.
+                Same defaults as the Planning panel.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
@@ -1543,25 +1551,22 @@ function ProjectConfigPane({
                   <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     Model
                   </span>
-                  {planningAgentValue === 'codex' ? (
-                    <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
-                      title="Model selection is not wired for Codex in this version."
-                    >
-                      Default model
-                    </span>
-                  ) : (
+                  {agentModelUiKindForAgent(planningAgentValue) ? (
                     <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
                       <AgentModelPicker
-                        kind={planningAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        kind={agentModelUiKindForAgent(planningAgentValue)!}
                         modelId={
                           planningAgentValue === 'cursor'
                             ? planCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
-                            : planClaudeModel
+                            : planningAgentValue === 'codex'
+                              ? planCodexModel
+                              : planClaudeModel
                         }
                         onModelIdChange={(id) => {
                           if (planningAgentValue === 'cursor') {
                             setPlanCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else if (planningAgentValue === 'codex') {
+                            setPlanCodexModel(id.trim());
                           } else {
                             setPlanClaudeModel(id.trim());
                           }
@@ -1569,12 +1574,12 @@ function ProjectConfigPane({
                         aria-label="Planning default model"
                       />
                     </div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
                     className="text-[10px] text-zinc-500"
-                    title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                    title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
                   </span>
@@ -1622,7 +1627,7 @@ function ProjectConfigPane({
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
                 New tasks and{' '}
                 <code className="font-mono text-zinc-500">fluxx tasks create</code> when no agent is
-                given. Codex ignores model/YOLO here.
+                given.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
@@ -1651,25 +1656,22 @@ function ProjectConfigPane({
                   <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                     Model
                   </span>
-                  {defaultTaskAgentValue === 'codex' ? (
-                    <span
-                      className="flex min-h-[2rem] items-center rounded-md border border-white/[0.06] bg-[#09090b]/60 px-2 text-[12px] text-zinc-500"
-                      title="Model selection is not wired for Codex in this version."
-                    >
-                      Default model
-                    </span>
-                  ) : (
+                  {agentModelUiKindForAgent(defaultTaskAgentValue) ? (
                     <div className="min-w-0 max-w-[200px] flex-1 sm:max-w-xs">
                       <AgentModelPicker
-                        kind={defaultTaskAgentValue === 'cursor' ? 'cursor' : 'claude-code'}
+                        kind={agentModelUiKindForAgent(defaultTaskAgentValue)!}
                         modelId={
                           defaultTaskAgentValue === 'cursor'
                             ? taskCursorModel.trim() || DEFAULT_CURSOR_AGENT_MODEL
-                            : taskClaudeModel
+                            : defaultTaskAgentValue === 'codex'
+                              ? taskCodexModel
+                              : taskClaudeModel
                         }
                         onModelIdChange={(id) => {
                           if (defaultTaskAgentValue === 'cursor') {
                             setTaskCursorModel(id.trim() || DEFAULT_CURSOR_AGENT_MODEL);
+                          } else if (defaultTaskAgentValue === 'codex') {
+                            setTaskCodexModel(id.trim());
                           } else {
                             setTaskClaudeModel(id.trim());
                           }
@@ -1677,12 +1679,12 @@ function ProjectConfigPane({
                         aria-label="Default task model"
                       />
                     </div>
-                  )}
+                  ) : null}
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
                     className="text-[10px] text-zinc-500"
-                    title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions)"
+                    title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
                   </span>

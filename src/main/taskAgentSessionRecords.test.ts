@@ -34,6 +34,27 @@ describe('TaskAgentSessionRecordStore', () => {
     await expect(store.getResumeConversationId('t1', 'cursor')).resolves.toBe('new-id');
   });
 
+  it('getResumeConversationId returns persisted id for codex', async () => {
+    const store = new TaskAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
+    store._testImportRecords([
+      {
+        fluxxSessionId: 'codex-s1',
+        taskId: 't1',
+        projectId: 'p1',
+        agent: 'codex',
+        worktreePath: '/wt',
+        fluxxWorkBranch: 'fluxx/task',
+        startedAt: '2020-01-02T00:00:00.000Z',
+        endedAt: '2020-01-02T01:00:00.000Z',
+        endedReason: 'app-quit',
+        agentConversationId: '019c2f73-78db-72a1-b16e-bb7527184391',
+      },
+    ]);
+    await expect(store.getResumeConversationId('t1', 'codex')).resolves.toBe(
+      '019c2f73-78db-72a1-b16e-bb7527184391',
+    );
+  });
+
   it('workspace-deleted rows are not cold-resumable', async () => {
     const store = new TaskAgentSessionRecordStore({ getProjectDir: () => '/tmp/x' });
     store._testImportRecords([
