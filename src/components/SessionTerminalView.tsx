@@ -698,8 +698,10 @@ export function SessionTerminalView({
     'shrink-0 rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
   const markDoneBtnDisabled =
     'shrink-0 cursor-not-allowed rounded-lg bg-zinc-800/50 px-3 py-1.5 text-[12px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
-  const validateBtn =
+  const validateBtnFilled =
     'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-500/90 px-3 py-1.5 text-[12px] font-medium text-violet-50 transition hover:bg-violet-400/90 disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500';
+  const validateBtnOutline =
+    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-500/[0.08] px-3 py-1.5 text-[12px] font-medium text-violet-200 ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:ring-white/[0.06]';
 
   const validationEnabledProject = taskDetailPanel?.validationEnabledProject === true;
   const validateEligibility = useMemo(
@@ -782,6 +784,17 @@ export function SessionTerminalView({
           </button>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {validateEligibility.canValidate && task && taskDetailPanel?.onUpdate ? (
+            <button
+              type="button"
+              onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
+              title={validateEligibility.message}
+              className={task.status === 'needs-input' ? validateBtnFilled : validateBtnOutline}
+            >
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              Validate
+            </button>
+          ) : null}
           <OpenInWorkspaceButton worktreePath={session.worktreePath} size="sm" />
           {task ? (
             <GithubPrIconButton
@@ -792,17 +805,6 @@ export function SessionTerminalView({
               prLoading={prLoading}
               prAgentAwaiting={prAgentAwaiting}
             />
-          ) : null}
-          {validateEligibility.canValidate && task && taskDetailPanel?.onUpdate ? (
-            <button
-              type="button"
-              onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
-              title={validateEligibility.message}
-              className={validateBtn}
-            >
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-              Validate
-            </button>
           ) : null}
           {showMarkAsDone ? (
             <button

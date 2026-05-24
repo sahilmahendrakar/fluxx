@@ -3604,6 +3604,7 @@ export default function App() {
                             onOpenPlanningDoc: handleSelectPlanningDoc,
                             projectRepoReadiness,
                             onOpenProjectSettings: handleOpenProjectSettings,
+                            validationEnabledProject: project.validationEnabled === true,
                           }
                         : undefined
                     }
