@@ -60,13 +60,24 @@ describe('taskEphemeralTeardown', () => {
         displayName: 'Dev',
       })),
     };
+    const bindingStore = {
+      getRemoteRepoBinding: vi.fn(() => undefined),
+    };
+    const projectStore = {
+      get: vi.fn(() => null),
+    };
 
     await deleteSessionWorkspaceAndStop(
       terminalBackend as never,
       worktreeService as WorktreeService,
       session.id,
       async () => '/git',
-      { deviceStore: deviceStore as never, gitRemoteWorkspace: { removeTaskWorktree } as never },
+      {
+        deviceStore: deviceStore as never,
+        gitRemoteWorkspace: { removeTaskWorktree } as never,
+        bindingStore: bindingStore as never,
+        projectStore: projectStore as never,
+      },
       repos,
     );
 

@@ -102,6 +102,38 @@ describe('GitRemoteWorkspaceProvider', () => {
     );
   });
 
+  it('passes bound repoPath to repo-ensure when provided', async () => {
+    const helper = mockHelper();
+    const provider = new GitRemoteWorkspaceProvider(helper);
+
+    const result = await provider.createTaskWorkspaceAndStart({
+      device: sshDevice,
+      projectId: 'p1',
+      task: { id: 'task-1', title: 'Task', agent: 'cursor' },
+      repo: {
+        repoId: 'repo-a',
+        label: 'App',
+        remoteUrl: 'git@github.com:acme/app.git',
+        baseBranch: 'main',
+      },
+      boundRepoPath: '/home/user/existing-clone',
+      sourceBranchShort: 'main',
+      createSourceBranchIfMissing: false,
+      command: 'agent',
+      args: [],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(helper.runJsonCommand).toHaveBeenNthCalledWith(
+      2,
+      sshDevice,
+      'repo-ensure',
+      expect.objectContaining({
+        repoPath: '/home/user/existing-clone',
+      }),
+    );
+  });
+
   it('maps remote repo auth failures', async () => {
     const helper = mockHelper();
     vi.mocked(helper.runJsonCommand).mockImplementation(async (_device, command) => {

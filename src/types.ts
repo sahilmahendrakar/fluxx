@@ -138,6 +138,28 @@ export type CloudRepoLocalBindingStatus =
 
 export type CloudRepoBindingOverview = Record<string, CloudRepoLocalBindingStatus>;
 
+/** Per SSH device + repo: existing folder on the remote host (local-only, not synced). */
+export interface RemoteRepoBinding {
+  remotePath: string;
+  boundAt: string;
+  lastValidatedAt?: string;
+}
+
+/** `deviceId → repoId → binding` stored in local project config or cloud localBindings.json. */
+export type RemoteRepoBindingsByDevice = Record<string, Record<string, RemoteRepoBinding>>;
+
+export type RemoteRepoBindingStatus =
+  | { kind: 'unbound' }
+  | {
+      kind: 'bound';
+      remotePath: string;
+      hostLabel: string;
+      boundAt: string;
+      lastValidatedAt?: string;
+    };
+
+export type RemoteRepoBindingsOverview = Record<string, RemoteRepoBindingStatus>;
+
 export interface LocalProject {
   id: string;
   kind: 'local';
@@ -182,6 +204,11 @@ export interface LocalProject {
   persistTerminalsWithTmux: boolean;
   /** Optional override of the global default device for new tasks in this project. */
   defaultDeviceId?: string;
+  /**
+   * Per SSH device, per-repo folder on the remote host for task workspaces.
+   * Private to this Desktop install; not synced for cloud projects.
+   */
+  remoteRepoBindings?: RemoteRepoBindingsByDevice;
   repos: RepoConfig[];
 }
 
@@ -249,6 +276,11 @@ export interface CloudProjectLocalBinding {
    * Keyed by cloud task id; not synced to teammates.
    */
   perTaskDeviceOverrides?: Record<string, TaskExecutionDeviceRef>;
+  /**
+   * Per SSH device, per shared repo id: existing folder on the remote host.
+   * Private to this Desktop user; not written to Firestore.
+   */
+  remoteRepoBindings?: RemoteRepoBindingsByDevice;
   /** @deprecated Read `autoCleanupWorkspaceWhenDone`; kept for localBindings migration. */
   autoDeleteTaskWhenDone?: boolean;
 }

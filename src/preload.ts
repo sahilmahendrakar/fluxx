@@ -5,6 +5,7 @@ import type {
   AgentSpawnDefaultsPatch,
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
+  RemoteRepoBindingsOverview,
   CloudSharedRepo,
   LocalProject,
   OpenWorkspaceTarget,
@@ -185,6 +186,32 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     syncCloudSharedRepos: (sharedRepos: CloudSharedRepo[]) =>
       ipcRenderer.invoke('project:syncCloudSharedRepos', sharedRepos) as Promise<
+        { ok: true } | { error: string }
+      >,
+    getRemoteRepoBindingsOverview: (payload: { deviceId: string; repoIds: string[] }) =>
+      ipcRenderer.invoke('project:getRemoteRepoBindingsOverview', payload) as Promise<
+        RemoteRepoBindingsOverview | { error: string }
+      >,
+    probeRemoteRepoBinding: (payload: {
+      deviceId: string;
+      repoId: string;
+      remotePath: string;
+    }) =>
+      ipcRenderer.invoke('project:probeRemoteRepoBinding', payload) as Promise<
+        | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+        | { error: string; code?: string }
+      >,
+    setRemoteRepoBinding: (payload: {
+      deviceId: string;
+      repoId: string;
+      remotePath: string;
+    }) =>
+      ipcRenderer.invoke('project:setRemoteRepoBinding', payload) as Promise<
+        | { ok: true; binding: { remotePath: string; boundAt: string } }
+        | { error: string; code?: string }
+      >,
+    clearRemoteRepoBinding: (payload: { deviceId: string; repoId: string }) =>
+      ipcRenderer.invoke('project:clearRemoteRepoBinding', payload) as Promise<
         { ok: true } | { error: string }
       >,
     getAutoStartSessionOnInProgress: () =>

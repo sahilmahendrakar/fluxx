@@ -6,6 +6,7 @@ import type {
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
   CloudSharedRepo,
+  RemoteRepoBindingsOverview,
   LocalProject,
   OpenWorkspaceTarget,
   RepoBranchDiscoveryRequest,
@@ -188,6 +189,30 @@ declare global {
         syncCloudSharedRepos: (
           sharedRepos: CloudSharedRepo[],
         ) => Promise<{ ok: true } | { error: string }>;
+        getRemoteRepoBindingsOverview: (payload: {
+          deviceId: string;
+          repoIds: string[];
+        }) => Promise<RemoteRepoBindingsOverview | { error: string }>;
+        probeRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+          remotePath: string;
+        }) => Promise<
+          | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+          | { error: string; code?: string }
+        >;
+        setRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+          remotePath: string;
+        }) => Promise<
+          | { ok: true; binding: { remotePath: string; boundAt: string } }
+          | { error: string; code?: string }
+        >;
+        clearRemoteRepoBinding: (payload: {
+          deviceId: string;
+          repoId: string;
+        }) => Promise<{ ok: true } | { error: string }>;
         getAutoStartSessionOnInProgress: () => Promise<boolean>;
         setAutoStartSessionOnInProgress: (
           enabled: boolean,

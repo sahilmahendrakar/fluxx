@@ -62,6 +62,8 @@ import {
 } from './main/ssh/remoteSshTerminalReconcile';
 import { mapRemoteLifecycleToEndedReason } from './main/ssh/remoteSessionLifecycle';
 import { startSshTaskSession } from './main/ssh/startSshTaskSession';
+import { RemoteRepoBindingService } from './main/ssh/RemoteRepoBindingService';
+import { resolveRemoteRepoForTaskSession } from './main/ssh/resolveRemoteRepoForTask';
 import { syncRemoteSshTaskToLocal } from './main/ssh/remoteSshBranchSync';
 import { resolveSshLocalWorktreePath, readRemoteSshSyncMetadata } from './main/ssh/remoteSshSyncMetadata';
 import {
@@ -207,6 +209,7 @@ import type {
   CloudProjectLocalBinding,
   CloudRepoBindingOverview,
   CloudSharedRepo,
+  RemoteRepoBindingsOverview,
   ProjectTabState,
   RestorableSessionIds,
   LocalProject,
@@ -941,8 +944,18 @@ app.whenReady().then(async () => {
     ),
   });
   const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
+  const remoteRepoBindingService = new RemoteRepoBindingService(
+    bindingStore,
+    projectStore,
+    deviceStore,
+  );
   const remoteHelperClient = new RemoteHelperClient();
-  const remoteTaskTeardownDeps = { deviceStore, gitRemoteWorkspace: gitRemoteWorkspaceProvider };
+  const remoteTaskTeardownDeps = {
+    deviceStore,
+    gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+    bindingStore,
+    projectStore,
+  };
 
   function executionDeviceHostContext(): ExecutionDeviceHostContext {
     return {
@@ -1901,6 +1914,185 @@ app.whenReady().then(async () => {
         projectDir,
         sharedRepos,
       });
+      return { ok: true };
+    },
+  );
+
+  ipcMain.handle(
+    'project:getRemoteRepoBindingsOverview',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<RemoteRepoBindingsOverview | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoIds = Array.isArray(p.repoIds)
+        ? p.repoIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : [];
+      if (!deviceId) return { error: 'deviceId is required' };
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      const bindings = await remoteRepoBindingService.resolveBindingsMap(key, projectDir);
+      return remoteRepoBindingService.buildOverview({
+        device,
+        repoIds,
+        bindings,
+      });
+    },
+  );
+
+  ipcMain.handle(
+    'project:probeRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; hostLabel: string; resolvedPath: string; originUrl: string }
+      | { error: string; code?: string }
+    > => {
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const remotePath = typeof p.remotePath === 'string' ? p.remotePath.trim() : '';
+      if (!deviceId || !repoId || !remotePath) {
+        return { error: 'deviceId, repoId, and remotePath are required' };
+      }
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      let project: Project;
+      try {
+        project = await resolveProjectForStart();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const repos = await projectStore.getReposAt(projectDir);
+      const cloudProject = project.kind === 'cloud' ? project : null;
+      const task = { repoId } as Task;
+      let remoteUrl: string;
+      try {
+        const ctx = await resolveRemoteRepoForTaskSession(
+          project,
+          task,
+          repos,
+          cloudProject,
+        );
+        remoteUrl = ctx.remoteUrl;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
+        device,
+        remotePath,
+        remoteUrl,
+      );
+      if (!probed.ok) {
+        return { error: probed.message, code: probed.code };
+      }
+      return {
+        ok: true,
+        hostLabel: probed.hostLabel,
+        resolvedPath: probed.data.resolvedPath,
+        originUrl: probed.data.originUrl,
+      };
+    },
+  );
+
+  ipcMain.handle(
+    'project:setRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true; binding: { remotePath: string; boundAt: string } } | { error: string; code?: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      const remotePath = typeof p.remotePath === 'string' ? p.remotePath.trim() : '';
+      if (!deviceId || !repoId || !remotePath) {
+        return { error: 'deviceId, repoId, and remotePath are required' };
+      }
+      const device = deviceStore.getDevice(deviceId);
+      if (!device || device.kind !== 'ssh') {
+        return { error: 'SSH device is not configured on this machine.' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      let project: Project;
+      try {
+        project = await resolveProjectForStart();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const repos = await projectStore.getReposAt(projectDir);
+      const cloudProject = project.kind === 'cloud' ? project : null;
+      let remoteUrl: string;
+      try {
+        const ctx = await resolveRemoteRepoForTaskSession(
+          project,
+          { repoId } as Task,
+          repos,
+          cloudProject,
+        );
+        remoteUrl = ctx.remoteUrl;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
+        device,
+        remotePath,
+        remoteUrl,
+      );
+      if (!probed.ok) {
+        return { error: probed.message, code: probed.code };
+      }
+      const now = new Date().toISOString();
+      const binding = {
+        remotePath: probed.data.resolvedPath,
+        boundAt: now,
+        lastValidatedAt: now,
+      };
+      await remoteRepoBindingService.setBinding(key, projectDir, deviceId, repoId, binding);
+      return { ok: true, binding };
+    },
+  );
+
+  ipcMain.handle(
+    'project:clearRemoteRepoBinding',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<{ ok: true } | { error: string }> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key) return { error: 'No project is open.' };
+      if (!payload || typeof payload !== 'object') return { error: 'Invalid payload' };
+      const p = payload as Record<string, unknown>;
+      const deviceId = typeof p.deviceId === 'string' ? p.deviceId.trim() : '';
+      const repoId = typeof p.repoId === 'string' ? p.repoId.trim() : '';
+      if (!deviceId || !repoId) {
+        return { error: 'deviceId and repoId are required' };
+      }
+      const projectDir = worktreeService.getProjectDir();
+      if (!projectDir) return { error: 'No active workspace directory.' };
+      await remoteRepoBindingService.clearBinding(key, projectDir, deviceId, repoId);
       return { ok: true };
     },
   );
@@ -4011,6 +4203,7 @@ app.whenReady().then(async () => {
           {
             deviceStore,
             projectStore,
+            bindingStore,
             sshTerminalBackend: sshBackend,
             gitRemoteWorkspace: gitRemoteWorkspaceProvider,
             taskAgentSessionRecordStore,
