@@ -28,6 +28,7 @@ export type FluxAutomationValidationHost = FluxAutomationHost & {
     | { ok: true; run: ValidationRun; sessionId: string }
     | { ok: false; error: string }
   >;
+  onValidationRunFinalized?: (run: ValidationRun, source: string) => Promise<void>;
 };
 
 async function requireValidationEnabled(
@@ -119,9 +120,11 @@ async function resolveWorktreeCwdForTask(
 async function maybeIngestVerdict(
   h: FluxAutomationValidationHost,
   run: ValidationRun,
+  source: string,
 ): Promise<ValidationRun> {
   const result = await ingestValidationVerdict(h.validationRunStore, run.id);
   if (!result.ok) return run;
+  await h.onValidationRunFinalized?.(result.run, source);
   return result.run;
 }
 
@@ -246,7 +249,7 @@ export async function automationRunValidationShow(
     if (!run) {
       return { ok: false, error: `Validation run not found: ${runId}` };
     }
-    run = await maybeIngestVerdict(h, run);
+    run = await maybeIngestVerdict(h, run, 'cli:validation show');
     return { ok: true, data: { run: validationRunToCliJson(run) } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -276,7 +279,7 @@ export async function automationRunValidationArtifacts(
     if (!run) {
       return { ok: false, error: `Validation run not found: ${runId}` };
     }
-    run = await maybeIngestVerdict(h, run);
+    run = await maybeIngestVerdict(h, run, 'cli:validation show');
     return {
       ok: true,
       data: {
@@ -320,6 +323,7 @@ export async function automationRunValidationIngest(
     return { ok: false, error: result.error };
   }
   h.notifyValidationRunChanged?.(runId);
+  await h.onValidationRunFinalized?.(result.run, 'cli:validation ingest');
   return {
     ok: true,
     data: {
@@ -355,6 +359,7 @@ export async function automationRunValidationFinish(
     return { ok: false, error: result.error };
   }
   h.notifyValidationRunChanged?.(runId);
+  await h.onValidationRunFinalized?.(result.run, 'cli:validation finish');
   return {
     ok: true,
     data: {

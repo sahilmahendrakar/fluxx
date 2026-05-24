@@ -441,6 +441,12 @@ export class ValidationRunStore {
     return Promise.all(rows.map((r) => this.toValidationRun(r)));
   }
 
+  async listAll(): Promise<ValidationRun[]> {
+    await this.ensureLoaded();
+    const rows = [...this.cache].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return Promise.all(rows.map((r) => this.toValidationRun(r)));
+  }
+
   async get(runId: string): Promise<ValidationRun | null> {
     await this.ensureLoaded();
     const row = this.cache.find((r) => r.id === runId);

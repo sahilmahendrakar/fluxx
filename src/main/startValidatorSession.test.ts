@@ -22,7 +22,7 @@ describe('startValidatorSession', () => {
     id: 'task-1',
     title: 'Review task',
     description: 'Validate me',
-    status: 'review',
+    status: 'validation',
     agent: 'cursor',
     projectId: 'proj-1',
     orderKey: 'a',
@@ -30,7 +30,7 @@ describe('startValidatorSession', () => {
     updatedAt: new Date().toISOString(),
   };
 
-  it('rejects tasks not in review', async () => {
+  it('rejects tasks not in validation', async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-start-'));
     const store = new ValidationRunStore({ getProjectDir: () => tmp });
     const run = await store.create({
@@ -50,7 +50,7 @@ describe('startValidatorSession', () => {
       { task: { ...task, status: 'in-progress' }, runId: run.id },
     );
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('TASK_NOT_IN_REVIEW');
+    if (!result.ok) expect(result.code).toBe('TASK_NOT_IN_VALIDATION');
   });
 
   it('marks run running and spawns validator in existing worktree', async () => {

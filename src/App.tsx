@@ -89,6 +89,8 @@ import { usePlanningDocsFirestorePush } from './renderer/planningDocs/usePlannin
 import { usePlanningDocsFirestoreSync } from './renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { isFirebaseConfigured } from './renderer/firebase';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from './cloudInProgressAutostartApply';
+import { notifyCloudValidationEntryIfNeeded } from './validationRuns/notifyValidationEntry';
+import { isValidatorWorkspaceSession } from './validationSessions';
 import { runCloudDoneTransitionFollowUp } from './cloudTaskDoneFollowUp';
 import { assigneePatchForCloudAutoStartOnUnblock } from './cloudAutoStartUnblockAssignee';
 import { applyUnblockAutostartForCompletedBlocker } from './unblockAutostartApply';
@@ -1223,7 +1225,7 @@ export default function App() {
     if (project?.kind !== 'cloud') return;
     return window.electronAPI.tasks.onUserInput(({ taskId }) => {
       const task = tasksRef.current.find((t) => t.id === taskId);
-      if (!task || (task.status !== 'needs-input' && task.status !== 'review')) return;
+      if (!task || (task.status !== 'needs-input' && task.status !== 'review' && task.status !== 'validation')) return;
 
       const currentUid = uidRef.current;
       if (!currentUid || task.assigneeId !== currentUid) return;
@@ -1503,8 +1505,18 @@ export default function App() {
           project.id,
         );
         const normalized = normalizeRestoredProjectTabState(persisted, restorable);
-        const openTabs = new Set(normalized.openTaskIds);
-        const minimized = new Set(normalized.minimizedTaskWorkspaceIds);
+        const openTabs = new Set(
+          normalized.openTaskIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
+        const minimized = new Set(
+          normalized.minimizedTaskWorkspaceIds.filter((id) => {
+            const session = projectSessions.find((s) => s.id === id);
+            return !session || !isValidatorWorkspaceSession(session);
+          }),
+        );
         setSessions(
           filterSessionsForWorkspaceSidebar(
             projectSessions,
@@ -1981,6 +1993,7 @@ export default function App() {
                 actorUid: uidRef.current,
               },
             );
+            await notifyCloudValidationEntryIfNeeded(preFlushTask, mergedTask);
             if (preFlushTask.status !== 'done' && mergedTask.status === 'done') {
               const follow = await runCloudDoneTransitionFollowUp({
                 previous: preFlushTask,
@@ -2311,6 +2324,7 @@ export default function App() {
                   actorUid: uid,
                 },
               );
+              await notifyCloudValidationEntryIfNeeded(previous, merged);
               if (previous.status !== 'done' && merged.status === 'done') {
                 const follow = await runCloudDoneTransitionFollowUp({
                   previous,

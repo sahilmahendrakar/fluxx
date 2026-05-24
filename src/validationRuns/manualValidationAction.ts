@@ -19,8 +19,8 @@ export async function runManualValidationForTask(input: {
   if (task.agent == null) {
     return { ok: false, error: 'Choose an agent for this task before running validation.' };
   }
-  if (task.status !== 'review') {
-    return { ok: false, error: 'Validation can only be started from Review tasks.' };
+  if (task.status !== 'validation') {
+    return { ok: false, error: 'Validation can only be started from Validation tasks.' };
   }
 
   const repoId = effectiveTaskRepoId(task, input.primaryRepoId);

@@ -23,6 +23,22 @@ export function isValidatorSessionId(sessionId: string): boolean {
   return validatorSessionBindings.has(sessionId);
 }
 
+export function hydrateValidatorSessionBindings(
+  runs: ReadonlyArray<{ id: string; taskId: string; validatorSessionId?: string }>,
+  liveSessions: ReadonlyArray<Pick<Session, 'id'>>,
+): number {
+  const liveIds = new Set(liveSessions.map((s) => s.id));
+  let hydrated = 0;
+  for (const run of runs) {
+    const sessionId = run.validatorSessionId?.trim();
+    if (!sessionId || !liveIds.has(sessionId)) continue;
+    if (validatorSessionBindings.has(sessionId)) continue;
+    registerValidatorSession(sessionId, { runId: run.id, taskId: run.taskId });
+    hydrated += 1;
+  }
+  return hydrated;
+}
+
 /**
  * Task agent sessions transition in-progress → needs-input on clean exit.
  * Validator sessions must not affect task status.

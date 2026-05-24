@@ -28,7 +28,7 @@ Required:
 Optional:
   --title <text>
   --description <text>
-  --status <backlog|in-progress|needs-input|review|done>
+  --status <backlog|in-progress|needs-input|validation|review|done>
   --agent <claude-code|cursor|codex|none>
   --label <name>                 Replaces all labels when any --label is passed
   --clear-labels                 Remove all labels
@@ -50,7 +50,7 @@ Optional:
 const TASK_LIST_FLAGS = `Usage: fluxx tasks list [--json] [options]
 
 Optional:
-  --exclude-status <column>      Repeat: backlog, in-progress, needs-input, done
+  --exclude-status <column>      Repeat: backlog, in-progress, needs-input, validation, done
   --json`;
 
 const TASK_START_FLAGS = `Usage: fluxx tasks start [--json] --id <taskId>

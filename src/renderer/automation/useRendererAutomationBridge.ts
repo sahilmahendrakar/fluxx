@@ -1,5 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import { maybeCloudAutoStartSessionOnInProgressTransition } from '../../cloudInProgressAutostartApply';
+import { notifyCloudValidationEntryIfNeeded } from '../../validationRuns/notifyValidationEntry';
 import { runCloudDoneTransitionFollowUp } from '../../cloudTaskDoneFollowUp';
 import type {
   ActiveProjectKey,
@@ -227,6 +228,7 @@ async function handleRequest(
                 actorUid: uid,
               },
             );
+            await notifyCloudValidationEntryIfNeeded(previous, updated);
           }
           let outUpdated = updated;
           let workspaceCleanedAfterDone = false;
@@ -293,6 +295,7 @@ async function handleRequest(
           backlog: 0,
           'in-progress': 0,
           'needs-input': 0,
+          validation: 0,
           review: 0,
           done: 0,
           total: tasksSnapshot.length,
@@ -301,6 +304,7 @@ async function handleRequest(
           if (t.status === 'backlog') taskCounts.backlog++;
           else if (t.status === 'in-progress') taskCounts['in-progress']++;
           else if (t.status === 'needs-input') taskCounts['needs-input']++;
+          else if (t.status === 'validation') taskCounts.validation++;
           else if (t.status === 'review') taskCounts.review++;
           else if (t.status === 'done') taskCounts.done++;
         }

@@ -1,4 +1,10 @@
-export type TaskStatus = 'backlog' | 'in-progress' | 'needs-input' | 'review' | 'done';
+export type TaskStatus =
+  | 'backlog'
+  | 'in-progress'
+  | 'needs-input'
+  | 'validation'
+  | 'review'
+  | 'done';
 
 /** Where a normalized short branch name exists in the clone; see `classifyGitBranchPresence`. */
 export type GitBranchPresence = 'local' | 'remote' | 'both' | 'missing';
@@ -612,6 +618,8 @@ export interface Session {
    * main may attach it to the live {@link Session} row for UI hints.
    */
   agentConversationId?: string;
+  /** Validator PTY for a validation run — not a task implementation workspace. */
+  kind?: 'task' | 'validator';
 }
 
 /** Persisted metadata for task agent PTY sessions (cold resume, audit). */
@@ -739,9 +747,16 @@ export const COLUMNS: { id: TaskStatus; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
   { id: 'in-progress', label: 'In progress' },
   { id: 'needs-input', label: 'Needs input' },
+  { id: 'validation', label: 'Validation' },
   { id: 'review', label: 'Review' },
   { id: 'done', label: 'Done' },
 ];
+
+/** Board columns visible for the current project (Validation omitted when validation is off). */
+export function boardColumns(validationEnabled = false): { id: TaskStatus; label: string }[] {
+  if (validationEnabled) return COLUMNS;
+  return COLUMNS.filter((c) => c.id !== 'validation');
+}
 
 export const AGENTS: { id: Agent; label: string }[] = [
   { id: 'claude-code', label: 'Claude Code' },

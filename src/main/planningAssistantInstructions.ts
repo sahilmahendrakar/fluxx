@@ -16,7 +16,7 @@ import {
 export { PLANNING_INSTRUCTIONS_STATE_BASENAME } from '../planningDocs/planningInstructionMarkers';
 
 /** Bumps when `planningAssistantMarkdown` prose meaningfully changes (used with embedded version tag). */
-export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 8;
+export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 9;
 
 export type PlanningInstructionFileName = 'CLAUDE.md' | 'AGENTS.md';
 
@@ -200,7 +200,7 @@ ${contextSteps}
 
 Board and project operations (run in the planning shell):
 
-- \`fluxx tasks list --json\` — list tasks (includes \`sourceBranch\` / \`createSourceBranchIfMissing\` when set). Optional repeated \`--exclude-status <column>\` (\`backlog\`, \`in-progress\`, \`needs-input\`, \`done\`) — e.g. \`--exclude-status done\` for active work only
+- \`fluxx tasks list --json\` — list tasks (includes \`sourceBranch\` / \`createSourceBranchIfMissing\` when set). Optional repeated \`--exclude-status <column>\` (\`backlog\`, \`in-progress\`, \`needs-input\`, \`validation\`, \`done\`) — e.g. \`--exclude-status done\` for active work only
 ${createTaskLine}
 - \`fluxx tasks start --json --id <taskId>\` — move a task to **In progress** (\`in-progress\`)
 ${updateTaskLine}
@@ -209,7 +209,7 @@ ${projectInfoLine}
 ${listBranchesLine}
 - \`fluxx members list --json\` — cloud projects: team roster (\`email\`, \`displayName\`, \`role\`); local projects return an empty list with a note
 
-Board relationship: new tasks land in **Backlog**. \`fluxx tasks start\` is the usual way to mark work actively in flight. Use \`fluxx tasks update\` for other status changes (e.g. **Needs input**, **Review**, **Done**) or edits to title/description/agent.
+Board relationship: new tasks land in **Backlog**. \`fluxx tasks start\` is the usual way to mark work actively in flight. Use \`fluxx tasks update\` for other status changes (e.g. **Needs input**, **Validation**, **Review**, **Done**) or edits to title/description/agent.
 
 **Planning doc attachments:** When you turn a broad plan into concrete board tasks, pass repeated \`--attach-doc <relativePath>\` on \`fluxx tasks create\` (or \`fluxx tasks update\` to replace attachments) so implementers see the full write-up in Fluxx — paths are relative to the planning docs tree, e.g. \`docs/your-plan.md\` or \`notes/plan.md\` (\`.md\` only). Example: \`fluxx tasks create --json --title "..." --attach-doc docs/your-plan.md ...\`. Each task \`description\` should still spell out only that task's slice of work (acceptance, files, edge cases)—do not replace descriptions with a pointer to the plan alone.
 ${
@@ -220,9 +220,9 @@ ${
 
 This project has **validation enabled**. Check \`validationEnabled\` in \`fluxx project info --json\` before using validation commands — if it is \`false\`, do not create validation plans or run \`fluxx validation\`.
 
-When a task is ready for **Review** and task-specific validator guidance would help, write a structured validation plan (separate from the implementation \`description\`). Persist with \`fluxx tasks update --json --id <taskId> --validation-plan '<json>'\` or on create via \`--validation-plan\`. Use \`--clear-validation-plan\` on update to remove. JSON shape: \`goal\`, \`pack\` (\`electron-playwright\`), non-empty \`checks\` (strings), \`requiredArtifacts\` (strings), optional \`risks\` / \`notes\`.
+When a task is ready for **Validation** (or use **Validate** from In progress / Needs input) and task-specific validator guidance would help, write a structured validation plan (separate from the implementation \`description\`). Persist with \`fluxx tasks update --json --id <taskId> --validation-plan '<json>'\` or on create via \`--validation-plan\`. Use \`--clear-validation-plan\` on update to remove. JSON shape: \`goal\`, \`pack\` (\`electron-playwright\`), non-empty \`checks\` (strings), \`requiredArtifacts\` (strings), optional \`risks\` / \`notes\`.
 
-Validator runs (after implementation): \`fluxx validation run --json --task-id <taskId>\`, \`fluxx validation list --json --task-id <taskId>\`, \`fluxx validation show --json --run-id <runId>\`. See \`docs/validation-pack-electron-playwright-plan.md\` in this planning workspace for the pack contract.`
+Validator runs (after implementation): move the task to **Validation** (or \`fluxx tasks update --json --id <taskId> --status validation\`) to auto-start when validation is enabled, or \`fluxx validation run --json --task-id <taskId>\`, \`fluxx validation list --json --task-id <taskId>\`, \`fluxx validation show --json --run-id <runId>\`. On pass, the task moves to **Review** automatically. See \`docs/validation-pack-electron-playwright-plan.md\` in this planning workspace for the pack contract.`
     : ''
 }
 

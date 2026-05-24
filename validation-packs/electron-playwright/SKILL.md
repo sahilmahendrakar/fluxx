@@ -111,9 +111,10 @@ Log results to `artifacts/logs/main-state.txt` or include in check `detail`.
 ## Choosing checks
 
 1. Map each acceptance criterion to at least one check (or explain in `risks` why not).
-2. Name checks clearly in `verdict.json` — they appear in the Fluxx task UI.
-3. Attach `artifactPaths` on checks that have visual proof.
-4. Use `needs-human-review` when flakiness, auth, or environment blocks proof.
+2. When `plan.json` is present, set `plannedCheckIndex` on each verdict check (0-based, matching `plan.json` `checks[]` order). You may emit multiple checks per index.
+3. Use descriptive `name` values — Fluxx aligns planned rows by `plannedCheckIndex`, not by name.
+4. Attach `artifactPaths` on checks that have visual proof.
+5. Use `needs-human-review` when flakiness, auth, or environment blocks proof.
 
 ## Verdict
 

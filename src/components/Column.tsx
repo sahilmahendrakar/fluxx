@@ -85,24 +85,29 @@ export default function Column({
   onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = id === 'needs-input';
+  const isValidation = id === 'validation';
   const isReview = id === 'review';
   const isDone = id === 'done';
 
   const headerTint = isNeedsInput
     ? 'text-amber-400/90'
-    : isReview
-      ? 'text-sky-400/90'
-      : isDone
-        ? 'text-zinc-500'
-        : 'text-zinc-400';
+    : isValidation
+      ? 'text-purple-400/90'
+      : isReview
+        ? 'text-sky-400/90'
+        : isDone
+          ? 'text-zinc-500'
+          : 'text-zinc-400';
 
   const countClass = isNeedsInput
     ? 'bg-amber-500/10 text-amber-400/90 ring-1 ring-amber-500/15'
-    : isReview
-      ? 'bg-sky-500/10 text-sky-300/95 ring-1 ring-sky-500/18'
-      : isDone
-        ? 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]'
-        : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
+    : isValidation
+      ? 'bg-purple-500/10 text-purple-300/95 ring-1 ring-purple-500/20'
+      : isReview
+        ? 'bg-sky-500/10 text-sky-300/95 ring-1 ring-sky-500/18'
+        : isDone
+          ? 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]'
+          : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
 
   return (
     <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">

@@ -28,7 +28,7 @@ export type ValidationVerdictReadResult =
       verdict: {
         summary: string;
         risks?: string[];
-        checks?: { name: string; status: string }[];
+        checks?: { name: string; status: string; plannedCheckIndex?: number }[];
       };
     }
   | { ok: false; error: string; code: 'NOT_FOUND' | 'MISSING' | 'UNREADABLE' | 'INVALID' };
@@ -180,7 +180,11 @@ export async function readValidationVerdictForUi(
     verdict: {
       summary: parsed.verdict.summary,
       ...(parsed.verdict.risks?.length ? { risks: parsed.verdict.risks } : {}),
-      checks: parsed.verdict.checks.map((c) => ({ name: c.name, status: c.status })),
+      checks: parsed.verdict.checks.map((c) => ({
+        name: c.name,
+        status: c.status,
+        ...(typeof c.plannedCheckIndex === 'number' ? { plannedCheckIndex: c.plannedCheckIndex } : {}),
+      })),
     },
   };
 }

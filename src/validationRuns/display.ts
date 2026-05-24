@@ -179,12 +179,12 @@ export function taskCardShouldShowValidationBadge(
   taskStatus: Task['status'],
   runs: ValidationRun[],
 ): boolean {
-  if (taskStatus === 'review') return true;
+  if (taskStatus === 'validation') return true;
   return runs.length > 0;
 }
 
 export type ManualValidationBlockReason =
-  | 'not-review'
+  | 'not-validation'
   | 'no-agent'
   | 'already-running'
   | 'repo-blocked';
@@ -207,11 +207,11 @@ export function evaluateManualValidationEligibility(input: {
       message: 'Fix repository setup before running validation.',
     };
   }
-  if (input.task.status !== 'review') {
+  if (input.task.status !== 'validation') {
     return {
       canRun: false,
-      reason: 'not-review',
-      message: 'Move this task to Review before running validation.',
+      reason: 'not-validation',
+      message: 'Move this task to Validation before running validation.',
     };
   }
   if (input.task.agent == null) {

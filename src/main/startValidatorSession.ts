@@ -23,7 +23,7 @@ import {
 } from './validatorSessionLifecycle';
 
 export type StartValidatorSessionErrorCode =
-  | 'TASK_NOT_IN_REVIEW'
+  | 'TASK_NOT_IN_VALIDATION'
   | 'RUN_NOT_FOUND'
   | 'RUN_NOT_LAUNCHABLE'
   | 'WORKTREE_UNAVAILABLE'
@@ -117,11 +117,11 @@ export async function startValidatorSession(
     runId: string;
   },
 ): Promise<StartValidatorSessionResult> {
-  if (input.task.status !== 'review') {
+  if (input.task.status !== 'validation') {
     return {
       ok: false,
-      code: 'TASK_NOT_IN_REVIEW',
-      message: 'Validation can only be launched for tasks in Review.',
+      code: 'TASK_NOT_IN_VALIDATION',
+      message: 'Validation can only be launched for tasks in Validation.',
     };
   }
 
