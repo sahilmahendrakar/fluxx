@@ -122,6 +122,8 @@ export function composeValidatorSessionPrompt(input: ValidatorSessionPromptInput
     `- **cwd:** \`${worktreeCwd}\``,
     `- **Validator agent:** ${run.validatorAgent}`,
     '',
+    '**Prerequisites in the task worktree:** `pnpm install` (Playwright is a root devDependency — do not install it under the validation run directory), then `pnpm run build:validation` so `.vite/build/main.js` exists before `electron.launch`.',
+    '',
   ];
 
   if (changeSummary?.trim()) {
