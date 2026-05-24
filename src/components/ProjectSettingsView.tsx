@@ -21,7 +21,10 @@ import {
 } from '../taskAutoTransitionNotificationPrefs';
 import { COLUMNS } from '../types';
 import { deriveRepoIdForRootPath, repoRootBasename } from '../repoIdentity';
-import { updateCloudProjectRepos } from '../renderer/projects/cloudProjects';
+import {
+  updateCloudProjectRepos,
+  updateCloudProjectValidationEnabled,
+} from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
 import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
@@ -509,6 +512,12 @@ function ProjectConfigPane({
   const [persistTmuxLoading, setPersistTmuxLoading] = useState(true);
   const [persistTmuxSaveState, setPersistTmuxSaveState] = useState<SaveState>('idle');
   const [persistTmuxError, setPersistTmuxError] = useState<string | null>(null);
+  const [validationEnabled, setValidationEnabled] = useState(
+    () => project.validationEnabled === true,
+  );
+  const [validationLoading, setValidationLoading] = useState(true);
+  const [validationSaveState, setValidationSaveState] = useState<SaveState>('idle');
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [tmuxAvailabilityMessage, setTmuxAvailabilityMessage] = useState<string | null>(null);
   const [tmuxPlatformSupported, setTmuxPlatformSupported] = useState(true);
   const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
@@ -813,6 +822,37 @@ function ProjectConfigPane({
   }, [project.id]);
 
   useEffect(() => {
+    setValidationEnabled(project.validationEnabled === true);
+    setValidationSaveState('idle');
+    setValidationError(null);
+  }, [project.id, project.validationEnabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setValidationLoading(true);
+    setValidationError(null);
+    void window.electronAPI.project
+      .getValidationEnabled()
+      .then((enabled) => {
+        if (!cancelled) {
+          setValidationEnabled(enabled);
+          setValidationSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setValidationError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setValidationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
     let cancelled = false;
     setMcpConfigLoading(true);
     setMcpConfigError(null);
@@ -840,6 +880,37 @@ function ProjectConfigPane({
       cancelled = true;
     };
   }, [project.id]);
+
+  const handleValidationEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      setValidationEnabled(enabled);
+      setValidationSaveState('saving');
+      setValidationError(null);
+      try {
+        if (project.kind === 'cloud') {
+          await updateCloudProjectValidationEnabled(project.id, enabled);
+        }
+        const result = await window.electronAPI.project.setValidationEnabled(enabled);
+        if ('error' in result) {
+          setValidationSaveState('error');
+          setValidationError(result.error);
+          setValidationEnabled((prev) => !prev);
+          return;
+        }
+        setValidationEnabled(result.enabled);
+        setValidationSaveState('saved');
+        await onProjectAgentPrefsRefresh?.();
+        window.setTimeout(() => {
+          setValidationSaveState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+      } catch (err) {
+        setValidationSaveState('error');
+        setValidationError(err instanceof Error ? err.message : String(err));
+        setValidationEnabled((prev) => !prev);
+      }
+    },
+    [onProjectAgentPrefsRefresh, project],
+  );
 
   const handleWhenUnblockedChange = useCallback(async (enabled: boolean) => {
     setWhenUnblockedEnabled(enabled);
@@ -1880,6 +1951,44 @@ function ProjectConfigPane({
               </div>
             </>
           )}
+        </section>
+
+        <section
+          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          aria-labelledby="project-settings-experimental-heading"
+        >
+          <div className="border-b border-white/[0.06] py-4">
+            <h2
+              id="project-settings-experimental-heading"
+              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+            >
+              Experimental
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+              Early features that may change. Validation requires Playwright and a working Electron
+              dev launch on this machine.
+            </p>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            <AutomationSettingRow
+              key={`${project.id}-validation-enabled`}
+              title="Validation Agents"
+              description={
+                <>
+                  When on, tasks can use validation runs, validator agents, and planning guidance
+                  for the Electron Playwright pack. When off, validation UI and{' '}
+                  <code className="text-zinc-400">fluxx validation</code> commands are disabled for
+                  this project. For cloud projects this setting is shared with your team.
+                </>
+              }
+              checked={validationEnabled}
+              onCheckedChange={(next) => void handleValidationEnabledChange(next)}
+              switchDisabled={validationLoading || validationSaveState === 'saving'}
+              loading={validationLoading}
+              saveState={validationSaveState}
+              error={validationError}
+            />
+          </div>
         </section>
       </div>
     </div>

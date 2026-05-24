@@ -1,4 +1,4 @@
-import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskStatus } from '../../types';
+import type { Agent, Task, TaskAttachedPlanningDoc, TaskGithubPr, TaskStatus, TaskValidationPlan } from '../../types';
 
 export type TaskPatch = Partial<
   Pick<
@@ -26,6 +26,8 @@ export type TaskPatch = Partial<
   autoStartOnUnblock?: boolean | null;
   /** `null` clears all attached planning docs in Firestore. */
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  /** `null` clears the validation plan. */
+  validationPlan?: TaskValidationPlan | null;
 };
 
 export type TaskCreateInput = {
@@ -43,6 +45,7 @@ export type TaskCreateInput = {
   /** Multi-repo2: must belong to the active project when set; otherwise the primary repo is used. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan;
 };
 
 /**

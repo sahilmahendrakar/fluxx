@@ -6,6 +6,7 @@ import type {
   TaskAttachedPlanningDoc,
   TaskGithubPr,
   TaskStatus,
+  TaskValidationPlan,
 } from './types';
 
 export const AUTOMATION_BRIDGE_REQUEST_CHANNEL = 'automation:rendererBridge:request';
@@ -47,6 +48,7 @@ export interface AutomationBridgeTaskCreateInput {
   /** Multi-repo2; local tasks validate against project repos; omitted uses primary. */
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan;
 }
 
 export interface AutomationBridgeTaskPatch {
@@ -63,6 +65,7 @@ export interface AutomationBridgeTaskPatch {
   createSourceBranchIfMissing?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  validationPlan?: TaskValidationPlan | null;
 }
 
 export interface AutomationBridgeTasksCreatePayload {
@@ -132,6 +135,7 @@ export interface AutomationBridgeProjectInfoResult {
     backlog: number;
     'in-progress': number;
     'needs-input': number;
+    validation: number;
     review: number;
     done: number;
     total: number;
@@ -147,6 +151,8 @@ export interface AutomationBridgeProjectInfoResult {
   repos?: AutomationBridgeProjectInfoRepoSummary[];
   /** Multi-repo2: stable id of the primary repo (same as {@link AutomationBridgeProjectInfoRepoSummary.isPrimary}). */
   primaryRepoId?: string;
+  /** Electron Playwright validation opt-in for this project. */
+  validationEnabled: boolean;
 }
 
 export interface AutomationBridgeRepoBranchDiscoveryPayload {

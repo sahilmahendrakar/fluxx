@@ -18,8 +18,10 @@ import type {
   Task,
   TaskAttachedPlanningDoc,
   TaskGithubPr,
+  TaskValidationPlan,
 } from '../types';
 import { parseTaskAttachedPlanningDocsForMcp } from '../taskAttachedPlanningDocs';
+import { parseCliValidationPlanInput } from '../validationPlans/persist';
 import {
   classifyGitBranchPresence,
   planTaskSourceBranchFieldsForCreate,
@@ -38,6 +40,21 @@ import type { ProjectStore } from './ProjectStore';
 import type { TaskStore } from './TaskStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './AutomationHttpServer';
+import {
+  automationRunValidationArtifacts,
+  automationRunValidationFinish,
+  automationRunValidationIngest,
+  automationRunValidationLaunch,
+  automationRunValidationList,
+  automationRunValidationRun,
+  automationRunValidationShow,
+  type FluxAutomationValidationHost,
+} from './fluxAutomationValidation';
+import type { ValidationRunStore } from './ValidationRunStore';
+import {
+  VALIDATION_DISABLED_CODE,
+  VALIDATION_DISABLED_MESSAGE,
+} from '../validation/validationEnabled';
 
 export type FluxAutomationResolvedActive =
   | { kind: 'none' }
@@ -57,6 +74,12 @@ export type FluxAutomationHost = {
   taskStore: TaskStore;
   projectStore: ProjectStore;
   bindingStore: LocalBindingStore;
+  validationRunStore: ValidationRunStore;
+  listTerminalSessions: () => Promise<import('../types').Session[]>;
+  getRecordProjectDir: () => string;
+  notifyValidationRunChanged?: (runId: string) => void;
+  launchValidatorSession?: FluxAutomationValidationHost['launchValidatorSession'];
+  onValidationRunFinalized?: FluxAutomationValidationHost['onValidationRunFinalized'];
   taskActions: {
     updateTask: (
       id: string,
@@ -135,6 +158,7 @@ type CreateTaskMcpShape = {
   agentYolo?: boolean;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[];
+  validationPlan?: TaskValidationPlan | unknown;
 };
 
 function parseAutomationAttachedPlanningDocs(
@@ -146,6 +170,55 @@ function parseAutomationAttachedPlanningDocs(
     return { ok: false, error: parsed.message };
   }
   return { ok: true, docs: parsed.docs };
+}
+
+export async function resolveValidationEnabledForAutomationHost(
+  h: FluxAutomationHost,
+): Promise<boolean> {
+  const active = h.resolveActive();
+  if (active.kind === 'none') return false;
+  if (active.kind === 'local') {
+    return active.project.validationEnabled;
+  }
+  const projectDir = h.getRecordProjectDir()?.trim();
+  if (projectDir) {
+    try {
+      return await h.projectStore.getValidationEnabledAt(projectDir);
+    } catch {
+      // fall through
+    }
+  }
+  return false;
+}
+
+function parseAutomationValidationPlan(
+  raw: unknown,
+  mode: 'create' | 'update',
+  validationEnabled: boolean,
+):
+  | { ok: true; plan: TaskValidationPlan | null | undefined }
+  | { ok: false; error: string; code?: string } {
+  if (raw === undefined) {
+    return { ok: true, plan: undefined };
+  }
+  if (!validationEnabled) {
+    return {
+      ok: false,
+      error: VALIDATION_DISABLED_MESSAGE,
+      code: VALIDATION_DISABLED_CODE,
+    };
+  }
+  if (raw === null) {
+    if (mode === 'create') {
+      return { ok: false, error: 'validationPlan cannot be null on create' };
+    }
+    return { ok: true, plan: null };
+  }
+  const parsed = parseCliValidationPlanInput(raw);
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error };
+  }
+  return { ok: true, plan: parsed.plan };
 }
 
 export async function automationRunCreateTask(
@@ -161,6 +234,20 @@ export async function automationRunCreateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
+  const validationEnabled = await resolveValidationEnabledForAutomationHost(h);
+  const planParsed = parseAutomationValidationPlan(
+    input.validationPlan,
+    'create',
+    validationEnabled,
+  );
+  if (!planParsed.ok) {
+    return {
+      ok: false,
+      error: planParsed.error,
+      ...(planParsed.code ? { code: planParsed.code } : {}),
+    };
+  }
+  const validationPlan = planParsed.plan;
   const agent: Agent | null =
     input.agent === 'none'
       ? null
@@ -208,6 +295,7 @@ export async function automationRunCreateTask(
       ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
+      ...(validationPlan !== undefined ? { validationPlan } : {}),
     });
     if (input.description != null && input.description !== '') {
       task = await h.taskStore.update(task.id, {
@@ -240,6 +328,7 @@ export async function automationRunCreateTask(
       ...(attachedPlanningDocs !== undefined && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
+      ...(validationPlan !== undefined ? { validationPlan } : {}),
     },
   };
   const result = await h.bridge.request<Task>('tasks.create', active.activeKey, payload);
@@ -251,7 +340,7 @@ type UpdateTaskMcpShape = {
   id: string;
   title?: string;
   description?: string;
-  status?: 'backlog' | 'in-progress' | 'needs-input' | 'review' | 'done';
+  status?: 'backlog' | 'in-progress' | 'needs-input' | 'validation' | 'review' | 'done';
   agent?: 'claude-code' | 'codex' | 'cursor' | 'none';
   blockedByTaskIds?: string[];
   labels?: string[];
@@ -263,6 +352,7 @@ type UpdateTaskMcpShape = {
   githubPr?: TaskGithubPr | null;
   repoId?: string;
   attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+  validationPlan?: TaskValidationPlan | null | unknown;
 };
 
 export async function automationRunUpdateTask(
@@ -278,6 +368,20 @@ export async function automationRunUpdateTask(
     return { ok: false, error: attachParsed.error };
   }
   const attachedPlanningDocs = attachParsed.docs;
+  const validationEnabled = await resolveValidationEnabledForAutomationHost(h);
+  const planParsed = parseAutomationValidationPlan(
+    input.validationPlan,
+    'update',
+    validationEnabled,
+  );
+  if (!planParsed.ok) {
+    return {
+      ok: false,
+      error: planParsed.error,
+      ...(planParsed.code ? { code: planParsed.code } : {}),
+    };
+  }
+  const validationPlan = planParsed.plan;
   if (active.kind === 'local') {
     const existing = h.getTaskInCurrentProject(input.id);
     if (!existing) {
@@ -300,6 +404,7 @@ export async function automationRunUpdateTask(
     > & {
       githubPr?: TaskGithubPr | null;
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+      validationPlan?: TaskValidationPlan | null;
     } = {};
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description;
@@ -326,6 +431,9 @@ export async function automationRunUpdateTask(
     }
     if (attachedPlanningDocs !== undefined) {
       patch.attachedPlanningDocs = attachedPlanningDocs;
+    }
+    if (validationPlan !== undefined) {
+      patch.validationPlan = validationPlan;
     }
     const updated = await h.taskActions.updateTask(input.id, patch);
     h.notifyTasksChanged();
@@ -360,6 +468,7 @@ export async function automationRunUpdateTask(
     assigneeId?: string | null;
     githubPr?: TaskGithubPr | null;
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
+    validationPlan?: TaskValidationPlan | null;
   } = {};
   if (input.title !== undefined) patch.title = input.title;
   if (input.description !== undefined) patch.description = input.description;
@@ -389,6 +498,9 @@ export async function automationRunUpdateTask(
   if (assigneeId !== undefined) patch.assigneeId = assigneeId;
   if (attachedPlanningDocs !== undefined) {
     patch.attachedPlanningDocs = attachedPlanningDocs;
+  }
+  if (validationPlan !== undefined) {
+    patch.validationPlan = validationPlan;
   }
   const payload: AutomationBridgeTasksUpdatePayload = { taskId: input.id, patch };
   const result = await h.bridge.request<AutomationBridgeTasksUpdateResult>(
@@ -511,6 +623,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       backlog: 0,
       'in-progress': 0,
       'needs-input': 0,
+      validation: 0,
       review: 0,
       done: 0,
       total: tasks.length,
@@ -519,6 +632,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       if (t.status === 'backlog') taskCounts.backlog++;
       else if (t.status === 'in-progress') taskCounts['in-progress']++;
       else if (t.status === 'needs-input') taskCounts['needs-input']++;
+      else if (t.status === 'validation') taskCounts.validation++;
       else if (t.status === 'review') taskCounts.review++;
       else if (t.status === 'done') taskCounts.done++;
     }
@@ -545,6 +659,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       data: {
         name: active.project.name,
         rootPath: primaryRootPath,
+        validationEnabled: active.project.validationEnabled,
         taskCounts,
         ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
         ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
@@ -561,6 +676,7 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
     data: {
       name: data.name,
       rootPath: active.rootPath,
+      validationEnabled: data.validationEnabled === true,
       taskCounts: data.taskCounts,
       ...(data.defaultBranchShort !== undefined ? { defaultBranchShort: data.defaultBranchShort } : {}),
       ...(data.branchDiscoveryError !== undefined ? { branchDiscoveryError: data.branchDiscoveryError } : {}),
@@ -618,6 +734,10 @@ export async function automationRunRepoBranches(
   return { ok: true, data: result.data };
 }
 
+function asValidationHost(h: FluxAutomationHost): FluxAutomationValidationHost {
+  return h;
+}
+
 export async function runFluxAutomationInvocation(
   h: FluxAutomationHost,
   op: FluxAutomationHttpOp,
@@ -673,6 +793,70 @@ export async function runFluxAutomationInvocation(
       return automationRunProjectInfo(h);
     case 'repo.branchDiscovery':
       return automationRunRepoBranches(h, (payload ?? {}) as { repoId?: string; classifyBranch?: string });
+    case 'validation.run': {
+      const vh = asValidationHost(h);
+      const p = payload as { taskId?: string; packId?: string; validatorAgent?: Agent; launch?: boolean };
+      if (typeof p?.taskId !== 'string') {
+        return { ok: false, error: 'validation.run requires taskId' };
+      }
+      return automationRunValidationRun(vh, {
+        taskId: p.taskId,
+        ...(p.packId !== undefined ? { packId: p.packId } : {}),
+        ...(p.validatorAgent !== undefined ? { validatorAgent: p.validatorAgent } : {}),
+        ...(p.launch !== undefined ? { launch: p.launch } : {}),
+      });
+    }
+    case 'validation.launch': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string; taskId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.launch requires runId' };
+      }
+      return automationRunValidationLaunch(vh, {
+        runId: p.runId,
+        ...(p.taskId !== undefined ? { taskId: p.taskId } : {}),
+      });
+    }
+    case 'validation.list': {
+      const vh = asValidationHost(h);
+      const p = payload as { taskId?: string };
+      if (typeof p?.taskId !== 'string') {
+        return { ok: false, error: 'validation.list requires taskId' };
+      }
+      return automationRunValidationList(vh, { taskId: p.taskId });
+    }
+    case 'validation.show': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.show requires runId' };
+      }
+      return automationRunValidationShow(vh, { runId: p.runId });
+    }
+    case 'validation.artifacts': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.artifacts requires runId' };
+      }
+      return automationRunValidationArtifacts(vh, { runId: p.runId });
+    }
+    case 'validation.ingest': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.ingest requires runId' };
+      }
+      return automationRunValidationIngest(vh, { runId: p.runId });
+    }
+    case 'validation.finish': {
+      const vh = asValidationHost(h);
+      const p = payload as { runId?: string };
+      if (typeof p?.runId !== 'string') {
+        return { ok: false, error: 'validation.finish requires runId' };
+      }
+      return automationRunValidationFinish(vh, { runId: p.runId });
+    }
     default:
       return { ok: false, error: `Unknown op: ${String(op)}` };
   }

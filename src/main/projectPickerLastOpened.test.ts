@@ -18,6 +18,7 @@ function localStub(id: string, addedAt: string): LocalProject {
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
     persistTerminalsWithTmux: false,
+    validationEnabled: false,
     repos: [],
   };
 }

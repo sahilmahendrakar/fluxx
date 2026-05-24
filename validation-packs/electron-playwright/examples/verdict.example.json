@@ -1,0 +1,31 @@
+{
+  "verdict": "passed",
+  "summary": "Verified the task detail Validation section appears and evidence is recorded.",
+  "checks": [
+    {
+      "name": "Task detail exposes Validation section",
+      "status": "passed",
+      "plannedCheckIndex": 0,
+      "artifactPaths": ["artifacts/screenshots/task-detail-validation-section.png"]
+    },
+    {
+      "name": "Validation run status visible after manual trigger",
+      "status": "needs-human-review",
+      "plannedCheckIndex": 1,
+      "detail": "UI showed running state but run did not finish within timeout."
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "screenshot",
+      "label": "Task detail validation section",
+      "path": "artifacts/screenshots/task-detail-validation-section.png"
+    },
+    {
+      "kind": "trace",
+      "label": "Playwright trace",
+      "path": "artifacts/traces/validation.zip"
+    }
+  ],
+  "risks": ["Did not verify packaged production build behavior."]
+}

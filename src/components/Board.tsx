@@ -5,6 +5,7 @@ import {
   Task,
   TaskStatus,
   COLUMNS,
+  boardColumns,
   Agent,
   type CloudRepoBindingOverview,
   type RepoConfig,
@@ -52,6 +53,7 @@ interface Props {
   cleanupLoadingTaskId: string | null;
   onCardClick: (id: string) => void;
   autoStartWhenUnblockedProject: boolean;
+  validationEnabledProject: boolean;
   onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   planPanelOpen: boolean;
   onTogglePlanPanel: () => void;
@@ -97,6 +99,7 @@ export default function Board({
   cleanupLoadingTaskId,
   onCardClick,
   autoStartWhenUnblockedProject,
+  validationEnabledProject,
   onPatchTaskAutoStartOnUnblock,
   planPanelOpen,
   onTogglePlanPanel,
@@ -178,16 +181,23 @@ export default function Board({
     return allTasks.filter((t) => t.status === 'done').length;
   }, [allTasks, boardFilter.hideDone]);
 
+  const visibleColumns = useMemo(
+    () => boardColumns(validationEnabledProject),
+    [validationEnabledProject],
+  );
+
   const tasksByStatus = useMemo(() => {
     const by = {} as Record<TaskStatus, Task[]>;
-    for (const c of COLUMNS) {
+    for (const c of visibleColumns) {
       by[c.id] = [];
     }
     for (const task of visibleTasks) {
-      by[task.status].push(task);
+      if (by[task.status]) {
+        by[task.status].push(task);
+      }
     }
     return by;
-  }, [visibleTasks]);
+  }, [visibleTasks, visibleColumns]);
 
   const projectIsEmpty = allTasks.length === 0;
   const noMatches = !projectIsEmpty && visibleTasks.length === 0;
@@ -259,7 +269,7 @@ export default function Board({
           </div>
         ) : null}
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden p-4">
-          {COLUMNS.map((col) => (
+          {visibleColumns.map((col) => (
             <Column
               key={col.id}
               id={col.id}
@@ -277,6 +287,7 @@ export default function Board({
               onCardClick={onCardClick}
               onLabelClick={onLabelClick}
               autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
+              validationEnabledProject={validationEnabledProject}
               onPatchTaskAutoStartOnUnblock={onPatchTaskAutoStartOnUnblock}
               membersMap={membersMap}
               projectMembers={projectMembers}

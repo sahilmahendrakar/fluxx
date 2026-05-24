@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { FluxCliConnectionError, invokeFluxAutomation } from './client';
+import { VALIDATION_DISABLED_CODE, validationDisabledJson } from '../validation/validationEnabled';
 import { loadFluxCliBridgeConfig } from './config';
 import { printFluxCliHelp } from './help';
 import { parseFluxCliArgs } from './parseArgs';
@@ -62,6 +63,40 @@ export async function runFluxCli(argv: string[]): Promise<number> {
         ...(command.classifyBranch !== undefined ? { classifyBranch: command.classifyBranch } : {}),
       };
       break;
+    case 'validation':
+      if (command.action === 'run') {
+        op = 'validation.run';
+        payload = {
+          taskId: command.taskId,
+          ...(command.packId !== undefined ? { packId: command.packId } : {}),
+          ...(command.validatorAgent !== undefined
+            ? { validatorAgent: command.validatorAgent }
+            : {}),
+          ...(command.launch !== undefined ? { launch: command.launch } : {}),
+        };
+      } else if (command.action === 'launch') {
+        op = 'validation.launch';
+        payload = {
+          runId: command.runId,
+          ...(command.taskId !== undefined ? { taskId: command.taskId } : {}),
+        };
+      } else if (command.action === 'list') {
+        op = 'validation.list';
+        payload = { taskId: command.taskId };
+      } else if (command.action === 'show') {
+        op = 'validation.show';
+        payload = { runId: command.runId };
+      } else if (command.action === 'artifacts') {
+        op = 'validation.artifacts';
+        payload = { runId: command.runId };
+      } else if (command.action === 'finish') {
+        op = 'validation.finish';
+        payload = { runId: command.runId };
+      } else {
+        op = 'validation.ingest';
+        payload = { runId: command.runId };
+      }
+      break;
     case 'tasks':
       if (command.action === 'list') {
         op = 'tasks.list';
@@ -92,7 +127,11 @@ export async function runFluxCli(argv: string[]): Promise<number> {
     const result = await invokeFluxAutomation(config, op, payload);
     if (!result.ok) {
       if (command.json) {
-        printJson(result);
+        if (result.code === VALIDATION_DISABLED_CODE) {
+          printJson(validationDisabledJson());
+        } else {
+          printJson(result);
+        }
       } else {
         printError(result.error);
       }

@@ -1,15 +1,18 @@
 import type { Session } from './types';
+import { isValidatorWorkspaceSession } from './validationSessions';
 
 /**
  * Picks the daemon session to open as the main-window task workspace tab.
  * Multiple rows for the same task are rare; prefer running, then idle/error, then stopped,
- * then newest `startedAt` within the same priority band.
+ * then newest `startedAt` within the same priority band. Validator PTYs are excluded.
  */
 export function selectSessionForTaskWorkspace(
   sessions: readonly Session[],
   taskId: string,
 ): Session | undefined {
-  const list = sessions.filter((s) => s.taskId === taskId);
+  const list = sessions.filter(
+    (s) => s.taskId === taskId && !isValidatorWorkspaceSession(s),
+  );
   if (list.length === 0) return undefined;
   if (list.length === 1) return list[0];
 

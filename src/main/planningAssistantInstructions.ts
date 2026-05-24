@@ -16,7 +16,7 @@ import {
 export { PLANNING_INSTRUCTIONS_STATE_BASENAME } from '../planningDocs/planningInstructionMarkers';
 
 /** Bumps when `planningAssistantMarkdown` prose meaningfully changes (used with embedded version tag). */
-export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 6;
+export const PLANNING_ASSISTANT_TEMPLATE_VERSION = 9;
 
 export type PlanningInstructionFileName = 'CLAUDE.md' | 'AGENTS.md';
 
@@ -139,6 +139,7 @@ export function planningAssistantMarkdown(
   projectName: string,
   rootPath: string,
   multiRepoGuide: boolean,
+  validationEnabled: boolean,
 ): string {
   const workspaceIntro = multiRepoGuide
     ? `This directory is the Fluxx **planning** workspace for \`${projectName}\`. The team may use **several** application repositories; each has a stable \`id\` in Fluxx. Run \`fluxx project info --json\` before repo-specific work: it returns \`repos[]\` (with \`id\`, \`label\`, \`isPrimary\`, \`configuredDefaultBranch\`, optional \`defaultBranchShort\`, clone \`rootPath\` when known, plus \`pathStatus\` locally or \`binding\` in the cloud), \`primaryRepoId\`, and a backwards-compatible top-level \`rootPath\` pointing at the **primary** repository clone. Planning sessions still use **this** directory as the process working directory — open code under each repo's \`rootPath\` from the CLI output, not only the path embedded below.
@@ -156,15 +157,22 @@ When user intent spans more than one repository and is ambiguous, **ask once** w
   3. Explore the repository under that \`rootPath\` as needed for the user’s question.
   4. Only then respond, revise planning docs, list tasks if relevant, or create/update tasks so titles and descriptions match reality.`;
 
+  const validationPlanCreateSuffix = validationEnabled
+    ? ', `--validation-plan <json>` (optional validator instructions)'
+    : '';
+  const validationPlanUpdateSuffix = validationEnabled
+    ? ', `--validation-plan <json>` (validator instructions), `--clear-validation-plan`'
+    : '';
+
   const createTaskLine = multiRepoGuide
-    ? `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`), \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--repo-id <repos[].id>\` (omit for primary), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
-    : `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`), \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\``;
+    ? `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`)${validationPlanCreateSuffix}, \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--repo-id <repos[].id>\` (omit for primary), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\` when a missing branch should be created on first session start`
+    : `- \`fluxx tasks create --json --title "..." --description "..." --agent <claude-code|cursor|codex|none>\` — optional repeated \`--label <label>\`, repeated \`--depends-on-task-id <taskId>\`, repeated \`--attach-doc <relativePath>\` (planning markdown, e.g. \`docs/plan.md\`)${validationPlanCreateSuffix}, \`--assignee-email\` (cloud; use \`fluxx members list --json\`), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing=true\``;
 
   const updateTaskLine = multiRepoGuide
-    ? `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id <repos[].id>\` (only while no session/worktree/PR — same as UI), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
-    : `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
+    ? `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`${validationPlanUpdateSuffix}, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--repo-id <repos[].id>\` (only while no session/worktree/PR — same as UI), \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`
+    : `- \`fluxx tasks update --json --id <taskId>\` — optional \`--title\`, \`--description\`, \`--status\`, \`--agent\`, repeated \`--label <label>\` (replace labels), \`--clear-labels\`, repeated \`--depends-on-task-id <taskId>\` (replace dependencies), \`--clear-dependencies\`, repeated \`--attach-doc <relativePath>\` (replace attachments), \`--clear-attached-docs\`${validationPlanUpdateSuffix}, \`--assignee-email\`, \`--unassign-assignee=true\`, \`--source-branch <git-branch>\` (alias: \`--feature-branch\`), \`--create-source-branch-if-missing\`. Branch edits fail safely if a session or worktree already exists`;
 
-  const projectInfoLine = `- \`fluxx project info --json\` — project \`name\`, \`rootPath\` (primary clone), ${multiRepoGuide ? '`repos` / `primaryRepoId` when multi-repo is active, ' : ''}\`taskCounts\`, and \`defaultBranchShort\` when git discovery succeeds (see \`branchDiscoveryError\` if not)`;
+  const projectInfoLine = `- \`fluxx project info --json\` — project \`name\`, \`rootPath\` (primary clone), ${multiRepoGuide ? '`repos` / `primaryRepoId` when multi-repo is active, ' : ''}\`validationEnabled\`, \`taskCounts\`, and \`defaultBranchShort\` when git discovery succeeds (see \`branchDiscoveryError\` if not)`;
 
   const listBranchesLine = multiRepoGuide
     ? `- \`fluxx repos branches --json\` — local + origin branch lists, default branch, optional \`--classify-branch <name>\`; add \`--repo-id\` to scope a non-primary repository`
@@ -192,7 +200,7 @@ ${contextSteps}
 
 Board and project operations (run in the planning shell):
 
-- \`fluxx tasks list --json\` — list tasks (includes \`sourceBranch\` / \`createSourceBranchIfMissing\` when set). Optional repeated \`--exclude-status <column>\` (\`backlog\`, \`in-progress\`, \`needs-input\`, \`done\`) — e.g. \`--exclude-status done\` for active work only
+- \`fluxx tasks list --json\` — list tasks (includes \`sourceBranch\` / \`createSourceBranchIfMissing\` when set). Optional repeated \`--exclude-status <column>\` (\`backlog\`, \`in-progress\`, \`needs-input\`, \`validation\`, \`done\`) — e.g. \`--exclude-status done\` for active work only
 ${createTaskLine}
 - \`fluxx tasks start --json --id <taskId>\` — move a task to **In progress** (\`in-progress\`)
 ${updateTaskLine}
@@ -201,9 +209,22 @@ ${projectInfoLine}
 ${listBranchesLine}
 - \`fluxx members list --json\` — cloud projects: team roster (\`email\`, \`displayName\`, \`role\`); local projects return an empty list with a note
 
-Board relationship: new tasks land in **Backlog**. \`fluxx tasks start\` is the usual way to mark work actively in flight. Use \`fluxx tasks update\` for other status changes (e.g. **Needs input**, **Review**, **Done**) or edits to title/description/agent.
+Board relationship: new tasks land in **Backlog**. \`fluxx tasks start\` is the usual way to mark work actively in flight. Use \`fluxx tasks update\` for other status changes (e.g. **Needs input**, **Validation**, **Review**, **Done**) or edits to title/description/agent.
 
 **Planning doc attachments:** When you turn a broad plan into concrete board tasks, pass repeated \`--attach-doc <relativePath>\` on \`fluxx tasks create\` (or \`fluxx tasks update\` to replace attachments) so implementers see the full write-up in Fluxx — paths are relative to the planning docs tree, e.g. \`docs/your-plan.md\` or \`notes/plan.md\` (\`.md\` only). Example: \`fluxx tasks create --json --title "..." --attach-doc docs/your-plan.md ...\`. Each task \`description\` should still spell out only that task's slice of work (acceptance, files, edge cases)—do not replace descriptions with a pointer to the plan alone.
+${
+  validationEnabled
+    ? `
+
+## Validation (electron-playwright)
+
+This project has **validation enabled**. Check \`validationEnabled\` in \`fluxx project info --json\` before using validation commands — if it is \`false\`, do not create validation plans or run \`fluxx validation\`.
+
+When a task is ready for **Validation** (or use **Validate** from In progress / Needs input) and task-specific validator guidance would help, write a structured validation plan (separate from the implementation \`description\`). Persist with \`fluxx tasks update --json --id <taskId> --validation-plan '<json>'\` or on create via \`--validation-plan\`. Use \`--clear-validation-plan\` on update to remove. JSON shape: \`goal\`, \`pack\` (\`electron-playwright\`), non-empty \`checks\` (strings), \`requiredArtifacts\` (strings), optional \`risks\` / \`notes\`.
+
+Validator runs (after implementation): move the task to **Validation** (or \`fluxx tasks update --json --id <taskId> --status validation\`) to auto-start when validation is enabled, or \`fluxx validation run --json --task-id <taskId>\`, \`fluxx validation list --json --task-id <taskId>\`, \`fluxx validation show --json --run-id <runId>\`. On pass, the task moves to **Review** automatically. See \`docs/validation-pack-electron-playwright-plan.md\` in this planning workspace for the pack contract.`
+    : ''
+}
 
 ## Multi-task features (required)
 
@@ -297,13 +318,19 @@ export async function ensurePlanningAssistantMarkdownFiles(
   planningDir: string,
   projectName: string,
   rootPath: string,
-  options?: { multiRepoGuide?: boolean },
+  options?: { multiRepoGuide?: boolean; validationEnabled?: boolean },
 ): Promise<void> {
   await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
   await migrateLegacyPlanningMarkdownIntoUserDocsDir(planningDir);
   const resolvedRoot = path.resolve(rootPath);
   const multiRepoGuide = options?.multiRepoGuide ?? true;
-  const managedInner = planningAssistantMarkdown(projectName, resolvedRoot, multiRepoGuide);
+  const validationEnabled = options?.validationEnabled === true;
+  const managedInner = planningAssistantMarkdown(
+    projectName,
+    resolvedRoot,
+    multiRepoGuide,
+    validationEnabled,
+  );
   const managedHash = sha256Hex(managedInner);
 
   const paths = {

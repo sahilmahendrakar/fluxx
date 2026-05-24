@@ -27,6 +27,7 @@ import {
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { TASK_STATUS_DOT as STATUS_DOT } from '../taskStatusDot';
+import TaskCardValidationBadge from './validation/TaskCardValidationBadge';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
 
@@ -211,6 +212,7 @@ interface Props {
   onCardClick: (id: string) => void;
   onLabelClick?: (label: string) => void;
   autoStartWhenUnblockedProject: boolean;
+  validationEnabledProject: boolean;
   onPatchTaskAutoStartOnUnblock: (taskId: string, patch: Pick<TaskPatch, 'autoStartOnUnblock'>) => void;
   assigneeMember?: ProjectMember;
   /** Cloud: roster for quick assign from the card. Omit on local projects (no assignee slot on cards). */
@@ -246,6 +248,7 @@ export default function TaskCard({
   onCardClick,
   onLabelClick,
   autoStartWhenUnblockedProject,
+  validationEnabledProject,
   onPatchTaskAutoStartOnUnblock,
   assigneeMember,
   cloudProjectMembers,
@@ -263,6 +266,7 @@ export default function TaskCard({
   onOpenTaskWorkspaceTab,
 }: Props) {
   const isNeedsInput = task.status === 'needs-input';
+  const isValidation = task.status === 'validation';
   const isReview = task.status === 'review';
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
@@ -315,7 +319,9 @@ export default function TaskCard({
           {...provided.draggableProps}
           className={`group rounded-md border border-white/[0.06] bg-[#141416] shadow-sm transition-colors ${
             isNeedsInput ? 'border-l-[3px] border-l-amber-400/65' : ''
-          } ${isReview ? 'border-l-[3px] border-l-sky-400/60' : ''} ${isDone ? 'opacity-55' : ''} ${
+          } ${isValidation ? 'border-l-[3px] border-l-violet-400/65' : ''} ${
+            isReview ? 'border-l-[3px] border-l-sky-400/60' : ''
+          } ${isDone ? 'opacity-55' : ''} ${
             snapshot.isDragging
               ? 'border-white/[0.12] bg-[#18181b] shadow-lg ring-1 ring-white/[0.08]'
               : 'hover:border-white/[0.1] hover:bg-[#161618]'
@@ -445,6 +451,7 @@ export default function TaskCard({
                       </span>
                     </span>
                   ) : null}
+                  {validationEnabledProject ? <TaskCardValidationBadge task={task} /> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (

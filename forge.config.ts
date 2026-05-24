@@ -102,6 +102,12 @@ async function stageFluxCliResources(buildPath: string): Promise<void> {
   }
   await fsp.cp(tmuxConfSrc, path.join(cliDir, 'fluxx-tmux.conf'));
 
+  const validationPacksSrc = path.resolve(__dirname, 'validation-packs');
+  if (!fs.existsSync(validationPacksSrc)) {
+    throw new Error(`[forge.config] expected validation packs at ${validationPacksSrc}`);
+  }
+  await fsp.cp(validationPacksSrc, path.join(cliDir, 'validation-packs'), { recursive: true });
+
   for (const [shimName, dstName] of [
     ['fluxx-shim', 'fluxx'],
     ['flux-shim', 'flux'],

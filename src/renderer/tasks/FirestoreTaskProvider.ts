@@ -12,9 +12,10 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskGithubPr, type TaskStatus } from '../../types';
+import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskGithubPr, type TaskStatus, type TaskValidationPlan } from '../../types';
 import { parsePersistedTaskAttachedPlanningDocs, sanitizeTaskAttachedPlanningDocsInput } from '../../taskAttachedPlanningDocs';
 import { parseGithubPrField } from '../../githubPrMetadata';
+import { validationPlanToFirestore, parsePersistedTaskValidationPlan } from '../../validationPlans/persist';
 import { validateBlockedByTaskIds } from '../../taskDependencies';
 import { normalizeTaskLabels } from '../../taskLabels';
 import {
@@ -145,6 +146,9 @@ export class FirestoreTaskProvider implements TaskProvider {
             return s.length > 0 ? { attachedPlanningDocs: s } : {};
           })()
         : {}),
+      ...(input.validationPlan !== undefined
+        ? { validationPlan: validationPlanToFirestore(input.validationPlan) }
+        : {}),
     };
     const ref = await addDoc(col, data);
     let normalizedDeps: string[] | undefined;
@@ -208,6 +212,7 @@ export class FirestoreTaskProvider implements TaskProvider {
         const s = sanitizeTaskAttachedPlanningDocsInput(input.attachedPlanningDocs);
         return s.length > 0 ? { attachedPlanningDocs: s } : {};
       })(),
+      ...(input.validationPlan !== undefined ? { validationPlan: input.validationPlan } : {}),
     };
   }
 
@@ -372,6 +377,13 @@ export class FirestoreTaskProvider implements TaskProvider {
         }
       }
     }
+    if (patch.validationPlan !== undefined) {
+      if (patch.validationPlan === null) {
+        updates.validationPlan = deleteField();
+      } else {
+        updates.validationPlan = validationPlanToFirestore(patch.validationPlan);
+      }
+    }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
     return toTask(
@@ -436,7 +448,16 @@ function toTask(
     ...parseRepoIdField(data.repoId, primaryRepoId),
     ...parseFluxxWorkBranchField(data.fluxxWorkBranch ?? data.fluxWorkBranch),
     ...parseAttachedPlanningDocsField(data.attachedPlanningDocs),
+    ...parseValidationPlanField(data.validationPlan),
   };
+}
+
+function parseValidationPlanField(
+  val: unknown,
+): { validationPlan: TaskValidationPlan } | Record<string, never> {
+  const parsed = parsePersistedTaskValidationPlan(val);
+  if (!parsed) return {};
+  return { validationPlan: parsed };
 }
 
 function parseAttachedPlanningDocsField(

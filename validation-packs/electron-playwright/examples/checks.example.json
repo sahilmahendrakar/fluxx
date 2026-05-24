@@ -1,0 +1,13 @@
+{
+  "goal": "Example validation plan shape (optional plan.json content — not mandatory scenarios)",
+  "pack": "electron-playwright",
+  "checks": [
+    "Launch the app with isolated user data",
+    "Open a task detail panel",
+    "Confirm the Validation section is visible",
+    "Capture a screenshot of the section",
+    "Trigger a validation run if the UI exposes it",
+    "Capture the final validation state"
+  ],
+  "requiredArtifacts": ["task-detail-validation-section", "validation-result"]
+}
