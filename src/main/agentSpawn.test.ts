@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '../types';
 import {
+  agentNotFoundMessage,
   agentSpawnResumeSpec,
   agentSpawnSpec,
+  codexSpawnArgs,
   planningSpawnResumeSpec,
   planningSpawnSpec,
 } from './agentSpawn';
@@ -51,8 +53,71 @@ describe('planningSpawnSpec', () => {
     expect(args).toContain('gpt-5');
   });
 
-  it('codex spawns with empty args', () => {
-    expect(planningSpawnSpec('codex')).toEqual({ command: 'codex', args: [] });
+  it('codex defaults to workspace-write sandbox', () => {
+    expect(planningSpawnSpec('codex')).toEqual({
+      command: 'codex',
+      args: ['--sandbox', 'workspace-write'],
+    });
+  });
+
+  it('codex passes model, yolo, and optional prompt', () => {
+    expect(planningSpawnSpec('codex', 'gpt-5.4', true, 'plan this')).toEqual({
+      command: 'codex',
+      args: ['--model', 'gpt-5.4', '--yolo', 'plan this'],
+    });
+  });
+});
+
+describe('agentSpawnSpec codex', () => {
+  it('passes composed task prompt as positional arg with default sandbox', () => {
+    const { command, args } = agentSpawnSpec(
+      task({ agent: 'codex', title: 'Fix bug', description: 'Details here' }),
+      'Fix bug\n\nDetails here',
+    );
+    expect(command).toBe('codex');
+    expect(args).toEqual(['--sandbox', 'workspace-write', 'Fix bug\n\nDetails here']);
+  });
+
+  it('passes model and yolo when set', () => {
+    const { args } = agentSpawnSpec(
+      task({ agent: 'codex', agentModel: 'gpt-5.4', agentYolo: true }),
+      'do work',
+    );
+    expect(args).toEqual(['--model', 'gpt-5.4', '--yolo', 'do work']);
+  });
+});
+
+describe('codexSpawnArgs', () => {
+  it('resume without session id uses --last', () => {
+    expect(codexSpawnArgs({ yolo: false, resume: {} })).toEqual([
+      '--sandbox',
+      'workspace-write',
+      'resume',
+      '--last',
+    ]);
+  });
+
+  it('resume with session id omits --last', () => {
+    expect(
+      codexSpawnArgs({
+        model: 'gpt-5.4',
+        resume: { sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' },
+      }),
+    ).toEqual([
+      '--model',
+      'gpt-5.4',
+      '--sandbox',
+      'workspace-write',
+      'resume',
+      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    ]);
+  });
+});
+
+describe('agentNotFoundMessage', () => {
+  it('includes Codex install guidance', () => {
+    expect(agentNotFoundMessage('codex', 'codex')).toContain('codex');
+    expect(agentNotFoundMessage('codex', 'codex')).toContain('developers.openai.com/codex');
   });
 });
 
@@ -124,12 +189,25 @@ describe('planningSpawnResumeSpec', () => {
     expect(cursor.args[i + 1]).toBe('bbbbbbbb-cccc-dddd-eeee-ffffffffffff');
   });
 
-  it('ignores conversation id for codex', () => {
+  it('codex resume uses subcommand with --last or session id', () => {
+    expect(planningSpawnResumeSpec('codex')).toEqual({
+      command: 'codex',
+      args: ['--sandbox', 'workspace-write', 'resume', '--last'],
+    });
     expect(
-      planningSpawnResumeSpec('codex', undefined, undefined, {
-        agentConversationId: 'ignored',
+      planningSpawnResumeSpec('codex', 'gpt-5.4', true, {
+        agentConversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       }),
-    ).toEqual({ command: 'codex', args: ['--resume'] });
+    ).toEqual({
+      command: 'codex',
+      args: [
+        '--model',
+        'gpt-5.4',
+        '--yolo',
+        'resume',
+        'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      ],
+    });
   });
 });
 
@@ -164,13 +242,23 @@ describe('agentSpawnResumeSpec conversation ids', () => {
     ]);
   });
 
-  it('ignores id for codex', () => {
+  it('codex resume uses subcommand with session id or --last', () => {
+    expect(agentSpawnResumeSpec(task({ agent: 'codex' }))).toEqual({
+      command: 'codex',
+      args: ['--sandbox', 'workspace-write', 'resume', '--last'],
+    });
     const { command, args } = agentSpawnResumeSpec(
-      task({ agent: 'codex' }),
-      'should-not-appear',
+      task({ agent: 'codex', agentModel: 'gpt-5.4', agentYolo: true }),
+      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     );
     expect(command).toBe('codex');
-    expect(args).toEqual(['--resume']);
+    expect(args).toEqual([
+      '--model',
+      'gpt-5.4',
+      '--yolo',
+      'resume',
+      'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    ]);
   });
 
   it('passes conversation id for Cursor', () => {
