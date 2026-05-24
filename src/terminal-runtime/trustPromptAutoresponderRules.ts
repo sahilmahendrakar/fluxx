@@ -12,11 +12,19 @@ export type AutoresponderRule = {
 };
 
 const CLAUDE_PATTERN = 'Is this a project you created or one you trust';
+const CODEX_TRUST_DIRECTORY = 'Do you trust the contents of this directory';
 
 function cursorTrustMatches(screenText: string): boolean {
   return (
     screenText.includes('Workspace Trust Required') &&
     screenText.includes('Do you trust the contents of this directory')
+  );
+}
+
+function codexTrustMatches(screenText: string): boolean {
+  return (
+    screenText.includes(CODEX_TRUST_DIRECTORY) &&
+    screenText.includes('Yes, continue')
   );
 }
 
@@ -58,6 +66,15 @@ export function buildTrustPromptAutoresponderRules(
       cwdAllowlist: cwdGate,
       matches: (t) => cursorTrustMatches(t),
       respondWith: 'a',
+      ttlMsFromSpawn: 30_000,
+      oncePerSession: true,
+    },
+    {
+      id: 'codex-trust',
+      agents: ['codex'],
+      cwdAllowlist: cwdGate,
+      matches: (t) => codexTrustMatches(t),
+      respondWith: '\r',
       ttlMsFromSpawn: 30_000,
       oncePerSession: true,
     },
