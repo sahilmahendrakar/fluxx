@@ -69,6 +69,29 @@ export function isRemoteHelperVersionCompatible(remoteVersion: string | undefine
   return remoteVersion.trim() === FLUXX_REMOTE_HELPER_VERSION;
 }
 
+export type RemoteHelperVersionFeatures = {
+  worktreeReclaim?: boolean;
+};
+
+export function isRemoteHelperInstallComplete(
+  version: string | undefined,
+  features: RemoteHelperVersionFeatures | undefined,
+): boolean {
+  return (
+    isRemoteHelperVersionCompatible(version) && features?.worktreeReclaim === true
+  );
+}
+
+/** Partial helper upload (main script without `~/.fluxx/bin/lib/`) or stale symlink. */
+export function isBrokenRemoteHelperInstallError(output: string): boolean {
+  const lower = output.toLowerCase();
+  return (
+    lower.includes('cannot find module') ||
+    lower.includes('module_not_found') ||
+    lower.includes('lib/remoteworktreeprep')
+  );
+}
+
 export function remoteHelperVersionedRemotePath(version: string = FLUXX_REMOTE_HELPER_VERSION): string {
   return `"$HOME/.fluxx/bin/${fluxxRemoteHelperVersionedFilename(version)}"`;
 }
@@ -159,7 +182,10 @@ export function mapSshFailureToProbeError(input: {
   };
 }
 
-export type RemoteHelperVersionData = { version: string };
+export type RemoteHelperVersionData = {
+  version: string;
+  features?: RemoteHelperVersionFeatures;
+};
 
 export type RemoteHelperProbeData = DeviceProbeCapabilities;
 
@@ -171,6 +197,8 @@ export type RemoteHelperRepoEnsureData = {
 export type RemoteHelperWorktreeCreateData = {
   worktreePath: string;
   branch: string;
+  /** Present when the repo setup script failed but the worktree was still created. */
+  setupWarning?: string;
 };
 
 export type RemoteHelperStartTerminalData = {

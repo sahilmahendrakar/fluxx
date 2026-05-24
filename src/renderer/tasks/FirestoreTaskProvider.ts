@@ -15,6 +15,7 @@ import {
 import { COLUMNS, type Agent, type Task, type TaskAttachedPlanningDoc, type TaskExecutionDeviceRef, type TaskGithubPr, type TaskStatus } from '../../types';
 import { mergeCloudTasksWithLocalDeviceOverrides } from '../../executionDevices/mergeCloudTaskDevices';
 import {
+  executionDeviceFieldForFirestoreWrite,
   parseSharedExecutionDeviceFromFirestore,
   shouldPersistExecutionDeviceToFirestore,
 } from '../../executionDevices/firestoreTaskDevice';
@@ -163,9 +164,10 @@ export class FirestoreTaskProvider implements TaskProvider {
     };
     const ref = await addDoc(col, data);
     let executionDeviceForView: TaskExecutionDeviceRef | undefined;
-    if (input.executionDevice && shouldPersistExecutionDeviceToFirestore(input.executionDevice)) {
-      await updateDoc(ref, { executionDevice: input.executionDevice });
-      executionDeviceForView = input.executionDevice;
+    const firestoreDevice = executionDeviceFieldForFirestoreWrite(input.executionDevice);
+    if (firestoreDevice) {
+      await updateDoc(ref, { executionDevice: firestoreDevice });
+      executionDeviceForView = firestoreDevice;
     } else {
       const deviceRef =
         input.executionDevice ??
@@ -429,11 +431,11 @@ export class FirestoreTaskProvider implements TaskProvider {
         }
       }
     }
-    if (
-      patch.executionDevice !== undefined &&
-      shouldPersistExecutionDeviceToFirestore(patch.executionDevice ?? undefined)
-    ) {
-      updates.executionDevice = patch.executionDevice;
+    const firestoreDevicePatch = executionDeviceFieldForFirestoreWrite(
+      patch.executionDevice ?? undefined,
+    );
+    if (patch.executionDevice !== undefined && firestoreDevicePatch) {
+      updates.executionDevice = firestoreDevicePatch;
     }
     await updateDoc(ref, updates);
     const after = await getDoc(ref);
@@ -452,6 +454,15 @@ export class FirestoreTaskProvider implements TaskProvider {
   async delete(id: string): Promise<void> {
     const db = getFirebaseFirestore();
     await deleteDoc(doc(db, 'projects', this.projectId, 'tasks', id));
+    try {
+      await window.electronAPI.cloudBindings.setPerTaskDeviceOverride(
+        this.projectId,
+        id,
+        null,
+      );
+    } catch (err) {
+      console.warn('[FirestoreTaskProvider] failed to clear device override', err);
+    }
   }
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isBrokenRemoteHelperInstallError,
+  isRemoteHelperInstallComplete,
   isRemoteHelperVersionCompatible,
   mapHelperErrorCode,
   mapSshFailureToProbeError,
@@ -33,6 +35,27 @@ describe('isRemoteHelperVersionCompatible', () => {
     expect(isRemoteHelperVersionCompatible(FLUXX_REMOTE_HELPER_VERSION)).toBe(true);
     expect(isRemoteHelperVersionCompatible('0.9.0')).toBe(false);
     expect(isRemoteHelperVersionCompatible(undefined)).toBe(false);
+  });
+});
+
+describe('isBrokenRemoteHelperInstallError', () => {
+  it('detects missing lib module on the remote host', () => {
+    expect(
+      isBrokenRemoteHelperInstallError(
+        "Error: Cannot find module './lib/remoteWorktreePrep'",
+      ),
+    ).toBe(true);
+    expect(isBrokenRemoteHelperInstallError('Connection refused')).toBe(false);
+  });
+});
+
+describe('isRemoteHelperInstallComplete', () => {
+  it('requires version and worktree reclaim feature', () => {
+    expect(
+      isRemoteHelperInstallComplete(FLUXX_REMOTE_HELPER_VERSION, { worktreeReclaim: true }),
+    ).toBe(true);
+    expect(isRemoteHelperInstallComplete(FLUXX_REMOTE_HELPER_VERSION, {})).toBe(false);
+    expect(isRemoteHelperInstallComplete('0.2.4', { worktreeReclaim: true })).toBe(false);
   });
 });
 

@@ -6,6 +6,8 @@ import {
   deviceUsesTmuxPersistence,
   isTaskExecutionDeviceEditable,
   resolveNewTaskDeviceRef,
+  sessionStartButtonLabel,
+  sessionStartErrorMessage,
 } from './deviceUi';
 import { builtInLocalDeviceRef } from './parse';
 
@@ -97,6 +99,24 @@ describe('deviceUsesTmuxPersistence', () => {
   it('is true only when tmux.enabled is set', () => {
     expect(deviceUsesTmuxPersistence({ ...localDevice, tmux: { enabled: true } })).toBe(true);
     expect(deviceUsesTmuxPersistence({ ...localDevice, tmux: { enabled: false } })).toBe(false);
+  });
+});
+
+describe('sessionStartButtonLabel', () => {
+  it('names ssh devices on the start CTA', () => {
+    expect(
+      sessionStartButtonLabel([sshDevice], { kind: 'ssh', deviceId: 'devbox' }),
+    ).toBe('Start on Devbox');
+    expect(sessionStartButtonLabel([localDevice], builtInLocalDeviceRef())).toBe(
+      'Start session',
+    );
+  });
+});
+
+describe('sessionStartErrorMessage', () => {
+  it('maps device configuration errors', () => {
+    expect(sessionStartErrorMessage('DEVICE_NOT_CONFIGURED')).toContain('Settings');
+    expect(sessionStartErrorMessage('OTHER', 'Custom')).toBe('Custom');
   });
 });
 

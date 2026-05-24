@@ -20,6 +20,9 @@ import { remoteRepoCachePath, remoteTaskWorktreePath } from './remoteWorkspacePa
 import { deviceProbeHostLabel } from './opensshRunner';
 import type { RemoteRepoSessionContext } from './resolveRemoteRepoForTask';
 
+const LEGACY_WORKTREE_BRANCH_MISMATCH =
+  'exists but is not on branch';
+
 export type RemoteContextFile = {
   relativePath: string;
   content: string;
@@ -126,27 +129,45 @@ export class GitRemoteWorkspaceProvider {
       };
     }
 
-    const worktree = await this.helper.runJsonCommand<RemoteHelperWorktreeCreateData>(
+    const worktreeCreatePayload = {
+      workspaceRoot: device.workspaceRoot,
+      projectId: params.projectId,
+      repoId: params.repo.repoId,
+      taskId: params.task.id,
+      taskTitle: params.task.title,
+      fluxxWorkBranch: params.task.fluxxWorkBranch,
+      repoPath: repoEnsure.data.repoPath,
+      worktreePath,
+      sourceBranchShort: params.sourceBranchShort,
+      createSourceBranchIfMissing: params.createSourceBranchIfMissing,
+      baseBranch: params.repo.baseBranch,
+      setupScript: params.setupScript,
+      setupTimeoutMs: params.setupTimeoutMs ?? 300_000,
+      contextFiles: params.contextFiles ?? [],
+    };
+
+    let worktree = await this.helper.runJsonCommand<RemoteHelperWorktreeCreateData>(
       device,
       'worktree-create',
-      {
-        workspaceRoot: device.workspaceRoot,
-        projectId: params.projectId,
-        repoId: params.repo.repoId,
-        taskId: params.task.id,
-        taskTitle: params.task.title,
-        fluxxWorkBranch: params.task.fluxxWorkBranch,
-        repoPath: repoEnsure.data.repoPath,
-        worktreePath,
-        sourceBranchShort: params.sourceBranchShort,
-        createSourceBranchIfMissing: params.createSourceBranchIfMissing,
-        baseBranch: params.repo.baseBranch,
-        setupScript: params.setupScript,
-        setupTimeoutMs: params.setupTimeoutMs ?? 300_000,
-        contextFiles: params.contextFiles ?? [],
-      },
+      worktreeCreatePayload,
       600_000,
     );
+    if (
+      !worktree.ok &&
+      worktree.message.includes(LEGACY_WORKTREE_BRANCH_MISMATCH)
+    ) {
+      const reinstall = await this.helper.ensureInstalled(device, {
+        forceRebootstrap: true,
+      });
+      if (reinstall.ok) {
+        worktree = await this.helper.runJsonCommand<RemoteHelperWorktreeCreateData>(
+          device,
+          'worktree-create',
+          worktreeCreatePayload,
+          600_000,
+        );
+      }
+    }
     if (!worktree.ok) {
       return {
         ok: false,

@@ -126,6 +126,31 @@ export function buildDevicePickerOptions(
   return out;
 }
 
+/** Primary CTA label when starting a task session on a non-local device. */
+export function sessionStartButtonLabel(
+  devices: ExecutionDeviceConfig[],
+  ref: TaskExecutionDeviceRef | undefined,
+  fallback = 'Start session',
+): string {
+  if (!ref || ref.kind === 'local') return fallback;
+  return `Start on ${deviceDisplayLabel(devices, ref)}`;
+}
+
+/** Maps main-process session start error codes to user-facing copy. */
+export function sessionStartErrorMessage(error: string, message?: string): string | null {
+  if (message?.trim()) return message.trim();
+  switch (error) {
+    case 'DEVICE_NOT_CONFIGURED':
+      return 'No SSH device is configured on this computer. Open Settings → Devices to add one.';
+    case 'DEVICE_UNAVAILABLE':
+      return 'The selected device is unavailable. Choose another device or run Probe in Settings → Devices.';
+    case 'SSH_CONNECT_FAILED':
+      return 'Could not reach the SSH host from this computer. Check VPN, host alias, and that the machine is online.';
+    default:
+      return null;
+  }
+}
+
 /** Short chip label for board/session surfaces (no SSH host details). */
 export function deviceChipLabel(
   devices: ExecutionDeviceConfig[],

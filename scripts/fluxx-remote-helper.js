@@ -6,7 +6,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const VERSION = '0.2.3';
+const VERSION = '0.2.6';
+
+const { createRemoteWorktreePrep } = require('./lib/remoteWorktreePrep');
 
 const FLUXX_TMUX_SOCKET = 'fluxx';
 const SETUP_DEFAULT_TIMEOUT_MS = 300_000;
@@ -278,6 +280,8 @@ function gitRun(args, opts = {}) {
   return { ok: true, stdout: (result.stdout || '').trim() };
 }
 
+const worktreePrep = createRemoteWorktreePrep({ gitRun, fs, path });
+
 function repoMetaPath(repoPath) {
   return path.join(repoPath, '.fluxx', 'repo-meta.json');
 }
@@ -324,6 +328,16 @@ function remoteTaskWorktreePathOnHost(workspaceRoot, projectId, repoId, taskId) 
     'worktrees',
     sanitizePathSegment(projectId),
     sanitizePathSegment(repoId),
+    sanitizePathSegment(taskId),
+  );
+}
+
+/** Pre–0.2.4 layout: worktrees/{projectId}/{taskId} (no repoId segment). */
+function legacyRemoteTaskWorktreePathOnHost(workspaceRoot, projectId, taskId) {
+  return path.join(
+    expandHome(workspaceRoot),
+    'worktrees',
+    sanitizePathSegment(projectId),
     sanitizePathSegment(taskId),
   );
 }
@@ -552,12 +566,23 @@ function runSetupScript(worktreePath, script, timeoutMs) {
   if (result.stdout) fs.appendFileSync(logPath, result.stdout, 'utf8');
   if (result.stderr) fs.appendFileSync(logPath, result.stderr, 'utf8');
   if (result.status !== 0) {
-    return {
-      ok: false,
-      error: `Setup script exited with code ${result.status} (see ${logPath})`,
-    };
+    const stderrTail = (result.stderr || '').trim().split('\n').slice(-4).join('\n').trim();
+    const warning = stderrTail
+      ? `Setup script exited with code ${result.status} (see ${logPath}): ${stderrTail}`
+      : `Setup script exited with code ${result.status} (see ${logPath})`;
+    process.stderr.write(`[fluxx-remote-helper] ${warning}\n`);
+    // Match local WorktreeService: setup failures are logged, not session-blocking.
+    return { ok: true, warning };
   }
   return { ok: true };
+}
+
+function emitWorktreeCreateSuccess(worktreePath, branch, setup) {
+  const data = { worktreePath, branch };
+  if (setup?.warning) {
+    data.setupWarning = setup.warning;
+  }
+  emit({ ok: true, data });
 }
 
 function runWorktreeCreate(params) {
@@ -602,23 +627,26 @@ function runWorktreeCreate(params) {
     });
   }
 
-  if (fs.existsSync(worktreePath)) {
-    const head = gitRun(['symbolic-ref', '--short', 'HEAD'], { cwd: worktreePath });
-    if (head.ok && head.stdout.trim() === branch) {
-      writeContextFiles(worktreePath, params.contextFiles);
-      const setup = runSetupScript(
-        worktreePath,
-        params.setupScript,
-        params.setupTimeoutMs,
+  if (projectId && taskId) {
+    const legacyPath = legacyRemoteTaskWorktreePathOnHost(workspaceRoot, projectId, taskId);
+    if (legacyPath !== worktreePath && fs.existsSync(legacyPath)) {
+      process.stderr.write(
+        `[fluxx-remote-helper] reclaiming legacy worktree path ${legacyPath}\n`,
       );
-      if (!setup.ok) fail('REMOTE_SETUP_FAILED', setup.error);
-      emit({ ok: true, data: { worktreePath, branch } });
-      return;
+      worktreePrep.prepareWorktreePath(legacyPath, repoPath, branch);
     }
-    fail(
-      'WORKTREE_FAILED',
-      `Worktree path ${worktreePath} exists but is not on branch ${branch}.`,
+  }
+
+  const prepState = worktreePrep.prepareWorktreePath(worktreePath, repoPath, branch);
+  if (prepState === 'healthy') {
+    writeContextFiles(worktreePath, params.contextFiles);
+    const setup = runSetupScript(
+      worktreePath,
+      params.setupScript,
+      params.setupTimeoutMs,
     );
+    emitWorktreeCreateSuccess(worktreePath, branch, setup);
+    return;
   }
 
   gitRun(['fetch', 'origin', sourceBranchShort], { cwd: repoPath, timeoutMs: 120_000 });
@@ -665,8 +693,7 @@ function runWorktreeCreate(params) {
 
   writeContextFiles(worktreePath, params.contextFiles);
   const setup = runSetupScript(worktreePath, params.setupScript, params.setupTimeoutMs);
-  if (!setup.ok) fail('REMOTE_SETUP_FAILED', setup.error);
-  emit({ ok: true, data: { worktreePath, branch } });
+  emitWorktreeCreateSuccess(worktreePath, branch, setup);
 }
 
 function manifestPathForDevice(deviceId) {
@@ -1044,7 +1071,13 @@ function main() {
   }
   switch (command) {
     case 'version':
-      emit({ ok: true, data: { version: VERSION } });
+      emit({
+        ok: true,
+        data: {
+          version: VERSION,
+          features: { worktreeReclaim: true },
+        },
+      });
       break;
     case 'probe':
       runProbe(readStdinJson());

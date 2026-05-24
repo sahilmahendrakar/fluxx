@@ -24,13 +24,14 @@ describe('fluxx-remote-helper workspace RPCs', () => {
     }
   });
 
-  it('reports version 0.2.3', () => {
+  it('reports version 0.2.6 with worktree reclaim feature', () => {
     const result = spawnSync(process.execPath, [helperPath, 'version', '--json'], {
       encoding: 'utf8',
     });
     expect(result.status).toBe(0);
     const envelope = JSON.parse(result.stdout.trim());
-    expect(envelope.data.version).toBe('0.2.3');
+    expect(envelope.data.version).toBe('0.2.6');
+    expect(envelope.data.features?.worktreeReclaim).toBe(true);
   });
 
   it('clones repo on demand when cache is missing', () => {
@@ -89,6 +90,34 @@ describe('fluxx-remote-helper workspace RPCs', () => {
     expect(second.status).toBe(1);
     const envelope = JSON.parse(second.stdout.trim());
     expect(envelope.error.code).toBe('REMOTE_REPO_MISMATCH');
+  });
+
+  it('creates a worktree when the repo setup script exits non-zero', () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-wt-setup-'));
+    const remoteUrl = 'https://github.com/octocat/Hello-World.git';
+    const ensured = runHelper('repo-ensure', {
+      workspaceRoot: tempRoot,
+      projectId: 'proj',
+      repoId: 'hello',
+      remoteUrl,
+    });
+    expect(ensured.status).toBe(0);
+    const repoPath = JSON.parse(ensured.stdout.trim()).data.repoPath;
+    const created = runHelper('worktree-create', {
+      workspaceRoot: tempRoot,
+      projectId: 'proj',
+      repoId: 'hello',
+      taskId: 'task-setup-warn',
+      taskTitle: 'setup warn',
+      repoPath,
+      sourceBranchShort: 'master',
+      setupScript: 'definitely-not-a-command-xyz',
+    });
+    expect(created.status).toBe(0);
+    const envelope = JSON.parse(created.stdout.trim());
+    expect(envelope.ok).toBe(true);
+    expect(envelope.data.setupWarning).toMatch(/exited with code 127/);
+    expect(fs.existsSync(envelope.data.worktreePath)).toBe(true);
   });
 
   it('writes and lists terminal manifest rows', () => {

@@ -2780,6 +2780,13 @@ app.whenReady().then(async () => {
     }
   }
 
+  function broadcastCloudBindingsChanged(): void {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('cloudBindings:changed');
+    }
+  }
+
   ipcMain.handle('executionDevices:list', async () => deviceStore.listDevices());
 
   ipcMain.handle('executionDevices:getGlobalDefault', async () =>
@@ -2865,9 +2872,11 @@ app.whenReady().then(async () => {
           throw new Error(parsed.message);
         }
         await bindingStore.setPerTaskDeviceOverride(projectId, taskId, parsed.ref);
+        broadcastCloudBindingsChanged();
         return parsed.ref;
       }
       await bindingStore.setPerTaskDeviceOverride(projectId, taskId, null);
+      broadcastCloudBindingsChanged();
       return null;
     },
   );
@@ -2881,6 +2890,7 @@ app.whenReady().then(async () => {
     'cloudBindings:setProjectDefaultDeviceId',
     async (_e, projectId: string, deviceId: string | null) => {
       await bindingStore.setDefaultDeviceId(projectId, deviceId);
+      broadcastCloudBindingsChanged();
       return bindingStore.getDefaultDeviceId(projectId) ?? null;
     },
   );

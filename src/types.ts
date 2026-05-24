@@ -882,7 +882,10 @@ export interface Shell {
 
 export type RunnerStatus = 'running' | 'idle' | 'errored';
 
-/** Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}. */
+/**
+ * Per-user/per-task presence doc at projects/{pid}/tasks/{tid}/runners/{uid}.
+ * Desktop local sessions only — not direct SSH (see runner heartbeat filter).
+ */
 export interface RunnerDoc {
   status: RunnerStatus;
   lastSeen: string;

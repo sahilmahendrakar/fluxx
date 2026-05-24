@@ -272,8 +272,11 @@ export default function TaskCard({
   cloudProject = false,
 }: Props) {
   const chipDeviceRef = useMemo(
-    () => resolveTaskChipExecutionDevice(task, executionDeviceDefaults),
-    [task, task.executionDevice, executionDeviceDefaults],
+    () =>
+      resolveTaskChipExecutionDevice(task, executionDeviceDefaults, {
+        cloudProject,
+      }),
+    [task, task.executionDevice, executionDeviceDefaults, cloudProject],
   );
 
   const isNeedsInput = task.status === 'needs-input';
@@ -406,7 +409,7 @@ export default function TaskCard({
                     task={task}
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
-                  {executionDevices.length > 0 ? (
+                  {executionDevices.length > 0 && chipDeviceRef ? (
                     <ExecutionDeviceChip
                       devices={executionDevices}
                       deviceRef={chipDeviceRef}

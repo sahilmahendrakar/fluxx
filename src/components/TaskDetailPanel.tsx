@@ -31,7 +31,11 @@ import {
   type TaskExecutionDeviceRef,
 } from '../types';
 import { ExecutionDevicePicker } from './ExecutionDevicePicker';
-import { isTaskExecutionDeviceEditable } from '../executionDevices/deviceUi';
+import {
+  isTaskExecutionDeviceEditable,
+  sessionStartButtonLabel,
+  sessionStartErrorMessage,
+} from '../executionDevices/deviceUi';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
 import {
   effectiveTaskRepoId,
@@ -135,8 +139,8 @@ export interface TaskDetailPanelProps {
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
-   * Cloud only: true when any project member has a fresh `running` runner heartbeat
-   * for this task (see `useRunners` / Firestore). Used to confirm assignee edits.
+   * Cloud only: true when any project member has a fresh Desktop runner heartbeat
+   * for this task (direct SSH is excluded). Used to confirm assignee edits.
    */
   cloudActiveRunnerSession?: boolean;
   /**
@@ -911,7 +915,11 @@ export default function TaskDetailPanel({
               'Choose Claude Code, Codex, or Cursor Agent for this task before starting a session.',
           );
         } else {
-          setSessionError(result.message ?? result.error);
+          setSessionError(
+            sessionStartErrorMessage(result.error, result.message) ??
+              result.message ??
+              result.error,
+          );
         }
         return;
       }
@@ -1089,7 +1097,7 @@ export default function TaskDetailPanel({
     ? 'Starting…'
     : sessionError
       ? 'Retry'
-      : 'Start session';
+      : sessionStartButtonLabel(executionDevices, resolvedDevice);
   const startBtnPrimary =
     'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed';
   const startBtnIdle = `${startBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
@@ -2064,12 +2072,12 @@ export default function TaskDetailPanel({
                     />
                     <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
                     <span className="min-w-0 font-medium">
-                      {remoteRunner.displayName ?? 'A teammate'} is running an agent
+                      {remoteRunner.displayName ?? 'A teammate'} has a Fluxx Desktop session
                     </span>
                   </div>
                   <p className="max-w-[18rem] text-xs leading-relaxed text-zinc-500">
-                    Terminal output stays on their machine for now. You will see status updates here as
-                    they work.
+                    Their terminal stays on their computer. Direct SSH tasks require Fluxx Desktop on
+                    the machine that owns the SSH connection — you cannot start or attach from the web.
                   </p>
                 </div>
               ) : !hasLocalSession ? (

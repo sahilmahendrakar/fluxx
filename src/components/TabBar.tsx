@@ -43,12 +43,18 @@ export function buildSessionTabs(
   tasks: Task[],
   executionDeviceDefaults?: ExecutionDeviceDefaults,
   restoringSessionIds?: ReadonlySet<string>,
+  opts?: { cloudProject?: boolean },
 ): SessionTabMeta[] {
   return openSessions.map((session) => {
     const task = tasks.find((t) => t.id === session.taskId);
-    const executionDevice = task
-      ? resolveTaskChipExecutionDevice(task, executionDeviceDefaults)
-      : undefined;
+    const executionDevice =
+      session.deviceKind && session.deviceId
+        ? { kind: session.deviceKind, deviceId: session.deviceId }
+        : task
+          ? resolveTaskChipExecutionDevice(task, executionDeviceDefaults, {
+              cloudProject: opts?.cloudProject,
+            })
+          : undefined;
     return {
       session,
       title: task?.title ?? 'Session',
@@ -144,7 +150,7 @@ export function TabBar({
                 />
               )}
               <span className="max-w-[140px] truncate">{title}</span>
-              {executionDevices.length > 0 ? (
+              {executionDevices.length > 0 && executionDevice ? (
                 <ExecutionDeviceChip
                   devices={executionDevices}
                   deviceRef={executionDevice}
