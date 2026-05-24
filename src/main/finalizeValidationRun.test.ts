@@ -53,6 +53,39 @@ describe('finalizeValidationRun', () => {
     expect(result.run.artifacts.length).toBeGreaterThan(0);
   });
 
+  it('re-ingests finish when terminal run gains a passing verdict on disk', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-finish-reingest-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: 'task-1',
+      projectId: 'proj-1',
+      packId: 'electron-playwright',
+      validatorAgent: 'cursor',
+    });
+    await store.updateStatus({
+      runId: run.id,
+      status: 'needs-human-review',
+      summary: 'Awaiting verdict',
+      verdictReason: 'Verdict file missing',
+    });
+    await fs.writeFile(
+      path.join(run.artifactDir, 'verdict.json'),
+      JSON.stringify({
+        verdict: 'passed',
+        summary: 'Looks good',
+        checks: [{ name: 'Smoke', status: 'passed' }],
+      }),
+      'utf8',
+    );
+
+    const result = await finalizeValidationRun(store, { runId: run.id, source: 'finish' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.ingested).toBe(true);
+    expect(result.run.status).toBe('passed');
+    expect(result.run.summary).toBe('Looks good');
+  });
+
   it('is idempotent when run is already terminal', async () => {
     tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-finish-idem-'));
     const store = new ValidationRunStore({ getProjectDir: () => tmp });

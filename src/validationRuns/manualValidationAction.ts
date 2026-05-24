@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { effectiveTaskRepoId } from '../repoIdentity';
 import type { ValidationRun } from './types';
+import { requestTaskValidationRunsRefresh } from './validationRunRefresh';
 
 export type ManualValidationRunResult =
   | { ok: true; run: ValidationRun; validatorSessionId: string }
@@ -45,6 +46,7 @@ export async function runManualValidationForTask(input: {
     return { ok: false, error: launchResult.error };
   }
 
+  requestTaskValidationRunsRefresh(task.id);
   return {
     ok: true,
     run: launchResult.run,

@@ -29,6 +29,7 @@ export type AutoStartValidationOnEntryDeps = {
   listTerminalSessions?: () => Promise<Session[]>;
   ensureValidatorBindingsHydrated?: () => Promise<void>;
   reconcileActiveRun?: (run: ValidationRun, source: string) => Promise<ValidationRun>;
+  notifyValidationRunChanged?: (runId: string) => void;
 };
 
 /**
@@ -103,6 +104,7 @@ export async function autoStartValidationOnEntry(
       ...(worktreeCwd ? { worktreeCwd } : {}),
       ...(updated.validationPlan !== undefined ? { validationPlan: updated.validationPlan } : {}),
     });
+    deps.notifyValidationRunChanged?.(run.id);
 
     const launched = await deps.launchValidatorSession({ task: updated, runId: run.id });
     if (!launched.ok) {
@@ -111,13 +113,16 @@ export async function autoStartValidationOnEntry(
         status: 'errored',
         verdictReason: launched.error,
       });
+      deps.notifyValidationRunChanged?.(run.id);
       console.error('[validation:auto-start] launch failed', {
         source,
         taskId: updated.id,
         runId: run.id,
         error: launched.error,
       });
+      return;
     }
+    deps.notifyValidationRunChanged?.(run.id);
   } catch (err) {
     console.error('[validation:auto-start] unexpected failure', {
       source,

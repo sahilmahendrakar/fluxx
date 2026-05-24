@@ -6,10 +6,17 @@ import type { LocalBindingStore } from './LocalBindingStore';
 import type { ProjectStore } from './ProjectStore';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
+import type { ValidationRunStore } from './ValidationRunStore';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
+import { teardownValidationRunsForTask } from './teardownValidationRunsForTask';
 import type { DeviceStore } from './DeviceStore';
 import type { GitRemoteWorkspaceProvider } from './ssh/GitRemoteWorkspaceProvider';
 import { removeLocalSyncedWorktreeForTask } from './ssh/remoteSshSyncMetadata';
+
+export type TaskEphemeralTeardownValidationDeps = {
+  validationRunStore: ValidationRunStore;
+  notifyValidationRunChanged?: (runId: string) => void;
+};
 
 export type RemoteTaskTeardownDeps = {
   deviceStore: DeviceStore;
@@ -128,9 +135,23 @@ export async function teardownEphemeralResourcesForTask(
   taskRepoId?: string | null,
   /** Persisted Flux work branch for nested `worktrees/<repoId>/<branch-segments>` cleanup. */
   fluxxWorkBranch?: string | null,
+  validation?: TaskEphemeralTeardownValidationDeps,
   remote?: RemoteTaskTeardownDeps,
 ): Promise<string[]> {
   const errors: string[] = [];
+
+  if (validation) {
+    const validationResult = await teardownValidationRunsForTask({
+      validationRunStore: validation.validationRunStore,
+      terminalBackend,
+      taskId,
+    });
+    errors.push(...validationResult.errors);
+    for (const runId of validationResult.deletedRunIds) {
+      validation.notifyValidationRunChanged?.(runId);
+    }
+  }
+
   let sessionIds: string[] = [];
   let projectId: string | null = null;
   try {

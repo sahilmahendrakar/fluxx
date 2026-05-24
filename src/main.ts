@@ -3553,6 +3553,10 @@ app.whenReady().then(async () => {
         repos,
         taskRepoId,
         taskRow?.fluxxWorkBranch?.trim() || null,
+        {
+          validationRunStore,
+          notifyValidationRunChanged: broadcastValidationRunChanged,
+        },
         remoteTaskTeardownDeps,
       );
       return { errors };
@@ -5026,6 +5030,10 @@ app.whenReady().then(async () => {
           cleanupRepos,
           updated.repoId?.trim() ?? null,
           updated.fluxxWorkBranch?.trim() ?? null,
+          {
+            validationRunStore,
+            notifyValidationRunChanged: broadcastValidationRunChanged,
+          },
           remoteTaskTeardownDeps,
         );
         if (errors.length > 0) {

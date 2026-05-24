@@ -8,8 +8,10 @@ import { projectRepoActionsBlocked } from '../../projectRepoReadiness';
 import {
   evaluateManualValidationEligibility,
   formatValidationTimestamp,
+  sortValidationRunsNewestFirst,
   validationBoardBadgeFromRuns,
   validationPackDisplayName,
+  validationRunPickerLabel,
   validationRunStatusDetailClass,
   validationRunStatusLabel,
 } from '../../validationRuns/display';
@@ -37,11 +39,23 @@ export default function TaskValidationSection({
   projectRepoReadiness?: ProjectRepoReadiness;
   onUpdate: (id: string, patch: TaskPatch) => void;
 }) {
-  const { runs, latestRun, loading, error, refresh } = useTaskValidationRuns(task.id);
+  const {
+    runs,
+    latestRun,
+    selectedRun,
+    selectedRunId,
+    setSelectedRunId,
+    loading,
+    error,
+    refresh,
+  } = useTaskValidationRuns(task.id);
   const [runBusy, setRunBusy] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [verdictRisks, setVerdictRisks] = useState<string[]>([]);
   const [verdictChecks, setVerdictChecks] = useState<ValidationVerdictCheck[]>([]);
+
+  const displayRun = selectedRun ?? latestRun;
+  const sortedRuns = useMemo(() => sortValidationRunsNewestFirst(runs), [runs]);
 
   const plannedCheckRows = useMemo(
     () =>
@@ -67,15 +81,15 @@ export default function TaskValidationSection({
 
   const boardBadge = validationBoardBadgeFromRuns(runs);
   const validatorLabel =
-    AGENTS.find((a) => a.id === latestRun?.validatorAgent)?.label ?? latestRun?.validatorAgent;
+    AGENTS.find((a) => a.id === displayRun?.validatorAgent)?.label ?? displayRun?.validatorAgent;
 
   useEffect(() => {
     setVerdictRisks([]);
     setVerdictChecks([]);
-    if (!latestRun?.id) return;
-    if (latestRun.status === 'queued' || latestRun.status === 'running') return;
+    if (!displayRun?.id) return;
+    if (displayRun.status === 'queued' || displayRun.status === 'running') return;
     let cancelled = false;
-    void window.electronAPI.validationRuns.readVerdict(latestRun.id).then((result) => {
+    void window.electronAPI.validationRuns.readVerdict(displayRun.id).then((result) => {
       if (cancelled || !result.ok) return;
       setVerdictRisks(result.verdict.risks ?? []);
       setVerdictChecks(result.verdict.checks ?? []);
@@ -83,7 +97,7 @@ export default function TaskValidationSection({
     return () => {
       cancelled = true;
     };
-  }, [latestRun?.id, latestRun?.status]);
+  }, [displayRun?.id, displayRun?.status]);
 
   const handleRunValidation = async () => {
     setRunError(null);
@@ -169,18 +183,41 @@ export default function TaskValidationSection({
           <p className="text-xs text-zinc-600">No validation runs yet for this task.</p>
         ) : null}
 
-        {latestRun ? (
+        {displayRun ? (
           <div className="space-y-4 border-t border-white/[0.04] pt-3">
+            {sortedRuns.length > 1 ? (
+              <div>
+                <label
+                  htmlFor={`validation-run-select-${task.id}`}
+                  className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500"
+                >
+                  Validation run
+                </label>
+                <select
+                  id={`validation-run-select-${task.id}`}
+                  value={selectedRunId ?? displayRun.id}
+                  onChange={(event) => setSelectedRunId(event.target.value)}
+                  className="w-full max-w-full rounded-lg border border-white/[0.08] bg-zinc-900/80 px-2.5 py-1.5 text-[12px] text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40"
+                >
+                  {sortedRuns.map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {validationRunPickerLabel(run)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
             <dl className="grid gap-2 text-[12px] sm:grid-cols-2">
               <div>
                 <dt className="text-zinc-500">Status</dt>
-                <dd className={`font-medium ${validationRunStatusDetailClass(latestRun.status)}`}>
-                  {validationRunStatusLabel(latestRun.status)}
+                <dd className={`font-medium ${validationRunStatusDetailClass(displayRun.status)}`}>
+                  {validationRunStatusLabel(displayRun.status)}
                 </dd>
               </div>
               <div>
                 <dt className="text-zinc-500">Pack</dt>
-                <dd className="text-zinc-200">{validationPackDisplayName(latestRun.packId)}</dd>
+                <dd className="text-zinc-200">{validationPackDisplayName(displayRun.packId)}</dd>
               </div>
               <div>
                 <dt className="text-zinc-500">Validator</dt>
@@ -188,20 +225,20 @@ export default function TaskValidationSection({
               </div>
               <div>
                 <dt className="text-zinc-500">Started</dt>
-                <dd className="text-zinc-200">{formatValidationTimestamp(latestRun.startedAt)}</dd>
+                <dd className="text-zinc-200">{formatValidationTimestamp(displayRun.startedAt)}</dd>
               </div>
               <div>
                 <dt className="text-zinc-500">Completed</dt>
-                <dd className="text-zinc-200">{formatValidationTimestamp(latestRun.completedAt)}</dd>
+                <dd className="text-zinc-200">{formatValidationTimestamp(displayRun.completedAt)}</dd>
               </div>
             </dl>
 
-            {latestRun.summary?.trim() ? (
+            {displayRun.summary?.trim() ? (
               <div>
                 <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
                   Summary
                 </p>
-                <p className="text-[13px] leading-relaxed text-zinc-300">{latestRun.summary}</p>
+                <p className="text-[13px] leading-relaxed text-zinc-300">{displayRun.summary}</p>
               </div>
             ) : null}
 
@@ -226,12 +263,12 @@ export default function TaskValidationSection({
               </div>
             ) : null}
 
-            {latestRun.verdictReason?.trim() ? (
+            {displayRun.verdictReason?.trim() ? (
               <div>
                 <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
                   Verdict reason
                 </p>
-                <p className="text-[13px] leading-relaxed text-zinc-400">{latestRun.verdictReason}</p>
+                <p className="text-[13px] leading-relaxed text-zinc-400">{displayRun.verdictReason}</p>
               </div>
             ) : null}
 
@@ -248,7 +285,7 @@ export default function TaskValidationSection({
               </div>
             ) : null}
 
-            {latestRun.status === 'errored' ? (
+            {displayRun.status === 'errored' ? (
               <p className="rounded-lg border border-orange-500/25 bg-orange-500/[0.08] px-3 py-2 text-[12px] leading-relaxed text-orange-100/90">
                 Validation could not complete because of a setup or tooling failure. Check validator
                 session output and try again after fixing the environment.
@@ -259,14 +296,9 @@ export default function TaskValidationSection({
               <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
                 Artifacts
               </p>
-              <ValidationArtifactList runId={latestRun.id} artifacts={latestRun.artifacts} />
+              <ValidationArtifactList runId={displayRun.id} artifacts={displayRun.artifacts} />
             </div>
 
-            {runs.length > 1 ? (
-              <p className="text-[11px] text-zinc-600">
-                Showing latest of {runs.length} validation runs.
-              </p>
-            ) : null}
           </div>
         ) : null}
       </div>

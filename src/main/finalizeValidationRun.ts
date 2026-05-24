@@ -1,21 +1,13 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Session } from '../types';
-import type { ValidationRun, ValidationRunStatus } from '../validationRuns/types';
+import type { ValidationRun } from '../validationRuns/types';
 import {
   captureGitStatusPorcelain,
   compareGitStatusPorcelain,
 } from './gitStatusGuardrail';
 import type { ValidationRunStore } from './ValidationRunStore';
 import { ingestValidationVerdict } from './validationVerdictIngest';
-
-const TERMINAL_STATUSES: ValidationRunStatus[] = [
-  'passed',
-  'failed',
-  'needs-human-review',
-  'errored',
-  'cancelled',
-];
 
 async function writeGuardrailsLog(
   runDir: string,
@@ -41,7 +33,8 @@ export type FinalizeValidationRunResult =
 
 /**
  * Captures post-validation git guardrails, ingests verdict.json, and transitions the run
- * to a terminal status. Safe to call multiple times (idempotent for terminal runs).
+ * to a terminal status. Safe to call multiple times; terminal runs re-ingest when on-disk
+ * verdict would change status, summary, or reason (`ingested: false` when unchanged).
  */
 export async function finalizeValidationRun(
   store: ValidationRunStore,
@@ -53,7 +46,6 @@ export async function finalizeValidationRun(
     return { ok: false, error: `Validation run not found: ${runId}` };
   }
 
-  const alreadyTerminal = TERMINAL_STATUSES.includes(existing.status);
   let run = existing;
 
   const worktreeCwd = existing.worktreeCwd?.trim();
@@ -84,10 +76,6 @@ export async function finalizeValidationRun(
         finalizeSource: input.source,
       });
     }
-  }
-
-  if (alreadyTerminal) {
-    return { ok: true, run, ingested: false };
   }
 
   if (

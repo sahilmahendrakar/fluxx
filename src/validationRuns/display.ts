@@ -19,9 +19,39 @@ export function validationPackDisplayName(packId: ValidationPackId): string {
   return PACK_LABELS[packId] ?? packId;
 }
 
+export function sortValidationRunsNewestFirst(runs: ValidationRun[]): ValidationRun[] {
+  return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
 export function pickLatestValidationRun(runs: ValidationRun[]): ValidationRun | null {
   if (runs.length === 0) return null;
-  return [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0] ?? null;
+  return sortValidationRunsNewestFirst(runs)[0] ?? null;
+}
+
+export function pickValidationRunById(
+  runs: ValidationRun[],
+  runId: string | null | undefined,
+): ValidationRun | null {
+  const trimmed = runId?.trim();
+  if (!trimmed) return null;
+  return runs.find((run) => run.id === trimmed) ?? null;
+}
+
+export function validationRunShortId(runId: string): string {
+  const trimmed = runId.trim();
+  if (trimmed.length <= 8) return trimmed;
+  return trimmed.slice(-8);
+}
+
+export function validationRunPickerLabel(run: ValidationRun): string {
+  const shortId = validationRunShortId(run.id);
+  const status = validationRunStatusLabel(run.status);
+  const started = formatValidationTimestamp(run.startedAt);
+  const completed = run.completedAt ? formatValidationTimestamp(run.completedAt) : null;
+  if (completed && completed !== '—') {
+    return `${shortId} · ${status} · ${started} → ${completed}`;
+  }
+  return `${shortId} · ${status} · ${started}`;
 }
 
 export function validationRunStatusToBoardBadge(
