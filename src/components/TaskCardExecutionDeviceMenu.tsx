@@ -129,7 +129,7 @@ export function TaskCardExecutionDeviceMenu({
                   aria-checked={selected}
                   disabled={opt.disabled}
                   title={opt.hint}
-                  className={`flex w-full flex-col gap-0.5 px-2.5 py-2 text-left text-[12px] outline-none focus-visible:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-45 ${
+                  className={`flex w-full px-2.5 py-2 text-left text-[12px] outline-none focus-visible:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-45 ${
                     selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200 hover:bg-white/[0.06]'
                   }`}
                   onClick={() => {
@@ -143,27 +143,10 @@ export function TaskCardExecutionDeviceMenu({
                       <span className="text-zinc-500"> (unavailable)</span>
                     ) : null}
                   </span>
-                  {opt.hint && opt.disabled ? (
-                    <span className="text-[10px] leading-snug text-zinc-500">{opt.hint}</span>
-                  ) : null}
                 </button>
               );
             })}
           </div>
-          {availabilityHint ? (
-            <p className="border-t border-zinc-800/60 px-2.5 py-2 text-[11px] leading-snug text-amber-200/85" role="status">
-              {availabilityHint}
-              {cloudProject ? (
-                <span className="mt-1 block text-zinc-500">
-                  SSH device choices are stored on this computer only and are not shared with teammates.
-                </span>
-              ) : null}
-            </p>
-          ) : cloudProject ? (
-            <p className="border-t border-zinc-800/60 px-2.5 py-2 text-[11px] leading-snug text-zinc-500">
-              Stored on this computer only — teammates do not see your SSH configuration.
-            </p>
-          ) : null}
         </div>
       </AgentSessionPrefsMenuPortal>
     </>

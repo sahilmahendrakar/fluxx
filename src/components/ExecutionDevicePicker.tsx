@@ -1,11 +1,7 @@
 import { useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import type { ExecutionDeviceConfig, TaskExecutionDeviceRef } from '../types';
-import {
-  buildDevicePickerOptions,
-  deviceAvailabilityForRef,
-  deviceAvailabilityHint,
-} from '../executionDevices/deviceUi';
+import { buildDevicePickerOptions } from '../executionDevices/deviceUi';
 
 function refKey(ref: TaskExecutionDeviceRef): string {
   return `${ref.kind}:${ref.deviceId}`;
@@ -17,8 +13,6 @@ export function ExecutionDevicePicker({
   value,
   onChange,
   disabled,
-  cloudProject = false,
-  hasExplicitTaskDevice,
   className,
   'aria-label': ariaLabel = 'Execution device',
 }: {
@@ -27,19 +21,11 @@ export function ExecutionDevicePicker({
   value: TaskExecutionDeviceRef | undefined;
   onChange: (ref: TaskExecutionDeviceRef) => void;
   disabled?: boolean;
-  cloudProject?: boolean;
-  /** When false on cloud tasks, shows “no local override” until the user picks a device. */
-  hasExplicitTaskDevice?: boolean;
   className?: string;
   'aria-label'?: string;
 }) {
   const options = useMemo(() => buildDevicePickerOptions(devices), [devices]);
   const selectedKey = value ? refKey(value) : '';
-  const availability = deviceAvailabilityForRef(devices, value, {
-    cloudProject,
-    hasExplicitTaskDevice: hasExplicitTaskDevice ?? Boolean(value),
-  });
-  const hint = deviceAvailabilityHint(availability);
 
   return (
     <div className="min-w-0">
@@ -69,20 +55,6 @@ export function ExecutionDevicePicker({
           </option>
         ))}
       </select>
-      {hint ? (
-        <p className="mt-1.5 text-[11px] leading-snug text-amber-200/85" role="status">
-          {hint}
-          {cloudProject ? (
-            <span className="mt-1 block text-zinc-500">
-              SSH device choices are stored on this computer only and are not shared with teammates.
-            </span>
-          ) : null}
-        </p>
-      ) : cloudProject ? (
-        <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
-          Stored on this computer only — teammates do not see your SSH configuration.
-        </p>
-      ) : null}
     </div>
   );
 }

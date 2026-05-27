@@ -275,7 +275,6 @@ export default function NewTaskModal({
               devices={executionDevices}
               value={executionDevice}
               onChange={setExecutionDevice}
-              cloudProject={cloudProject}
               aria-label="Execution device for new task"
             />
           </div>

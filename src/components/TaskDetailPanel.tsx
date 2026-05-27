@@ -1572,8 +1572,6 @@ export default function TaskDetailPanel({
                       value={task.executionDevice ?? resolvedDevice}
                       onChange={(ref) => onUpdate(task.id, { executionDevice: ref })}
                       disabled={!isTaskExecutionDeviceEditable(session?.status)}
-                      cloudProject={cloudProject}
-                      hasExplicitTaskDevice={Boolean(task.executionDevice)}
                       aria-label="Execution device"
                     />
                   </div>
