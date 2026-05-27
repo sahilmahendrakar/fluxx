@@ -83,6 +83,7 @@ interface Props {
   /** Main-process `resolveTaskWorktreePath` result per task id (debounced in App). */
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  onTaskExecutionDeviceChange: (taskId: string, ref: TaskExecutionDeviceRef) => void;
   /** Open the task daemon session in a main-window tab (same as task detail “Open in tab”). */
   onOpenTaskWorkspaceTab: (taskId: string) => void;
   projectRepoReadiness: ProjectRepoReadiness;
@@ -123,6 +124,7 @@ export default function Board({
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onTaskExecutionDeviceChange,
   onOpenTaskWorkspaceTab,
   projectRepoReadiness,
   onOpenProjectSettings,
@@ -313,6 +315,7 @@ export default function Board({
               sessions={sessions}
               taskHasWorktreeById={taskHasWorktreeById}
               onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+              onTaskExecutionDeviceChange={onTaskExecutionDeviceChange}
               onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
               executionDevices={executionDevices}
               executionDeviceDefaults={executionDeviceDefaults}
