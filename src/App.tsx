@@ -3815,6 +3815,9 @@ export default function App() {
                         onTaskAgentSpawnPrefsChange={(id, patch) =>
                           void handleUpdateTask(id, patch)
                         }
+                        onTaskExecutionDeviceChange={(id, ref) =>
+                          void handleUpdateTask(id, { executionDevice: ref })
+                        }
                         onOpenTaskWorkspaceTab={handleOpenTaskWorkspaceFromBoard}
                         projectRepoReadiness={projectRepoReadiness}
                         onOpenProjectSettings={handleOpenProjectSettings}

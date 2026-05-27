@@ -15,9 +15,14 @@ import {
   Terminal,
   UserCircle2,
 } from 'lucide-react';
-import { ExecutionDeviceConfig, Task } from '../types';
-import { ExecutionDeviceChip } from './ExecutionDeviceChip';
+import {
+  ExecutionDeviceConfig,
+  SessionStatus,
+  Task,
+  type TaskExecutionDeviceRef,
+} from '../types';
 import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
+import { TaskCardExecutionDeviceMenu } from './TaskCardExecutionDeviceMenu';
 import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
 import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
@@ -235,6 +240,10 @@ interface Props {
   hasWorktree?: boolean;
   /** Persist agent / model / YOLO for this task (same fields as task detail & `fluxx tasks update`). */
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  /** Persist execution device for this task (same path as task detail picker). */
+  onTaskExecutionDeviceChange: (taskId: string, ref: TaskExecutionDeviceRef) => void;
+  /** Daemon session for this task (gates device edits while running). */
+  taskWorkspaceSessionStatus?: SessionStatus;
   /** True when a daemon session exists for this task (main-window session tab can be opened). */
   canOpenTaskWorkspaceTab: boolean;
   /** Opens the task’s daemon session in a main-window tab (same as task detail “Open in tab”). */
@@ -268,6 +277,8 @@ export default function TaskCard({
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
   onTaskAgentSpawnPrefsChange,
+  onTaskExecutionDeviceChange,
+  taskWorkspaceSessionStatus,
   canOpenTaskWorkspaceTab,
   onOpenTaskWorkspaceTab,
   executionDevices = [],
@@ -416,10 +427,13 @@ export default function TaskCard({
                     onPatch={(patch) => onTaskAgentSpawnPrefsChange(task.id, patch)}
                   />
                   {executionDevices.length > 0 && chipDeviceRef ? (
-                    <ExecutionDeviceChip
+                    <TaskCardExecutionDeviceMenu
                       devices={executionDevices}
                       deviceRef={chipDeviceRef}
+                      hasExplicitTaskDevice={Boolean(task.executionDevice)}
                       cloudProject={cloudProject}
+                      sessionStatus={taskWorkspaceSessionStatus}
+                      onPick={(ref) => onTaskExecutionDeviceChange(task.id, ref)}
                     />
                   ) : null}
                   <button

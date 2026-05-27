@@ -7,6 +7,7 @@ import {
   type CloudRepoBindingOverview,
   type ExecutionDeviceConfig,
   type RepoConfig,
+  type TaskExecutionDeviceRef,
 } from '../types';
 import {
   findRepoByIdOrPrimary,
@@ -52,6 +53,7 @@ interface Props {
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
+  onTaskExecutionDeviceChange: (taskId: string, ref: TaskExecutionDeviceRef) => void;
   onOpenTaskWorkspaceTab: (taskId: string) => void;
   executionDevices?: ExecutionDeviceConfig[];
   executionDeviceDefaults?: ExecutionDeviceDefaults;
@@ -87,6 +89,7 @@ export default function Column({
   sessions,
   taskHasWorktreeById,
   onTaskAgentSpawnPrefsChange,
+  onTaskExecutionDeviceChange,
   onOpenTaskWorkspaceTab,
   executionDevices,
   executionDeviceDefaults,
@@ -160,8 +163,8 @@ export default function Column({
                 );
                 const diskWorktree = taskHasWorktreeById[task.id] === true;
                 const hasWorktree = sessionWorktree || diskWorktree;
-                const canOpenTaskWorkspaceTab =
-                  selectSessionForTaskWorkspace(sessions, task.id) !== undefined;
+                const taskWorkspaceSession = selectSessionForTaskWorkspace(sessions, task.id);
+                const canOpenTaskWorkspaceTab = taskWorkspaceSession !== undefined;
                 const effectiveRepo =
                   showRepoBoardUi && projectRepos?.length
                     ? findRepoByIdOrPrimary(projectRepos, task.repoId)
@@ -206,6 +209,8 @@ export default function Column({
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
                     onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
+                    onTaskExecutionDeviceChange={onTaskExecutionDeviceChange}
+                    taskWorkspaceSessionStatus={taskWorkspaceSession?.status}
                     canOpenTaskWorkspaceTab={canOpenTaskWorkspaceTab}
                     onOpenTaskWorkspaceTab={onOpenTaskWorkspaceTab}
                     executionDevices={executionDevices}
