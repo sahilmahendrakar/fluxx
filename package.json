@@ -1,7 +1,7 @@
 {
   "name": "fluxx",
   "productName": "Fluxx",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Task-driven AI agent orchestration for developers",
   "main": ".vite/build/main.js",
   "packageManager": "pnpm@10.29.3",
