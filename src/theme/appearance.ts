@@ -6,6 +6,12 @@ export type ResolvedAppearance = 'light' | 'dark';
 
 export const DEFAULT_APPEARANCE_PREFERENCE: AppearancePreference = 'dark';
 
+export const APPEARANCE_PREFERENCE_LABELS: Record<AppearancePreference, string> = {
+  light: 'Light',
+  dark: 'Dark',
+  system: 'System',
+};
+
 export interface AppearanceBootstrap {
   preference: AppearancePreference;
   resolved: ResolvedAppearance;

@@ -95,6 +95,7 @@ body,
 /* macOS custom title bar (`hiddenInset`): native drag chrome is gone. */
 .app-window-drag {
   -webkit-app-region: drag;
+  @apply border-b border-border/40 bg-background;
 }
 
 .app-window-no-drag {
