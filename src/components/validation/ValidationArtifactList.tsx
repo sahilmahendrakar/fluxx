@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ExternalLink, FileText, Film, ImageIcon, ScrollText, Workflow } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import type { ValidationArtifactKind, ValidationArtifactView } from '../../validationRuns/types';
 import {
   validationArtifactCanPreviewInline,
@@ -126,7 +130,7 @@ export default function ValidationArtifactList({
 
   if (artifacts.length === 0) {
     return (
-      <p className="text-xs text-zinc-600">
+      <p className="text-xs text-muted-foreground">
         No artifacts recorded yet. Artifacts appear here after the validator finishes and the verdict
         is ingested.
       </p>
@@ -134,97 +138,98 @@ export default function ValidationArtifactList({
   }
 
   return (
-    <div className="space-y-3">
-      <ul className="space-y-1.5" role="list">
+    <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-1.5" role="list">
         {artifacts.map((artifact) => {
           const Icon = artifactKindIcon(artifact.kind);
           const selectedRow = selectedId === artifact.id;
           const missing = artifact.fileState === 'missing';
           const unreadable = artifact.fileState === 'unreadable';
           return (
-            <li
-              key={artifact.id}
-              className={`rounded-lg border px-3 py-2 ${
-                selectedRow
-                  ? 'border-white/[0.12] bg-white/[0.04]'
-                  : 'border-white/[0.06] bg-white/[0.02]'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedId((cur) => (cur === artifact.id ? null : artifact.id))}
-                  className="min-w-0 flex-1 text-left"
-                  aria-expanded={selectedRow}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" strokeWidth={2} aria-hidden />
-                    <span className="truncate text-[13px] font-medium text-zinc-200">{artifact.label}</span>
-                  </span>
-                  <span className="mt-0.5 block text-[11px] text-zinc-500">
-                    {artifactKindLabel(artifact.kind)}
-                    {missing ? ' · Missing on disk' : null}
-                    {unreadable ? ' · Unreadable' : null}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleOpenExternally(artifact)}
-                  disabled={missing || unreadable}
-                  title={
-                    missing
-                      ? 'File missing on disk'
-                      : unreadable
-                        ? 'File unreadable'
-                        : 'Open in default app'
-                  }
-                  className="shrink-0 rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={`Open ${artifact.label} externally`}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                </button>
-              </div>
+            <li key={artifact.id}>
+              <Card
+                className={cn(
+                  'py-0 shadow-none',
+                  selectedRow ? 'border-primary/30 bg-accent/50' : '',
+                )}
+              >
+                <CardContent className="flex items-start justify-between gap-2 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId((cur) => (cur === artifact.id ? null : artifact.id))}
+                    className="min-w-0 flex-1 text-left"
+                    aria-expanded={selectedRow}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} aria-hidden />
+                      <span className="truncate text-sm font-medium">{artifact.label}</span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {artifactKindLabel(artifact.kind)}
+                      {missing ? ' · Missing on disk' : null}
+                      {unreadable ? ' · Unreadable' : null}
+                    </span>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0"
+                    onClick={() => void handleOpenExternally(artifact)}
+                    disabled={missing || unreadable}
+                    title={
+                      missing
+                        ? 'File missing on disk'
+                        : unreadable
+                          ? 'File unreadable'
+                          : 'Open in default app'
+                    }
+                    aria-label={`Open ${artifact.label} externally`}
+                  >
+                    <ExternalLink strokeWidth={2} aria-hidden />
+                  </Button>
+                </CardContent>
+              </Card>
             </li>
           );
         })}
       </ul>
 
       {openError ? (
-        <p className="text-[11px] text-red-300/90" role="alert">
-          {openError}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription className="text-xs">{openError}</AlertDescription>
+        </Alert>
       ) : null}
 
       {selected ? (
-        <div className="rounded-xl border border-white/[0.08] bg-[#0c0c0e] p-3">
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-            Preview
-          </p>
-          {preview.status === 'loading' ? (
-            <p className="text-xs text-zinc-500">Loading artifact…</p>
-          ) : null}
-          {preview.status === 'error' ? (
-            <p className="text-xs leading-relaxed text-amber-200/90">{preview.message}</p>
-          ) : null}
-          {preview.status === 'utf8' ? (
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/[0.06] bg-[#09090b] p-2.5 font-mono text-[11px] leading-relaxed text-zinc-300">
-              {preview.content}
-            </pre>
-          ) : null}
-          {preview.status === 'image' ? (
-            <img
-              src={preview.src}
-              alt={preview.alt}
-              className="max-h-80 w-full rounded-lg border border-white/[0.06] object-contain"
-            />
-          ) : null}
-          {preview.status === 'idle' && validationArtifactShouldOpenExternally(selected.kind) ? (
-            <p className="text-xs leading-relaxed text-zinc-500">
-              {artifactKindLabel(selected.kind)} files open externally in v1. Use the open button
-              above.
-            </p>
-          ) : null}
-        </div>
+        <Card className="shadow-none">
+          <CardContent className="p-3">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Preview</p>
+            {preview.status === 'loading' ? (
+              <p className="text-xs text-muted-foreground">Loading artifact…</p>
+            ) : null}
+            {preview.status === 'error' ? (
+              <p className="text-xs leading-relaxed text-status-needs-input-foreground">{preview.message}</p>
+            ) : null}
+            {preview.status === 'utf8' ? (
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/50 p-2.5 font-mono text-[11px] leading-relaxed">
+                {preview.content}
+              </pre>
+            ) : null}
+            {preview.status === 'image' ? (
+              <img
+                src={preview.src}
+                alt={preview.alt}
+                className="max-h-80 w-full rounded-lg border border-border object-contain"
+              />
+            ) : null}
+            {preview.status === 'idle' && validationArtifactShouldOpenExternally(selected.kind) ? (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {artifactKindLabel(selected.kind)} files open externally in v1. Use the open button above.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   );

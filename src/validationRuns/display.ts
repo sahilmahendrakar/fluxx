@@ -123,19 +123,19 @@ export function validationBoardBadgeShortLabel(status: ValidationBoardBadgeStatu
 export function validationBoardBadgeClass(status: ValidationBoardBadgeStatus): string {
   switch (status) {
     case 'not-run':
-      return 'border-white/[0.08] bg-white/[0.03] text-zinc-500';
+      return 'border-border bg-muted text-muted-foreground';
     case 'running':
-      return 'border-sky-500/30 bg-sky-500/[0.1] text-sky-200/95';
+      return 'border-status-review/30 bg-status-review/15 text-status-review-foreground';
     case 'passed':
-      return 'border-emerald-500/30 bg-emerald-500/[0.1] text-emerald-200/95';
+      return 'border-status-success/30 bg-status-success/15 text-status-success-foreground';
     case 'failed':
-      return 'border-red-500/30 bg-red-500/[0.1] text-red-200/95';
+      return 'border-destructive/30 bg-destructive/15 text-destructive';
     case 'review-needed':
-      return 'border-amber-500/30 bg-amber-500/[0.1] text-amber-200/95';
+      return 'border-status-needs-input/30 bg-status-needs-input/15 text-status-needs-input-foreground';
     case 'errored':
-      return 'border-orange-500/30 bg-orange-500/[0.1] text-orange-200/95';
+      return 'border-status-needs-input/30 bg-status-needs-input/10 text-status-needs-input-foreground';
     default:
-      return 'border-white/[0.08] bg-white/[0.03] text-zinc-500';
+      return 'border-border bg-muted text-muted-foreground';
   }
 }
 
@@ -164,19 +164,19 @@ export function validationRunStatusDetailClass(status: ValidationRunStatus): str
   switch (status) {
     case 'queued':
     case 'running':
-      return 'text-sky-200/95';
+      return 'text-status-review';
     case 'passed':
-      return 'text-emerald-200/95';
+      return 'text-status-success';
     case 'failed':
-      return 'text-red-200/95';
+      return 'text-destructive';
     case 'needs-human-review':
-      return 'text-amber-200/95';
+      return 'text-status-needs-input';
     case 'errored':
-      return 'text-orange-200/95';
+      return 'text-status-needs-input';
     case 'cancelled':
-      return 'text-zinc-500';
+      return 'text-muted-foreground';
     default:
-      return 'text-zinc-300';
+      return 'text-foreground';
   }
 }
 

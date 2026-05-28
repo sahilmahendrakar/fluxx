@@ -28,6 +28,9 @@ import {
   updateCloudProjectValidationEnabled,
 } from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
@@ -184,12 +187,12 @@ function AutomationSettingRow({
     <div className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h3 id={titleId} className="text-[13px] font-medium text-zinc-200">
+          <h3 id={titleId} className="text-[13px] font-medium text-foreground">
             {title}
           </h3>
           <button
             type="button"
-            className="mt-1.5 text-left text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+            className="mt-1.5 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
             aria-expanded={detailsOpen}
             aria-controls={detailsId}
             onClick={() => setDetailsOpen((o) => !o)}
@@ -201,7 +204,7 @@ function AutomationSettingRow({
             role="region"
             aria-labelledby={titleId}
             hidden={!detailsOpen}
-            className="mt-2 text-[12px] leading-snug text-zinc-500"
+            className="mt-2 text-[12px] leading-snug text-muted-foreground"
           >
             {description}
           </div>
@@ -216,13 +219,13 @@ function AutomationSettingRow({
       </div>
       <div className="mt-2 min-h-4 text-[11px]">
         {loading ? (
-          <span className="text-zinc-600">Loading…</span>
+          <span className="text-muted-foreground">Loading…</span>
         ) : saveState === 'saving' ? (
-          <span className="text-zinc-500">Saving…</span>
+          <span className="text-muted-foreground">Saving…</span>
         ) : saveState === 'saved' ? (
-          <span className="text-emerald-400">Saved</span>
+          <span className="text-status-success">Saved</span>
         ) : error ? (
-          <span className="text-red-400">{error}</span>
+          <span className="text-destructive">{error}</span>
         ) : null}
       </div>
     </div>
@@ -318,8 +321,8 @@ function CategoryButton({
       className={[
         'w-full rounded-md px-2 py-1.5 text-left text-[13.5px] transition-colors',
         active
-          ? 'bg-white/[0.04] text-zinc-300'
-          : 'text-zinc-600 hover:bg-white/[0.02] hover:text-zinc-400',
+          ? 'bg-muted text-foreground'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
       ].join(' ')}
     >
       {label}
@@ -406,28 +409,28 @@ function GlobalSettingsPane() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
-        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">Global</h1>
-        <p className="mt-1 text-[13px] text-zinc-500">
+        <h1 className="text-[18px] font-semibold tracking-tight text-foreground">Global</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Preferences stored for Fluxx on this Mac. They apply across all projects.
         </p>
 
         <section
-          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          className="mt-6 rounded-xl border border-border bg-card px-4"
           aria-labelledby="global-settings-notifications-heading"
         >
-          <div className="border-b border-white/[0.06] py-4">
+          <div className="border-b border-border py-4">
             <h2
               id="global-settings-notifications-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
             >
               Notifications
             </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
               macOS alerts when Fluxx moves a task automatically (not when you drag cards or submit
               queries).
             </p>
           </div>
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-border">
             <AutomationSettingRow
               key="global-auto-notify-enabled"
               title="Automatic task status notifications"
@@ -1340,39 +1343,39 @@ function ProjectConfigPane({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-8 py-10">
-        <h1 className="text-[18px] font-semibold tracking-tight text-zinc-100">
+        <h1 className="text-[18px] font-semibold tracking-tight text-foreground">
           Project
         </h1>
-        <p className="mt-1 text-[13px] text-zinc-500">
+        <p className="mt-1 text-[13px] text-muted-foreground">
           Configure how new task workspaces are created for {project.name}.
         </p>
 
         <section
-          className="mt-6 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          className="mt-6 rounded-xl border border-border bg-card px-4"
           aria-labelledby="project-settings-automations-heading"
         >
-          <div className="border-b border-white/[0.06] py-4">
+          <div className="border-b border-border py-4">
             <h2
               id="project-settings-automations-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
             >
               Automations
             </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
               Choose when sessions start automatically, when merged or open pull requests update the
               board, and when finished workspaces are cleaned up.
             </p>
           </div>
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-border">
             <AutomationSettingRow
               key={`${project.id}-auto-start-in-progress`}
               title="Auto-start sessions when tasks move from Backlog to In progress"
               description={
                 <>
                   Applies when a task leaves Backlog for In progress (board drag, task detail,{' '}
-                  <code className="text-zinc-400">fluxx tasks update</code>). Other columns into In
+                  <code className="text-muted-foreground">fluxx tasks update</code>). Other columns into In
                   progress do not auto-start from this setting.{' '}
-                  <code className="text-zinc-400">fluxx tasks start</code> always starts a session
+                  <code className="text-muted-foreground">fluxx tasks start</code> always starts a session
                   regardless of this setting.
                 </>
               }
@@ -1408,9 +1411,9 @@ function ProjectConfigPane({
                 <>
                   When on, Fluxx may answer the one-time trust dialog for Claude Code, Cursor, and
                   Codex only while the PTY working directory stays under this project’s{' '}
-                  <code className="text-zinc-400">worktrees/</code>,{' '}
-                  <code className="text-zinc-400">planning/</code>, or your{' '}
-                  <code className="text-zinc-400">~/.fluxx/worktrees</code> tree. Agents you launch
+                  <code className="text-muted-foreground">worktrees/</code>,{' '}
+                  <code className="text-muted-foreground">planning/</code>, or your{' '}
+                  <code className="text-muted-foreground">~/.fluxx/worktrees</code> tree. Agents you launch
                   manually outside Fluxx are never affected.
                 </>
               }
@@ -1486,22 +1489,22 @@ function ProjectConfigPane({
         </section>
 
         <section
-          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          className="mt-4 rounded-xl border border-border bg-card px-4"
           aria-labelledby="project-settings-sessions-heading"
         >
-          <div className="border-b border-white/[0.06] py-4">
+          <div className="border-b border-border py-4">
             <h2
               id="project-settings-sessions-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
             >
               Sessions
             </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
               Terminal persistence on this machine. SSH and remote runners will expose tmux
               separately per host in a later release.
             </p>
           </div>
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-border">
             <AutomationSettingRow
               key={`${project.id}-persist-tmux`}
               title="Persist terminals with tmux"
@@ -1509,7 +1512,7 @@ function ProjectConfigPane({
                 <>
                   When on, Fluxx starts task agents, planning assistants, and terminal panes in
                   Fluxx-owned tmux sessions so they can survive a full app quit. Requires{' '}
-                  <code className="text-zinc-400">tmux</code> on PATH. Fluxx will reattach
+                  <code className="text-muted-foreground">tmux</code> on PATH. Fluxx will reattach
                   terminals on reopen when possible and fall back to agent resume for task/planning
                   agents if reattach fails. Turning on affects new terminals only; existing
                   direct PTYs stay as-is until restarted. On macOS with tmux mouse mode,
@@ -1535,14 +1538,14 @@ function ProjectConfigPane({
           </div>
         </section>
 
-        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
-          <h2 className="text-[13px] font-medium text-zinc-200">Default agents</h2>
-          <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+        <section className="mt-4 rounded-xl border border-border bg-card px-4 py-3">
+          <h2 className="text-[13px] font-medium text-foreground">Default agents</h2>
+          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
             These apply to this project on this machine. Each row sets the default agent, the same
             model dropdown as tasks (choices follow the selected provider), and optional YOLO (
-            <span className="font-mono text-zinc-400">--yolo</span> /{' '}
-            <span className="font-mono text-zinc-400">--dangerously-skip-permissions</span> /{' '}
-            <span className="font-mono text-zinc-400">--dangerously-bypass-approvals-and-sandbox</span>
+            <span className="font-mono text-muted-foreground">--yolo</span> /{' '}
+            <span className="font-mono text-muted-foreground">--dangerously-skip-permissions</span> /{' '}
+            <span className="font-mono text-muted-foreground">--dangerously-bypass-approvals-and-sandbox</span>
             ). Agent
             changes save immediately; use Save on the same row to persist models and YOLO for that
             flow.
@@ -1552,16 +1555,16 @@ function ProjectConfigPane({
             <div>
               <label
                 htmlFor="project-settings-planning-agent"
-                className="text-[12px] font-medium text-zinc-300"
+                className="text-[12px] font-medium text-foreground"
               >
                 Planning assistant
               </label>
-              <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                 Same defaults as the Planning panel.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     Agent
                   </span>
                   <select
@@ -1583,7 +1586,7 @@ function ProjectConfigPane({
                   </select>
                 </div>
                 <div className="flex min-w-0 flex-1 basis-[8rem] flex-col gap-0.5 sm:max-w-xs">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     Model
                   </span>
                   {agentModelUiKindForAgent(planningAgentValue) ? (
@@ -1613,7 +1616,7 @@ function ProjectConfigPane({
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
-                    className="text-[10px] text-zinc-500"
+                    className="text-[10px] text-muted-foreground"
                     title="Fewer permission prompts for planning spawns (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
@@ -1636,37 +1639,37 @@ function ProjectConfigPane({
               </div>
               <div className="mt-1.5 flex min-h-4 flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
                 {planningAgentSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Agent: saving…</span>
+                  <span className="text-muted-foreground">Agent: saving…</span>
                 ) : planningAgentSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Agent: saved</span>
+                  <span className="text-status-success">Agent: saved</span>
                 ) : planningAgentError ? (
-                  <span className="text-red-400">Agent: {planningAgentError}</span>
+                  <span className="text-destructive">Agent: {planningAgentError}</span>
                 ) : null}
                 {planSpawnSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Models/YOLO: saving…</span>
+                  <span className="text-muted-foreground">Models/YOLO: saving…</span>
                 ) : planSpawnSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Models/YOLO: saved</span>
+                  <span className="text-status-success">Models/YOLO: saved</span>
                 ) : planSpawnError ? (
-                  <span className="text-red-400">Models/YOLO: {planSpawnError}</span>
+                  <span className="text-destructive">Models/YOLO: {planSpawnError}</span>
                 ) : null}
               </div>
             </div>
 
-            <div className="border-t border-white/[0.06] pt-4">
+            <div className="border-t border-border pt-4">
               <label
                 htmlFor="project-settings-default-task-agent"
-                className="text-[12px] font-medium text-zinc-300"
+                className="text-[12px] font-medium text-foreground"
               >
                 Default task agent
               </label>
-              <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                 New tasks and{' '}
-                <code className="font-mono text-zinc-500">fluxx tasks create</code> when no agent is
+                <code className="font-mono text-muted-foreground">fluxx tasks create</code> when no agent is
                 given.
               </p>
               <div className="mt-2 flex flex-wrap items-end gap-2">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     Agent
                   </span>
                   <select
@@ -1688,7 +1691,7 @@ function ProjectConfigPane({
                   </select>
                 </div>
                 <div className="flex min-w-0 flex-1 basis-[8rem] flex-col gap-0.5 sm:max-w-xs">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     Model
                   </span>
                   {agentModelUiKindForAgent(defaultTaskAgentValue) ? (
@@ -1718,7 +1721,7 @@ function ProjectConfigPane({
                 </div>
                 <div className="flex h-[34px] shrink-0 items-center gap-1.5 self-end pb-0.5">
                   <span
-                    className="text-[10px] text-zinc-500"
+                    className="text-[10px] text-muted-foreground"
                     title="Default for new tasks when YOLO is not set on the task (Cursor --yolo; Claude --dangerously-skip-permissions; Codex --yolo / --dangerously-bypass-approvals-and-sandbox)"
                   >
                     YOLO?
@@ -1741,31 +1744,31 @@ function ProjectConfigPane({
               </div>
               <div className="mt-1.5 flex min-h-4 flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
                 {defaultTaskAgentSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Agent: saving…</span>
+                  <span className="text-muted-foreground">Agent: saving…</span>
                 ) : defaultTaskAgentSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Agent: saved</span>
+                  <span className="text-status-success">Agent: saved</span>
                 ) : defaultTaskAgentError ? (
-                  <span className="text-red-400">Agent: {defaultTaskAgentError}</span>
+                  <span className="text-destructive">Agent: {defaultTaskAgentError}</span>
                 ) : null}
                 {taskSpawnSaveState === 'saving' ? (
-                  <span className="text-zinc-500">Models/YOLO: saving…</span>
+                  <span className="text-muted-foreground">Models/YOLO: saving…</span>
                 ) : taskSpawnSaveState === 'saved' ? (
-                  <span className="text-emerald-400">Models/YOLO: saved</span>
+                  <span className="text-status-success">Models/YOLO: saved</span>
                 ) : taskSpawnError ? (
-                  <span className="text-red-400">Models/YOLO: {taskSpawnError}</span>
+                  <span className="text-destructive">Models/YOLO: {taskSpawnError}</span>
                 ) : null}
               </div>
             </div>
           </div>
         </section>
 
-        <section className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+        <section className="mt-4 rounded-xl border border-border bg-card px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-[13px] font-medium text-zinc-200">MCP servers</h2>
-              <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+              <h2 className="text-[13px] font-medium text-foreground">MCP servers</h2>
+              <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground">
                 Add provider configs for Fluxx-launched Claude and Cursor sessions. Paste a full
-                MCP config or a single server entry; <code className="text-zinc-400">fluxx</code>{' '}
+                MCP config or a single server entry; <code className="text-muted-foreground">fluxx</code>{' '}
                 is reserved and managed by Fluxx.
               </p>
             </div>
@@ -1783,13 +1786,13 @@ function ProjectConfigPane({
             </button>
           </div>
           {mcpConfigPath ? (
-            <p className="mt-2 truncate font-mono text-[10px] text-zinc-600" title={mcpConfigPath}>
+            <p className="mt-2 truncate font-mono text-[10px] text-muted-foreground" title={mcpConfigPath}>
               {mcpConfigPath}
             </p>
           ) : null}
           {addMcpOpen ? (
-            <div className="mt-3 rounded-lg border border-white/[0.08] bg-black/20 p-3">
-              <label className="text-[11px] font-medium text-zinc-300" htmlFor="project-settings-add-mcp">
+            <div className="mt-3 rounded-lg border border-border bg-muted/50 p-3">
+              <label className="text-[11px] font-medium text-foreground" htmlFor="project-settings-add-mcp">
                 Paste MCP config
               </label>
               <textarea
@@ -1804,7 +1807,7 @@ function ProjectConfigPane({
                 }}
                 disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
                 spellCheck={false}
-                className="mt-2 min-h-[150px] w-full resize-y rounded-md border border-white/[0.08] bg-[#09090b]/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-200 outline-none transition placeholder:text-zinc-700 focus:border-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-2 min-h-[150px] w-full resize-y rounded-md border border-border bg-background/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
                 placeholder={`{\n  "mcpServers": {\n    "notion": {\n      "url": "https://mcp.notion.com/mcp"\n    }\n  }\n}\n\nor\n\n"notion": {\n  "url": "https://mcp.notion.com/mcp"\n}`}
               />
               <div className="mt-2 flex justify-end">
@@ -1825,21 +1828,21 @@ function ProjectConfigPane({
           ) : null}
           <button
             type="button"
-            className="mt-3 text-left text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+            className="mt-3 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setMcpConfigExpanded((open) => !open)}
             aria-expanded={mcpConfigExpanded}
           >
             {mcpConfigExpanded ? 'Hide mcp.json' : 'Show mcp.json'}
           </button>
           {mcpConfigExpanded ? (
-            <div className="mt-2 rounded-lg border border-white/[0.08] bg-black/20 p-3">
+            <div className="mt-2 rounded-lg border border-border bg-muted/50 p-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[11px] font-medium text-zinc-300">Edit mcp.json</span>
+                <span className="text-[11px] font-medium text-foreground">Edit mcp.json</span>
                 <button
                   type="button"
                   disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
                   onClick={() => void handleSaveMcpConfig()}
-                  className="h-[28px] rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-[28px] rounded-md border border-border bg-muted px-2.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {mcpConfigSaveState === 'saving' ? 'Saving...' : 'Save file'}
                 </button>
@@ -1855,23 +1858,23 @@ function ProjectConfigPane({
                 }}
                 disabled={mcpConfigLoading || mcpConfigSaveState === 'saving'}
                 spellCheck={false}
-                className="mt-2 min-h-[220px] w-full resize-y rounded-md border border-white/[0.08] bg-[#09090b]/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-zinc-200 outline-none transition focus:border-emerald-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-2 min-h-[220px] w-full resize-y rounded-md border border-border bg-background/80 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
           ) : null}
-          <p className="mt-2 text-[11px] leading-snug text-zinc-600">
+          <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
             Stored only on this machine for the active Fluxx project. Environment variables in MCP
             server configs are not synced to teammates.
           </p>
           <div className="mt-1.5 min-h-4 text-[11px]">
             {mcpConfigLoading ? (
-              <span className="text-zinc-500">Loading…</span>
+              <span className="text-muted-foreground">Loading…</span>
             ) : mcpConfigSaveState === 'saving' ? (
-              <span className="text-zinc-500">Saving…</span>
+              <span className="text-muted-foreground">Saving…</span>
             ) : mcpConfigSaveState === 'saved' ? (
-              <span className="text-emerald-400">Saved</span>
+              <span className="text-status-success">Saved</span>
             ) : mcpConfigError ? (
-              <span className="text-red-400">{mcpConfigError}</span>
+              <span className="text-destructive">{mcpConfigError}</span>
             ) : null}
           </div>
         </section>
@@ -1879,23 +1882,23 @@ function ProjectConfigPane({
         <section className="mt-8">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-[13px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              <h2 className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                 {multiRepoCloudBindingsEnabled ? 'Team repositories' : 'Repositories'}
               </h2>
               {multiRepoCloudBindingsEnabled ? (
-                <p className="mt-1 text-[12px] leading-snug text-zinc-600">
+                <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
                   Shared metadata comes from the cloud project. Bind each repo to a local clone on
                   this machine so agents and git operations can run. Paths are stored only in your
                   local Fluxx data, not synced to teammates.
                 </p>
               ) : multiRepoLocalManagementEnabled ? (
-                <p className="mt-1 text-[12px] leading-snug text-zinc-600">
+                <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
                   Manage the local git repositories attached to this project.
                 </p>
               ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="text-[11px] text-zinc-600">
+              <span className="text-[11px] text-muted-foreground">
                 {multiRepoCloudBindingsEnabled
                   ? `${project.kind === 'cloud' ? project.sharedRepos.length : 0} shared`
                   : `${repos?.length ?? 0} ${repos?.length === 1 ? 'repo' : 'repos'}`}
@@ -1905,7 +1908,7 @@ function ProjectConfigPane({
                   type="button"
                   onClick={() => void handleAddRepo()}
                   disabled={addRepoState === 'saving'}
-                  className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-50"
+                  className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                 >
                   {addRepoState === 'saving' ? 'Adding…' : 'Add repo'}
                 </button>
@@ -1914,7 +1917,7 @@ function ProjectConfigPane({
                   type="button"
                   onClick={() => void handleAddCloudRepo()}
                   disabled={addRepoState === 'saving'}
-                  className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-50"
+                  className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
                 >
                   {addRepoState === 'saving' ? 'Adding…' : 'Add repo'}
                 </button>
@@ -1936,7 +1939,7 @@ function ProjectConfigPane({
           ) : (
             <>
               {loadError ? (
-                <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+                <p className="mt-4 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-destructive">
                   {loadError}
                 </p>
               ) : null}
@@ -1944,8 +1947,8 @@ function ProjectConfigPane({
                 <p
                   className={`mt-3 rounded-md border px-3 py-2 text-[12px] ${
                     addRepoError
-                      ? 'border-red-500/30 bg-red-500/[0.06] text-red-300'
-                      : 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
+                      ? 'border-red-500/30 bg-red-500/[0.06] text-destructive'
+                      : 'border-emerald-500/20 bg-emerald-500/[0.06] text-status-success'
                   }`}
                 >
                   {addRepoError ?? 'Repository added.'}
@@ -1954,7 +1957,7 @@ function ProjectConfigPane({
 
               <div className="mt-3 flex flex-col gap-2">
                 {repos === null && !loadError ? (
-                  <p className="px-3 py-4 text-[12px] text-zinc-600">Loading…</p>
+                  <p className="px-3 py-4 text-[12px] text-muted-foreground">Loading…</p>
                 ) : (
                   repos?.map((repo, index) => {
                     const key = multiRepoLocalManagementEnabled ? repo.id : repo.rootPath;
@@ -1994,22 +1997,22 @@ function ProjectConfigPane({
         </section>
 
         <section
-          className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4"
+          className="mt-4 rounded-xl border border-border bg-card px-4"
           aria-labelledby="project-settings-experimental-heading"
         >
-          <div className="border-b border-white/[0.06] py-4">
+          <div className="border-b border-border py-4">
             <h2
               id="project-settings-experimental-heading"
-              className="text-[14px] font-semibold tracking-tight text-zinc-100"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
             >
               Experimental
             </h2>
-            <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
               Early features that may change. Validation requires Playwright and a working Electron
               dev launch on this machine.
             </p>
           </div>
-          <div className="divide-y divide-white/[0.06]">
+          <div className="divide-y divide-border">
             <AutomationSettingRow
               key={`${project.id}-validation-enabled`}
               title="Validation Agents"
@@ -2017,7 +2020,7 @@ function ProjectConfigPane({
                 <>
                   When on, tasks can use validation runs, validator agents, and planning guidance
                   for the Electron Playwright pack. When off, validation UI and{' '}
-                  <code className="text-zinc-400">fluxx validation</code> commands are disabled for
+                  <code className="text-muted-foreground">fluxx validation</code> commands are disabled for
                   this project. For cloud projects this setting is shared with your team.
                 </>
               }
@@ -2038,7 +2041,7 @@ function ProjectConfigPane({
 function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBindingStatus }) {
   if (status.kind === 'missing_binding') {
     return (
-      <span className="rounded-full border border-zinc-500/25 bg-zinc-500/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400">
+      <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
         Missing local path
       </span>
     );
@@ -2048,13 +2051,13 @@ function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBinding
   }
   if (status.pathStatus === 'missing') {
     return (
-      <span className="rounded-full border border-red-500/25 bg-red-500/[0.06] px-1.5 py-0.5 text-[10px] text-red-300">
+      <span className="rounded-full border border-red-500/25 bg-red-500/[0.06] px-1.5 py-0.5 text-[10px] text-destructive">
         Path missing
       </span>
     );
   }
   return (
-    <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-amber-300">
+    <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
       Not a git repo
     </span>
   );
@@ -2155,11 +2158,11 @@ function CloudTeamReposBindingsSection({
     return (
       <div className="mt-4">
         {displayedActionError ? (
-          <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+          <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-destructive">
             {displayedActionError}
           </p>
         ) : null}
-        <p className="text-[12px] text-zinc-500">
+        <p className="text-[12px] text-muted-foreground">
           No shared repositories are listed for this cloud project yet. Use Add repo to add
           one to the team project and bind it on this machine.
         </p>
@@ -2170,16 +2173,16 @@ function CloudTeamReposBindingsSection({
   return (
     <div className="mt-3 flex flex-col gap-2">
       {loadError ? (
-        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-destructive">
           {loadError}
         </p>
       ) : null}
       {displayedActionError ? (
-        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-red-300">
+        <p className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-3 py-2 text-[12px] text-destructive">
           {displayedActionError}
         </p>
       ) : addRepoActionSaved ? (
-        <p className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-[12px] text-emerald-300">
+        <p className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-[12px] text-status-success">
           Repository added.
         </p>
       ) : null}
@@ -2190,7 +2193,7 @@ function CloudTeamReposBindingsSection({
         return (
           <div
             key={sr.id}
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02]"
+            className="rounded-xl border border-border bg-card"
           >
             <button
               type="button"
@@ -2202,27 +2205,27 @@ function CloudTeamReposBindingsSection({
             >
               <div className="flex min-w-0 flex-1 gap-2">
                 <ChevronRight
-                  className={`mt-0.5 shrink-0 text-zinc-500 transition-transform ${
+                  className={`mt-0.5 shrink-0 text-muted-foreground transition-transform ${
                     isExpanded ? 'rotate-90' : ''
                   }`}
                 />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[13px] font-medium text-zinc-200">{sr.name}</span>
+                  <span className="text-[13px] font-medium text-foreground">{sr.name}</span>
                   {index === 0 ? (
-                    <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+                    <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-status-success">
                       Primary
                     </span>
                   ) : null}
                   {st ? (
                     <CloudRepoBindingStatusBadge status={st} />
                   ) : (
-                    <span className="text-[10px] text-zinc-600">…</span>
+                    <span className="text-[10px] text-muted-foreground">…</span>
                   )}
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-500">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   Base branch:{' '}
-                  <span className="font-mono text-zinc-400">{sr.baseBranch}</span>
+                  <span className="font-mono text-muted-foreground">{sr.baseBranch}</span>
                   {localRepoConfig?.setupScript ? ' · setup script' : ''}
                   {localRepoConfig?.env ? ' · .env' : ''}
                   {sr.remoteUrl ? (
@@ -2230,7 +2233,7 @@ function CloudTeamReposBindingsSection({
                       {' '}
                       ·{' '}
                       <span
-                        className="font-mono text-zinc-500"
+                        className="font-mono text-muted-foreground"
                         title={sr.remoteUrl}
                       >
                         {sr.remoteUrl.length > 56 ? `${sr.remoteUrl.slice(0, 54)}…` : sr.remoteUrl}
@@ -2240,7 +2243,7 @@ function CloudTeamReposBindingsSection({
                 </p>
                 {st?.kind === 'bound' ? (
                   <p
-                    className="mt-1 truncate font-mono text-[11px] text-zinc-600"
+                    className="mt-1 truncate font-mono text-[11px] text-muted-foreground"
                     title={st.rootPath}
                   >
                     {st.rootPath}
@@ -2250,7 +2253,7 @@ function CloudTeamReposBindingsSection({
               </div>
             </button>
             {isExpanded ? (
-              <div className="border-t border-white/[0.06] px-4 py-4">
+              <div className="border-t border-border px-4 py-4">
                 <CloudRepoFields
                   project={project}
                   repo={sr}
@@ -2265,12 +2268,12 @@ function CloudTeamReposBindingsSection({
                 />
               </div>
             ) : (
-              <div className="flex justify-end border-t border-white/[0.04] px-4 py-3">
+              <div className="flex justify-end border-t border-border px-4 py-3">
                 <button
                   type="button"
                   onClick={() => void handleBind(sr.id)}
                   disabled={actionRepoId === sr.id}
-                  className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
+                  className="shrink-0 rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                 >
                   {actionRepoId === sr.id
                     ? 'Working…'
@@ -2382,23 +2385,23 @@ function CloudRepoFields({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-3">
+      <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-[12px] font-medium text-zinc-300">Local folder (this Mac)</div>
+            <div className="text-[12px] font-medium text-foreground">Local folder (this Mac)</div>
             <p
-              className="mt-0.5 truncate font-mono text-[11px] text-zinc-600"
+              className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
               title={bindingCopy}
             >
               {bindingCopy}
             </p>
             {isLocallyBound && status.pathStatus === 'missing' ? (
-              <p className="mt-2 text-[11px] text-red-300">
+              <p className="mt-2 text-[11px] text-destructive">
                 This path no longer exists on disk. Bind a different folder.
               </p>
             ) : null}
             {isLocallyBound && status.pathStatus === 'not_git' ? (
-              <p className="mt-2 text-[11px] text-amber-300">
+              <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder is not a git repository root. Choose another folder.
               </p>
             ) : null}
@@ -2408,7 +2411,7 @@ function CloudRepoFields({
               type="button"
               onClick={onBindLocalFolder}
               disabled={bindLocalBusy}
-              className="shrink-0 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
+              className="shrink-0 rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
             >
               {bindLocalBusy
                 ? 'Working…'
@@ -2426,29 +2429,29 @@ function CloudRepoFields({
         projectDefaultDeviceId={project.defaultDeviceId}
       />
       <label className="block">
-        <span className="text-[12px] font-medium text-zinc-300">Display name</span>
+        <span className="text-[12px] font-medium text-foreground">Display name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1.5 w-full rounded-md border border-white/[0.08] bg-black/20 px-2.5 py-1.5 text-[13px] text-zinc-100 outline-none focus:border-white/[0.16]"
+          className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
       <label className="block">
-        <span className="text-[12px] font-medium text-zinc-300">Base branch</span>
+        <span className="text-[12px] font-medium text-foreground">Base branch</span>
         <input
           value={baseBranch}
           onChange={(e) => setBaseBranch(e.target.value)}
           placeholder="main"
-          className="mt-1.5 w-full rounded-md border border-white/[0.08] bg-black/20 px-2.5 py-1.5 font-mono text-[13px] text-zinc-100 outline-none focus:border-white/[0.16]"
+          className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
       <label className="block">
-        <span className="text-[12px] font-medium text-zinc-300">Remote origin</span>
+        <span className="text-[12px] font-medium text-foreground">Remote origin</span>
         <input
           value={remoteUrl}
           onChange={(e) => setRemoteUrl(e.target.value)}
           placeholder="https://github.com/org/repo.git"
-          className="mt-1.5 w-full rounded-md border border-white/[0.08] bg-black/20 px-2.5 py-1.5 font-mono text-[13px] text-zinc-100 outline-none focus:border-white/[0.16]"
+          className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
       <FieldEditor
@@ -2491,14 +2494,14 @@ function CloudRepoFields({
           type="button"
           onClick={() => void save()}
           disabled={saveState === 'saving'}
-          className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-50"
+          className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
         >
           {saveState === 'saving' ? 'Saving...' : 'Save repository'}
         </button>
         {error ? (
-          <span className="text-[11px] text-red-400">{error}</span>
+          <span className="text-[11px] text-destructive">{error}</span>
         ) : saveState === 'saved' ? (
-          <span className="text-[11px] text-emerald-400">Saved</span>
+          <span className="text-[11px] text-status-success">Saved</span>
         ) : null}
       </div>
     </div>
@@ -2534,7 +2537,7 @@ function RepoCard({
 }: RepoCardProps) {
   const label = repoDisplayLabelForSettings(repo);
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
+    <div className="rounded-xl border border-border bg-card">
       <button
         type="button"
         onClick={onToggle}
@@ -2542,7 +2545,7 @@ function RepoCard({
         aria-expanded={expanded}
       >
         <ChevronRight
-          className={`shrink-0 text-zinc-500 transition-transform ${
+          className={`shrink-0 text-muted-foreground transition-transform ${
             expanded ? 'rotate-90' : ''
           }`}
         />
@@ -2551,15 +2554,15 @@ function RepoCard({
             <span
               className={`truncate ${
                 multiRepoManagementEnabled
-                  ? 'text-[13px] font-medium text-zinc-200'
-                  : 'font-mono text-[12px] text-zinc-200'
+                  ? 'text-[13px] font-medium text-foreground'
+                  : 'font-mono text-[12px] text-foreground'
               }`}
               title={multiRepoManagementEnabled ? label : repo.rootPath}
             >
               {multiRepoManagementEnabled ? label : repo.rootPath}
             </span>
             {primary && multiRepoManagementEnabled ? (
-              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-status-success">
                 Primary
               </span>
             ) : null}
@@ -2567,7 +2570,7 @@ function RepoCard({
               <RepoStateBadge state={repoState} />
             ) : null}
           </div>
-          <div className="mt-0.5 truncate text-[11px] text-zinc-600">
+          <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
             {multiRepoManagementEnabled ? (
               <span className="font-mono" title={repo.rootPath}>
                 {repo.rootPath}
@@ -2581,7 +2584,7 @@ function RepoCard({
         </div>
       </button>
       {expanded ? (
-        <div className="border-t border-white/[0.06] px-4 py-4">
+        <div className="border-t border-border px-4 py-4">
           <RepoFields
             repo={repo}
             repoCount={repoCount}
@@ -2606,7 +2609,7 @@ function RepoStateBadge({ state }: { state: RepoManagementState }) {
 
   if (state.pathStatus === 'missing') {
     return (
-      <span className="rounded-full border border-red-500/25 bg-red-500/[0.06] px-1.5 py-0.5 text-[10px] text-red-300">
+      <span className="rounded-full border border-red-500/25 bg-red-500/[0.06] px-1.5 py-0.5 text-[10px] text-destructive">
         Missing path
       </span>
     );
@@ -2614,7 +2617,7 @@ function RepoStateBadge({ state }: { state: RepoManagementState }) {
 
   if (state.pathStatus === 'not_git') {
     return (
-      <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-amber-300">
+      <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
         Not a git repo
       </span>
     );
@@ -2693,13 +2696,13 @@ function RepoFields({
     <div className="flex flex-col gap-5">
       {multiRepoManagementEnabled ? (
         <>
-          <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[12px] font-medium text-zinc-300">
+                <div className="text-[12px] font-medium text-foreground">
                   Repository binding
                 </div>
-                <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-600" title={repo.rootPath}>
+                <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground" title={repo.rootPath}>
                   {repo.rootPath}
                 </p>
               </div>
@@ -2709,18 +2712,18 @@ function RepoFields({
                   type="button"
                   onClick={() => void handleSetPrimary()}
                   disabled={primary || actionState === 'saving'}
-                  className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45"
+                  className="rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-45"
                 >
                   {primary ? 'Primary repo' : 'Set primary'}
                 </button>
               </div>
             </div>
             {repoState?.pathStatus === 'missing' ? (
-              <p className="mt-2 text-[11px] text-red-300">
+              <p className="mt-2 text-[11px] text-destructive">
                 This path no longer exists on disk.
               </p>
             ) : repoState?.pathStatus === 'not_git' ? (
-              <p className="mt-2 text-[11px] text-amber-300">
+              <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder exists, but Fluxx cannot find a .git directory in it.
               </p>
             ) : null}
@@ -2781,13 +2784,13 @@ function RepoFields({
         onSaved={onSaved}
       />
       {multiRepoManagementEnabled ? (
-        <div className="border-t border-white/[0.06] pt-4">
+        <div className="border-t border-border pt-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[12px] font-medium text-zinc-300">
+              <div className="text-[12px] font-medium text-foreground">
                 Remove repository
               </div>
-              <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
                 Removes this repo from project settings. Files on disk are not deleted.
               </p>
             </div>
@@ -2801,12 +2804,12 @@ function RepoFields({
             </button>
           </div>
           {removalBlockCopy ? (
-            <p className="mt-2 text-[11px] text-amber-300">{removalBlockCopy}</p>
+            <p className="mt-2 text-[11px] text-status-needs-input">{removalBlockCopy}</p>
           ) : null}
           {actionError ? (
-            <p className="mt-2 text-[11px] text-red-400">{actionError}</p>
+            <p className="mt-2 text-[11px] text-destructive">{actionError}</p>
           ) : actionState === 'saved' ? (
-            <p className="mt-2 text-[11px] text-emerald-400">Saved</p>
+            <p className="mt-2 text-[11px] text-status-success">Saved</p>
           ) : null}
         </div>
       ) : null}
@@ -2914,58 +2917,57 @@ function FieldEditor({
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
-        <label className="text-[12px] font-medium text-zinc-300">{label}</label>
+        <label className="text-[12px] font-medium text-foreground">{label}</label>
         {sensitive ? (
           <button
             type="button"
             onClick={() => setRevealed((r) => !r)}
-            className="text-[11px] text-zinc-500 transition hover:text-zinc-300"
+            className="text-[11px] text-muted-foreground transition hover:text-foreground"
           >
             {revealed ? 'Hide' : 'Reveal'}
           </button>
         ) : null}
       </div>
-      <p className="mt-0.5 text-[11px] leading-snug text-zinc-600">{description}</p>
+      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{description}</p>
       {disabled && disabledReason ? (
-        <p className="mt-1 text-[11px] leading-snug text-amber-300">{disabledReason}</p>
+        <p className="mt-1 text-[11px] leading-snug text-status-needs-input">{disabledReason}</p>
       ) : null}
       <div className="mt-2">
         {multiline ? (
-          <textarea
+          <Textarea
             value={showMasked ? maskValue(value) : value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
             disabled={showMasked || disabled}
             rows={Math.min(10, Math.max(4, value.split('\n').length + 1))}
-            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 font-mono text-[12px] leading-relaxed text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12] disabled:opacity-60"
+            className="font-mono text-xs"
           />
         ) : (
-          <input
+          <Input
             type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
             disabled={disabled}
-            className="block w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
           />
         )}
       </div>
       <div className="mt-2 flex items-center justify-end gap-3">
         {state === 'error' && error ? (
-          <span className="text-[11px] text-red-400">{error}</span>
+          <span className="text-[11px] text-destructive">{error}</span>
         ) : state === 'saved' ? (
-          <span className="text-[11px] text-emerald-400">Saved</span>
+          <span className="text-[11px] text-status-success">Saved</span>
         ) : dirty ? (
-          <span className="text-[11px] text-zinc-500">Unsaved changes</span>
+          <span className="text-[11px] text-muted-foreground">Unsaved changes</span>
         ) : null}
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={() => void handleSave()}
           disabled={!dirty || state === 'saving' || showMasked || disabled}
-          className="rounded-md bg-white px-3 py-1 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-40"
         >
           {state === 'saving' ? 'Saving…' : 'Save'}
-        </button>
+        </Button>
       </div>
     </div>
   );
