@@ -8,6 +8,9 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { terminalFrameClass } from '@/components/terminal/TerminalChrome';
+import { cn } from '@/lib/utils';
+import { xtermThemeForSurface } from '../terminal/xtermTheme';
 import { installMacShiftDragSelectionBypass } from './terminalSelectionBypass';
 import {
   containerHasUsableSize,
@@ -114,15 +117,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     }
 
     const term = new XTerm({
-      theme: {
-        background: '#09090b',
-        foreground: '#d4d4d8',
-        cursor: hideCursor ? 'rgba(0,0,0,0)' : '#a1a1aa',
-        cursorAccent: '#09090b',
-        selectionBackground: 'rgba(255,255,255,0.12)',
-        black: '#09090b',
-        brightBlack: '#52525b',
-      },
+      theme: xtermThemeForSurface({ hideCursor }),
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: 12,
       // Keep at xterm.js's default of 1.0. TUIs (claude-code's banner, fzf
@@ -392,7 +387,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
 
   if (!sessionId) {
     return (
-      <div className="flex h-full items-center justify-center px-4 text-center text-[13px] leading-relaxed text-zinc-600">
+      <div className="flex h-full items-center justify-center px-4 text-center text-[13px] leading-relaxed text-status-terminal-foreground/50">
         No active session — start a session to use the terminal.
       </div>
     );
@@ -401,10 +396,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   return (
     <div
       ref={containerRef}
-      className={[
-        'flex h-full min-h-0 w-full min-w-0 flex-col rounded-md border border-white/[0.06] bg-[#09090b]',
-        autoFit ? 'overflow-hidden' : 'overflow-auto',
-      ].join(' ')}
+      className={cn(terminalFrameClass, autoFit ? 'overflow-hidden' : 'overflow-auto')}
     />
   );
 });

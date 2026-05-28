@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  TerminalEmptyState,
+  TerminalStatusBanner,
+  terminalWorkspaceShellClass,
+} from '@/components/terminal/TerminalChrome';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { labelForModelId } from '../agentModelUi';
 import {
@@ -463,24 +471,27 @@ export function PlanningPanel({
   const resumeActions =
     activeSession && activeResumable ? (
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
+        <Button
           type="button"
+          size="sm"
           disabled={loading || !planningApi}
           onClick={() => void handleResume(activeSession)}
           title={planningResumeButtonTitle(activeSession.agentConversationId)}
-          className="rounded-md bg-emerald-900 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-800 disabled:opacity-50"
+          className="bg-status-success text-status-success-foreground hover:bg-status-success/90"
         >
           {loading ? 'Starting…' : 'Resume'}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
           disabled={loading || !planningApi}
           onClick={() => void handleStart()}
           title="Start a new planning session with the agent and model chosen in the header"
-          className="rounded-md border border-gray-700 bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:bg-gray-800 disabled:opacity-50"
+          className="border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
         >
           Start new
-        </button>
+        </Button>
       </div>
     ) : null;
   const mk = agentModelUiKindForAgent(selectedAgent);
@@ -513,75 +524,92 @@ export function PlanningPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-gray-800 bg-[#0a0a0a]">
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-gray-800 px-2.5">
+    <div
+      className={cn(
+        terminalWorkspaceShellClass,
+        'h-full w-full min-w-0 border-l border-status-terminal-foreground/10',
+      )}
+    >
+      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-status-terminal-foreground/10 px-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            className={cn(
+              'size-1.5 shrink-0 rounded-full',
               sessionRunning
-                ? 'bg-green-500'
+                ? 'bg-status-success'
                 : activeResumable
-                  ? 'bg-amber-500'
-                  : 'bg-gray-600'
-            }`}
+                  ? 'bg-status-needs-input'
+                  : 'bg-status-terminal-foreground/35',
+            )}
             aria-hidden
           />
-          <span className="truncate text-xs font-medium text-gray-200">
+          <span className="truncate text-xs font-medium text-status-terminal-foreground">
             Planning assistant
           </span>
           {sessionRunning && needsInput ? (
-            <span className="shrink-0 rounded-full border border-amber-900 bg-amber-950 px-1.5 py-0.5 text-[9px] text-amber-400">
+            <Badge className="h-auto border-status-needs-input/30 bg-status-needs-input/15 px-1.5 py-0 text-[9px] font-medium text-status-needs-input-foreground">
               needs input
-            </span>
+            </Badge>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {sessionRunning && activeSession ? (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               disabled={loading}
               onClick={() => void handleStopOne(activeSession.id)}
-              className="rounded-md border border-gray-700 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-300 transition hover:bg-gray-800 disabled:opacity-50"
+              className="h-auto border-status-terminal-foreground/15 bg-status-terminal-foreground/5 px-2 py-1 text-[10px] text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
             >
               Stop
-            </button>
+            </Button>
           ) : null}
-          <div ref={splitAnchorRef} className="flex shrink-0 overflow-hidden rounded-md border border-gray-700">
-            <button
+          <div
+            ref={splitAnchorRef}
+            className="flex shrink-0 overflow-hidden rounded-md border border-status-terminal-foreground/15"
+          >
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               disabled={loading || !planningApi}
               onClick={() => void handleStart()}
-              className="flex min-w-0 items-center gap-1 bg-gray-900 px-2 py-1 text-[10px] font-medium text-gray-200 transition hover:bg-gray-800 disabled:opacity-40"
+              className="h-auto min-w-0 rounded-none bg-status-terminal-foreground/5 px-2 py-1 text-[10px] font-medium text-status-terminal-foreground hover:bg-status-terminal-foreground/10 disabled:opacity-40"
               aria-label="Start new planning session"
               title={`Start session · ${AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent} · ${modelSummary}`}
             >
               <span className="truncate">Add session</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               disabled={loading || !planningApi}
               onClick={() => setPrefsOpen((o) => !o)}
-              className="flex w-7 shrink-0 items-center justify-center border-l border-gray-700 bg-gray-900 text-gray-400 transition hover:bg-gray-800 hover:text-gray-200 disabled:opacity-40"
+              className="size-7 shrink-0 rounded-none border-l border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground disabled:opacity-40"
               aria-label="Choose agent and model for the next session"
               aria-expanded={prefsOpen}
               aria-haspopup="dialog"
             >
-              <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-            </button>
+              <ChevronDown className="size-3.5" strokeWidth={2} aria-hidden />
+            </Button>
           </div>
           {prefsMenu}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={onClose}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition hover:bg-gray-800 hover:text-gray-200"
+            className="size-7 text-status-terminal-foreground/55 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
             aria-label="Close planning panel"
           >
             ×
-          </button>
+          </Button>
         </div>
       </header>
 
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-800/80 px-2 py-1.5">
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-status-terminal-foreground/10 px-2 py-1.5">
         {sessions.map((s, i) => {
           const sel = s.id === activeSessionId;
           const running = s.status === 'running';
@@ -589,12 +617,12 @@ export function PlanningPanel({
           return (
             <div
               key={s.id}
-              className={[
+              className={cn(
                 'flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px]',
                 sel
-                  ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-100'
-                  : 'border-gray-800 bg-gray-900/60 text-gray-400',
-              ].join(' ')}
+                  ? 'border-status-success/30 bg-status-success/15 text-status-success-foreground'
+                  : 'border-status-terminal-foreground/10 bg-status-terminal-foreground/5 text-status-terminal-foreground/60',
+              )}
             >
               <button
                 type="button"
@@ -603,32 +631,36 @@ export function PlanningPanel({
                 title={planningTabLabel(s, i)}
               >
                 <span
-                  className={[
-                    'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                  className={cn(
+                    'inline-block size-1.5 shrink-0 rounded-full',
                     running
-                      ? 'bg-emerald-400'
+                      ? 'bg-status-success'
                       : resumable
-                        ? 'bg-amber-400'
-                        : 'bg-zinc-600',
-                  ].join(' ')}
+                        ? 'bg-status-needs-input'
+                        : 'bg-status-terminal-foreground/35',
+                  )}
                   aria-hidden
                 />
                 <span className="truncate">{planningTabLabel(s, i)}</span>
               </button>
               {onOpenInMainTab ? (
-                <button
+                <Button
                   type="button"
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-800 hover:text-gray-200"
+                  variant="ghost"
+                  size="icon"
+                  className="size-5 text-status-terminal-foreground/55 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   aria-label="Open planning session in a new tab"
                   title="Open in new tab"
                   onClick={() => onOpenInMainTab(s.id)}
                 >
-                  <ExternalLink className="h-3 w-3" strokeWidth={2} aria-hidden />
-                </button>
+                  <ExternalLink className="size-3" strokeWidth={2} aria-hidden />
+                </Button>
               ) : null}
-              <button
+              <Button
                 type="button"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-red-950/50 hover:text-red-300"
+                variant="ghost"
+                size="icon"
+                className="size-5 text-status-terminal-foreground/55 hover:bg-destructive/15 hover:text-destructive"
                 aria-label={`Close ${planningTabLabel(s, i)}`}
                 title={
                   resumable
@@ -642,29 +674,33 @@ export function PlanningPanel({
                 <span className="text-[12px] leading-none" aria-hidden>
                   ×
                 </span>
-              </button>
+              </Button>
             </div>
           );
         })}
       </div>
 
       {error ? (
-        <div className="shrink-0 border-b border-red-900/50 bg-red-950/40 px-2.5 py-1.5 text-[10px] text-red-300">
+        <TerminalStatusBanner variant="error" className="px-2.5 py-1.5 text-[10px]">
           {error}
-        </div>
+        </TerminalStatusBanner>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col bg-[#0a0a0a]">
+      <div className="flex min-h-0 flex-1 flex-col bg-status-terminal">
         {!planningApi ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-500">Planning assistant unavailable</p>
-            <p className="text-[10px] leading-relaxed text-gray-600">
-              This build does not expose planning IPC yet. Sessions will work once
-              the main process and preload wire up{' '}
-              <span className="font-mono text-gray-500">electronAPI.planning</span>
-              .
-            </p>
-          </div>
+          <TerminalEmptyState
+            title="Planning assistant unavailable"
+            detail={
+              <>
+                This build does not expose planning IPC yet. Sessions will work once the main
+                process and preload wire up{' '}
+                <span className="font-mono text-status-terminal-foreground/60">
+                  electronAPI.planning
+                </span>
+                .
+              </>
+            }
+          />
         ) : activeSession && activeWarmTerminal ? (
           <div className="relative min-h-0 flex-1">
             {sessions
@@ -680,11 +716,11 @@ export function PlanningPanel({
                 />
               ))}
             {activeResumable && !sessionRunning ? (
-              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-gray-800 bg-[#0a0a0a]/95 px-3 py-2.5 backdrop-blur-sm">
-                <p className="mb-0.5 text-center text-xs text-gray-300">
+              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-status-terminal-foreground/10 bg-status-terminal/95 px-3 py-2.5 backdrop-blur-sm">
+                <p className="mb-0.5 text-center text-xs text-status-terminal-foreground">
                   {planningResumeStateHeading(activeSession)}
                 </p>
-                <p className="mb-2 text-center text-[10px] leading-relaxed text-gray-500">
+                <p className="mb-2 text-center text-[10px] leading-relaxed text-status-terminal-foreground/60">
                   {planningResumeStateDetail(activeSession)}
                   {resumableCount > 1
                     ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
@@ -695,40 +731,40 @@ export function PlanningPanel({
             ) : null}
           </div>
         ) : activeSession && activeResumable ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
-            <p className="text-xs text-gray-300">{planningResumeStateHeading(activeSession)}</p>
-            <p className="max-w-sm text-[10px] leading-relaxed text-gray-500">
-              {planningResumeStateDetail(activeSession)}
-              {resumableCount > 1
+          <TerminalEmptyState
+            title={planningResumeStateHeading(activeSession)}
+            detail={`${planningResumeStateDetail(activeSession)}${
+              resumableCount > 1
                 ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
-                : null}
-            </p>
+                : ''
+            }`}
+          >
             {resumeActions}
-          </div>
+          </TerminalEmptyState>
         ) : activeSession ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-500">This planning session has ended</p>
-            <p className="text-[10px] text-gray-600">
-              Close the tab or start another session from the header.
-            </p>
-          </div>
+          <TerminalEmptyState
+            title="This planning session has ended"
+            detail="Close the tab or start another session from the header."
+          />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-gray-600">Select a session or start a new one</p>
-            <p className="text-[10px] leading-relaxed text-gray-700">
-              {resumableCount > 0
+          <TerminalEmptyState
+            title="Select a session or start a new one"
+            detail={
+              resumableCount > 0
                 ? `${resumableCount} session${resumableCount === 1 ? '' : 's'} can be resumed — pick a tab above.`
-                : 'Multiple assistants can run at once — switch tabs without stopping others.'}
-            </p>
-            <button
+                : 'Multiple assistants can run at once — switch tabs without stopping others.'
+            }
+          >
+            <Button
               type="button"
+              size="sm"
               disabled={loading}
               onClick={() => void handleStart()}
-              className="mt-2 rounded-md bg-green-900 px-3 py-1.5 text-xs text-green-300 transition-colors hover:bg-green-800 disabled:opacity-50"
+              className="mt-2 bg-status-success text-status-success-foreground hover:bg-status-success/90"
             >
               {loading ? 'Starting…' : 'Start session'}
-            </button>
-          </div>
+            </Button>
+          </TerminalEmptyState>
         )}
       </div>
     </div>
