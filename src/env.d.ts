@@ -478,6 +478,9 @@ declare global {
           lastSyncedAt: string | null;
         }>;
         onRestoreComplete: (cb: () => void) => () => void;
+        onSshReconcileDeviceFailures: (
+          cb: (failures: import('./types').SshReconcileDeviceFailureNotice[]) => void,
+        ) => () => void;
         attach: (sessionId: string) => Promise<AttachResult | null>;
         write: (sessionId: string, data: string) => void;
         resize: (sessionId: string, cols: number, rows: number) => void;

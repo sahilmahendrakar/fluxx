@@ -368,6 +368,13 @@ export type RemoteSessionLifecycleStatus =
   | 'helper-mismatch'
   | 'workspace-missing';
 
+/** Renderer toast payload when startup SSH reconcile cannot reach a device. */
+export type SshReconcileDeviceFailureNotice = {
+  deviceId: string;
+  displayName: string;
+  message: string;
+};
+
 /** Phase where branch-based SSH→local sync failed or completed. */
 export type RemoteSshSyncPhase =
   | 'remote-status'

@@ -3,6 +3,9 @@ import type { ExecutionDeviceConfig, ExecutionDeviceSshConfig } from '../types';
 
 export const DEFAULT_SSH_BINARY = 'ssh';
 
+/** Applied when a device omits `connectTimeoutSeconds` so unreachable hosts fail fast. */
+export const DEFAULT_SSH_CONNECT_TIMEOUT_SECONDS = 10;
+
 export type BuildOpenSshArgvInput = {
   sshBinary?: string;
   ssh: ExecutionDeviceSshConfig;
@@ -36,10 +39,11 @@ export function buildOpenSshArgv(input: BuildOpenSshArgvInput): string[] {
   }
 
   const argv: string[] = [sshBinary];
-  if (ssh.connectTimeoutSeconds != null && Number.isFinite(ssh.connectTimeoutSeconds)) {
-    const seconds = Math.max(1, Math.floor(ssh.connectTimeoutSeconds));
-    argv.push('-o', `ConnectTimeout=${seconds}`);
-  }
+  const connectSeconds =
+    ssh.connectTimeoutSeconds != null && Number.isFinite(ssh.connectTimeoutSeconds)
+      ? Math.max(1, Math.floor(ssh.connectTimeoutSeconds))
+      : DEFAULT_SSH_CONNECT_TIMEOUT_SECONDS;
+  argv.push('-o', `ConnectTimeout=${connectSeconds}`);
   if (ssh.port != null && Number.isFinite(ssh.port)) {
     argv.push('-p', String(Math.floor(ssh.port)));
   }

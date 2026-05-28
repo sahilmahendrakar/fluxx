@@ -4,6 +4,7 @@ import { SshTerminalBackend } from '../terminalBackend/SshTerminalBackend';
 import {
   reconcileRemoteSshTerminalsForProject,
   remoteManifestRowToTerminalRecord,
+  SSH_DEVICE_RECONCILE_TIMEOUT_MS,
 } from './remoteSshTerminalReconcile';
 
 const sshDevice: ExecutionDeviceConfig = {
@@ -223,5 +224,64 @@ describe('remoteSshTerminalReconcile', () => {
     expect(result.missing.task).toBe(1);
     expect(result.interruptedRecords[0]?.lifecycleStatus).toBe('tmux-missing');
     expect(sshBackend.hasSession('term-missing')).toBe(false);
+  });
+
+  it('times out hung device reconcile and records device-unreachable without retrying list-terminals', async () => {
+    vi.useFakeTimers();
+    const helper = {
+      ensureInstalled: vi.fn(
+        () =>
+          new Promise<{ ok: true; version: string }>(() => {
+            /* never resolves */
+          }),
+      ),
+      runJsonCommand: vi.fn(),
+    };
+
+    const sshBackend = new SshTerminalBackend({
+      deviceStore: mockDeviceStore() as never,
+      helper: helper as never,
+      deliverStreamFrame: vi.fn(),
+    });
+
+    const reconcilePromise = reconcileRemoteSshTerminalsForProject({
+      projectId: 'p1',
+      devices: [sshDevice],
+      helper: helper as never,
+      sshBackend,
+      localOpenRecords: [
+        {
+          id: 'term-hung',
+          kind: 'task',
+          runtime: 'tmux',
+          projectId: 'p1',
+          deviceId: 'devbox',
+          deviceKind: 'ssh',
+          cwd: '/remote/wt',
+          command: 'agent',
+          args: [],
+          cols: 80,
+          rows: 24,
+          startedAt: '2026-05-23T12:00:00.000Z',
+          tmuxSessionName: 'fluxx-task-p1-hung',
+          task: {
+            taskId: 'task-1',
+            agent: 'cursor',
+            worktreePath: '/remote/wt',
+            fluxxWorkBranch: 'fluxx/task-1',
+          },
+        },
+      ],
+    });
+
+    await vi.advanceTimersByTimeAsync(SSH_DEVICE_RECONCILE_TIMEOUT_MS + 1);
+    const result = await reconcilePromise;
+
+    expect(result.deviceFailures).toHaveLength(1);
+    expect(result.deviceFailures[0]?.failure).toBe('device-unreachable');
+    expect(result.deviceFailures[0]?.message).toContain('Devbox');
+    expect(helper.runJsonCommand).not.toHaveBeenCalled();
+    expect(result.interruptedRecords).toHaveLength(1);
+    vi.useRealTimers();
   });
 });

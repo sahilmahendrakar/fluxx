@@ -653,6 +653,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const handler = () => cb();
       return ipcSubscribe(ipcRenderer, 'sessions:restoreComplete', handler);
     },
+    onSshReconcileDeviceFailures: (
+      cb: (failures: import('./types').SshReconcileDeviceFailureNotice[]) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        failures: import('./types').SshReconcileDeviceFailureNotice[],
+      ) => cb(failures);
+      return ipcSubscribe(ipcRenderer, 'sessions:sshReconcileDeviceFailures', handler);
+    },
     /** Warm-reattach: attach payload (`replay` and optional `snapshot`). */
     attach: (sessionId: string) =>
       ipcRenderer.invoke('session:attach', sessionId) as Promise<AttachResult | null>,

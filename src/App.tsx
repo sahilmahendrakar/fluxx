@@ -29,6 +29,7 @@ import {
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
 } from './types';
+import { toast } from 'sonner';
 import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
@@ -1688,6 +1689,21 @@ export default function App() {
       void refreshWorkspaceSessionsAfterRestore();
     });
   }, [project?.id, project?.kind, refreshWorkspaceSessionsAfterRestore]);
+
+  useEffect(() => {
+    const shownFailureKeys = new Set<string>();
+    return window.electronAPI.sessions.onSshReconcileDeviceFailures((failures) => {
+      for (const failure of failures) {
+        const key = `${failure.deviceId}:${failure.message}`;
+        if (shownFailureKeys.has(key)) continue;
+        shownFailureKeys.add(key);
+        toast.error(`SSH device unreachable: ${failure.displayName}`, {
+          description: failure.message,
+          duration: 12_000,
+        });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!project || !sessionsRestorePending) return;

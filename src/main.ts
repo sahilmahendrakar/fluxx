@@ -278,6 +278,7 @@ import type {
   TaskPullRequestIpcResult,
   TaskRequestPullRequestFromAgentResult,
   ResolveTaskWorktreeIpcResult,
+  SshReconcileDeviceFailureNotice,
 } from './types';
 import {
   mergeTaskRowWithPullRequestAgentPayload,
@@ -1319,15 +1320,17 @@ app.whenReady().then(async () => {
     );
   }
 
-  async function reconcileRemoteSshTerminalsForActiveProject(): Promise<void> {
+  async function reconcileRemoteSshTerminalsForActiveProject(): Promise<
+    SshReconcileDeviceFailureNotice[]
+  > {
     const sshBackend = sshTerminalBackendFrom(terminalBackend);
-    if (!sshBackend) return;
+    if (!sshBackend) return [];
 
     const projectId = await activeProjectIdForTmuxRestore();
-    if (!projectId) return;
+    if (!projectId) return [];
 
     const sshDevices = listEnabledSshDevices(deviceStore);
-    if (sshDevices.length === 0) return;
+    if (sshDevices.length === 0) return [];
 
     const localSshOpenRecords = (await terminalSessionRecordStore.listOpenRecords(projectId)).filter(
       (r) => r.deviceKind === 'ssh',
@@ -1362,6 +1365,15 @@ app.whenReady().then(async () => {
     }
 
     console.log(formatRemoteSshReconcileLogLine(output));
+
+    return output.deviceFailures.map((failure) => {
+      const device = deviceStore.getDevice(failure.deviceId);
+      return {
+        deviceId: failure.deviceId,
+        displayName: device?.displayName ?? failure.deviceId,
+        message: failure.message,
+      };
+    });
   }
 
   async function reconcileTmuxTerminalsForActiveProject(): Promise<void> {
@@ -1442,14 +1454,24 @@ app.whenReady().then(async () => {
     }
   }
 
-  async function reconcileTerminalsForActiveProject(): Promise<void> {
+  async function reconcileTerminalsForActiveProject(): Promise<SshReconcileDeviceFailureNotice[]> {
     await reconcileTmuxTerminalsForActiveProject();
-    await reconcileRemoteSshTerminalsForActiveProject();
+    return await reconcileRemoteSshTerminalsForActiveProject();
   }
 
   let terminalRestoreGeneration = 0;
   let terminalRestoreComplete = true;
   let terminalRestorePromise: Promise<void> = Promise.resolve();
+
+  function broadcastSshReconcileDeviceFailures(
+    failures: SshReconcileDeviceFailureNotice[],
+  ): void {
+    if (failures.length === 0) return;
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.webContents.send('sessions:sshReconcileDeviceFailures', failures);
+    }
+  }
 
   function broadcastSessionsRestoreComplete(): void {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -1462,12 +1484,14 @@ app.whenReady().then(async () => {
     const gen = ++terminalRestoreGeneration;
     terminalRestoreComplete = false;
     terminalRestorePromise = (async () => {
+      let sshDeviceFailures: SshReconcileDeviceFailureNotice[] = [];
       try {
-        await reconcileTerminalsForActiveProject();
+        sshDeviceFailures = await reconcileTerminalsForActiveProject();
         await runSilenceCatchup();
       } finally {
         if (gen === terminalRestoreGeneration) {
           terminalRestoreComplete = true;
+          broadcastSshReconcileDeviceFailures(sshDeviceFailures);
           broadcastSessionsRestoreComplete();
         }
       }
@@ -2926,6 +2950,21 @@ app.whenReady().then(async () => {
       payload: { id: string; rootPath: string; sharedRepos?: CloudSharedRepo[] },
     ) => {
       const resolvedRoot = path.resolve(payload.rootPath);
+      const activeKey = appStateStore.get().activeProjectKey;
+      const alreadyActive =
+        activeKey?.kind === 'cloud' &&
+        activeKey.id === payload.id &&
+        projectStore.get()?.id === payload.id &&
+        projectStore.getProjectDir() != null &&
+        path.resolve(worktreeService.getRootPath()) === resolvedRoot;
+
+      if (alreadyActive) {
+        if (terminalRestoreComplete) {
+          void beginTerminalRestore();
+        }
+        return { ok: true as const };
+      }
+
       const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
       if (!shellOnly) {
         try {
@@ -2961,7 +3000,7 @@ app.whenReady().then(async () => {
         });
       }
       await syncTerminalRuntimeContext();
-      await beginTerminalRestore();
+      void beginTerminalRestore();
       return { ok: true as const };
     },
   );
@@ -5243,7 +5282,8 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('session:reconcileRemote', async () => {
-    await reconcileRemoteSshTerminalsForActiveProject();
+    const sshDeviceFailures = await reconcileRemoteSshTerminalsForActiveProject();
+    broadcastSshReconcileDeviceFailures(sshDeviceFailures);
     broadcastSessionsRestoreComplete();
     const project = projectStore.get();
     const live = await terminalBackend.listSessions();

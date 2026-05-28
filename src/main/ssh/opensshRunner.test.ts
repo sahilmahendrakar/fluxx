@@ -40,6 +40,7 @@ describe('buildOpenSshArgv', () => {
       ssh: { host: 'ec2-test' },
       remoteCommand: ['sh', '-c', 'mkdir -p "$HOME/.fluxx/bin"'],
     });
+    expect(argv).toContain('ConnectTimeout=10');
     expect(argv[argv.length - 1]).toBe(wrapRemoteShellScript('mkdir -p "$HOME/.fluxx/bin"'));
   });
 
