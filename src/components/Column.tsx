@@ -106,18 +106,18 @@ export default function Column({
       ? 'text-status-validation'
       : isReview
         ? 'text-status-review'
-        : 'text-muted-foreground';
+        : 'text-foreground/80 dark:text-muted-foreground';
 
   const countClass = isNeedsInput
     ? 'border-status-needs-input/25 bg-status-needs-input/15 text-status-needs-input-foreground'
     : isValidation
-      ? 'border-status-validation/25 bg-status-validation/15 text-status-validation-foreground'
+      ? 'border-status-validation/25 bg-status-validation/15 text-status-validation dark:text-status-validation-foreground'
       : isReview
         ? 'border-status-review/25 bg-status-review/15 text-status-review-foreground'
-        : 'border-border bg-muted/60 text-muted-foreground';
+        : 'border-border bg-muted/60 text-foreground/78 dark:text-muted-foreground';
 
   return (
-    <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-xl border border-border bg-muted dark:bg-background">
+    <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-xl border border-border/70 bg-muted/15 dark:bg-background">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2
@@ -142,7 +142,7 @@ export default function Column({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px] text-muted-foreground"
+            className="h-7 px-2 text-[11px] text-foreground/78 dark:text-muted-foreground"
             onClick={onNewTask}
           >
             + New
@@ -159,7 +159,7 @@ export default function Column({
             <div
               className={cn(
                 'flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3 transition-colors',
-                snapshot.isDraggingOver && 'bg-accent/40',
+                snapshot.isDraggingOver && 'bg-muted/25 dark:bg-accent/40',
               )}
             >
               {tasks.map((task, index) => {

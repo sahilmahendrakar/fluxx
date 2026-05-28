@@ -11,6 +11,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { terminalFrameClass } from '@/components/terminal/TerminalChrome';
 import { cn } from '@/lib/utils';
 import { xtermThemeForSurface } from '../terminal/xtermTheme';
+import { useAppearance } from '../theme/ThemeProvider';
 import { installMacShiftDragSelectionBypass } from './terminalSelectionBypass';
 import {
   containerHasUsableSize,
@@ -52,6 +53,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   { sessionId, onData, onResize, hideCursor = false, visible = true, autoFit = true },
   ref,
 ) {
+  const { resolved: appearance } = useAppearance();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const scheduleFitRef = useRef<((afterFit?: () => void) => void) | null>(
@@ -117,7 +119,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
     }
 
     const term = new XTerm({
-      theme: xtermThemeForSurface({ hideCursor }),
+      theme: xtermThemeForSurface({ hideCursor, appearance }),
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: 12,
       // Keep at xterm.js's default of 1.0. TUIs (claude-code's banner, fzf
@@ -353,6 +355,15 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       termRef.current = null;
     };
   }, [sessionId, autoFit]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = xtermThemeForSurface({ hideCursor, appearance });
+    if (term.rows > 0) {
+      term.refresh(0, term.rows - 1);
+    }
+  }, [appearance, hideCursor]);
 
   // Parents mark the pane/tab hidden by passing visible=false. We don't toggle
   // display on the container (that would reflow xterm and wipe the rendered

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { BotOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { modelSummaryForTask } from '../agentModelUi';
 import {
@@ -12,17 +11,12 @@ import {
   type Task,
 } from '../types';
 import { AgentProviderIcon } from './agentProviderIcons';
-import { AGENT_CHIP_STYLES } from './AgentBadge';
 import {
   AgentSessionPrefsMenuContent,
   AgentSessionPrefsMenuPortal,
 } from './AgentSessionPrefsMenu';
 
 export type TaskAgentSpawnPatch = Partial<Pick<Task, 'agent' | 'agentModel' | 'agentYolo'>>;
-
-/** Chip when no coding agent is assigned (matches task detail “None” styling). */
-const UNASSIGNED_AGENT_CHIP =
-  'border-border bg-muted/60 text-muted-foreground ring-1 ring-inset ring-border/60';
 
 export function TaskCardAgentSpawnMenu({
   task,
@@ -74,14 +68,12 @@ export function TaskCardAgentSpawnMenu({
     }
   };
 
-  const chip = selectedAgent != null ? AGENT_CHIP_STYLES[selectedAgent] : UNASSIGNED_AGENT_CHIP;
-
   return (
     <>
       <Button
         ref={anchorRef}
         type="button"
-        variant="outline"
+        variant="ghost"
         size="icon"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
@@ -96,16 +88,14 @@ export function TaskCardAgentSpawnMenu({
         aria-expanded={prefsOpen}
         aria-haspopup="dialog"
         title={triggerLabel || 'No agent — click to choose'}
-        className={cn(
-          '-m-0.5 size-6 shrink-0 rounded-md border hover:brightness-110',
-          chip,
-        )}
+        className="-m-0.5 size-6 shrink-0 text-muted-foreground hover:bg-muted/40"
       >
         {selectedAgent != null ? (
           <AgentProviderIcon agent={selectedAgent} className="size-3.5" aria-hidden />
         ) : (
-          <BotOff className="size-3.5 text-muted-foreground" strokeWidth={2} aria-hidden />
+          <BotOff className="size-3.5" strokeWidth={2} aria-hidden />
         )}
+        <span className="sr-only">{triggerLabel || 'No agent'}</span>
       </Button>
       <AgentSessionPrefsMenuPortal
         open={prefsOpen}

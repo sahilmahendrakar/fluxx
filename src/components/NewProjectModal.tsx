@@ -1,4 +1,25 @@
 import { useEffect, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '../renderer/auth/useAuth';
 import {
   normalizeTeamInviteEmails,
@@ -223,212 +244,186 @@ export function NewProjectModal({
     void runCreateTeam([]).finally(() => setBusy(false));
   };
 
-  if (step === 'invites') {
-    return (
-      <ModalBackdrop onClose={onClose}>
-        <form
-          onClick={(e) => e.stopPropagation()}
-          onSubmit={(e) => void handleInvitesSubmit(e)}
-          className="w-[min(480px,92vw)] rounded-xl border border-white/[0.08] bg-[#0c0c0e] p-5 shadow-2xl"
-        >
-          <h2 className="text-[15px] font-semibold text-zinc-100">Invite teammates</h2>
-          <p className="mt-1 text-[12px] text-zinc-500">
-            Optional. Teammates receive an email invite to this project.
-          </p>
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[min(480px,92vw)]">
+        {step === 'invites' ? (
+          <form onSubmit={(e) => void handleInvitesSubmit(e)}>
+            <DialogHeader>
+              <DialogTitle>Invite teammates</DialogTitle>
+              <DialogDescription>
+                Optional. Teammates receive an email invite to this project.
+              </DialogDescription>
+            </DialogHeader>
 
-          {inviteWarnings ? (
-            <>
-              <p className="mt-3 rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-3 py-2 text-[12px] text-emerald-200/95">
-                Project created. Your board is ready.
-              </p>
-              <ul className="mt-2 flex flex-col gap-2">
-                {inviteWarnings.map((warning) => (
-                  <li
-                    key={warning}
-                    className="rounded-md border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-200/95"
-                  >
-                    {warning}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-md bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100"
-                >
-                  Done
-                </button>
+            {inviteWarnings ? (
+              <div className="flex flex-col gap-3 py-4">
+                <Alert className="border-status-success/30 bg-status-success/10 text-status-success-foreground">
+                  <AlertDescription>Project created. Your board is ready.</AlertDescription>
+                </Alert>
+                <ul className="flex flex-col gap-2">
+                  {inviteWarnings.map((warning) => (
+                    <li key={warning}>
+                      <Alert className="border-status-needs-input/30 bg-status-needs-input/10 text-status-needs-input-foreground">
+                        <AlertDescription>{warning}</AlertDescription>
+                      </Alert>
+                    </li>
+                  ))}
+                </ul>
+                <DialogFooter>
+                  <Button type="button" onClick={onClose}>
+                    Done
+                  </Button>
+                </DialogFooter>
               </div>
-            </>
-          ) : (
-            <>
-          <div className="mt-4 flex flex-col gap-2">
-            {inviteEmails.map((value, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <input
-                  type="email"
-                  value={value}
-                  onChange={(e) => {
-                    const next = [...inviteEmails];
-                    next[index] = e.target.value;
-                    setInviteEmails(next);
-                  }}
-                  placeholder="name@company.com"
-                  className="min-w-0 flex-1 rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
-                />
-                {inviteEmails.length > 1 ? (
-                  <button
+            ) : (
+              <>
+                <div className="flex flex-col gap-2 py-4">
+                  {inviteEmails.map((value, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        type="email"
+                        value={value}
+                        onChange={(e) => {
+                          const next = [...inviteEmails];
+                          next[index] = e.target.value;
+                          setInviteEmails(next);
+                        }}
+                        placeholder="name@company.com"
+                        aria-label={
+                          inviteEmails.length > 1
+                            ? `Teammate email ${index + 1}`
+                            : 'Teammate email'
+                        }
+                      />
+                      {inviteEmails.length > 1 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Remove email"
+                          onClick={() =>
+                            setInviteEmails((prev) => removeInviteEmailAtIndex(prev, index))
+                          }
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))}
+                  <Button
                     type="button"
-                    aria-label="Remove email"
-                    onClick={() =>
-                      setInviteEmails((prev) => removeInviteEmailAtIndex(prev, index))
-                    }
-                    className="shrink-0 rounded-md px-2 py-1.5 text-[11px] text-zinc-500 transition hover:bg-white/[0.04] hover:text-zinc-300"
+                    variant="link"
+                    className="h-auto self-start px-0 text-xs"
+                    onClick={() => setInviteEmails((prev) => [...prev, ''])}
                   >
-                    Remove
-                  </button>
+                    Add another
+                  </Button>
+                </div>
+
+                {error ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
                 ) : null}
+
+                <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                      setError(null);
+                      setStep('details');
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={handleSkipInvites}
+                    >
+                      Skip for now
+                    </Button>
+                    <Button type="submit" disabled={busy}>
+                      {busy ? 'Creating…' : 'Create project'}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </>
+            )}
+          </form>
+        ) : (
+          <form onSubmit={(e) => void handleDetailsSubmit(e)}>
+            <DialogHeader>
+              <DialogTitle>New project</DialogTitle>
+              <DialogDescription>
+                Create a local project or enable cloud sync for your team.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-4 py-4">
+              <div className="flex flex-col gap-2">
+                <Label
+                  htmlFor="new-project-name"
+                  className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                >
+                  Project name
+                </Label>
+                <Input
+                  id="new-project-name"
+                  type="text"
+                  autoFocus
+                  value={name}
+                  onChange={(e) => {
+                    setNameWasEdited(true);
+                    setName(e.target.value);
+                  }}
+                  placeholder="e.g. Payments redesign"
+                />
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setInviteEmails((prev) => [...prev, ''])}
-              className="mt-1 self-start text-[12px] font-medium text-zinc-400 transition hover:text-zinc-200"
-            >
-              Add another
-            </button>
-          </div>
 
-          {error ? <ErrorBanner message={error} /> : null}
+              <ReposSection
+                repoError={repoError}
+                repos={repos}
+                setRepos={setRepos}
+                primaryRootPath={primaryRootPath}
+                setPrimaryRootPath={setPrimaryRootPath}
+                onAddRepo={() => void handleAddRepo()}
+              />
 
-          <div className="mt-5 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setError(null);
-                setStep('details');
-              }}
-              className="rounded-md px-3 py-1.5 text-[12px] text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 disabled:opacity-45"
-            >
-              Back
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleSkipInvites}
-                className="rounded-md px-3 py-1.5 text-[12px] text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 disabled:opacity-45"
-              >
-                Skip for now
-              </button>
-              <button
-                type="submit"
-                disabled={busy}
-                className="rounded-md bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-45"
-              >
-                {busy ? 'Creating…' : 'Create project'}
-              </button>
+              <TeamSyncSection
+                authStatus={auth.status}
+                effectiveTeamSync={effectiveTeamSync}
+                signInBusy={signInBusy}
+                signInError={signInError}
+                formBusy={busy}
+                onToggle={handleTeamSyncToggle}
+                onSignIn={() => void handleSignInForTeamSync()}
+              />
+
+              {error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
             </div>
-          </div>
-            </>
-          )}
-        </form>
-      </ModalBackdrop>
-    );
-  }
 
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => void handleDetailsSubmit(e)}
-        className="w-[min(480px,92vw)] rounded-xl border border-white/[0.08] bg-[#0c0c0e] p-5 shadow-2xl"
-      >
-        <h2 className="text-[15px] font-semibold text-zinc-100">New project</h2>
-
-        <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-          Project name
-        </label>
-        <input
-          type="text"
-          autoFocus
-          value={name}
-          onChange={(e) => {
-            setNameWasEdited(true);
-            setName(e.target.value);
-          }}
-          placeholder="e.g. Payments redesign"
-          className="mt-1 w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none focus-visible:border-white/[0.14] focus-visible:ring-1 focus-visible:ring-white/[0.12]"
-        />
-
-        <ReposSection
-          repoError={repoError}
-          repos={repos}
-          setRepos={setRepos}
-          primaryRootPath={primaryRootPath}
-          setPrimaryRootPath={setPrimaryRootPath}
-          onAddRepo={() => void handleAddRepo()}
-        />
-
-        <TeamSyncSection
-          authStatus={auth.status}
-          effectiveTeamSync={effectiveTeamSync}
-          signInBusy={signInBusy}
-          signInError={signInError}
-          formBusy={busy}
-          onToggle={handleTeamSyncToggle}
-          onSignIn={() => void handleSignInForTeamSync()}
-        />
-
-
-        {error ? <ErrorBanner message={error} /> : null}
-
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-md px-3 py-1.5 text-[12px] text-zinc-400 transition hover:bg-white/[0.04] hover:text-zinc-200 disabled:opacity-45"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            className="rounded-md bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-45"
-          >
-            {busy ? 'Creating…' : effectiveTeamSync ? 'Continue' : 'Create project'}
-          </button>
-        </div>
-      </form>
-    </ModalBackdrop>
-  );
-}
-
-function ModalBackdrop({
-  onClose,
-  children,
-}: {
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <p className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] text-red-300/95">
-      {message}
-    </p>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || !name.trim()}>
+                {busy ? 'Creating…' : effectiveTeamSync ? 'Continue' : 'Create project'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -465,50 +460,45 @@ function TeamSyncSection(props: {
     formBusy || signInBusy || authStatus === 'loading' || authStatus === 'unconfigured';
 
   return (
-    <div className="mt-4 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+    <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-zinc-200">Cloud sync</div>
-          <p className="mt-0.5 text-[11px] text-zinc-500">{helper}</p>
+          <div className="text-xs font-medium text-foreground">Cloud sync</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{helper}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {showSignIn ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               disabled={signInBusy || formBusy}
               onClick={onSignIn}
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-zinc-100 transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45"
+              className="h-8 gap-1.5 text-[11px]"
             >
               <GoogleGlyph />
               {signInBusy ? 'Signing in…' : 'Sign in'}
-            </button>
+            </Button>
           ) : null}
           {signedIn || showSignIn ? (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={effectiveTeamSync}
-              aria-label={signedIn ? 'Cloud sync' : 'Enable cloud sync after sign-in'}
+            <Switch
+              checked={effectiveTeamSync}
               disabled={toggleDisabled}
-              onClick={onToggle}
-              className={`relative h-6 w-10 shrink-0 rounded-full transition disabled:opacity-40 ${
-                effectiveTeamSync ? 'bg-sky-500/80' : 'bg-white/10'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                  effectiveTeamSync ? 'left-[18px]' : 'left-0.5'
-                }`}
-              />
-            </button>
+              onCheckedChange={onToggle}
+              aria-label={signedIn ? 'Cloud sync' : 'Enable cloud sync after sign-in'}
+            />
           ) : (
-            <span className="shrink-0 text-[11px] text-zinc-500">
+            <span className="shrink-0 text-[11px] text-muted-foreground">
               {authStatus === 'loading' ? 'Checking…' : 'Unavailable'}
             </span>
           )}
         </div>
       </div>
-      {signInError ? <ErrorBanner message={signInError} /> : null}
+      {signInError ? (
+        <Alert variant="destructive" className="mt-2">
+          <AlertDescription>{signInError}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }
@@ -547,49 +537,52 @@ function ReposSection(props: {
   const { repoError, repos, setRepos, primaryRootPath, setPrimaryRootPath, onAddRepo } = props;
 
   return (
-    <>
-      <div className="mt-4 flex items-center justify-between">
-        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Repositories
-        </span>
-        <button
-          type="button"
-          onClick={onAddRepo}
-          className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-zinc-200 hover:bg-white/[0.06]"
-        >
+        </Label>
+        <Button type="button" variant="outline" size="sm" onClick={onAddRepo}>
           Add repository
-        </button>
+        </Button>
       </div>
-      <p className="mt-1 text-[11px] text-zinc-500">
+      <p className="text-[11px] text-muted-foreground">
         Attach git repositories now, or add them later in project settings.
       </p>
-      {repoError ? <ErrorBanner message={repoError} /> : null}
+      {repoError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{repoError}</AlertDescription>
+        </Alert>
+      ) : null}
       {repos.length === 0 ? (
-        <p className="mt-2 text-[12px] text-zinc-500">No repositories attached.</p>
+        <p className="text-xs text-muted-foreground">No repositories attached.</p>
       ) : (
-        <ul className="mt-2 flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1.5">
           {repos.map((repo) => (
             <li
               key={repo.key}
-              className="rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-2"
+              className="rounded-md border bg-muted/20 px-2.5 py-2"
             >
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12px] font-medium text-zinc-200">
+                  <div className="truncate text-xs font-medium text-foreground">
                     {repo.name ?? repoRootBasename(repo.rootPath) ?? 'Repository'}
                   </div>
                   <div
-                    className="truncate font-mono text-[11px] text-zinc-500"
+                    className="truncate font-mono text-[11px] text-muted-foreground"
                     title={repo.rootPath}
                   >
                     {repo.rootPath}
                   </div>
-                  <p className="mt-0.5 text-[10px] text-zinc-600">
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
                     Default branch: {repo.baseBranch ?? 'main'}
                   </p>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto shrink-0 px-2 text-[11px]"
                   onClick={() => {
                     setRepos((prev) => {
                       const next = prev.filter((r) => r.key !== repo.key);
@@ -599,36 +592,44 @@ function ReposSection(props: {
                       return next;
                     });
                   }}
-                  className="shrink-0 text-[11px] text-zinc-500 hover:text-zinc-300"
                 >
                   Remove
-                </button>
+                </Button>
               </div>
             </li>
           ))}
         </ul>
       )}
       {repos.length >= 2 ? (
-        <div className="mt-3">
-          <label className="block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-            Primary repository
-          </label>
-          <select
-            value={primaryRootPath ?? ''}
-            onChange={(e) => setPrimaryRootPath(e.target.value || undefined)}
-            className="mt-1 w-full rounded-md border border-white/[0.08] bg-[#09090b] px-2 py-1.5 text-[12px] text-zinc-100"
+        <div className="flex flex-col gap-2">
+          <Label
+            htmlFor="new-project-primary-repo"
+            className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground"
           >
-            {repos.map((r) => (
-              <option key={r.key} value={r.rootPath}>
-                {r.name ?? repoRootBasename(r.rootPath) ?? r.rootPath}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-[11px] text-zinc-500">
+            Primary repository
+          </Label>
+          <Select
+            value={primaryRootPath ?? ''}
+            onValueChange={(value) => setPrimaryRootPath(value || undefined)}
+          >
+            <SelectTrigger id="new-project-primary-repo" className="h-9 text-xs">
+              <SelectValue placeholder="Select repository" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {repos.map((r) => (
+                  <SelectItem key={r.key} value={r.rootPath}>
+                    {r.name ?? repoRootBasename(r.rootPath) ?? r.rootPath}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">
             Used for default task workspaces and planning context.
           </p>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

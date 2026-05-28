@@ -7,6 +7,9 @@ import {
   TerminalEmptyState,
   TerminalStatusBanner,
   terminalWorkspaceShellClass,
+  workspaceToolbarActionButtonClass,
+  workspaceToolbarActionButtonDisabledClass,
+  workspaceToolbarActionButtonShellClass,
 } from '@/components/terminal/TerminalChrome';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { labelForModelId } from '../agentModelUi';
@@ -556,26 +559,31 @@ export function PlanningPanel({
           {sessionRunning && activeSession ? (
             <Button
               type="button"
-              size="sm"
               variant="outline"
               disabled={loading}
               onClick={() => void handleStopOne(activeSession.id)}
-              className="h-auto border-status-terminal-foreground/15 bg-status-terminal-foreground/5 px-2 py-1 text-[10px] text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
+              className={cn(
+                'h-auto px-2 py-1 text-[10px]',
+                workspaceToolbarActionButtonClass,
+                loading && workspaceToolbarActionButtonDisabledClass,
+              )}
             >
               Stop
             </Button>
           ) : null}
           <div
             ref={splitAnchorRef}
-            className="flex shrink-0 overflow-hidden rounded-md border border-status-terminal-foreground/15"
+            className={cn('flex shrink-0 overflow-hidden', workspaceToolbarActionButtonShellClass)}
           >
             <Button
               type="button"
               variant="ghost"
-              size="sm"
               disabled={loading || !planningApi}
               onClick={() => void handleStart()}
-              className="h-auto min-w-0 rounded-none bg-status-terminal-foreground/5 px-2 py-1 text-[10px] font-medium text-status-terminal-foreground hover:bg-status-terminal-foreground/10 disabled:opacity-40"
+              className={cn(
+                'h-auto min-w-0 rounded-none border-0 bg-transparent px-2 py-1 text-[10px] font-medium text-foreground shadow-none hover:bg-muted',
+                (loading || !planningApi) && workspaceToolbarActionButtonDisabledClass,
+              )}
               aria-label="Start new planning session"
               title={`Start session · ${AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent} · ${modelSummary}`}
             >
@@ -587,7 +595,10 @@ export function PlanningPanel({
               size="icon"
               disabled={loading || !planningApi}
               onClick={() => setPrefsOpen((o) => !o)}
-              className="size-7 shrink-0 rounded-none border-l border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground disabled:opacity-40"
+              className={cn(
+                'size-7 shrink-0 rounded-none border-0 border-l border-border bg-transparent text-muted-foreground shadow-none hover:bg-muted hover:text-foreground',
+                (loading || !planningApi) && workspaceToolbarActionButtonDisabledClass,
+              )}
               aria-label="Choose agent and model for the next session"
               aria-expanded={prefsOpen}
               aria-haspopup="dialog"

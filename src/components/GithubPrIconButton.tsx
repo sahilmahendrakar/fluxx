@@ -1,4 +1,5 @@
 import { GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { TaskGithubPr } from '../types';
 
 export interface GithubPrIconButtonProps {
@@ -40,17 +41,18 @@ export function GithubPrIconButton({
       type="button"
       disabled={prLoading}
       onClick={() => onTaskPrClick(taskId)}
-      className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={cn(
+        '-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60',
         prMerged
-          ? 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90'
+          ? 'text-purple-600 hover:bg-purple-500/12 hover:text-purple-700 dark:text-purple-400/85 dark:hover:text-purple-300/90'
           : prIsOpen
-            ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
+            ? 'text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-500/75 dark:hover:text-emerald-400/85'
             : prLinked
-              ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
+              ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
               : prAwaitingAgent
-                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
-                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
-      }`}
+                ? 'text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400/80 dark:hover:text-amber-300/85'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      )}
       aria-label={
         prLoading
           ? 'Working with pull request…'
@@ -83,7 +85,7 @@ export function GithubPrIconButton({
       }
     >
       {prLoading ? (
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" aria-hidden />
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
       ) : prMerged ? (
         <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
       ) : prLinked ? (

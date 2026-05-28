@@ -5,10 +5,23 @@ import type {
   TaskExecutionDeviceRef,
   TaskStatus,
 } from '../types';
+import { cn } from '@/lib/utils';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
 import { ExecutionDeviceChip } from './ExecutionDeviceChip';
 import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
 import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
+
+const tabCloseClass =
+  'ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-70 transition hover:bg-muted hover:text-foreground hover:opacity-100';
+
+function tabClass(active: boolean) {
+  return cn(
+    'group flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[13px] transition-colors',
+    active
+      ? 'bg-muted/60 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))]'
+      : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+  );
+}
 
 export interface SessionTabMeta {
   session: Session;
@@ -80,14 +93,6 @@ export function TabBar({
   onClosePlanningTab,
   onCloseSettingsTab,
 }: TabBarProps) {
-  const tabClass = (active: boolean) =>
-    [
-      'group flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[13px] transition-colors',
-      active
-        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-        : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200',
-    ].join(' ');
-
   return (
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
       <button
@@ -113,7 +118,7 @@ export function TabBar({
               e.stopPropagation();
               onCloseSettingsTab();
             }}
-            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+            className={tabCloseClass}
           >
             <span className="text-[13px] leading-none" aria-hidden>
               ×
@@ -122,7 +127,7 @@ export function TabBar({
         </div>
       ) : null}
       {openSessions.length > 0 ? (
-        <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
+        <div className="mx-1 h-4 w-px shrink-0 self-center bg-border" aria-hidden />
       ) : null}
       {openSessions.map(({ session, title, taskStatus, executionDevice, restoring }) => {
         const active = activeTabId === session.id && !settingsRouteActive;
@@ -136,7 +141,7 @@ export function TabBar({
             >
               {restoring ? (
                 <span
-                  className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-zinc-500"
+                  className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-muted-foreground"
                   title="Connecting workspace…"
                   aria-hidden
                 />
@@ -165,7 +170,7 @@ export function TabBar({
                 e.stopPropagation();
                 onCloseSessionTab(session.id);
               }}
-              className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+              className={tabCloseClass}
             >
               <span className="text-[13px] leading-none" aria-hidden>
                 ×
@@ -175,7 +180,7 @@ export function TabBar({
         );
       })}
       {openPlanningTabs.length > 0 ? (
-        <div className="mx-1 h-4 w-px shrink-0 self-center bg-white/[0.06]" aria-hidden />
+        <div className="mx-1 h-4 w-px shrink-0 self-center bg-border" aria-hidden />
       ) : null}
       {openPlanningTabs.map(({ sessionId, title, running }) => {
         const tabId = `${PLAN_TAB_PREFIX}${sessionId}`;
@@ -190,7 +195,7 @@ export function TabBar({
               <span
                 className={[
                   'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
-                  running ? 'bg-sky-400' : 'bg-zinc-600',
+                  running ? 'bg-status-review' : 'bg-muted-foreground/50',
                 ].join(' ')}
                 aria-hidden
               />
@@ -203,7 +208,7 @@ export function TabBar({
                 e.stopPropagation();
                 onClosePlanningTab(sessionId);
               }}
-              className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
+              className={tabCloseClass}
             >
               <span className="text-[13px] leading-none" aria-hidden>
                 ×

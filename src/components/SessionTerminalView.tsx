@@ -11,6 +11,8 @@ import {
   TerminalWorkspaceTab,
   terminalToolbarClass,
   terminalWorkspaceShellClass,
+  workspaceToolbarActionButtonClass,
+  workspaceToolbarActionButtonDisabledClass,
 } from '@/components/terminal/TerminalChrome';
 import type { Agent, Session, Shell, ShellPlacement, Task } from '../types';
 import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
@@ -818,13 +820,14 @@ export function SessionTerminalView({
             <Button
               type="button"
               size="sm"
+              variant="outline"
               onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
               title={validateEligibility.message}
               className={cn(
                 'shrink-0 gap-1.5',
                 task.status === 'needs-input'
-                  ? 'bg-status-validation text-status-validation-foreground hover:bg-status-validation/90'
-                  : 'border border-status-validation/30 bg-status-validation/10 text-status-validation-foreground hover:bg-status-validation/15',
+                  ? 'border-status-validation/40 bg-status-validation text-white hover:bg-status-validation/90 hover:text-white'
+                  : 'border-status-validation/35 bg-status-validation/12 text-status-validation hover:bg-status-validation/20 dark:text-status-validation-foreground dark:hover:bg-status-validation/15',
               )}
             >
               <ShieldCheck data-icon="inline-start" strokeWidth={2} aria-hidden />
@@ -853,7 +856,6 @@ export function SessionTerminalView({
           {showMarkAsDone ? (
             <Button
               type="button"
-              size="sm"
               variant="outline"
               disabled={markDoneDisabled}
               onClick={() => onMarkAsDone?.()}
@@ -862,7 +864,11 @@ export function SessionTerminalView({
                   ? 'Finish blocking tasks before marking this task done'
                   : 'Move task to Done and open the board'
               }
-              className={cn(toolbarActionClass, markDoneDisabled && 'opacity-50')}
+              className={cn(
+                'h-auto shrink-0 px-3 py-1.5 text-[12px]',
+                workspaceToolbarActionButtonClass,
+                markDoneDisabled && workspaceToolbarActionButtonDisabledClass,
+              )}
             >
               Mark as done
             </Button>

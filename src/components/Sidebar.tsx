@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import {
   shellDivider,
   shellIconButtonClass,
+  shellMutedTextClass,
   shellNavButtonClass,
   shellNavFileRowClass,
   shellNavRowClass,
@@ -230,7 +231,7 @@ function WorkspaceSidebarRow({
       className={cn(
         'group relative flex w-full items-center text-left text-[13px]',
         shellRadius,
-        active && 'bg-accent/80 ring-1 ring-border',
+        active && 'bg-muted/40 ring-1 ring-border/80',
       )}
     >
       <Button
@@ -240,7 +241,7 @@ function WorkspaceSidebarRow({
         className={cn(
           'h-auto min-w-0 flex-1 gap-2 py-1.5 pl-2.5 pr-11 text-[13px]',
           shellSidebarLabelButton,
-          active ? 'text-accent-foreground' : 'text-muted-foreground hover:text-foreground',
+          active ? 'text-foreground' : cn(shellMutedTextClass, 'hover:text-foreground'),
         )}
         onClick={() => onOpenSession(session.id)}
         title={title}
@@ -372,7 +373,7 @@ function TaskWorkspaceSidebarList({
                 aria-expanded={expanded}
                 title={group.label}
                 className={cn(
-                  'h-auto w-full gap-1 px-2 py-1 text-[12px] font-semibold text-foreground/90 hover:bg-accent/50',
+                  'h-auto w-full gap-1 px-2 py-1 text-[12px] font-semibold text-foreground/90 hover:bg-muted/30',
                   shellRadius,
                   shellSidebarLabelButton,
                 )}
@@ -440,7 +441,12 @@ export function Sidebar({
     >
       <div className="px-3 pb-3 pt-3.5">
         <div className="flex items-center justify-between gap-1">
-          <div className="text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          <div
+            className={cn(
+              'text-left text-[11px] font-medium uppercase tracking-[0.12em]',
+              shellMutedTextClass,
+            )}
+          >
             Fluxx
           </div>
           <div className="flex items-center gap-0.5">
@@ -488,7 +494,12 @@ export function Sidebar({
       </div>
       <Separator className={cn('mx-3 w-auto bg-border/40')} />
       <div className="flex min-h-0 flex-1 flex-col px-2 py-3">
-        <div className="px-2 pb-2 text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+        <div
+          className={cn(
+            'px-2 pb-2 text-left text-[11px] font-medium uppercase tracking-[0.12em]',
+            shellMutedTextClass,
+          )}
+        >
           Workspace
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
@@ -524,7 +535,7 @@ export function Sidebar({
                     shellSidebarLabelButton,
                     docsNavActive
                       ? 'text-accent-foreground hover:bg-transparent'
-                      : 'text-muted-foreground hover:bg-transparent',
+                      : cn(shellMutedTextClass, 'hover:bg-transparent'),
                   )}
                   onClick={onDocsNavClick}
                 >
@@ -539,7 +550,7 @@ export function Sidebar({
                     'size-7 shrink-0 shadow-none',
                     docsNavActive
                       ? 'text-accent-foreground hover:bg-transparent'
-                      : 'text-muted-foreground hover:bg-transparent',
+                      : cn(shellMutedTextClass, 'hover:bg-transparent'),
                   )}
                   aria-expanded={docsSidebarExpanded}
                   aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
@@ -627,7 +638,8 @@ export function Sidebar({
               size="sm"
               onClick={() => setWorkspacesExpanded((v) => !v)}
               className={cn(
-                'h-auto gap-1 px-2 pb-0.5 pt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground',
+                'h-auto gap-1 px-2 pb-0.5 pt-0.5 text-[11px] font-medium uppercase tracking-[0.14em] hover:text-foreground',
+                shellMutedTextClass,
                 shellSidebarLabelButton,
               )}
               aria-expanded={workspacesExpanded}
