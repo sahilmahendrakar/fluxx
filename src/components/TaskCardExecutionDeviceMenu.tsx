@@ -30,10 +30,10 @@ function chipToneForRef(
     hasExplicitTaskDevice: opts.hasExplicitTaskDevice,
   });
   return state === 'ok'
-    ? 'text-zinc-500'
+    ? 'text-muted-foreground'
     : state === 'cloud-no-local-override'
-      ? 'text-zinc-600'
-      : 'text-amber-500/80';
+      ? 'text-muted-foreground/70'
+      : 'text-status-needs-input';
 }
 
 export function TaskCardExecutionDeviceMenu({

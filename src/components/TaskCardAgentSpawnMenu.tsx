@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { BotOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { modelSummaryForTask } from '../agentModelUi';
 import {
@@ -20,7 +22,7 @@ export type TaskAgentSpawnPatch = Partial<Pick<Task, 'agent' | 'agentModel' | 'a
 
 /** Chip when no coding agent is assigned (matches task detail “None” styling). */
 const UNASSIGNED_AGENT_CHIP =
-  'border-zinc-600/40 bg-white/[0.04] text-zinc-400/90 ring-1 ring-inset ring-white/[0.06]';
+  'border-border bg-muted/60 text-muted-foreground ring-1 ring-inset ring-border/60';
 
 export function TaskCardAgentSpawnMenu({
   task,
@@ -76,9 +78,11 @@ export function TaskCardAgentSpawnMenu({
 
   return (
     <>
-      <button
+      <Button
         ref={anchorRef}
         type="button"
+        variant="outline"
+        size="icon"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -92,14 +96,17 @@ export function TaskCardAgentSpawnMenu({
         aria-expanded={prefsOpen}
         aria-haspopup="dialog"
         title={triggerLabel || 'No agent — click to choose'}
-        className={`-m-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${chip} outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-white/20`}
+        className={cn(
+          '-m-0.5 size-6 shrink-0 rounded-md border hover:brightness-110',
+          chip,
+        )}
       >
         {selectedAgent != null ? (
-          <AgentProviderIcon agent={selectedAgent} className="h-3.5 w-3.5" aria-hidden />
+          <AgentProviderIcon agent={selectedAgent} className="size-3.5" aria-hidden />
         ) : (
-          <BotOff className="h-3.5 w-3.5 text-zinc-500/90" strokeWidth={2} aria-hidden />
+          <BotOff className="size-3.5 text-muted-foreground" strokeWidth={2} aria-hidden />
         )}
-      </button>
+      </Button>
       <AgentSessionPrefsMenuPortal
         open={prefsOpen}
         anchorRef={anchorRef}

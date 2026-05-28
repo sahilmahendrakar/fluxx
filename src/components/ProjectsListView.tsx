@@ -1,5 +1,9 @@
 import { Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AppearanceToggle } from './AppearanceToggle';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { hydrateCloudProject, primaryRootPathFromCloudBinding } from '../cloudBindingPrefs';
 import {
   cloudProjectUsesLegacyFolderPicker,
@@ -439,15 +443,16 @@ export function ProjectsListView({
   };
 
   return (
-    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-violet-600/[0.12] blur-[100px]" />
-        <div className="absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-sky-600/[0.1] blur-[100px]" />
+        <div className="absolute -left-[20%] -top-[10%] h-[min(560px,70vw)] w-[min(560px,70vw)] rounded-full bg-primary/15 blur-[100px]" />
+        <div className="absolute -bottom-[15%] -right-[15%] h-[min(480px,65vw)] w-[min(480px,65vw)] rounded-full bg-status-review/15 blur-[100px]" />
       </div>
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.4]"
+        className="pointer-events-none absolute inset-0 opacity-40"
         style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)`,
+          backgroundImage:
+            'linear-gradient(hsl(var(--border) / 0.35) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border) / 0.35) 1px, transparent 1px)',
           backgroundSize: '64px 64px',
           maskImage:
             'radial-gradient(ellipse 80% 60% at 50% 40%, black, transparent)',
@@ -456,13 +461,14 @@ export function ProjectsListView({
 
       <div className="relative z-10 mx-auto flex h-full min-h-0 w-full min-w-0 max-w-2xl flex-1 flex-col overflow-hidden px-8 pb-8 pt-16">
         <div className="flex shrink-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset] backdrop-blur-md">
-            <span className="text-base font-semibold tracking-tight text-white">F</span>
+          <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-card/80 shadow-sm backdrop-blur-md">
+            <span className="text-base font-semibold tracking-tight text-foreground">F</span>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">Fluxx</h1>
-            <p className="text-[13px] text-zinc-500">Projects</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Fluxx</h1>
+            <p className="text-[13px] text-muted-foreground">Projects</p>
           </div>
+          <AppearanceToggle />
         </div>
 
         {authSlot ? <div className="mt-8 shrink-0">{authSlot}</div> : null}
@@ -482,11 +488,11 @@ export function ProjectsListView({
           if (actionable.length === 0) return null;
           return (
           <div className="mt-8 shrink-0">
-            <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+            <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Invitations
             </h2>
             {inviteError ? (
-              <p className="mb-2 rounded-md border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] text-red-300/95">
+              <p className="mb-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
                 {inviteError}
               </p>
             ) : null}
@@ -494,24 +500,25 @@ export function ProjectsListView({
               {actionable.map((inv) => (
                 <li
                   key={`${inv.projectId}-${inv.email}`}
-                  className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-lg border border-status-needs-input/25 bg-status-needs-input/10 px-3 py-2.5"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium text-zinc-100">
+                    <div className="truncate text-[13px] font-medium text-foreground">
                       {inv.projectName || '(unknown project)'}
                     </div>
-                    <div className="truncate text-[11px] text-zinc-500">
+                    <div className="truncate text-[11px] text-muted-foreground">
                       Invited to collaborate
                     </div>
                   </div>
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     disabled={acceptingId === inv.projectId}
                     onClick={() => void handleAcceptInvite(inv.projectId, inv.email)}
-                    className="rounded-md bg-white px-2.5 py-1 text-[12px] font-medium text-zinc-950 transition hover:bg-zinc-100 disabled:pointer-events-none disabled:opacity-45"
+                    className="h-7 px-2.5 text-[12px]"
                   >
                     {acceptingId === inv.projectId ? 'Accepting…' : 'Accept'}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -520,7 +527,7 @@ export function ProjectsListView({
         })()}
 
         <div className="mt-8 flex min-h-0 min-w-0 flex-1 flex-col">
-          <h2 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+          <h2 className="mb-2 shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
             Projects
           </h2>
 
@@ -528,11 +535,11 @@ export function ProjectsListView({
             <div className="mb-3 flex shrink-0 items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search
-                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
                   aria-hidden
                 />
-                <input
-                  type="text"
+                <Input
+                  type="search"
                   role="searchbox"
                   inputMode="search"
                   enterKeyHint="search"
@@ -542,37 +549,43 @@ export function ProjectsListView({
                   aria-label="Search projects"
                   autoComplete="off"
                   spellCheck={false}
-                  className={`w-full rounded-lg border border-white/[0.08] bg-white/[0.03] py-2 pl-8 text-[13px] text-zinc-100 placeholder:text-zinc-500 focus:border-white/[0.14] focus:outline-none focus:ring-1 focus:ring-white/10 ${projectSearchQuery ? 'pr-8' : 'pr-3'}`}
+                  className={cn(
+                    'h-9 rounded-lg bg-background/60 pl-8 text-[13px]',
+                    projectSearchQuery ? 'pr-8' : undefined,
+                  )}
                 />
                 {projectSearchQuery ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setProjectSearchQuery('')}
-                    className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+                    className="absolute right-0.5 top-1/2 size-7 -translate-y-1/2"
                     aria-label="Clear project search"
                   >
-                    <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-                  </button>
+                    <X strokeWidth={2.5} />
+                  </Button>
                 ) : null}
               </div>
-              <button
+              <Button
                 type="button"
+                size="sm"
                 onClick={() => setNewProjectOpen(true)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98]"
+                className="h-9 shrink-0 px-3.5 text-[13px]"
               >
                 New project
-              </button>
+              </Button>
             </div>
           )}
 
           {cloudError ? (
-            <p className="mb-3 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[13px] leading-snug text-red-300/95">
+            <p className="mb-3 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-[13px] leading-snug text-destructive">
               {cloudError}
             </p>
           ) : null}
 
           {signedIn && cloudProjects.status === 'error' ? (
-            <p className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95">
+            <p className="mb-3 rounded-lg border border-status-needs-input/25 bg-status-needs-input/10 px-3 py-2 text-[12px] leading-snug text-status-needs-input-foreground">
               Couldn&apos;t load team projects: {cloudProjects.error}. Local projects
               below are still available.
             </p>
@@ -581,48 +594,54 @@ export function ProjectsListView({
           {cloudDeleteCleanupWarning ? (
             <div
               role="alert"
-              className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-[12px] leading-snug text-amber-100/95"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-status-needs-input/25 bg-status-needs-input/10 px-3 py-2 text-[12px] leading-snug text-status-needs-input-foreground"
             >
               <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudDeleteCleanupWarning}</p>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setCloudDeleteCleanupWarning(null)}
-                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-amber-200/90 hover:bg-amber-500/15"
+                className="h-auto shrink-0 px-2 py-0.5 text-[11px]"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           ) : null}
 
           {cloudLocalCleanupError ? (
             <div
-              className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] leading-snug text-destructive"
               role="alert"
             >
               <p className="min-w-0 flex-1 whitespace-pre-wrap">{cloudLocalCleanupError}</p>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setCloudLocalCleanupError(null)}
-                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
+                className="h-auto shrink-0 px-2 py-0.5 text-[11px] text-destructive hover:text-destructive"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           ) : null}
 
           {localRemovalError ? (
             <div
-              className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] leading-snug text-red-300/95"
+              className="mb-3 flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] leading-snug text-destructive"
               role="alert"
             >
               <p className="min-w-0 flex-1 whitespace-pre-wrap">{localRemovalError}</p>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setLocalRemovalError(null)}
-                className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-red-200/90 hover:bg-red-500/15"
+                className="h-auto shrink-0 px-2 py-0.5 text-[11px] text-destructive hover:text-destructive"
               >
                 Dismiss
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -632,7 +651,7 @@ export function ProjectsListView({
             aria-label="Projects list"
           >
           {loading && !hasAnyPickerRows ? (
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
+            <div className="rounded-lg border border-border bg-card/50 px-4 py-6 text-center text-[13px] text-muted-foreground">
               Loading…
             </div>
           ) : !hasAnyPickerRows ? (
@@ -641,13 +660,13 @@ export function ProjectsListView({
               teamSyncLoading={signedIn && cloudProjects.status === 'loading'}
             />
           ) : pickerRows.length === 0 ? (
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-6 text-center text-[13px] text-zinc-500">
+            <div className="rounded-lg border border-border bg-card/50 px-4 py-6 text-center text-[13px] text-muted-foreground">
               No projects match your search.
             </div>
           ) : (
             <>
               {signedIn && cloudProjects.status === 'loading' ? (
-                <p className="mb-2 text-[12px] text-zinc-500">Loading team projects…</p>
+                <p className="mb-2 text-[12px] text-muted-foreground">Loading team projects…</p>
               ) : null}
               <ul className="flex flex-col gap-1.5">
                 {pickerRows.map((row) => {
@@ -655,57 +674,63 @@ export function ProjectsListView({
                     const p = row.cloud;
                     return (
                       <li key={row.id}>
-                        <div className="group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04]">
+                        <div className="group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-border hover:bg-accent/30">
                           <button
                             type="button"
                             disabled={activatingId === p.id}
                             onClick={() => void handleOpenCloud(p)}
                             className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:opacity-60"
                           >
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sky-500/[0.12] text-[13px] font-medium text-sky-200/90">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-status-review/15 text-[13px] font-medium text-status-review-foreground">
                               {p.name.slice(0, 1).toUpperCase()}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex min-w-0 items-center gap-2">
-                                <span className="truncate text-[13px] font-medium text-zinc-100">
+                                <span className="truncate text-[13px] font-medium text-foreground">
                                   {p.name}
                                 </span>
                                 <ProjectPickerSyncBadges syncBadge={row.syncBadge} />
                               </div>
-                              <div className="truncate text-[11px] text-zinc-500">
+                              <div className="truncate text-[11px] text-muted-foreground">
                                 {row.subtitle}
                               </div>
                             </div>
                           </button>
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             disabled={cloudLocalCleanupId === p.id}
                             onClick={() => void handleRemoveCloudLocalData(p)}
-                            className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-45"
+                            className="h-7 px-2 text-[11px] opacity-0 group-hover:opacity-100"
                             title="Remove local Fluxx data and unbind this machine (does not delete the team project)"
                           >
                             {cloudLocalCleanupId === p.id ? 'Removing…' : 'Remove'}
-                          </button>
+                          </Button>
                           {p.ownerId === uid ? (
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => setInviteFor(p)}
-                              className="rounded-md px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-200 group-hover:opacity-100"
+                              className="h-7 px-2 text-[11px] opacity-0 group-hover:opacity-100"
                               title="Invite teammate"
                             >
                               Invite
-                            </button>
+                            </Button>
                           ) : null}
                           {p.ownerId === uid ? (
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               onClick={() => void handleDeleteCloud(p)}
-                              className="rounded-md p-1.5 text-zinc-500 opacity-0 transition hover:bg-white/[0.06] hover:text-red-300 group-hover:opacity-100"
+                              className="size-8 opacity-0 text-muted-foreground hover:text-destructive group-hover:opacity-100"
                               title="Delete team project for everyone (Firestore)"
                               aria-label={`Delete ${p.name}`}
                             >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                            </button>
+                              <Trash2 aria-hidden />
+                            </Button>
                           ) : null}
                         </div>
                       </li>
@@ -717,7 +742,10 @@ export function ProjectsListView({
                   return (
                     <li key={row.id}>
                       <div
-                        className={`group flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition hover:border-white/[0.12] hover:bg-white/[0.04] ${removing ? 'border-white/[0.08] bg-white/[0.03]' : ''}`}
+                        className={cn(
+                          'group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-border hover:bg-accent/30',
+                          removing && 'border-border bg-muted/30',
+                        )}
                         aria-busy={removing}
                       >
                         <button
@@ -726,7 +754,7 @@ export function ProjectsListView({
                           onClick={() => void handleOpenLocal(p.id)}
                           className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:pointer-events-none disabled:opacity-50"
                         >
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.05] text-[13px] font-medium text-zinc-300">
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-[13px] font-medium text-muted-foreground">
                             {removing ? (
                               <LocalRemovalSpinner aria-label="Removing project from Fluxx" />
                             ) : (
@@ -735,29 +763,37 @@ export function ProjectsListView({
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                              <span className="truncate text-[13px] font-medium text-zinc-100">
+                              <span className="truncate text-[13px] font-medium text-foreground">
                                 {p.name}
                               </span>
                               <ProjectPickerSyncBadges syncBadge={row.syncBadge} />
                             </div>
                             <div
-                              className={`truncate text-[11px] text-zinc-500 ${p.repos.length > 0 ? 'font-mono' : ''}`}
+                              className={cn(
+                                'truncate text-[11px] text-muted-foreground',
+                                p.repos.length > 0 && 'font-mono',
+                              )}
                               title={p.repos.length > 0 ? row.subtitle : undefined}
                             >
                               {row.subtitle}
                             </div>
                           </div>
                         </button>
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon"
                           disabled={removing}
                           onClick={() => void handleRemoveLocalFlux(p.id, p.name)}
-                          className={`rounded-md p-1.5 transition hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-45 ${removing ? 'text-zinc-400 opacity-100' : 'text-zinc-500 opacity-0 group-hover:opacity-100 hover:text-red-300'}`}
+                          className={cn(
+                            'size-8 text-muted-foreground hover:text-destructive disabled:pointer-events-none',
+                            removing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                          )}
                           title="Remove from Fluxx (deletes ~/.fluxx workspace; keeps your git clone)"
                           aria-label={removing ? `Removing ${p.name}` : `Remove ${p.name}`}
                         >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                        </button>
+                          <Trash2 aria-hidden />
+                        </Button>
                       </div>
                     </li>
                   );
@@ -797,7 +833,7 @@ function LocalRemovalSpinner({ 'aria-label': ariaLabel }: { 'aria-label'?: strin
     <span
       role="status"
       aria-label={ariaLabel}
-      className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-200"
+      className="inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-muted border-t-foreground"
     />
   );
 }
@@ -810,20 +846,20 @@ function EmptyProjectsState({
   teamSyncLoading: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-white/[0.08] bg-white/[0.015] px-6 py-10 text-center">
-      <p className="max-w-sm text-[14px] leading-relaxed text-zinc-400">
+    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-border bg-card/30 px-6 py-10 text-center">
+      <p className="max-w-sm text-[14px] leading-relaxed text-muted-foreground">
         {teamSyncLoading
           ? 'Loading team projects…'
           : 'No projects yet. Create a project to attach repositories and run agents.'}
       </p>
-      <button
+      <Button
         type="button"
         disabled={teamSyncLoading}
         onClick={onNewProject}
-        className="inline-flex min-h-[38px] min-w-[180px] items-center justify-center rounded-lg bg-white px-5 text-[13px] font-medium text-zinc-950 shadow-[0_0_0_1px_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.24)] transition hover:bg-zinc-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45"
+        className="min-h-[38px] min-w-[180px] px-5 text-[13px]"
       >
         New project
-      </button>
+      </Button>
     </div>
   );
 }

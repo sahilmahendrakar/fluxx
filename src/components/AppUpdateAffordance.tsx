@@ -1,5 +1,8 @@
+import { AlertTriangle, Download, RotateCcw } from 'lucide-react';
 import type { AppUpdateState } from '../appUpdateState';
 import type { UseAppUpdatesResult } from '../renderer/useAppUpdates';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 function shouldShowUpdateChrome(state: AppUpdateState): boolean {
   switch (state.status) {
@@ -24,89 +27,6 @@ function formatBytes(n: number): string {
     i += 1;
   }
   return `${v < 10 && i > 0 ? v.toFixed(1) : Math.round(v)} ${u[i]}`;
-}
-
-function UpdateDownloadIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M8 2v8.5M8 10.5l3-3M8 10.5l-3-3"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M3 12.5h10"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function RestartIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M12.5 6A5 5 0 1 0 13 10"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M13 4v3h-3"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function AlertIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={16}
-      height={16}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M8 4.5V9M8 11.25v.01"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8 2 14 13H2L8 2Z"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 function DownloadRingProgress({
@@ -134,7 +54,7 @@ function DownloadRingProgress({
         fill="none"
         stroke="currentColor"
         strokeWidth={1.4}
-        className="text-white/[0.12]"
+        className="text-muted-foreground/30"
       />
       <circle
         cx={8}
@@ -147,11 +67,14 @@ function DownloadRingProgress({
         strokeDashoffset={strokeDashoffset}
         strokeLinecap="round"
         transform="rotate(-90 8 8)"
-        className="text-sky-400/90"
+        className="text-status-review"
       />
     </svg>
   );
 }
+
+const updateButtonClass =
+  'h-auto max-w-full justify-start gap-1.5 rounded-lg border-border/80 bg-card/95 px-2 py-1.5 text-left text-[11px] font-medium shadow-sm backdrop-blur';
 
 export function AppUpdateAffordance(updates: UseAppUpdatesResult) {
   const { api, ready, state, startDownload, quitAndInstall } = updates;
@@ -160,26 +83,22 @@ export function AppUpdateAffordance(updates: UseAppUpdatesResult) {
     return null;
   }
 
-  const baseBtn =
-    'flex max-w-full items-center gap-1.5 rounded-md border border-white/[0.08] bg-[#0c0c0e]/95 px-2 py-1.5 text-left shadow-sm backdrop-blur transition';
-
   if (state.status === 'available') {
     const title = `Update to ${state.latestVersion} available — click to download`;
     return (
-      <button
+      <Button
         type="button"
-        className={`${baseBtn} text-zinc-400 hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-zinc-100`}
+        variant="outline"
+        className={cn(updateButtonClass, 'text-muted-foreground hover:text-foreground')}
         aria-label={title}
         title={title}
         onClick={() => {
           void startDownload();
         }}
       >
-        <UpdateDownloadIcon className="shrink-0 text-sky-400/90 opacity-90" />
-        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight text-zinc-200">
-          v{state.latestVersion}
-        </span>
-      </button>
+        <Download className="text-status-review" data-icon="inline-start" />
+        <span className="min-w-0 truncate tracking-tight">v{state.latestVersion}</span>
+      </Button>
     );
   }
 
@@ -199,18 +118,18 @@ export function AppUpdateAffordance(updates: UseAppUpdatesResult) {
       .join(' · ');
     return (
       <div
-        className={`${baseBtn} cursor-default border-white/[0.06] text-zinc-400`}
+        className={cn(updateButtonClass, 'flex cursor-default items-center text-muted-foreground')}
         role="status"
         aria-busy
         aria-label={title}
         title={title}
       >
         {pct != null ? (
-          <DownloadRingProgress percent={pct} className="shrink-0 text-zinc-500" />
+          <DownloadRingProgress percent={pct} className="shrink-0" />
         ) : (
-          <DownloadRingProgress percent={35} className="shrink-0 animate-pulse text-zinc-500" />
+          <DownloadRingProgress percent={35} className="shrink-0 animate-pulse" />
         )}
-        <span className="min-w-0 truncate font-mono text-[10px] text-zinc-300">
+        <span className="min-w-0 truncate font-mono text-[10px] text-foreground/90">
           {pct != null ? `${Math.round(pct)}%` : '…'}
         </span>
       </div>
@@ -220,40 +139,44 @@ export function AppUpdateAffordance(updates: UseAppUpdatesResult) {
   if (state.status === 'downloaded') {
     const title = `Restart to install v${state.latestVersion}`;
     return (
-      <button
+      <Button
         type="button"
-        className={`${baseBtn} border-emerald-500/25 text-emerald-200/95 hover:border-emerald-400/35 hover:bg-emerald-500/[0.08]`}
+        variant="outline"
+        className={cn(
+          updateButtonClass,
+          'border-status-success/30 text-status-success-foreground hover:bg-status-success/10',
+        )}
         aria-label={title}
         title={title}
         onClick={() => {
           void quitAndInstall();
         }}
       >
-        <RestartIcon className="shrink-0 opacity-90" />
-        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight">
-          Restart to update
-        </span>
-      </button>
+        <RotateCcw data-icon="inline-start" />
+        <span className="min-w-0 truncate tracking-tight">Restart to update</span>
+      </Button>
     );
   }
 
   if (state.status === 'error' && state.phase === 'download') {
     const title = `Download failed — ${state.message}. Click to retry.`;
     return (
-      <button
+      <Button
         type="button"
-        className={`${baseBtn} border-red-500/20 text-red-300/95 hover:border-red-400/35 hover:bg-red-500/[0.08]`}
+        variant="outline"
+        className={cn(
+          updateButtonClass,
+          'border-destructive/30 text-destructive hover:bg-destructive/10',
+        )}
         aria-label={title}
         title={title}
         onClick={() => {
           void startDownload();
         }}
       >
-        <AlertIcon className="shrink-0 opacity-90" />
-        <span className="min-w-0 truncate text-[11px] font-medium tracking-tight">
-          Retry download
-        </span>
-      </button>
+        <AlertTriangle data-icon="inline-start" />
+        <span className="min-w-0 truncate tracking-tight">Retry download</span>
+      </Button>
     );
   }
 

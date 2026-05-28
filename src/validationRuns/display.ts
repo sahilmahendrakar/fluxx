@@ -123,19 +123,19 @@ export function validationBoardBadgeShortLabel(status: ValidationBoardBadgeStatu
 export function validationBoardBadgeClass(status: ValidationBoardBadgeStatus): string {
   switch (status) {
     case 'not-run':
-      return 'border-border bg-muted text-muted-foreground';
+      return 'border-border bg-muted/50 text-muted-foreground';
     case 'running':
       return 'border-status-review/30 bg-status-review/15 text-status-review-foreground';
     case 'passed':
       return 'border-status-success/30 bg-status-success/15 text-status-success-foreground';
     case 'failed':
-      return 'border-destructive/30 bg-destructive/15 text-destructive';
+      return 'border-destructive/30 bg-destructive/15 text-destructive-foreground';
     case 'review-needed':
       return 'border-status-needs-input/30 bg-status-needs-input/15 text-status-needs-input-foreground';
     case 'errored':
-      return 'border-status-needs-input/30 bg-status-needs-input/10 text-status-needs-input-foreground';
+      return 'border-status-needs-input/35 bg-status-needs-input/12 text-status-needs-input-foreground';
     default:
-      return 'border-border bg-muted text-muted-foreground';
+      return 'border-border bg-muted/50 text-muted-foreground';
   }
 }
 

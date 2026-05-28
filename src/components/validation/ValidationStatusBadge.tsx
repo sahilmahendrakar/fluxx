@@ -27,7 +27,10 @@ export default function ValidationStatusBadge({
       title={title}
       aria-label={title}
       variant="outline"
-      className={cn('max-w-full gap-1 truncate text-[10px] font-medium', validationBoardBadgeClass(status))}
+      className={cn(
+        'max-w-full gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium',
+        validationBoardBadgeClass(status),
+      )}
     >
       {loading || status === 'running' ? (
         <Loader2 className="size-3 shrink-0 animate-spin opacity-80" strokeWidth={2} aria-hidden />

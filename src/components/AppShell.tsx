@@ -6,6 +6,14 @@ import { useAppUpdates } from '../renderer/useAppUpdates';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 import type { SidebarSessionLayout } from '../sidebarSessionGroups';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { PanelLeftOpen } from 'lucide-react';
 
 interface AppShellProps {
   children: ReactNode;
@@ -35,24 +43,6 @@ interface AppShellProps {
   onOpenSession: (sessionId: string) => void;
   onMinimizeSession: (sessionId: string) => void;
   onDeleteWorkspace: (sessionId: string) => void;
-}
-
-function SidebarExpandIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={14}
-      height={14}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <rect x="1.5" y="2.5" width={13} height={11} rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5.5 2.5v11" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M8 6l2.5 2L8 10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 export function AppShell({
@@ -87,7 +77,7 @@ export function AppShell({
   const appUpdates = useAppUpdates();
 
   return (
-    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-[#09090b] text-zinc-100">
+    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background text-foreground">
       {collapsed ? null : (
         <Sidebar
           project={project}
@@ -117,7 +107,7 @@ export function AppShell({
           updateFooter={<AppUpdateAffordance {...appUpdates} />}
         />
       )}
-      <main className="relative flex min-h-0 flex-1 flex flex-col overflow-hidden">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {collapsed ? (
           <div className="pointer-events-none absolute bottom-3 left-3 z-40">
             <div className="pointer-events-auto max-w-[min(220px,calc(100vw-1.5rem))]">
@@ -126,15 +116,23 @@ export function AppShell({
           </div>
         ) : null}
         {collapsed ? (
-          <button
-            type="button"
-            onClick={onExpand}
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-            className="absolute left-2 top-2 z-30 rounded-md border border-white/[0.06] bg-[#0c0c0e]/80 p-1 text-zinc-500 shadow-sm backdrop-blur transition hover:bg-white/[0.06] hover:text-zinc-200"
-          >
-            <SidebarExpandIcon />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onExpand}
+                aria-label="Expand sidebar"
+                className={cn(
+                  'absolute left-2 top-2 z-30 size-8 border-border/80 bg-background/90 shadow-sm backdrop-blur',
+                )}
+              >
+                <PanelLeftOpen />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Expand sidebar</TooltipContent>
+          </Tooltip>
         ) : null}
         {children}
       </main>
