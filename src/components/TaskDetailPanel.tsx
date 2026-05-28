@@ -11,9 +11,38 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { ChevronDown, FileText, Pencil, Settings, ShieldCheck, Terminal, UserCircle2, X } from 'lucide-react';
+import { MarkdownContent, markdownProseClassName } from './markdownContent';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
+import {
+  Ban,
+  CirclePlay,
+  FileText,
+  Pencil,
+  Settings,
+  ShieldCheck,
+  Terminal,
+  UserCircle2,
+  X,
+} from 'lucide-react';
 import {
   Task,
   TaskStatus,
@@ -48,24 +77,23 @@ import {
   type ProjectMember,
   projectMemberDisplayLabel,
 } from '../renderer/projects/members';
-import {
-  getBlockingTasks,
-  isTaskBlocked,
-  validateBlockedByTaskIds,
-} from '../taskDependencies';
+import { isTaskBlocked, validateBlockedByTaskIds } from '../taskDependencies';
 import {
   patchAutoStartOnUnblockAfterToggle,
   whenUnblockedAutostartBoardChipEffective,
 } from '../unblockAutostart';
 import { projectLabelCatalog } from '../taskLabels';
 import AgentModelPicker from './AgentModelPicker';
-import { AGENT_CHIP_STYLES } from './AgentBadge';
 import { getSessionAttachShared } from '../terminal/warmAttach';
 import {
   INTERACTIVE_MIRROR_TERMINAL_VIEW_POLICY,
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
+import {
+  TerminalAttachLoading,
+  TerminalResizeHandle,
+} from '@/components/terminal/TerminalChrome';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
@@ -73,6 +101,8 @@ import { OpenInWorkspaceButton } from './OpenInWorkspaceButton';
 import { GithubPrIconButton } from './GithubPrIconButton';
 import TaskSourceBranchPicker from './TaskSourceBranchPicker';
 import ConfirmDialog from './ConfirmDialog';
+import { AGENT_SPAWN_AGENT_SELECT_CLASS } from './AgentSessionPrefsMenu';
+import { TASK_STATUS_CHIP } from '../taskStatusChip';
 import type { PlanningDocFileEntry } from '../planningDocs/types';
 import {
   attachedPlanningDocChipPresence,
@@ -99,26 +129,74 @@ function taskAgentSupportsCliResume(agent: Agent | null): boolean {
   return agent === 'cursor' || agent === 'claude-code' || agent === 'codex';
 }
 
+/** Matches task card blocked chip: Ban, or CirclePlay when auto-start on unblock is on. */
+function TaskBlockedSessionControlIcon({
+  willAutoStartWhenUnblocked,
+}: {
+  willAutoStartWhenUnblocked: boolean;
+}) {
+  if (willAutoStartWhenUnblocked) {
+    return (
+      <>
+        <CirclePlay
+          className="size-3.5 shrink-0 text-status-success-foreground"
+          strokeWidth={2}
+          aria-hidden
+        />
+        <span className="sr-only">Blocked — will auto-start when unblocked</span>
+      </>
+    );
+  }
+  return (
+    <>
+      <Ban
+        className="size-3.5 shrink-0 text-status-needs-input-foreground"
+        strokeWidth={2}
+        aria-hidden
+      />
+      <span className="sr-only">Blocked</span>
+    </>
+  );
+}
+
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
-const MD_READ_CLASS = [
-  'min-w-0 text-[13px] leading-relaxed text-zinc-300',
-  '[&_a]:text-sky-400 [&_a]:underline [&_a]:decoration-sky-400/40 [&_a]:underline-offset-2 hover:[&_a]:text-sky-300',
-  '[&_h1]:mb-2 [&_h1]:mt-0 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-zinc-100',
-  '[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-zinc-100 first:[&_h2]:mt-0',
-  '[&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-[14px] [&_h3]:font-medium [&_h3]:text-zinc-200',
-  '[&_p]:my-2.5 [&_p]:text-zinc-300 first:[&_p]:mt-0 last:[&_p]:mb-0',
-  '[&_ul]:my-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2.5 [&_ol]:list-decimal [&_ol]:pl-5',
-  '[&_li]:my-0.5',
-  '[&_blockquote]:my-2.5 [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-600 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-400',
-  '[&_code]:rounded [&_code]:bg-zinc-800/80 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12px] [&_code]:text-emerald-200/90',
-  '[&_pre]:my-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:bg-[#0a0a0c] [&_pre]:p-2.5',
-  '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[12px] [&_pre_code]:text-zinc-300',
-  '[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse text-[12px]',
-  '[&_th]:border [&_th]:border-white/[0.08] [&_th]:bg-white/[0.04] [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-200',
-  '[&_td]:border [&_td]:border-white/[0.06] [&_td]:px-2 [&_td]:py-1',
-  '[&_hr]:my-4 [&_hr]:border-white/[0.08]',
-  '[&_strong]:font-semibold [&_strong]:text-zinc-100',
-].join(' ');
+const MD_READ_CLASS = markdownProseClassName({ density: 'panel' });
+
+function AttachPlanningDocSelect({
+  attachablePlanningDocs,
+  resetKey,
+  onAttach,
+}: {
+  attachablePlanningDocs: { relativePath: string }[];
+  resetKey: string;
+  onAttach: (relativePath: string) => void;
+}) {
+  return (
+    <Select
+      key={resetKey}
+      onValueChange={(v) => {
+        if (!v) return;
+        onAttach(v);
+      }}
+    >
+      <SelectTrigger
+        className="h-8 text-xs"
+        aria-label="Attach a planning document from the project list"
+      >
+        <SelectValue placeholder="Attach document…" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {attachablePlanningDocs.map((f) => (
+            <SelectItem key={f.relativePath} value={f.relativePath} className="text-xs">
+              {f.relativePath}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
 
 export interface TaskDetailPanelProps {
   task: Task | null;
@@ -223,15 +301,6 @@ function readStoredDetailWidth(): number | null {
     return null;
   }
 }
-
-const STATUS_CHIP: Record<TaskStatus, string> = {
-  backlog: 'bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]',
-  'in-progress': 'bg-emerald-500/[0.12] text-emerald-200/95 ring-1 ring-inset ring-emerald-500/15',
-  'needs-input': 'bg-amber-500/[0.12] text-amber-200/90 ring-1 ring-inset ring-amber-500/18',
-  validation: 'bg-violet-500/[0.12] text-violet-200/95 ring-1 ring-inset ring-violet-500/18',
-  review: 'bg-sky-500/[0.12] text-sky-200/95 ring-1 ring-inset ring-sky-500/18',
-  done: 'bg-white/[0.03] text-zinc-500 ring-1 ring-inset ring-white/[0.05]',
-};
 
 function formatCreatedLabel(iso: string): string {
   const d = new Date(iso);
@@ -1083,7 +1152,6 @@ export default function TaskDetailPanel({
   const repoBlocked = projectRepoActionsBlocked(projectRepoReadiness);
   const startSessionControlDisabled =
     startInFlight || blocked || noAgentForSession || repoBlocked;
-  const blockingTasks = getBlockingTasks(task, projectTasks);
   const taskById = new Map(projectTasks.map((t) => [t.id, t]));
   const staleMissingIds = (task.blockedByTaskIds ?? []).filter((id) => !taskById.has(id));
   const unblockAutoStartCheckboxLocked = Boolean(
@@ -1142,27 +1210,20 @@ export default function TaskDetailPanel({
       ? 'Retry'
       : sessionStartButtonLabel(executionDevices, resolvedDevice);
   const startBtnPrimary =
-    'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed';
-  const startBtnIdle = `${startBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
+    'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-status-success-foreground shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed';
+  const startBtnIdle = `${startBtnPrimary} disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none`;
   const startBtnError =
-    'rounded-lg border border-red-500/35 bg-red-500/[0.12] px-4 py-2 text-[13px] font-medium text-red-200/90 transition hover:bg-red-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40';
+    'rounded-lg border border-red-500/35 bg-red-500/[0.12] px-4 py-2 text-[13px] font-medium text-destructive-foreground transition hover:bg-red-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40';
   const startBtnLoading =
-    'cursor-wait rounded-lg bg-zinc-800/90 px-4 py-2 text-[13px] font-medium text-zinc-500';
+    'cursor-wait rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground';
   const markDoneBtn =
-    'rounded-lg bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
+    'rounded-lg bg-muted/60 px-4 py-2 text-[13px] font-medium text-foreground ring-1 ring-inset ring-border transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   const markDoneBtnDisabled =
-    'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+    'cursor-not-allowed rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground ring-1 ring-inset ring-border';
   const validateBtnFilled =
-    'inline-flex items-center gap-2 rounded-lg bg-violet-500/90 px-4 py-2 text-[13px] font-medium text-violet-50 shadow-sm transition hover:bg-violet-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none';
+    'inline-flex items-center gap-2 rounded-lg bg-violet-500/90 px-4 py-2 text-[13px] font-medium text-violet-50 shadow-sm transition hover:bg-violet-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none';
   const validateBtnOutline =
-    'inline-flex items-center gap-2 rounded-lg bg-violet-500/[0.08] px-4 py-2 text-[13px] font-medium text-violet-200 ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:ring-white/[0.06]';
-
-  const propertySelectClass =
-    'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
-  const assigneeTriggerClass =
-    'flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-2 text-left text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20';
-  const noTaskAgentChip =
-    'border-zinc-600/40 bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/[0.06]';
+    'inline-flex items-center gap-2 rounded-lg bg-violet-500/[0.08] px-4 py-2 text-[13px] font-medium text-status-validation-foreground ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:ring-border';
 
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
@@ -1179,28 +1240,26 @@ export default function TaskDetailPanel({
   const panelShell = (
     <>
       {!sessionWorkspace ? (
-        <div
-          role="separator"
-          aria-orientation="vertical"
+        <TerminalResizeHandle
+          orientation="vertical"
           aria-label="Resize task details"
           title="Drag to resize. Double-click to reset."
-          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-white/[0.08] before:content-[''] hover:before:bg-white/[0.2] focus-visible:ring-1 focus-visible:ring-white/20"
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
       ) : null}
 
       {/* Top bar: metadata + primary CTA + optional close (board overlay only) */}
-      <header className="flex shrink-0 items-start gap-3 border-b border-white/[0.05] px-5 py-4">
+      <header className="flex shrink-0 items-start gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`inline-flex rounded-md px-2.5 py-0.5 text-xs font-medium ${STATUS_CHIP[task.status]}`}
+                className={`inline-flex rounded-md px-2.5 py-0.5 text-xs font-medium ${TASK_STATUS_CHIP[task.status]}`}
               >
                 {statusLabel}
               </span>
               {task.createdAt ? (
-                <span className="text-xs text-zinc-500">Created {formatCreatedLabel(task.createdAt)}</span>
+                <span className="text-xs text-muted-foreground">Created {formatCreatedLabel(task.createdAt)}</span>
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1284,11 +1343,21 @@ export default function TaskDetailPanel({
                           : sessionError
                             ? startBtnError
                             : blocked || noAgentForSession
-                              ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                              ? 'inline-flex cursor-not-allowed items-center justify-center rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground ring-1 ring-inset ring-border'
                               : startBtnIdle
                       }
                     >
-                      {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : sessionError ? 'Retry' : 'Resume'}
+                      {blocked ? (
+                        <TaskBlockedSessionControlIcon
+                          willAutoStartWhenUnblocked={effectiveWhenUnblockedAuto}
+                        />
+                      ) : noAgentForSession ? (
+                        'No agent'
+                      ) : sessionError ? (
+                        'Retry'
+                      ) : (
+                        'Resume'
+                      )}
                     </button>
                     <button
                       type="button"
@@ -1305,11 +1374,19 @@ export default function TaskDetailPanel({
                         startInFlight
                           ? startBtnLoading
                           : blocked || noAgentForSession
-                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            ? 'inline-flex cursor-not-allowed items-center justify-center rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground ring-1 ring-inset ring-border'
                             : markDoneBtn
                       }
                     >
-                      {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : 'New session'}
+                      {blocked ? (
+                        <TaskBlockedSessionControlIcon
+                          willAutoStartWhenUnblocked={effectiveWhenUnblockedAuto}
+                        />
+                      ) : noAgentForSession ? (
+                        'No agent'
+                      ) : (
+                        'New session'
+                      )}
                     </button>
                   </div>
                 ) : (
@@ -1332,16 +1409,24 @@ export default function TaskDetailPanel({
                         : sessionError
                           ? startBtnError
                           : blocked || noAgentForSession
-                            ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
+                            ? 'inline-flex cursor-not-allowed items-center justify-center rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground ring-1 ring-inset ring-border'
                             : startBtnIdle
                     }
                   >
-                    {blocked ? 'Blocked' : noAgentForSession ? 'No agent' : startButtonLabel}
+                    {blocked ? (
+                      <TaskBlockedSessionControlIcon
+                        willAutoStartWhenUnblocked={effectiveWhenUnblockedAuto}
+                      />
+                    ) : noAgentForSession ? (
+                      'No agent'
+                    ) : (
+                      startButtonLabel
+                    )}
                   </button>
                 )
               ) : null}
               {sessionError && !sessionRunning ? (
-                <p className="min-w-0 text-xs leading-snug text-red-300/90">{sessionError}</p>
+                <p className="min-w-0 text-xs leading-snug text-destructive">{sessionError}</p>
               ) : null}
             </div>
           </div>
@@ -1349,7 +1434,7 @@ export default function TaskDetailPanel({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Close"
             >
               <X className="h-5 w-5" strokeWidth={1.75} aria-hidden />
@@ -1372,7 +1457,7 @@ export default function TaskDetailPanel({
                   onUpdate(task.id, { title: e.target.value });
                   titleArea.resize();
                 }}
-                className="w-full resize-none bg-transparent text-2xl font-semibold leading-tight tracking-tight text-zinc-50 placeholder:text-zinc-600 outline-none focus:outline-none focus-visible:ring-0"
+                className="w-full resize-none bg-transparent text-2xl font-semibold leading-tight tracking-tight text-foreground placeholder:text-muted-foreground outline-none focus:outline-none focus-visible:ring-0"
                 placeholder="Task title"
               />
 
@@ -1387,7 +1472,7 @@ export default function TaskDetailPanel({
               {/* Properties: compact row */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1 space-y-2">
-                  <p className="text-xs text-zinc-500">Agent & model</p>
+                  <p className="text-xs text-muted-foreground">Agent & model</p>
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <select
                       value={task.agent ?? ''}
@@ -1405,10 +1490,7 @@ export default function TaskDetailPanel({
                         }
                         onUpdate(task.id, patch);
                       }}
-                      className={`max-w-full shrink-0 ${propertySelectClass} ${
-                        task.agent != null ? AGENT_CHIP_STYLES[task.agent] : noTaskAgentChip
-                      }`}
-                      style={{ colorScheme: 'dark' } as CSSProperties}
+                      className={cn('max-w-full shrink-0', AGENT_SPAWN_AGENT_SELECT_CLASS)}
                       aria-label="Agent provider"
                     >
                       {TASK_AGENT_SELECT_OPTIONS.map((a) => (
@@ -1451,80 +1533,79 @@ export default function TaskDetailPanel({
                     ) : null}
                     {task.agent != null ? (
                       <div ref={agentSettingsWrapRef} className="relative shrink-0">
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon"
                           aria-label="Agent spawn settings"
                           aria-expanded={agentSettingsOpen}
                           onClick={() => setAgentSettingsOpen((o) => !o)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          className="size-8 text-muted-foreground"
                         >
-                          <Settings className="h-4 w-4" strokeWidth={1.75} aria-hidden />
-                        </button>
+                          <Settings strokeWidth={1.75} aria-hidden />
+                        </Button>
                         {agentSettingsOpen ? (
                           <div
-                            className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-white/[0.08] bg-[#111113] p-3 text-[12px] shadow-xl shadow-black/50"
+                            className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-popover p-3 text-xs text-popover-foreground shadow-md"
                             role="dialog"
                             aria-label="Agent settings"
                           >
                             {task.agent === 'cursor' ? (
-                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                              <label className="flex cursor-pointer items-start gap-2 text-foreground">
+                                <Checkbox
+                                  className="mt-0.5"
                                   checked={task.agentYolo === true}
-                                  onChange={(e) =>
-                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  onCheckedChange={(checked) =>
+                                    onUpdate(task.id, { agentYolo: checked === true })
                                   }
                                 />
                                 <span className="leading-snug">
-                                  <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
-                                  <span className="mt-1 block text-[11px] text-zinc-500">
-                                    Matches Cursor Agent <code className="text-zinc-400">--yolo</code> /{' '}
-                                    <code className="text-zinc-400">--force</code>: fewer confirmation
+                                  <span className="font-medium text-foreground">YOLO (Run Everything)</span>
+                                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                                    Matches Cursor Agent <code className="text-muted-foreground">--yolo</code> /{' '}
+                                    <code className="text-muted-foreground">--force</code>: fewer confirmation
                                     prompts; tools and shell commands run more freely unless explicitly
                                     denied.
                                   </span>
                                 </span>
                               </label>
                             ) : task.agent === 'claude-code' ? (
-                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                              <label className="flex cursor-pointer items-start gap-2 text-foreground">
+                                <Checkbox
+                                  className="mt-0.5"
                                   checked={task.agentYolo === true}
-                                  onChange={(e) =>
-                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  onCheckedChange={(checked) =>
+                                    onUpdate(task.id, { agentYolo: checked === true })
                                   }
                                 />
                                 <span className="leading-snug">
-                                  <span className="font-medium text-zinc-100">Skip permission checks</span>
-                                  <span className="mt-1 block text-[11px] text-zinc-500">
-                                    Passes <code className="text-zinc-400">--dangerously-skip-permissions</code> to
+                                  <span className="font-medium text-foreground">Skip permission checks</span>
+                                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                                    Passes <code className="text-muted-foreground">--dangerously-skip-permissions</code> to
                                     Claude Code. Anthropic recommends this only for trusted sandboxes.
                                   </span>
                                 </span>
                               </label>
                             ) : task.agent === 'codex' ? (
-                              <label className="flex cursor-pointer items-start gap-2 text-zinc-200">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-white/[0.2] bg-[#09090b]"
+                              <label className="flex cursor-pointer items-start gap-2 text-foreground">
+                                <Checkbox
+                                  className="mt-0.5"
                                   checked={task.agentYolo === true}
-                                  onChange={(e) =>
-                                    onUpdate(task.id, { agentYolo: e.target.checked })
+                                  onCheckedChange={(checked) =>
+                                    onUpdate(task.id, { agentYolo: checked === true })
                                   }
                                 />
                                 <span className="leading-snug">
-                                  <span className="font-medium text-zinc-100">YOLO (Run Everything)</span>
-                                  <span className="mt-1 block text-[11px] text-zinc-500">
-                                    Passes Codex <code className="text-zinc-400">--yolo</code> (alias for{' '}
-                                    <code className="text-zinc-400">--dangerously-bypass-approvals-and-sandbox</code>
+                                  <span className="font-medium text-foreground">YOLO (Run Everything)</span>
+                                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                                    Passes Codex <code className="text-muted-foreground">--yolo</code> (alias for{' '}
+                                    <code className="text-muted-foreground">--dangerously-bypass-approvals-and-sandbox</code>
                                     ): fewer approval prompts and broader sandbox access.
                                   </span>
                                 </span>
                               </label>
                             ) : (
-                              <p className="leading-relaxed text-zinc-500">
+                              <p className="leading-relaxed text-muted-foreground">
                                 No spawn toggles for this agent.
                               </p>
                             )}
@@ -1535,32 +1616,35 @@ export default function TaskDetailPanel({
                   </div>
                 </div>
                 <div className="w-full min-w-0 sm:w-44 sm:shrink-0">
-                  <label htmlFor="task-status-select" className="mb-1.5 block text-xs text-zinc-500">
+                  <Label htmlFor="task-status-select" className="mb-1.5 text-xs text-muted-foreground">
                     Status
-                  </label>
-                  <select
-                    id="task-status-select"
+                  </Label>
+                  <Select
                     value={task.status}
-                    onChange={(e) => onUpdate(task.id, { status: e.target.value as TaskStatus })}
-                    className={propertySelectClass}
-                    style={{ colorScheme: 'dark' } as CSSProperties}
-                    aria-label="Change status"
+                    onValueChange={(value) => onUpdate(task.id, { status: value as TaskStatus })}
                   >
-                    {statusColumnOptions.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="task-status-select" className="h-8 text-xs font-medium" aria-label="Change status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {statusColumnOptions.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               {executionDevices.length > 0 ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                   <div className="shrink-0">
-                    <p className="text-xs text-zinc-500">Run on</p>
+                    <p className="text-xs text-muted-foreground">Run on</p>
                     {sessionRunning ? (
-                      <p className="mt-0.5 text-[10px] text-zinc-600">
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
                         Locked while the session is running.
                       </p>
                     ) : null}
@@ -1580,114 +1664,118 @@ export default function TaskDetailPanel({
 
               {projectMembers !== undefined ? (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                  <p className="shrink-0 text-xs text-zinc-500">Assignee</p>
-                  <div ref={assigneeMenuWrapRef} className="relative min-w-0 sm:max-w-[min(18rem,100%)] sm:flex-1">
-                    <button
-                      type="button"
-                      id="task-assignee-trigger"
-                      onClick={() => setAssigneeMenuOpen((o) => !o)}
-                      aria-haspopup="listbox"
-                      aria-expanded={assigneeMenuOpen}
-                      aria-controls="task-assignee-listbox"
-                      className={assigneeTriggerClass}
+                  <p className="shrink-0 text-xs text-muted-foreground">Assignee</p>
+                  <div ref={assigneeMenuWrapRef} className="min-w-0 sm:max-w-[min(18rem,100%)] sm:flex-1">
+                    <DropdownMenu
+                      open={assigneeMenuOpen}
+                      onOpenChange={setAssigneeMenuOpen}
                     >
-                      {task.assigneeId && selectedAssigneeMember ? (
-                        <>
-                          <ProjectMemberAvatar member={selectedAssigneeMember} size="sm" />
-                          <span className="min-w-0 flex-1 truncate">
-                            {projectMemberDisplayLabel(selectedAssigneeMember)}
-                          </span>
-                        </>
-                      ) : task.assigneeId ? (
-                        <>
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-500/[0.15] text-[10px] font-medium text-zinc-400">
-                            ?
-                          </div>
-                          <span className="min-w-0 flex-1 truncate text-zinc-400">
-                            Unknown member
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <UserCircle2
-                            className="h-5 w-5 shrink-0 text-zinc-500"
-                            strokeWidth={1.5}
-                            aria-hidden
-                          />
-                          <span className="min-w-0 flex-1 truncate text-zinc-400">
-                            Unassigned
-                          </span>
-                        </>
-                      )}
-                      <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500" strokeWidth={2} aria-hidden />
-                    </button>
-                    {assigneeMenuOpen ? (
-                      <div
-                        id="task-assignee-listbox"
-                        role="listbox"
-                        aria-labelledby="task-assignee-trigger"
-                        className="absolute left-0 right-0 z-40 mt-1 max-h-56 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111113] py-1 shadow-xl shadow-black/50"
-                      >
-                        <button
+                      <DropdownMenuTrigger asChild>
+                        <Button
                           type="button"
-                          role="option"
-                          aria-selected={!task.assigneeId}
-                          className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] text-zinc-200 hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
-                          onClick={() => requestAssigneeChange(null)}
+                          id="task-assignee-trigger"
+                          variant="outline"
+                          className="h-8 w-full justify-start gap-2 px-2.5 text-xs font-medium"
+                        >
+                          {task.assigneeId && selectedAssigneeMember ? (
+                            <>
+                              <ProjectMemberAvatar member={selectedAssigneeMember} size="sm" />
+                              <span className="min-w-0 flex-1 truncate text-left">
+                                {projectMemberDisplayLabel(selectedAssigneeMember)}
+                              </span>
+                            </>
+                          ) : task.assigneeId ? (
+                            <>
+                              <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                                ?
+                              </div>
+                              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                Unknown member
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <UserCircle2
+                                className="size-5 shrink-0 text-muted-foreground"
+                                strokeWidth={1.5}
+                                aria-hidden
+                              />
+                              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                                Unassigned
+                              </span>
+                            </>
+                          )}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        id="task-assignee-listbox"
+                        align="start"
+                        className="max-h-56 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+                      >
+                        <DropdownMenuItem
+                          className="gap-2 text-xs"
+                          onSelect={() => requestAssigneeChange(null)}
                         >
                           <UserCircle2
-                            className="h-5 w-5 shrink-0 text-zinc-500"
+                            className="size-5 shrink-0 text-muted-foreground"
                             strokeWidth={1.5}
                             aria-hidden
                           />
-                          <span className="truncate text-zinc-400">Unassigned</span>
-                        </button>
-                        {projectMembers.map((m) => {
-                          const selected = task.assigneeId === m.uid;
-                          return (
-                            <button
-                              key={m.uid}
-                              type="button"
-                              role="option"
-                              aria-selected={selected}
-                              className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
-                                selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
-                              }`}
-                              onClick={() => requestAssigneeChange(m.uid)}
-                            >
-                              <ProjectMemberAvatar member={m} size="sm" />
-                              <span className="min-w-0 flex-1 truncate">{projectMemberDisplayLabel(m)}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : null}
+                          <span className="text-muted-foreground">Unassigned</span>
+                        </DropdownMenuItem>
+                        {projectMembers.map((m) => (
+                          <DropdownMenuItem
+                            key={m.uid}
+                            className={cn(
+                              'gap-2 text-xs',
+                              task.assigneeId === m.uid && 'bg-accent',
+                            )}
+                            onSelect={() => requestAssigneeChange(m.uid)}
+                          >
+                            <ProjectMemberAvatar member={m} size="sm" />
+                            <span className="min-w-0 flex-1 truncate">
+                              {projectMemberDisplayLabel(m)}
+                            </span>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               ) : null}
 
-              <div className="border-t border-white/[0.04] pt-4">
+              <div className="border-t border-border pt-4">
                 {showRepoSection ? (
                   <div className="mb-4">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                       Repository
                     </p>
                     {repoFieldLocked ? (
-                      <p className="mt-1.5 text-[13px] text-zinc-200">{repoLabelDisplay}</p>
+                      <p className="mt-1.5 text-[13px] text-foreground">{repoLabelDisplay}</p>
                     ) : (
-                      <select
-                        id={`task-${task.id}-repo`}
+                      <Select
                         value={repoDraftId}
-                        onChange={(e) => setRepoDraftId(e.target.value)}
-                        onBlur={() => void persistSourceMetadata()}
-                        className={`${propertySelectClass} mt-1.5`}
+                        onValueChange={(value) => {
+                          setRepoDraftId(value);
+                        }}
                       >
-                        {(projectRepos ?? []).map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {repoDisplayLabel(r)}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger
+                          id={`task-${task.id}-repo`}
+                          className={cn('mt-1.5 h-8 text-xs font-medium')}
+                          onBlur={() => void persistSourceMetadata()}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {(projectRepos ?? []).map((r) => (
+                              <SelectItem key={r.id} value={r.id}>
+                                {repoDisplayLabel(r)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                 ) : null}
@@ -1705,18 +1793,18 @@ export default function TaskDetailPanel({
                   onInputBlur={() => void persistSourceMetadata()}
                 />
                 {sourceMetadataError ? (
-                  <p className="mt-2 text-[11px] leading-snug text-red-300/90" role="alert">
+                  <p className="mt-2 text-[11px] leading-snug text-destructive" role="alert">
                     {sourceMetadataError}
                   </p>
                 ) : null}
                 {repoFieldLocked ? (
-                  <p className="mt-2 text-[11px] leading-snug text-amber-200/85">
+                  <p className="mt-2 text-[11px] leading-snug text-status-needs-input-foreground">
                     {task.githubPr?.url?.trim()
                       ? 'Repository and source branch cannot be edited while a GitHub pull request is linked to this task. Clear the pull request metadata first.'
                       : 'The repository and source branch are fixed once there is a worktree or any agent session for this task (including after the session ends), or while a session is starting. On cloud projects, metadata is shared with your team; git branch lists are always read from this computer.'}
                   </p>
                 ) : (
-                  <p className="mt-2 text-[11px] text-zinc-600">
+                  <p className="mt-2 text-[11px] text-muted-foreground">
                     Updates when you leave the repository or branch field. If session start fails
                     locally, check the error message and your clone.
                   </p>
@@ -1725,7 +1813,7 @@ export default function TaskDetailPanel({
             </div>
 
             <div
-              className="flex gap-1 border-b border-white/[0.04] px-5 pt-1"
+              className="flex gap-1 border-b border-border px-5 pt-1"
               role="tablist"
               aria-label="Task detail sections"
             >
@@ -1746,8 +1834,8 @@ export default function TaskDetailPanel({
                   className={[
                     'rounded-t-lg px-3 py-2 text-[12px] font-medium transition',
                     detailContentTab === id
-                      ? 'bg-white/[0.04] text-zinc-100 ring-1 ring-inset ring-white/[0.06] ring-b-transparent'
-                      : 'text-zinc-500 hover:text-zinc-300',
+                      ? 'bg-muted/60 text-foreground ring-1 ring-inset ring-border ring-b-transparent'
+                      : 'text-muted-foreground hover:text-foreground/80',
                   ].join(' ')}
                 >
                   {label}
@@ -1759,16 +1847,16 @@ export default function TaskDetailPanel({
               <>
             {/* Description: read-first, edit on demand */}
             <section
-              className="border-t border-white/[0.04] bg-white/[0.02] px-5 py-5"
+              className="border-t border-border bg-muted/30 px-5 py-5"
               aria-label="Description"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-medium text-zinc-300">Description</h2>
+                <h2 className="text-sm font-medium text-foreground/80">Description</h2>
                 {!descriptionEditing ? (
                   <button
                     type="button"
                     onClick={() => setDescriptionEditing(true)}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
                     {hasDescription ? 'Edit' : 'Add details'}
@@ -1776,7 +1864,7 @@ export default function TaskDetailPanel({
                 ) : null}
               </div>
               {descriptionEditing ? (
-                <textarea
+                <Textarea
                   id="task-detail-description"
                   ref={descriptionArea.ref}
                   value={descriptionRaw}
@@ -1788,19 +1876,19 @@ export default function TaskDetailPanel({
                   autoFocus
                   rows={4}
                   placeholder="Write a plan, acceptance criteria, or notes — Markdown is supported."
-                  className="min-h-[8rem] w-full resize-y rounded-xl bg-[#0c0c0e] px-3.5 py-3.5 text-[13px] leading-[1.65] text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                  className="min-h-[8rem] resize-y text-[13px] leading-[1.65]"
                 />
               ) : (
                 <div className="group relative min-h-[3rem]">
                   {hasDescription ? (
-                    <article className={MD_READ_CLASS}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{descriptionRaw}</ReactMarkdown>
-                    </article>
+                    <MarkdownContent className={MD_READ_CLASS} density="panel">
+                      {descriptionRaw}
+                    </MarkdownContent>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setDescriptionEditing(true)}
-                      className="w-full rounded-xl border border-dashed border-white/[0.1] bg-transparent py-8 text-left text-sm text-zinc-500 transition hover:border-white/[0.14] hover:bg-white/[0.02] hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="w-full rounded-xl border border-dashed border-border bg-transparent py-8 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/30 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       No description yet. Click to add plan, criteria, or notes.
                     </button>
@@ -1811,16 +1899,16 @@ export default function TaskDetailPanel({
 
             {onOpenPlanningDoc ? (
               <section
-                className="border-t border-white/[0.04] px-5 py-5"
+                className="border-t border-border/60 px-5 py-5"
                 aria-label="Attached planning documents"
               >
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
-                  <h2 className="mb-1 text-sm font-medium text-zinc-300">Attached docs</h2>
-                  <p className="mb-2 text-[11px] leading-snug text-zinc-500">
+                <div className="rounded-2xl border border-border bg-card px-3.5 py-3">
+                  <h2 className="mb-1 text-sm font-medium text-card-foreground">Attached docs</h2>
+                  <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
                     Link planning markdown for quick access. Opens in the Docs workspace.
                   </p>
                   {attachedPlanningPaths.length === 0 ? (
-                    <p className="mb-2 text-xs text-zinc-600">No documents attached.</p>
+                    <p className="mb-2 text-xs text-muted-foreground">No documents attached.</p>
                   ) : (
                     <ul className="mb-2 flex flex-wrap gap-1.5" role="list">
                       {attachedPlanningPaths.map((relPath) => {
@@ -1831,40 +1919,38 @@ export default function TaskDetailPanel({
                           planningDocsListLoading,
                         );
                         const label = compactPlanningDocPathLabel(relPath);
+                        const missing = presence === 'missing';
                         return (
                           <li key={relPath} className="flex max-w-full items-stretch">
-                            {presence !== 'missing' ? (
-                              <button
+                            {missing ? (
+                              <Badge
+                                variant="outline"
+                                className="max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-status-needs-input/30 bg-status-needs-input/10 py-1 pl-2 pr-1 text-[11px] font-medium text-status-needs-input-foreground line-through"
+                                title={`${relPath} — not found in planning docs list`}
+                                aria-label={`Missing planning document ${relPath}`}
+                              >
+                                <FileText data-icon="inline-start" aria-hidden />
+                                <span className="min-w-0 truncate">{label}</span>
+                              </Badge>
+                            ) : (
+                              <Button
                                 type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => onOpenPlanningDoc(relPath)}
                                 title={relPath}
                                 aria-label={`Open planning document ${relPath}`}
-                                className="inline-flex max-w-[min(100%,14rem)] items-center gap-1 rounded-l-md border border-white/[0.08] bg-white/[0.05] py-1 pl-2 pr-1 text-left text-[11px] font-medium text-sky-200/95 ring-1 ring-inset ring-white/[0.04] transition hover:bg-white/[0.08] hover:text-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
+                                className="h-auto max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-r-0 py-1 pl-2 pr-1 text-[11px] font-medium text-primary"
                               >
-                                <FileText
-                                  className="h-3 w-3 shrink-0 opacity-80"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
+                                <FileText data-icon="inline-start" aria-hidden />
                                 <span className="min-w-0 truncate">{label}</span>
-                              </button>
-                            ) : (
-                              <span
-                                className="inline-flex max-w-[min(100%,14rem)] cursor-not-allowed items-center gap-1 rounded-l-md border border-amber-500/25 bg-amber-500/[0.08] py-1 pl-2 pr-1 text-left text-[11px] font-medium text-amber-100/90 line-through opacity-90 ring-1 ring-inset ring-amber-500/15"
-                                title={`${relPath} — not found in planning docs list`}
-                                role="status"
-                                aria-label={`Missing planning document ${relPath}`}
-                              >
-                                <FileText
-                                  className="h-3 w-3 shrink-0 opacity-70"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0 truncate">{label}</span>
-                              </span>
+                              </Button>
                             )}
-                            <button
+                            <Button
                               type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-auto shrink-0 rounded-l-none rounded-r-lg px-1.5"
                               onClick={() => {
                                 const docs = task.attachedPlanningDocs ?? [];
                                 const next = docs.filter((d) => d.relativePath !== relPath);
@@ -1872,87 +1958,60 @@ export default function TaskDetailPanel({
                                   attachedPlanningDocs: next.length > 0 ? next : [],
                                 });
                               }}
-                              className="shrink-0 rounded-r-md border border-l-0 border-white/[0.08] bg-white/[0.04] px-1.5 text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                               title={`Remove ${relPath}`}
                               aria-label={`Remove attached document ${relPath}`}
                             >
-                              <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                            </button>
+                              <X data-icon="inline-start" aria-hidden />
+                            </Button>
                           </li>
                         );
                       })}
                     </ul>
                   )}
                   {planningDocFiles.length === 0 ? (
-                    <p className="text-[11px] text-zinc-600">No planning docs loaded for this project yet.</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      No planning docs loaded for this project yet.
+                    </p>
                   ) : attachablePlanningDocs.length === 0 ? (
                     attachedPlanningPaths.length === 0 ? (
-                      <p className="text-[11px] text-zinc-600">All planning documents are already attached.</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        All planning documents are already attached.
+                      </p>
                     ) : null
                   ) : (
-                    <label className="block">
-                      <span className="sr-only">Attach planning document</span>
-                      <select
-                        defaultValue=""
-                        key={attachedPlanningPaths.join('\0')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (!v) return;
-                          const docs = task.attachedPlanningDocs ?? [];
-                          const next = sanitizeTaskAttachedPlanningDocsInput([
-                            ...docs,
-                            { relativePath: v },
-                          ]);
-                          onUpdate(task.id, { attachedPlanningDocs: next });
-                          e.target.selectedIndex = 0;
-                        }}
-                        className={propertySelectClass}
-                        style={{ colorScheme: 'dark' } as CSSProperties}
-                        aria-label="Attach a planning document from the project list"
-                      >
-                        <option value="">Attach document…</option>
-                        {attachablePlanningDocs.map((f) => (
-                          <option key={f.relativePath} value={f.relativePath}>
-                            {f.relativePath}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <AttachPlanningDocSelect
+                      attachablePlanningDocs={attachablePlanningDocs}
+                      resetKey={attachedPlanningPaths.join('\0')}
+                      onAttach={(relativePath) => {
+                        const docs = task.attachedPlanningDocs ?? [];
+                        const next = sanitizeTaskAttachedPlanningDocsInput([
+                          ...docs,
+                          { relativePath },
+                        ]);
+                        onUpdate(task.id, { attachedPlanningDocs: next });
+                      }}
+                    />
                   )}
                 </div>
               </section>
             ) : null}
 
             <div className="space-y-4 px-5 py-5">
-              {(blockingTasks.length > 0 || staleMissingIds.length > 0) && (
+              {staleMissingIds.length > 0 ? (
                 <div
-                  className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-2.5 text-sm leading-relaxed text-amber-100/90"
+                  className="rounded-xl border border-status-needs-input/25 bg-status-needs-input/10 px-3.5 py-2.5 text-sm leading-relaxed text-status-needs-input-foreground"
                   role="status"
                 >
-                  {blockingTasks.length > 0 ? (
-                    <p>
-                      <span className="font-medium text-amber-200/95">Waiting on other work</span>
-                      <span className="text-amber-100/85">
-                        {' '}
-                        — complete {blockingTasks.length === 1 ? 'this task' : 'these tasks'} first:{' '}
-                        {blockingTasks.map((b) => b.title || '(Untitled)').join(', ')}
-                      </span>
-                    </p>
-                  ) : null}
-                  {staleMissingIds.length > 0 ? (
-                    <p
-                      className={`text-xs text-amber-200/75 ${blockingTasks.length > 0 ? 'mt-1.5' : ''}`}
-                    >
-                      {staleMissingIds.length} reference{staleMissingIds.length === 1 ? '' : 's'} missing
-                      from the board — remove {staleMissingIds.length === 1 ? 'it' : 'them'} below.
-                    </p>
-                  ) : null}
+                  <p className="text-xs text-status-needs-input-foreground/80">
+                    {staleMissingIds.length} reference{staleMissingIds.length === 1 ? '' : 's'} missing
+                    from the board — remove {staleMissingIds.length === 1 ? 'it' : 'them'} below.
+                  </p>
                 </div>
-              )}
+              ) : null}
 
               <section className="space-y-2" aria-label="Dependencies">
-                <h2 className="text-sm font-medium text-zinc-300">Blockers & dependencies</h2>
-                <p className="text-xs leading-relaxed text-zinc-500">
+                <h2 className="text-sm font-medium text-foreground/80">Blockers & dependencies</h2>
+                <p className="text-xs leading-relaxed text-muted-foreground">
                   This task stays blocked until every listed dependency is done. Missing task ids are ignored
                   for blocking logic.
                 </p>
@@ -1963,7 +2022,7 @@ export default function TaskDetailPanel({
                         ? 'Only the assignee can change this setting for this task'
                         : undefined
                     }
-                    className={`flex items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 ${
+                    className={`flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5 ${
                       unblockAutoStartCheckboxLocked
                         ? 'cursor-not-allowed opacity-70'
                         : 'cursor-pointer'
@@ -1982,18 +2041,18 @@ export default function TaskDetailPanel({
                           patchAutoStartOnUnblockAfterToggle(task, autoStartWhenUnblockedProject),
                         );
                       }}
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/[0.2] bg-[#09090b] disabled:cursor-not-allowed"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-input bg-background disabled:cursor-not-allowed"
                     />
                     <span className="min-w-0">
-                      <span className="text-[13px] font-medium text-zinc-200">
+                      <span className="text-[13px] font-medium text-foreground">
                         Auto-start when unblocked
                       </span>
-                      <span className="mt-0.5 block text-[11px] leading-snug text-zinc-500">
+                      <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
                         Matches the board chip: when on, a session starts as soon as the last
                         dependency completes. You can opt this task out even if the project default
                         is on, or opt in when the default is off.
                         {unblockAutoStartCheckboxLocked ? (
-                          <span className="mt-1 block text-zinc-500">
+                          <span className="mt-1 block text-muted-foreground">
                             Only the assignee can edit this while the task is assigned to someone
                             else.
                           </span>
@@ -2003,7 +2062,7 @@ export default function TaskDetailPanel({
                   </label>
                 ) : null}
                 {(task.blockedByTaskIds ?? []).length === 0 ? (
-                  <p className="text-sm text-zinc-600">No dependencies — this task is not waiting on other work.</p>
+                  <p className="text-sm text-muted-foreground">No dependencies — this task is not waiting on other work.</p>
                 ) : (
                   <ul className="flex flex-col gap-1.5">
                     {(task.blockedByTaskIds ?? []).map((bid) => {
@@ -2014,26 +2073,26 @@ export default function TaskDetailPanel({
                         return (
                           <li
                             key={bid}
-                            className="flex min-h-[2.75rem] items-stretch gap-0 overflow-hidden rounded-lg bg-white/[0.03] ring-1 ring-inset ring-white/[0.06] transition hover:bg-white/[0.04]"
+                            className="flex min-h-[2.75rem] items-stretch gap-0 overflow-hidden rounded-lg bg-muted/40 ring-1 ring-inset ring-border transition hover:bg-muted/60"
                           >
                             <button
                               type="button"
                               onClick={() => onSelectTask(bid)}
-                              className="min-w-0 flex-1 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:text-white"
+                              className="min-w-0 flex-1 px-3 py-2.5 text-left text-sm text-foreground transition hover:text-white"
                             >
                               <span className="line-clamp-2 font-medium">{other.title || '(Untitled)'}</span>
-                              <span className="ml-2 inline-block align-middle text-xs text-zinc-500">Open →</span>
+                              <span className="ml-2 inline-block align-middle text-xs text-muted-foreground">Open →</span>
                             </button>
-                            <div className="flex shrink-0 items-center gap-1 border-l border-white/[0.05] pl-1 pr-1.5">
+                            <div className="flex shrink-0 items-center gap-1 border-l border-border pl-1 pr-1.5">
                               <span
-                                className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${STATUS_CHIP[other.status]}`}
+                                className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${TASK_STATUS_CHIP[other.status]}`}
                               >
                                 {stLabel}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => removeBlocker(bid)}
-                                className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
+                                className="rounded-md px-2 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
                                 aria-label={`Remove dependency on ${other.title || bid}`}
                               >
                                 Remove
@@ -2045,15 +2104,15 @@ export default function TaskDetailPanel({
                       return (
                         <li
                           key={bid}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.03] px-3 py-2 ring-1 ring-inset ring-amber-500/15"
+                          className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 ring-1 ring-inset ring-amber-500/15"
                         >
-                          <span className="min-w-0 text-sm text-zinc-500">
-                            Missing on board <code className="text-zinc-400">{bid}</code>
+                          <span className="min-w-0 text-sm text-muted-foreground">
+                            Missing on board <code className="text-muted-foreground">{bid}</code>
                           </span>
                           <button
                             type="button"
                             onClick={() => removeBlocker(bid)}
-                            className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
+                            className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground"
                           >
                             Remove
                           </button>
@@ -2067,7 +2126,7 @@ export default function TaskDetailPanel({
                   {dependencyAddOpen ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-zinc-500">Add a blocker or dependency</span>
+                        <span className="text-xs text-muted-foreground">Add a blocker or dependency</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -2075,7 +2134,7 @@ export default function TaskDetailPanel({
                             setDepSearch('');
                             setDependencyError(null);
                           }}
-                          className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Cancel
                         </button>
@@ -2085,17 +2144,17 @@ export default function TaskDetailPanel({
                         value={depSearch}
                         onChange={(e) => setDepSearch(e.target.value)}
                         placeholder="Add dependency by search…"
-                        className="w-full rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/20"
+                        className="w-full rounded-lg bg-muted/60 px-3 py-2 text-sm text-foreground ring-1 ring-inset ring-border outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                         aria-label="Search tasks to add as dependencies"
                       />
                       {dependencyError ? (
-                        <p className="text-xs text-red-300/90" role="alert">
+                        <p className="text-xs text-destructive" role="alert">
                           {dependencyError}
                         </p>
                       ) : null}
                       {pickCandidates.length > 0 ? (
                         <ul
-                          className="max-h-40 overflow-y-auto rounded-lg bg-[#0c0c0e] py-1 ring-1 ring-inset ring-white/[0.06]"
+                          className="max-h-40 overflow-y-auto rounded-lg bg-card py-1 ring-1 ring-inset ring-border"
                           role="listbox"
                           aria-label="Tasks matching your search"
                         >
@@ -2107,24 +2166,24 @@ export default function TaskDetailPanel({
                                 <button
                                   type="button"
                                   onClick={() => addBlocker(t.id)}
-                                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-zinc-200 transition hover:bg-white/[0.05]"
+                                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm text-foreground transition hover:bg-accent"
                                 >
                                   <span className="min-w-0 truncate">{t.title || '(Untitled)'}</span>
-                                  <span className="shrink-0 text-xs text-zinc-500">{stLabel}</span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">{stLabel}</span>
                                 </button>
                               </li>
                             );
                           })}
                         </ul>
                       ) : depSearch.trim() ? (
-                        <p className="text-xs text-zinc-600">No matching tasks.</p>
+                        <p className="text-xs text-muted-foreground">No matching tasks.</p>
                       ) : null}
                     </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setDependencyAddOpen(true)}
-                      className="w-full rounded-lg border border-dashed border-white/[0.1] bg-transparent px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:border-white/[0.14] hover:bg-white/[0.02] hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="w-full rounded-lg border border-dashed border-border bg-transparent px-3 py-2.5 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/30 hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Add dependency
                     </button>
@@ -2145,8 +2204,8 @@ export default function TaskDetailPanel({
                   onUpdate={onUpdate}
                 />
               ) : (
-                <section className="border-t border-white/[0.04] px-5 py-8 text-center">
-                  <p className="text-sm text-zinc-400">
+                <section className="border-t border-border px-5 py-8 text-center">
+                  <p className="text-sm text-muted-foreground">
                     Validation is disabled for this project.
                   </p>
                   {onOpenProjectSettings ? (
@@ -2165,13 +2224,10 @@ export default function TaskDetailPanel({
 
           {!sessionWorkspace ? (
             <>
-              <div
-                role="separator"
-                aria-orientation="horizontal"
+              <TerminalResizeHandle
+                orientation="horizontal"
                 aria-label="Resize between task details and session output"
                 title="Drag to resize session. Double-click to reset."
-                tabIndex={0}
-                className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-white/[0.05] bg-[#0a0a0b] outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-white/[0.12] before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/20"
                 onPointerDown={handleSessionSplitPointerDown}
                 onDoubleClick={handleSessionSplitDoubleClick}
                 onKeyDown={onSessionSplitKeyDown}
@@ -2179,37 +2235,43 @@ export default function TaskDetailPanel({
 
               {/* Session: secondary when idle; compact chrome when live */}
               <div
-            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-[#080809]"
+            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-status-terminal text-status-terminal-foreground"
             style={{ height: sessionPaneHeightPx }}
           >
             {sessionRunning && session ? (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.04] px-4 py-2.5">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-status-terminal-foreground/10 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/90" />
-                  <span className="truncate text-xs font-medium text-zinc-400">Session running</span>
+                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-status-success" />
+                  <span className="truncate text-xs font-medium text-status-terminal-foreground/70">
+                    Session running
+                  </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleOpenInTab}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    className="h-auto px-2.5 py-1 text-xs text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   >
                     Open in tab
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleMinimizeFromPanel}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                     title="Minimize — hide from sidebar, keep agent running"
+                    className="h-auto px-2.5 py-1 text-xs text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   >
                     Minimize
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
-                  <Terminal className="h-3.5 w-3.5 opacity-70" strokeWidth={2} aria-hidden />
+                <div className="flex items-center gap-1.5 text-xs font-medium text-status-terminal-foreground/55">
+                  <Terminal className="size-3.5 opacity-70" strokeWidth={2} aria-hidden />
                   {sessionIdleAfterRun ? 'Session output (ended)' : 'Output'}
                 </div>
               </div>
@@ -2217,8 +2279,8 @@ export default function TaskDetailPanel({
 
             <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3">
               {remoteRunner && !session ? (
-                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-6 text-center">
-                  <div className="flex items-center gap-2.5 text-sm text-zinc-200">
+                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-status-terminal-foreground/10 bg-status-terminal-foreground/[0.03] px-4 py-6 text-center">
+                  <div className="flex items-center gap-2.5 text-sm text-status-terminal-foreground">
                     <ProjectMemberAvatar
                       member={{
                         uid: remoteRunner.uid,
@@ -2227,12 +2289,12 @@ export default function TaskDetailPanel({
                       }}
                       size="sm"
                     />
-                    <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                    <span className="inline-flex size-2 shrink-0 animate-pulse rounded-full bg-status-success" />
                     <span className="min-w-0 font-medium">
                       {remoteRunner.displayName ?? 'A teammate'} has a Fluxx Desktop session
                     </span>
                   </div>
-                  <p className="max-w-[18rem] text-xs leading-relaxed text-zinc-500">
+                  <p className="max-w-[18rem] text-xs leading-relaxed text-status-terminal-foreground/60">
                     Their terminal stays on their computer. Direct SSH tasks require Fluxx Desktop on
                     the machine that owns the SSH connection — you cannot start or attach from the web.
                   </p>
@@ -2240,21 +2302,14 @@ export default function TaskDetailPanel({
               ) : !hasLocalSession ? (
                 <div className="relative flex h-full min-h-[6.5rem] flex-col">
                   {showSessionStarting ? (
-                    <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-[#0a0a0b]/95 text-[13px] text-zinc-400"
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <span
-                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-                        aria-hidden
-                      />
-                      <span className="font-medium text-zinc-300">Starting…</span>
-                    </div>
+                    <TerminalAttachLoading
+                      label="Starting…"
+                      className="rounded-xl border-status-terminal-foreground/15"
+                    />
                   ) : null}
                   {repoBlocked && !sessionRunning && !session ? (
                     <p
-                      className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
+                      className="mb-2 rounded-lg border border-status-needs-input/25 bg-status-needs-input/10 px-3 py-2 text-xs text-status-needs-input-foreground"
                       role="status"
                     >
                       {projectRepoReadiness.message}{' '}
@@ -2262,7 +2317,7 @@ export default function TaskDetailPanel({
                         <button
                           type="button"
                           onClick={onOpenProjectSettings}
-                          className="font-medium text-amber-50 underline decoration-amber-400/50 underline-offset-2 hover:decoration-amber-200/70"
+                          className="font-medium underline decoration-status-needs-input/50 underline-offset-2 hover:decoration-status-needs-input"
                         >
                           {projectRepoReadiness.ctaLabel}
                         </button>
@@ -2270,15 +2325,15 @@ export default function TaskDetailPanel({
                     </p>
                   ) : blocked && !sessionRunning && !session ? (
                     <p
-                      className="mb-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90"
+                      className="mb-2 rounded-lg border border-status-needs-input/25 bg-status-needs-input/10 px-3 py-2 text-xs text-status-needs-input-foreground"
                       role="status"
                     >
                       Start session is off until blockers are cleared.
                     </p>
                   ) : null}
-                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] px-4 py-5 text-center">
-                    <p className="text-sm text-zinc-500">No live session in this panel</p>
-                    <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
+                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-status-terminal-foreground/15 bg-status-terminal-foreground/[0.03] px-4 py-5 text-center">
+                    <p className="text-sm text-status-terminal-foreground/70">No live session in this panel</p>
+                    <p className="max-w-sm text-xs leading-relaxed text-status-terminal-foreground/50">
                       {blocked
                         ? 'Unblock the task, then use Start session above. Output streams here and in a workspace tab.'
                         : 'When you start a session, the agent’s terminal streams here. Open in a tab for the full view.'}
@@ -2287,19 +2342,7 @@ export default function TaskDetailPanel({
                 </div>
               ) : (
                 <div className="relative h-full min-h-[120px]">
-                  {showSessionStarting ? (
-                    <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <span
-                        className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-                        aria-hidden
-                      />
-                      <span className="font-medium text-zinc-300">Starting…</span>
-                    </div>
-                  ) : null}
+                  {showSessionStarting ? <TerminalAttachLoading label="Starting…" /> : null}
                   <TerminalComponent
                     ref={terminalRef}
                     sessionId={session?.id ?? null}
@@ -2315,14 +2358,15 @@ export default function TaskDetailPanel({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-white/[0.05] px-5 py-3">
-          <button
+        <div className="shrink-0 border-t border-border px-5 py-3">
+          <Button
             type="button"
+            variant="ghost"
             onClick={handleDelete}
-            className="text-sm text-zinc-500 transition hover:text-red-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0b] rounded"
+            className="h-auto px-0 text-sm text-muted-foreground hover:bg-transparent hover:text-destructive"
           >
             Delete task
-          </button>
+          </Button>
         </div>
     </>
   );
@@ -2342,7 +2386,7 @@ export default function TaskDetailPanel({
         sessionWorkspace ? 'div' : 'aside',
         sessionWorkspace
           ? {
-              className: 'flex h-full min-h-0 min-w-0 flex-col bg-[#0a0a0b]',
+              className: 'flex h-full min-h-0 min-w-0 flex-col bg-background',
               role: 'region' as const,
               'aria-label': 'Task details',
             }
@@ -2350,7 +2394,7 @@ export default function TaskDetailPanel({
               ref: asideRef,
               style: { width: detailWidth } as CSSProperties,
               className:
-                'absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-white/[0.04] bg-[#0a0a0b] shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]',
+                'absolute inset-y-0 right-0 z-20 flex min-w-0 flex-col border-l border-border bg-background shadow-[0_0_0_1px_rgba(255,255,255,0.04),-12px_0_40px_rgba(0,0,0,0.45)]',
               role: 'dialog' as const,
               'aria-modal': true as const,
               'aria-labelledby': 'task-detail-title',

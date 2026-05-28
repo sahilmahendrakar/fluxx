@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '../renderer/auth/useAuth';
 
 export function SignInCard() {
@@ -7,26 +12,30 @@ export function SignInCard() {
   const [error, setError] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
 
-  // Reset failure state when the photo URL changes (e.g. sign-in/out cycle).
   useEffect(() => {
     setPhotoFailed(false);
   }, [user?.photoURL]);
 
   if (status === 'unconfigured') {
     return (
-      <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-[12px] text-zinc-500">
-        Sign-in disabled — set <code className="font-mono text-zinc-400">VITE_FIREBASE_*</code> and{' '}
-        <code className="font-mono text-zinc-400">VITE_GOOGLE_DESKTOP_CLIENT_ID</code> in{' '}
-        <code className="font-mono text-zinc-400">.env.local</code> to enable teams.
-      </div>
+      <Card className="border-border/80 bg-card/50 shadow-none">
+        <CardContent className="px-4 py-3 text-[12px] text-muted-foreground">
+          Sign-in disabled — set <code className="font-mono text-foreground/80">VITE_FIREBASE_*</code> and{' '}
+          <code className="font-mono text-foreground/80">VITE_GOOGLE_DESKTOP_CLIENT_ID</code> in{' '}
+          <code className="font-mono text-foreground/80">.env.local</code> to enable teams.
+        </CardContent>
+      </Card>
     );
   }
 
   if (status === 'loading') {
     return (
-      <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-[13px] text-zinc-500">
-        Checking sign-in…
-      </div>
+      <Card className="border-border/80 bg-card/50 shadow-none">
+        <CardContent className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
+          <Spinner />
+          Checking sign-in…
+        </CardContent>
+      </Card>
     );
   }
 
@@ -53,66 +62,61 @@ export function SignInCard() {
   };
 
   if (status === 'signedIn' && user) {
+    const initial = (user.displayName ?? user.email ?? '?').slice(0, 1).toUpperCase();
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-        {user.photoURL && !photoFailed ? (
-          // referrerPolicy="no-referrer" stops Google's CDN
-          // (lh3.googleusercontent.com) from rejecting the request based on the
-          // app's origin — without it, profile photos sporadically 403/fail to
-          // load. onError falls back to the initial-letter avatar so a broken
-          // image never leaves a blank circle.
-          <img
-            src={user.photoURL}
-            alt=""
-            referrerPolicy="no-referrer"
-            onError={() => setPhotoFailed(true)}
-            className="h-9 w-9 rounded-full border border-white/[0.08]"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-[13px] font-medium text-zinc-200">
-            {(user.displayName ?? user.email ?? '?').slice(0, 1).toUpperCase()}
+      <Card className="border-border/80 bg-card/50 shadow-none">
+        <CardContent className="flex items-center gap-3 px-4 py-3">
+          <Avatar className="size-9">
+            {user.photoURL && !photoFailed ? (
+              <AvatarImage
+                src={user.photoURL}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setPhotoFailed(true)}
+              />
+            ) : null}
+            <AvatarFallback>{initial}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[13px] font-medium text-foreground">
+              {user.displayName ?? 'Signed in'}
+            </div>
+            <div className="truncate text-[11px] text-muted-foreground">{user.email}</div>
           </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium text-zinc-100">
-            {user.displayName ?? 'Signed in'}
-          </div>
-          <div className="truncate text-[11px] text-zinc-500">{user.email}</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => void handleSignOut()}
-          disabled={busy}
-          className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[12px] font-medium text-zinc-300 transition hover:bg-white/[0.06] disabled:opacity-45"
-        >
-          Sign out
-        </button>
-      </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleSignOut()}
+            disabled={busy}
+            className="h-7 px-2.5 text-[12px]"
+          >
+            Sign out
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="flex flex-col gap-2">
-      <button
+      <Button
         type="button"
+        variant="outline"
         onClick={() => void handleSignIn()}
         disabled={busy}
-        className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-[13px] font-medium text-zinc-100 transition hover:bg-white/[0.06] active:scale-[0.99] disabled:pointer-events-none disabled:opacity-45"
+        className="h-auto w-full justify-center gap-2 py-2.5 text-[13px]"
       >
         <GoogleGlyph />
         {busy ? 'Opening browser…' : 'Sign in with Google'}
-      </button>
-      <p className="text-[11px] text-zinc-500">
-        Sign in to create team projects and sync tasks. Local projects work
-        without signing in.
+      </Button>
+      <p className="text-[11px] text-muted-foreground">
+        Sign in to create team projects and sync tasks. Local projects work without signing in.
       </p>
       {error ? (
-        <p
-          className="rounded-md border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-[12px] text-red-300/95"
-          role="alert"
-        >
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription className="text-[12px]">{error}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   );
@@ -120,22 +124,22 @@ export function SignInCard() {
 
 function GoogleGlyph() {
   return (
-    <svg width={14} height={14} viewBox="0 0 18 18" aria-hidden>
+    <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden>
       <path
         fill="#4285F4"
-        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
       />
       <path
         fill="#34A853"
-        d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
       />
       <path
         fill="#FBBC05"
-        d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A9 9 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
       />
       <path
         fill="#EA4335"
-        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A9 9 0 0 0 .957 4.961l3.007 2.332C4.672 5.166 6.656 3.58 9 3.58z"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
       />
     </svg>
   );

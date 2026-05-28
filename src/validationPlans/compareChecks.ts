@@ -120,14 +120,14 @@ export function matchPlannedChecksToVerdict(
 export function verdictCheckStatusClass(status: ValidationVerdictCheck['status'] | undefined): string {
   switch (status) {
     case 'passed':
-      return 'text-emerald-300/90';
+      return 'text-status-success';
     case 'failed':
-      return 'text-red-300/90';
+      return 'text-destructive';
     case 'needs-human-review':
-      return 'text-amber-200/90';
+      return 'text-status-needs-input';
     case 'skipped':
-      return 'text-zinc-400';
+      return 'text-muted-foreground';
     default:
-      return 'text-zinc-500';
+      return 'text-muted-foreground';
   }
 }

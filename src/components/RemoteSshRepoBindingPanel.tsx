@@ -1,4 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { ExecutionDeviceConfig, RemoteRepoBindingStatus } from '../types';
 
 type RemoteSshRepoBindingPanelProps = {
@@ -98,12 +111,14 @@ export function RemoteSshRepoBindingPanel({
 
   if (sshDevices.length === 0) {
     return (
-      <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-2">
-        <div className="text-[12px] font-medium text-zinc-300">Remote SSH folder</div>
-        <p className="mt-1 text-[11px] leading-snug text-zinc-500">
-          Add an SSH device in Settings → Devices to bind an existing clone on a remote host.
-        </p>
-      </div>
+      <Card className="bg-muted/30 shadow-none">
+        <CardContent className="px-3 py-2">
+          <div className="text-xs font-medium">Remote SSH folder</div>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            Add an SSH device in Settings → Devices to bind an existing clone on a remote host.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -199,119 +214,126 @@ export function RemoteSshRepoBindingPanel({
   const showDevicePicker = sshDevices.length > 1;
 
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/10 px-3 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-medium text-zinc-300">Remote SSH folder</div>
-          <p className="mt-0.5 text-[11px] leading-snug text-zinc-500">
-            Bind an existing git clone of <span className="text-zinc-400">{repoLabel}</span> per SSH
-            device. Paths are stored only on this Mac.
-          </p>
+    <Card className="bg-muted/30 shadow-none">
+      <CardContent className="flex flex-col gap-3 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium">Remote SSH folder</div>
+            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              Bind an existing git clone of <span className="text-foreground">{repoLabel}</span> per SSH
+              device. Paths are stored only on this Mac.
+            </p>
+          </div>
+          {isBound ? (
+            <Badge
+              variant="outline"
+              className="border-status-success/30 bg-status-success/10 text-status-success-foreground"
+            >
+              Bound
+            </Badge>
+          ) : (
+            <Badge variant="secondary">Auto-managed</Badge>
+          )}
         </div>
-        {isBound ? (
-          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
-            Bound
-          </span>
+
+        {showDevicePicker ? (
+          <div className="flex flex-col gap-2">
+            <Label className="text-[11px] text-muted-foreground">SSH device</Label>
+            <Select
+              value={selectedDevice.id}
+              onValueChange={handleDeviceChange}
+              disabled={busy !== 'idle'}
+            >
+              <SelectTrigger className="text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sshDevices.map((d) => (
+                  <SelectItem key={d.id} value={d.id} className="text-xs">
+                    {deviceOptionLabel(d)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         ) : (
-          <span className="rounded-full border border-zinc-500/25 bg-zinc-500/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400">
-            Auto-managed
-          </span>
+          <p className="text-[11px] text-muted-foreground">
+            Device: <span className="text-foreground">{deviceOptionLabel(selectedDevice)}</span>
+          </p>
         )}
-      </div>
 
-      {showDevicePicker ? (
-        <label className="mt-3 block">
-          <span className="text-[11px] font-medium text-zinc-400">SSH device</span>
-          <select
-            value={selectedDevice.id}
-            onChange={(e) => handleDeviceChange(e.target.value)}
-            disabled={busy !== 'idle'}
-            className="mt-1 w-full rounded-md border border-white/[0.08] bg-black/20 px-2.5 py-1.5 text-[12px] text-zinc-100 outline-none focus:border-white/[0.16] disabled:opacity-50"
-          >
-            {sshDevices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {deviceOptionLabel(d)}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <p className="mt-2 text-[11px] text-zinc-500">
-          Device: <span className="text-zinc-400">{deviceOptionLabel(selectedDevice)}</span>
-        </p>
-      )}
-
-      {loadError ? (
-        <p className="mt-2 text-[11px] text-red-300">{loadError}</p>
-      ) : null}
-
-      {isBound ? (
-        <p
-          className="mt-2 truncate font-mono text-[11px] text-zinc-600"
-          title={status.remotePath}
-        >
-          {hostLabel}: {status.remotePath}
-        </p>
-      ) : null}
-
-      <label className="mt-3 block">
-        <span className="text-[11px] font-medium text-zinc-400">Absolute path on SSH host</span>
-        <input
-          value={remotePath}
-          onChange={(e) => {
-            setRemotePath(e.target.value);
-            setProbeOk(null);
-            setActionError(null);
-          }}
-          placeholder="/home/you/projects/my-repo"
-          spellCheck={false}
-          disabled={busy !== 'idle'}
-          className="mt-1 w-full rounded-md border border-white/[0.08] bg-black/20 px-2.5 py-1.5 font-mono text-[12px] text-zinc-100 outline-none focus:border-white/[0.16] disabled:opacity-50"
-        />
-      </label>
-
-      {probeOk ? (
-        <p className="mt-2 text-[11px] text-emerald-300">
-          Valid on {probeOk.hostLabel}: <span className="font-mono">{probeOk.resolvedPath}</span>
-          {' · '}
-          origin matches
-        </p>
-      ) : null}
-
-      {actionError ? (
-        <p className="mt-2 rounded-md border border-red-500/30 bg-red-500/[0.06] px-2 py-1.5 text-[11px] text-red-300">
-          {actionError}
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
-        {isBound ? (
-          <button
-            type="button"
-            onClick={() => void handleClear()}
-            disabled={busy !== 'idle'}
-            className="rounded-md border border-white/[0.08] bg-white/[0.02] px-2.5 py-1.5 text-[12px] font-medium text-zinc-400 transition hover:bg-white/[0.05] hover:text-zinc-200 disabled:opacity-50"
-          >
-            {busy === 'clear' ? 'Clearing…' : 'Clear binding'}
-          </button>
+        {loadError ? (
+          <p className="text-[11px] text-destructive">{loadError}</p>
         ) : null}
-        <button
-          type="button"
-          onClick={() => void handleProbe()}
-          disabled={busy !== 'idle'}
-          className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] font-medium text-zinc-200 transition hover:bg-white/[0.07] disabled:opacity-50"
-        >
-          {busy === 'probe' ? 'Validating…' : 'Validate'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={busy !== 'idle'}
-          className="rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 py-1.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:opacity-50"
-        >
-          {busy === 'save' ? 'Saving…' : isBound ? 'Change folder' : 'Bind remote folder'}
-        </button>
-      </div>
-    </div>
+
+        {isBound ? (
+          <p className="truncate font-mono text-[11px] text-muted-foreground" title={status.remotePath}>
+            {hostLabel}: {status.remotePath}
+          </p>
+        ) : null}
+
+        <div className="flex flex-col gap-2">
+          <Label className="text-[11px] text-muted-foreground">Absolute path on SSH host</Label>
+          <Input
+            value={remotePath}
+            onChange={(e) => {
+              setRemotePath(e.target.value);
+              setProbeOk(null);
+              setActionError(null);
+            }}
+            placeholder="/home/you/projects/my-repo"
+            spellCheck={false}
+            disabled={busy !== 'idle'}
+            className="font-mono text-xs"
+          />
+        </div>
+
+        {probeOk ? (
+          <p className="text-[11px] text-status-success">
+            Valid on {probeOk.hostLabel}: <span className="font-mono">{probeOk.resolvedPath}</span>
+            {' · '}
+            origin matches
+          </p>
+        ) : null}
+
+        {actionError ? (
+          <Alert variant="destructive">
+            <AlertDescription className="text-[11px]">{actionError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2">
+          {isBound ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleClear()}
+              disabled={busy !== 'idle'}
+            >
+              {busy === 'clear' ? 'Clearing…' : 'Clear binding'}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => void handleProbe()}
+            disabled={busy !== 'idle'}
+          >
+            {busy === 'probe' ? 'Validating…' : 'Validate'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="bg-status-success text-status-success-foreground hover:bg-status-success/90"
+            onClick={() => void handleSave()}
+            disabled={busy !== 'idle'}
+          >
+            {busy === 'save' ? 'Saving…' : isBound ? 'Change folder' : 'Bind remote folder'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

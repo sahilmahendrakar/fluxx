@@ -5,6 +5,7 @@ import {
   deviceChipLabel,
 } from '../executionDevices/deviceUi';
 import { ExecutionDeviceKindIcon } from './ExecutionDeviceKindIcon';
+import { cn } from '@/lib/utils';
 
 export function ExecutionDeviceChip({
   devices,
@@ -24,18 +25,17 @@ export function ExecutionDeviceChip({
   const hint = deviceAvailabilityHint(state);
   const label = deviceChipLabel(devices, deviceRef);
   const tooltip = title ?? (hint ? `${label} — ${hint}` : label);
-  const tone =
+  const tone = cn(
+    'inline-flex shrink-0 items-center',
     state === 'ok'
-      ? 'text-zinc-500'
+      ? 'text-muted-foreground'
       : state === 'cloud-no-local-override'
-        ? 'text-zinc-600'
-        : 'text-amber-500/80';
+        ? 'text-muted-foreground/70'
+        : 'text-status-needs-input',
+  );
 
   return (
-    <span
-      className={`inline-flex shrink-0 items-center ${tone}`}
-      title={tooltip}
-    >
+    <span className={tone} title={tooltip}>
       <ExecutionDeviceKindIcon
         kind={deviceRef?.kind === 'ssh' ? 'ssh' : 'local'}
         className="h-3.5 w-3.5"

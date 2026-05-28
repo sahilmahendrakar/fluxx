@@ -102,6 +102,7 @@ type ActivateCloudResult =
 
 declare global {
   interface Window {
+    __FLUXX_APPEARANCE_BOOTSTRAP__?: import('./theme/appearance').AppearanceBootstrap;
     electronAPI: {
       platform: string;
       /** Opens http(s) URLs in the system default browser (not an in-app window). */
@@ -669,6 +670,19 @@ declare global {
             plan: FirestoreHydrationWritePlan;
           }) => Promise<{ ok: true } | { error: string }>;
         };
+      };
+      appearance: {
+        getPreference: () => Promise<import('./theme/appearance').AppearancePreference>;
+        setPreference: (
+          preference: import('./theme/appearance').AppearancePreference,
+        ) => Promise<{
+          ok: true;
+          preference: import('./theme/appearance').AppearancePreference;
+        }>;
+      };
+      window: {
+        isFullscreen: () => Promise<boolean>;
+        onFullscreenChanged: (cb: (isFullscreen: boolean) => void) => () => void;
       };
       notifications: {
         getAutoTransitionPrefs: () => Promise<

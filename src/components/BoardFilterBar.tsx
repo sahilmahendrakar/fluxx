@@ -9,6 +9,11 @@ import {
   type Ref,
 } from 'react';
 import { ListFilter, Search, UserCircle2, X } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import type { Agent, RepoConfig, TaskStatus } from '../types';
 import { AGENTS, COLUMNS } from '../types';
 import {
@@ -60,27 +65,31 @@ function FilterToken({
   leading?: ReactNode;
 }) {
   return (
-    <span
+    <Badge
       title={title}
-      className={`inline-flex max-w-[min(100%,14rem)] shrink-0 items-center rounded border border-sky-500/20 bg-sky-950/35 pl-2 pr-0.5 text-[11px] leading-tight text-sky-100/90 ${
-        leading ? 'gap-1' : 'gap-0.5'
-      }`}
+      variant="secondary"
+      className={cn(
+        'max-w-[min(100%,14rem)] shrink-0 gap-0.5 rounded-md border-status-review/25 bg-status-review/10 py-0 pl-2 pr-0.5 text-[11px] font-normal leading-tight text-status-review-foreground',
+        leading && 'gap-1',
+      )}
     >
       {leading ? <span className="shrink-0">{leading}</span> : null}
       <span className="min-w-0 truncate">
-        <span className="text-sky-400/80">{k}</span>
-        <span className="text-zinc-500"> = </span>
-        <span className="text-zinc-200">{v}</span>
+        <span className="text-status-review">{k}</span>
+        <span className="text-muted-foreground"> = </span>
+        <span>{v}</span>
       </span>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
+        className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
         onClick={onRemove}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200"
         aria-label={`Remove ${k} filter`}
       >
-        <X className="h-3 w-3" strokeWidth={2.5} />
-      </button>
-    </span>
+        <X className="size-3" strokeWidth={2.5} />
+      </Button>
+    </Badge>
   );
 }
 
@@ -103,16 +112,17 @@ function BoardFilterPickerSubPanelHeader({
 }) {
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        className="h-auto w-full justify-start gap-1.5 rounded-none border-b border-border px-2.5 py-1.5 text-left text-[11px] text-muted-foreground"
         onClick={onBack}
-        className="flex w-full items-center gap-1.5 border-b border-zinc-800/80 px-2.5 py-1.5 text-left text-[11px] text-zinc-500 hover:bg-zinc-800/50"
       >
         ‹ Back
-      </button>
-      <div className="border-b border-zinc-800/80 px-2.5 pb-2 pt-1.5">
+      </Button>
+      <div className="border-b border-border px-2.5 pb-2 pt-1.5">
         <div className="relative">
-          <input
+          <Input
             ref={searchInputRef}
             id={searchInputId}
             type="text"
@@ -126,23 +136,28 @@ function BoardFilterPickerSubPanelHeader({
             placeholder={searchPlaceholder}
             autoComplete="off"
             spellCheck={false}
-            className={`w-full rounded border border-zinc-800 bg-zinc-900/40 py-1 pl-2 text-[12px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600/50 ${searchQuery ? 'pr-8' : 'pr-2'}`}
+            className={cn('h-7 py-1 pl-2 text-[12px]', searchQuery ? 'pr-8' : 'pr-2')}
           />
           {searchQuery ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0 top-1/2 size-7 -translate-y-1/2 text-muted-foreground"
               onClick={() => onSearchQueryChange('')}
-              className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200"
               aria-label="Clear filter search"
             >
-              <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-            </button>
+              <X className="size-3.5" strokeWidth={2.5} />
+            </Button>
           ) : null}
         </div>
       </div>
     </>
   );
 }
+
+const filterPickerOptionClass =
+  'h-auto w-full justify-start rounded-none px-2.5 py-1.5 text-left text-[12px] font-normal';
 
 type AddPanel = 'main' | 'agent' | 'label' | 'status' | 'assignee' | 'repo';
 
@@ -172,7 +187,6 @@ export function BoardFilterBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [panel, setPanel] = useState<AddPanel>('main');
   const [pickerSearchQuery, setPickerSearchQuery] = useState('');
-  const wrapRef = useRef<HTMLDivElement>(null);
   const pickerSearchInputRef = useRef<HTMLInputElement>(null);
 
   const hasActive = boardFiltersAreActive(filter);
@@ -204,33 +218,18 @@ export function BoardFilterBar({
     return r ? repoDisplayLabel(r) : filter.repoId;
   }, [filter.repoId, projectRepos]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    setPanel('main');
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) {
+  const handleMenuOpenChange = (open: boolean) => {
+    setMenuOpen(open);
+    if (!open) {
+      setPanel('main');
       setPickerSearchQuery('');
     }
-  }, [menuOpen]);
+  };
 
   useLayoutEffect(() => {
     if (!menuOpen || panel === 'main') return;
     pickerSearchInputRef.current?.focus({ preventScroll: true });
   }, [menuOpen, panel]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      const el = wrapRef.current;
-      if (!el?.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc, true);
-    return () => document.removeEventListener('mousedown', onDoc, true);
-  }, [menuOpen]);
 
   // Picker: Unlabeled / Unassigned — always when query empty; with text, only if it matches that fixed label (case-insensitive), pinned above filtered rows.
   const filteredAgents = filterByBoardFilterPickerQuery(pickerSearchQuery, AGENT_FILTER_ROWS, (a) => a.label);
@@ -260,19 +259,19 @@ export function BoardFilterBar({
   const repoPanelEmpty = filteredRepos.length === 0;
 
   return (
-    <div ref={wrapRef} className="relative min-w-0 flex-1">
+    <div className="relative min-w-0 flex-1">
       <div
-        className="flex min-h-[2.25rem] w-full min-w-0 items-center gap-1.5 rounded-md border border-zinc-800/90 bg-zinc-950/60 py-1 pl-2 pr-1 shadow-sm shadow-black/20"
+        className="flex min-h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-background py-1 pl-2 pr-1 shadow-sm"
         role="search"
       >
-        <div className="flex min-h-[1.5rem] min-w-0 flex-1 items-center gap-1.5">
+        <div className="flex min-h-6 min-w-0 flex-1 items-center gap-1.5">
           <Search
-            className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+            className="size-3.5 shrink-0 text-muted-foreground"
             strokeWidth={2}
             aria-hidden
           />
           <div className="relative min-w-0 flex-1">
-            <input
+            <Input
               id={inputId}
               type="text"
               inputMode="search"
@@ -282,17 +281,22 @@ export function BoardFilterBar({
               placeholder="Filter by keyword…"
               autoComplete="off"
               spellCheck={false}
-              className={`min-w-0 w-full border-0 bg-transparent py-0.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:ring-0 ${filter.search ? 'pr-7' : ''}`}
+              className={cn(
+                'h-auto min-w-0 border-0 bg-transparent py-0.5 text-[13px] shadow-none focus-visible:ring-0',
+                filter.search ? 'pr-7' : '',
+              )}
             />
             {filter.search ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-1/2 size-7 -translate-y-1/2 text-muted-foreground"
                 onClick={() => set({ search: '' })}
-                className="absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-zinc-500 transition hover:bg-white/10 hover:text-zinc-200"
                 aria-label="Clear keyword search"
               >
-                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
-              </button>
+                <X className="size-3.5" strokeWidth={2.5} />
+              </Button>
             ) : null}
           </div>
         </div>
@@ -363,102 +367,114 @@ export function BoardFilterBar({
           />
         ) : null}
           {hasActive ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-1.5 text-[11px] text-muted-foreground"
               onClick={() => onFilterChange({ ...DEFAULT_BOARD_FILTER })}
-              className="rounded px-1.5 py-1 text-[11px] font-medium text-zinc-500 transition hover:text-zinc-300"
             >
               Clear
-            </button>
+            </Button>
           ) : null}
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((o) => !o)}
-              className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition hover:bg-zinc-800/80 hover:text-zinc-300"
-              title="Add filter"
-              aria-expanded={menuOpen}
-              aria-haspopup="true"
-            >
-              <ListFilter className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
-            {menuOpen ? (
-              <div
-                className="absolute right-0 top-full z-50 mt-1 flex w-56 max-h-72 flex-col origin-top-right overflow-hidden rounded-md border border-zinc-800 bg-[#0e0e11] py-1 shadow-lg shadow-black/50"
-                role="presentation"
+          <Popover open={menuOpen} onOpenChange={handleMenuOpenChange}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0 text-muted-foreground"
+                title="Add filter"
+                aria-expanded={menuOpen}
+                aria-haspopup="true"
               >
+                <ListFilter className="size-3.5" strokeWidth={2} />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="flex w-56 max-h-72 flex-col overflow-hidden p-0"
+              role="presentation"
+            >
                 {panel === 'main' ? (
                   <>
-                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                    <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                       Add filter
                     </p>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      className={cn(filterPickerOptionClass, 'justify-between')}
                       onClick={() => setPanel('agent')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                     >
                       Agent
-                      <span className="text-zinc-500">›</span>
-                    </button>
-                    <button
+                      <span className="text-muted-foreground">›</span>
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
+                      className={cn(filterPickerOptionClass, 'justify-between')}
                       onClick={() => setPanel('label')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                     >
                       Label
-                      <span className="text-zinc-500">›</span>
-                    </button>
+                      <span className="text-muted-foreground">›</span>
+                    </Button>
                     {showAssigneeFilter ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        className={cn(filterPickerOptionClass, 'justify-between')}
                         onClick={() => setPanel('assignee')}
-                        className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                       >
                         Assignee
-                        <span className="text-zinc-500">›</span>
-                      </button>
+                        <span className="text-muted-foreground">›</span>
+                      </Button>
                     ) : null}
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      className={cn(filterPickerOptionClass, 'justify-between')}
                       onClick={() => setPanel('status')}
-                      className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                     >
                       Status
-                      <span className="text-zinc-500">›</span>
-                    </button>
+                      <span className="text-muted-foreground">›</span>
+                    </Button>
                     {showRepoFilter ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        className={cn(filterPickerOptionClass, 'justify-between')}
                         onClick={() => setPanel('repo')}
-                        className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                       >
                         Repository
-                        <span className="text-zinc-500">›</span>
-                      </button>
+                        <span className="text-muted-foreground">›</span>
+                      </Button>
                     ) : null}
                     {filter.includeDescription ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        className={filterPickerOptionClass}
                         onClick={() => {
                           set({ includeDescription: false });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                       >
                         Title only (search)
-                      </button>
+                      </Button>
                     ) : null}
                     {!filter.hideDone ? (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        className={filterPickerOptionClass}
                         onClick={() => {
                           set({ hideDone: true });
                           setMenuOpen(false);
                         }}
-                        className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                       >
                         Hide done
-                      </button>
+                      </Button>
                     ) : null}
                   </>
                 ) : null}
@@ -480,23 +496,24 @@ export function BoardFilterBar({
                       className="max-h-40 min-h-0 flex-1 overflow-y-auto"
                     >
                       {agentPanelEmpty ? (
-                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                        <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground">
                           No matches
                         </div>
                       ) : (
                         filteredAgents.map((a) => (
-                          <button
+                          <Button
                             key={a.id}
                             type="button"
                             role="option"
+                            variant="ghost"
+                            className={filterPickerOptionClass}
                             onClick={() => {
                               set({ agent: a.id });
                               setMenuOpen(false);
                             }}
-                            className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                           >
                             {a.label}
-                          </button>
+                          </Button>
                         ))
                       )}
                     </div>
@@ -520,23 +537,24 @@ export function BoardFilterBar({
                       className="max-h-40 min-h-0 flex-1 overflow-y-auto"
                     >
                       {statusPanelEmpty ? (
-                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                        <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground">
                           No matches
                         </div>
                       ) : (
                         filteredColumns.map((col) => (
-                          <button
+                          <Button
                             key={col.id}
                             type="button"
                             role="option"
+                            variant="ghost"
+                            className={filterPickerOptionClass}
                             onClick={() => {
                               set({ status: col.id });
                               setMenuOpen(false);
                             }}
-                            className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                           >
                             {col.label}
-                          </button>
+                          </Button>
                         ))
                       )}
                     </div>
@@ -560,37 +578,39 @@ export function BoardFilterBar({
                       className="max-h-40 min-h-0 flex-1 overflow-y-auto"
                     >
                       {labelPanelEmpty ? (
-                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                        <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground">
                           No matches
                         </div>
                       ) : (
                         <>
                           {showUnlabeledRow ? (
-                            <button
+                            <Button
                               type="button"
                               role="option"
+                              variant="ghost"
+                              className={filterPickerOptionClass}
                               onClick={() => {
                                 set({ label: UNLABELED_VALUE });
                                 setMenuOpen(false);
                               }}
-                              className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
                               {FILTER_PICKER_UNLABELED_LABEL}
-                            </button>
+                            </Button>
                           ) : null}
                           {filteredLabels.map((lab) => (
-                            <button
+                            <Button
                               key={lab}
                               type="button"
                               role="option"
+                              variant="ghost"
+                              className={filterPickerOptionClass}
                               onClick={() => {
                                 set({ label: lab });
                                 setMenuOpen(false);
                               }}
-                              className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
                               {lab}
-                            </button>
+                            </Button>
                           ))}
                         </>
                       )}
@@ -615,47 +635,49 @@ export function BoardFilterBar({
                       className="max-h-40 min-h-0 flex-1 overflow-y-auto"
                     >
                       {assigneePanelEmpty ? (
-                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                        <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground">
                           No matches
                         </div>
                       ) : (
                         <>
                           {showUnassignedRow ? (
-                            <button
+                            <Button
                               type="button"
                               role="option"
+                              variant="ghost"
+                              className={cn(filterPickerOptionClass, 'justify-start gap-2')}
                               onClick={() => {
                                 set({ assignee: UNASSIGNED_ASSIGNEE_VALUE });
                                 setMenuOpen(false);
                               }}
-                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
                               <UserCircle2
-                                className="h-5 w-5 shrink-0 text-zinc-500"
+                                className="size-5 shrink-0 text-muted-foreground"
                                 strokeWidth={1.5}
                                 aria-hidden
                               />
-                              <span className="min-w-0 flex-1 truncate text-zinc-400">
+                              <span className="min-w-0 flex-1 truncate text-muted-foreground">
                                 {FILTER_PICKER_UNASSIGNED_LABEL}
                               </span>
-                            </button>
+                            </Button>
                           ) : null}
                           {filteredAssignees.map((member) => (
-                            <button
+                            <Button
                               key={member.uid}
                               type="button"
                               role="option"
+                              variant="ghost"
+                              className={cn(filterPickerOptionClass, 'justify-start gap-2')}
                               onClick={() => {
                                 set({ assignee: member.uid });
                                 setMenuOpen(false);
                               }}
-                              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                             >
                               <ProjectMemberAvatar member={member} size="xs" />
                               <span className="min-w-0 flex-1 truncate">
                                 {projectMemberDisplayLabel(member)}
                               </span>
-                            </button>
+                            </Button>
                           ))}
                         </>
                       )}
@@ -680,31 +702,31 @@ export function BoardFilterBar({
                       className="max-h-40 min-h-0 flex-1 overflow-y-auto"
                     >
                       {repoPanelEmpty ? (
-                        <div className="px-2.5 py-2 text-center text-[11px] text-zinc-500">
+                        <div className="px-2.5 py-2 text-center text-[11px] text-muted-foreground">
                           No matches
                         </div>
                       ) : (
                         filteredRepos.map((r) => (
-                          <button
+                          <Button
                             key={r.id}
                             type="button"
                             role="option"
+                            variant="ghost"
+                            className={filterPickerOptionClass}
                             onClick={() => {
                               set({ repoId: r.id });
                               setMenuOpen(false);
                             }}
-                            className="w-full px-2.5 py-1.5 text-left text-[12px] text-zinc-200 hover:bg-zinc-800/70"
                           >
                             {repoDisplayLabel(r)}
-                          </button>
+                          </Button>
                         ))
                       )}
                     </div>
                   </>
                 ) : null}
-              </div>
-            ) : null}
-        </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

@@ -33,8 +33,11 @@ import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
+import { ShadcnThemeSmoke } from './components/dev/ShadcnThemeSmoke';
 import { AppShell } from './components/AppShell';
+import { MacTitleBarInset } from './components/shell/MacTitleBarInset';
 import { TopBar } from './components/TopBar';
+import { Button } from '@/components/ui/button';
 import { LoadingScreen } from './components/LoadingScreen';
 import { ProjectsListView } from './components/ProjectsListView';
 import { SignInCard } from './components/SignInCard';
@@ -206,8 +209,16 @@ function readStoredPlanningWidth(): number | null {
   }
 }
 
+function isShadcnSmokeRoute(): boolean {
+  const path = window.location.hash.replace(/^#/, '').trim();
+  return path === '/shadcn-smoke' || path.startsWith('/shadcn-smoke/');
+}
+
 export default function App() {
-  const isMac = window.electronAPI.platform === 'darwin';
+  if (isShadcnSmokeRoute()) {
+    return <ShadcnThemeSmoke />;
+  }
+
   const { devices: executionDevices } = useExecutionDevices();
   const [project, setProject] = useState<ActiveProject | null>(null);
   const executionDeviceDefaults = useExecutionDeviceDefaults(project);
@@ -2959,9 +2970,13 @@ export default function App() {
 
   const handleDocsNav = useCallback(() => {
     leaveSettingsIfActive();
+    if (activeTabId === 'docs' && docsSidebarExpanded) {
+      setDocsSidebarExpanded(false);
+      return;
+    }
     setActiveTabId('docs');
     setDocsSidebarExpanded(true);
-  }, []);
+  }, [activeTabId, docsSidebarExpanded]);
 
   const handleDocsSidebarExpandToggle = useCallback(() => {
     setDocsSidebarExpanded((v) => !v);
@@ -3476,13 +3491,8 @@ export default function App() {
   // Block the shell while hydrating a saved active project (local or cloud).
   if (activationLoading || pendingCloudActive) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
-        {isMac ? (
-          <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-            aria-hidden
-          />
-        ) : null}
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+        <MacTitleBarInset />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <LoadingScreen />
         </div>
@@ -3492,13 +3502,8 @@ export default function App() {
 
   if (!project) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-white">
-        {isMac ? (
-          <div
-            className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-            aria-hidden
-          />
-        ) : null}
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+        <MacTitleBarInset />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <ProjectsListView
             onProjectActivated={handleProjectActivated}
@@ -3513,42 +3518,41 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#09090b] text-zinc-100">
-      {isMac ? (
-        <div
-          className="app-window-drag h-10 w-full shrink-0 bg-[#09090b]"
-          aria-hidden
-        />
-      ) : null}
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <MacTitleBarInset />
       <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
         {cleanupError ? (
           <div
             role="alert"
-            className="flex shrink-0 items-start gap-2 border-b border-amber-500/20 bg-amber-500/[0.08] px-4 py-2 text-[13px] text-amber-100/95"
+            className="flex shrink-0 items-start gap-2 border-b border-status-needs-input/25 bg-status-needs-input/10 px-4 py-2 text-[13px] text-status-needs-input-foreground"
           >
             <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{cleanupError}</p>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setCleanupError(null)}
-              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-amber-200/90 hover:bg-amber-500/15"
+              className="h-auto shrink-0 px-2 py-0.5 text-[12px]"
             >
               Dismiss
-            </button>
+            </Button>
           </div>
         ) : null}
         {taskPrError ? (
           <div
             role="alert"
-            className="flex shrink-0 items-start gap-2 border-b border-rose-500/20 bg-rose-500/[0.08] px-4 py-2 text-[13px] text-rose-100/95"
+            className="flex shrink-0 items-start gap-2 border-b border-destructive/25 bg-destructive/10 px-4 py-2 text-[13px] text-destructive"
           >
             <p className="min-w-0 flex-1 whitespace-pre-wrap leading-snug">{taskPrError}</p>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setTaskPrError(null)}
-              className="shrink-0 rounded px-2 py-0.5 text-[12px] font-medium text-rose-200/90 hover:bg-rose-500/15"
+              className="h-auto shrink-0 px-2 py-0.5 text-[12px] text-destructive hover:text-destructive"
             >
               Dismiss
-            </button>
+            </Button>
           </div>
         ) : null}
         <AppShell
@@ -3616,7 +3620,7 @@ export default function App() {
                 <div
                   key={item.session.id}
                   aria-hidden={!isActive || settingsRouteActive}
-                  className="absolute inset-0 flex min-h-0 flex-col bg-[#09090b]"
+                  className="absolute inset-0 flex min-h-0 flex-col bg-status-terminal"
                   style={{
                     visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
                     pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',

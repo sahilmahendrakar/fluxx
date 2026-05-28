@@ -1,3 +1,6 @@
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
+
 /**
  * Toggle used in project settings (planning / default task agent rows).
  */
@@ -18,34 +21,15 @@ export function SettingsSwitch({
   ariaBusy?: boolean;
   size?: 'default' | 'sm';
 }) {
-  const busy = !!disabled;
   const sm = size === 'sm';
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+    <Switch
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      disabled={disabled}
       aria-labelledby={ariaLabelledBy}
       aria-busy={ariaBusy || undefined}
-      disabled={busy}
-      onClick={() => {
-        if (busy) return;
-        onCheckedChange(!checked);
-      }}
-      className={[
-        'relative inline-flex shrink-0 items-center rounded-full transition-colors',
-        sm ? 'h-5 w-8 p-px' : 'h-6 w-10 p-0.5',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/[0.18] focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]',
-        checked ? 'justify-end bg-emerald-600' : 'justify-start bg-zinc-700',
-        busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
-      ].join(' ')}
-    >
-      <span
-        className={[
-          'pointer-events-none block rounded-full bg-zinc-100 shadow-sm',
-          sm ? 'h-3.5 w-3.5' : 'h-5 w-5',
-        ].join(' ')}
-      />
-    </button>
+      className={cn(sm && 'h-5 w-8 [&>span]:h-3.5 [&>span]:w-3.5 [&>span]:data-[state=checked]:translate-x-3')}
+    />
   );
 }

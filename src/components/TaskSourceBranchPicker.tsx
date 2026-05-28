@@ -1,5 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import type { GitBranchPresence, RepoBranchDiscovery } from '../types';
 import {
   classifyGitBranchPresence,
@@ -107,54 +111,53 @@ export default function TaskSourceBranchPicker({
   const invalidName =
     normalizedInput.length > 0 && !gitBranchShortNameLooksValid(branchInput);
 
-  const inputClass =
-    'w-full rounded-md border bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:ring-1';
-
-  const borderTone = invalidName
-    ? 'border-red-500/35 focus:border-red-400/45 focus:ring-red-400/25'
-    : 'border-white/[0.08] focus:border-white/[0.14] focus:ring-white/[0.12]';
-
   const muted = variant === 'panel';
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-        <label
+        <Label
           htmlFor={`${idPrefix}-branch-input`}
-          className={`block text-[11px] font-medium uppercase tracking-[0.12em] ${muted ? 'text-zinc-500' : 'text-zinc-600'}`}
+          className={cn(
+            'text-[11px] font-medium uppercase tracking-[0.12em]',
+            muted ? 'text-muted-foreground' : 'text-muted-foreground/80',
+          )}
         >
           Source branch
-        </label>
+        </Label>
         {repoScopeLabel ? (
-          <span className="text-[11px] text-zinc-500" title="Branch list scope">
+          <span className="text-[11px] text-muted-foreground" title="Branch list scope">
             {repoScopeLabel}
           </span>
         ) : null}
       </div>
 
       {discoveryLoading ? (
-        <p className="text-[12px] text-zinc-500" role="status">
+        <p className="text-xs text-muted-foreground" role="status">
           Loading branches…
         </p>
       ) : null}
 
       {discoveryError && !discoveryLoading ? (
-        <p className="text-[12px] leading-snug text-amber-200/90" role="alert">
+        <p
+          className="text-xs leading-snug text-status-needs-input-foreground"
+          role="alert"
+        >
           Could not read git branches on this machine: {discoveryError}. Branch metadata is still
           saved; session start may fail until the repo path is valid.
         </p>
       ) : null}
 
       {discovery && emptyRepo && !discoveryLoading ? (
-        <p className="text-[12px] text-zinc-500" role="status">
-          No local or <code className="text-zinc-400">origin/*</code> branches were found. You can
-          still type a branch name; Fluxx can create it from {discovery.defaultBranchShort} when the
-          task starts.
+        <p className="text-xs text-muted-foreground" role="status">
+          No local or <code className="text-foreground/80">origin/*</code> branches were found. You
+          can still type a branch name; Fluxx can create it from {discovery.defaultBranchShort}{' '}
+          when the task starts.
         </p>
       ) : null}
 
       <div className="relative" ref={wrapRef}>
-        <input
+        <Input
           id={`${idPrefix}-branch-input`}
           type="text"
           value={branchInput}
@@ -170,36 +173,41 @@ export default function TaskSourceBranchPicker({
           placeholder={discovery?.defaultBranchShort ?? 'main'}
           aria-invalid={invalidName}
           aria-describedby={`${idPrefix}-branch-help`}
-          className={`${inputClass} ${borderTone} disabled:cursor-not-allowed disabled:opacity-60`}
+          className={cn(
+            'h-9 text-[13px]',
+            invalidName && 'border-destructive focus-visible:ring-destructive',
+          )}
         />
         {editable && suggestions.length > 0 ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             tabIndex={-1}
             disabled={disabled || discoveryLoading}
             onMouseDown={(e) => {
               e.preventDefault();
               setListOpen((o) => !o);
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-40"
+            className="absolute right-1 top-1/2 size-7 -translate-y-1/2 text-muted-foreground"
             aria-label="Show branch suggestions"
           >
-            <ChevronDown className="h-4 w-4" strokeWidth={2} aria-hidden />
-          </button>
+            <ChevronDown strokeWidth={2} aria-hidden />
+          </Button>
         ) : null}
 
         {listOpen && editable && suggestions.length > 0 ? (
           <ul
             id={listboxId}
             role="listbox"
-            className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-white/[0.08] bg-[#101012] py-1 shadow-xl shadow-black/40"
+            className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
           >
             {suggestions.map((name) => (
               <li key={name} role="presentation">
                 <button
                   type="button"
                   role="option"
-                  className="flex w-full px-3 py-2 text-left text-[13px] text-zinc-200 hover:bg-white/[0.05]"
+                  className="flex w-full px-3 py-2 text-left text-[13px] text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     onBranchInputChange(name);
@@ -208,7 +216,7 @@ export default function TaskSourceBranchPicker({
                 >
                   {name}
                   {discovery && name === discovery.defaultBranchShort ? (
-                    <span className="ml-auto pl-2 text-[11px] text-zinc-500">default</span>
+                    <span className="ml-auto pl-2 text-[11px] text-muted-foreground">default</span>
                   ) : null}
                 </button>
               </li>
@@ -217,25 +225,25 @@ export default function TaskSourceBranchPicker({
         ) : null}
       </div>
 
-      <div id={`${idPrefix}-branch-help`} className="space-y-1">
+      <div id={`${idPrefix}-branch-help`} className="flex flex-col gap-1">
         {invalidName ? (
-          <p className="text-[11px] leading-snug text-red-300/90" role="alert">
+          <p className="text-[11px] leading-snug text-destructive" role="alert">
             That branch name uses characters git does not allow in a branch name.
           </p>
         ) : null}
         {!invalidName && discovery && normalizedInput ? (
           <>
             {presence === 'missing' ? (
-              <p className="text-[11px] leading-snug text-sky-200/85">
+              <p className="text-[11px] leading-snug text-status-review-foreground">
                 {describePendingBranchCreation(normalizedInput, discovery.defaultBranchShort)}
               </p>
             ) : presence ? (
-              <p className="text-[11px] text-zinc-500">{presenceLabel(presence)}</p>
+              <p className="text-[11px] text-muted-foreground">{presenceLabel(presence)}</p>
             ) : null}
           </>
         ) : null}
         {!invalidName && discovery && !normalizedInput ? (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-muted-foreground">
             Uses project default ({discovery.defaultBranchShort}) when left blank.
           </p>
         ) : null}

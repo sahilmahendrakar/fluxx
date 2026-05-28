@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { BotOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { modelSummaryForTask } from '../agentModelUi';
 import {
@@ -10,17 +11,12 @@ import {
   type Task,
 } from '../types';
 import { AgentProviderIcon } from './agentProviderIcons';
-import { AGENT_CHIP_STYLES } from './AgentBadge';
 import {
   AgentSessionPrefsMenuContent,
   AgentSessionPrefsMenuPortal,
 } from './AgentSessionPrefsMenu';
 
 export type TaskAgentSpawnPatch = Partial<Pick<Task, 'agent' | 'agentModel' | 'agentYolo'>>;
-
-/** Chip when no coding agent is assigned (matches task detail “None” styling). */
-const UNASSIGNED_AGENT_CHIP =
-  'border-zinc-600/40 bg-white/[0.04] text-zinc-400/90 ring-1 ring-inset ring-white/[0.06]';
 
 export function TaskCardAgentSpawnMenu({
   task,
@@ -72,13 +68,13 @@ export function TaskCardAgentSpawnMenu({
     }
   };
 
-  const chip = selectedAgent != null ? AGENT_CHIP_STYLES[selectedAgent] : UNASSIGNED_AGENT_CHIP;
-
   return (
     <>
-      <button
+      <Button
         ref={anchorRef}
         type="button"
+        variant="ghost"
+        size="icon"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -92,14 +88,15 @@ export function TaskCardAgentSpawnMenu({
         aria-expanded={prefsOpen}
         aria-haspopup="dialog"
         title={triggerLabel || 'No agent — click to choose'}
-        className={`-m-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${chip} outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-white/20`}
+        className="-m-0.5 size-6 shrink-0 text-muted-foreground hover:bg-muted/40"
       >
         {selectedAgent != null ? (
-          <AgentProviderIcon agent={selectedAgent} className="h-3.5 w-3.5" aria-hidden />
+          <AgentProviderIcon agent={selectedAgent} className="size-3.5" aria-hidden />
         ) : (
-          <BotOff className="h-3.5 w-3.5 text-zinc-500/90" strokeWidth={2} aria-hidden />
+          <BotOff className="size-3.5" strokeWidth={2} aria-hidden />
         )}
-      </button>
+        <span className="sr-only">{triggerLabel || 'No agent'}</span>
+      </Button>
       <AgentSessionPrefsMenuPortal
         open={prefsOpen}
         anchorRef={anchorRef}

@@ -4,6 +4,8 @@ import path from 'node:path';
 import type { ActiveProjectKey, ProjectTabState } from '../types';
 import type { AutoTransitionNotificationPrefs } from '../taskAutoTransitionNotificationPrefs';
 import { normalizeAutoTransitionNotificationPrefs } from '../taskAutoTransitionNotificationPrefs';
+import type { AppearancePreference } from '../theme/appearance';
+import { normalizeAppearancePreference } from '../theme/appearance';
 import { parseProjectTabStateDiskValue } from './projectTabStateDiskParse';
 
 export type { ProjectTabState };
@@ -18,6 +20,8 @@ export interface AppState {
   projectLastOpenedAt: Record<string, string>;
   /** App-wide macOS notifications for automatic task status transitions. */
   autoTransitionNotifications?: AutoTransitionNotificationPrefs;
+  /** Renderer + native chrome appearance (`light` / `dark` / `system`). */
+  appearance?: AppearancePreference;
 }
 
 export function projectStateKey(key: ActiveProjectKey): string {
@@ -98,6 +102,9 @@ export class AppStateStore {
       this.state.autoTransitionNotifications = normalizeAutoTransitionNotificationPrefs(
         o.autoTransitionNotifications,
       );
+    }
+    if (o.appearance !== undefined) {
+      this.state.appearance = normalizeAppearancePreference(o.appearance);
     }
   }
 
