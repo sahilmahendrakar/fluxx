@@ -13,7 +13,7 @@ export function markdownProseClassName(
 
   return cn(
     'min-w-0 text-[13px] leading-relaxed text-foreground',
-    scroll && 'min-h-0 flex-1 overflow-y-auto px-5 py-4',
+    scroll && 'min-h-0 flex-1 overflow-y-auto px-8 pb-4 pt-2',
     '[&_a]:text-primary [&_a]:underline [&_a]:decoration-primary/40 [&_a]:underline-offset-2 hover:[&_a]:text-primary/80',
     panel
       ? '[&_h1]:mb-2 [&_h1]:mt-0 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-foreground'

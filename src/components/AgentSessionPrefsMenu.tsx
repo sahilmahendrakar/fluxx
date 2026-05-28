@@ -4,21 +4,27 @@ import {
   useId,
   useLayoutEffect,
   useState,
-  type CSSProperties,
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { AGENTS, DEFAULT_CURSOR_AGENT_MODEL, type Agent } from '../types';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import AgentModelPicker from './AgentModelPicker';
 import { AGENT_SESSION_PREFS_SURFACE, isAgentSessionPrefsSurfaceTarget } from './agentSessionPrefsSurface';
 import { SettingsSwitch } from './SettingsSwitch';
-
 export { AGENT_SESSION_PREFS_SURFACE, isAgentSessionPrefsSurfaceTarget } from './agentSessionPrefsSurface';
 
-/** Same classes as project settings “Default task agent” / planning spawn agent `<select>`. */
+/** Shared compact select for agent pickers (task detail, settings, spawn menus). */
 export const AGENT_SPAWN_AGENT_SELECT_CLASS =
-  'flex h-8 w-full cursor-pointer items-center rounded-md border border-zinc-800/90 bg-zinc-950/80 px-2 py-0 pr-6 text-[12px] leading-none text-zinc-100 outline-none transition-colors hover:bg-zinc-900/80 focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600/30 disabled:cursor-not-allowed disabled:opacity-50';
+  'flex h-8 w-full cursor-pointer items-center rounded-md border border-input bg-background px-2 py-0 text-xs leading-none text-foreground outline-none transition-colors hover:bg-accent/50 focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 export function agentModelUiKindForAgent(agent: Agent | null): AgentModelUiKind | null {
   if (agent == null) return null;
@@ -75,36 +81,36 @@ export function AgentSessionPrefsMenuContent({
       ? 'Fewer permission prompts for Codex spawns (--yolo / --dangerously-bypass-approvals-and-sandbox).'
       : 'Fewer permission prompts for spawns (Cursor --yolo / --force; Claude Code --dangerously-skip-permissions).';
 
-  const darkSelectStyle = { colorScheme: 'dark' } as CSSProperties;
-
   const showModelAndYolo = !taskSpawnSurface || selectedAgent != null;
 
   return (
-    <div className="w-[min(calc(100vw-12px),13rem)] space-y-1.5 p-2">
-      <select
-        id={agentSelectId}
-        value={selectedAgent ?? ''}
-        aria-label="Agent"
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === '') {
+    <div className="flex w-[min(calc(100vw-12px),13rem)] flex-col gap-1.5 p-2">
+      <Select
+        value={selectedAgent ?? (taskSpawnSurface ? '__none__' : '')}
+        onValueChange={(v) => {
+          if (v === '__none__' || v === '') {
             if (taskSpawnSurface) onPickAgent(null);
             return;
           }
           onPickAgent(v as Agent);
         }}
-        className={AGENT_SPAWN_AGENT_SELECT_CLASS}
-        style={darkSelectStyle}
       >
-        {AGENTS.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.label}
-          </option>
-        ))}
-        {taskSpawnSurface ? (
-          <option value="">None</option>
-        ) : null}
-      </select>
+        <SelectTrigger id={agentSelectId} aria-label="Agent" className={AGENT_SPAWN_AGENT_SELECT_CLASS}>
+          <SelectValue placeholder="Agent" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {AGENTS.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.label}
+              </SelectItem>
+            ))}
+            {taskSpawnSurface ? (
+              <SelectItem value="__none__">None</SelectItem>
+            ) : null}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
 
       {showModelAndYolo ? (
         <>
@@ -117,8 +123,12 @@ export function AgentSessionPrefsMenuContent({
             />
           ) : null}
 
-          <div className="flex items-center justify-between gap-2 border-t border-zinc-800/60 pt-1.5">
-            <span id={yoloLabelId} className="text-[10px] font-medium text-zinc-500" title={yoloTitle}>
+          <div className="flex items-center justify-between gap-2 border-t border-border pt-1.5">
+            <span
+              id={yoloLabelId}
+              className="text-[10px] font-medium text-muted-foreground"
+              title={yoloTitle}
+            >
               YOLO
             </span>
             <SettingsSwitch
@@ -255,7 +265,7 @@ export function AgentSessionPrefsMenuPortal({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[5600] bg-zinc-950/25"
+        className="fixed inset-0 z-[5600] bg-background/40"
         aria-hidden
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
@@ -264,7 +274,7 @@ export function AgentSessionPrefsMenuPortal({
       <div
         ref={dropdownRef as React.LegacyRef<HTMLDivElement>}
         {...{ [AGENT_SESSION_PREFS_SURFACE]: '' } as React.HTMLAttributes<HTMLDivElement>}
-        className="fixed z-[5610] flex max-h-[min(85vh,calc(100vh-16px))] flex-col overflow-y-auto overflow-x-visible rounded-md border border-zinc-800/90 bg-zinc-950 p-0 text-zinc-50 shadow-md shadow-black/30"
+        className="fixed z-[5610] flex max-h-[min(85vh,calc(100vh-16px))] flex-col overflow-y-auto overflow-x-visible rounded-md border border-border bg-popover p-0 text-popover-foreground shadow-md"
         style={{
           top: layout.top,
           left: layout.left,

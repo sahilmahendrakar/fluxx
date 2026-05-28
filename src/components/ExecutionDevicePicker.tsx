@@ -1,7 +1,15 @@
 import { useMemo } from 'react';
-import type { CSSProperties } from 'react';
 import type { ExecutionDeviceConfig, TaskExecutionDeviceRef } from '../types';
 import { buildDevicePickerOptions } from '../executionDevices/deviceUi';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 function refKey(ref: TaskExecutionDeviceRef): string {
   return `${ref.kind}:${ref.deviceId}`;
@@ -28,33 +36,39 @@ export function ExecutionDevicePicker({
   const selectedKey = value ? refKey(value) : '';
 
   return (
-    <div className="min-w-0">
-      <select
+    <Select
+      value={selectedKey}
+      disabled={disabled}
+      onValueChange={(key) => {
+        const opt = options.find((o) => refKey(o.ref) === key);
+        if (opt) onChange(opt.ref);
+      }}
+    >
+      <SelectTrigger
         id={id}
-        value={selectedKey}
-        disabled={disabled}
-        onChange={(e) => {
-          const opt = options.find((o) => refKey(o.ref) === e.target.value);
-          if (opt) onChange(opt.ref);
-        }}
-        className={
-          className ??
-          'w-full min-w-0 max-w-full cursor-pointer appearance-none rounded-lg border-0 bg-white/[0.04] py-1.5 pl-2.5 pr-8 text-[12px] font-medium text-zinc-200 ring-1 ring-inset ring-white/[0.06] outline-none transition hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50'
-        }
-        style={{ colorScheme: 'dark' } as CSSProperties}
         aria-label={ariaLabel}
+        className={cn(
+          'h-8 w-full min-w-0 max-w-full text-xs font-medium',
+          className,
+        )}
       >
-        {options.map((opt) => (
-          <option
-            key={refKey(opt.ref)}
-            value={refKey(opt.ref)}
-            disabled={opt.disabled}
-          >
-            {opt.kindLabel}: {opt.label}
-            {opt.disabled ? ' (unavailable)' : ''}
-          </option>
-        ))}
-      </select>
-    </div>
+        <SelectValue placeholder="Select device" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {options.map((opt) => (
+            <SelectItem
+              key={refKey(opt.ref)}
+              value={refKey(opt.ref)}
+              disabled={opt.disabled}
+              title={opt.hint}
+            >
+              {opt.kindLabel}: {opt.label}
+              {opt.disabled ? ' (unavailable)' : ''}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   );
 }
