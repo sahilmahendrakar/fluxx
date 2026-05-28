@@ -34,7 +34,7 @@ export function CloudPlanningDocsSeedModal({
         <AlertDialogHeader>
           <AlertDialogTitle>Initialize shared planning docs?</AlertDialogTitle>
           <AlertDialogDescription asChild>
-            <div className="flex flex-col gap-3 text-sm">
+            <div className="flex flex-col gap-3 text-left text-[13px] leading-relaxed">
               <p>
                 Cloud project <span className="font-medium text-foreground">{projectName}</span> has no
                 shared planning documents yet, but this machine already has{' '}
@@ -43,22 +43,28 @@ export function CloudPlanningDocsSeedModal({
               </p>
               <ul className="flex flex-col gap-1 text-foreground">
                 <li className="flex items-start gap-2">
-                  <span className="mt-2 inline-block size-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
+                  <span
+                    className="mt-[7px] inline-block size-1 shrink-0 rounded-full bg-muted-foreground"
+                    aria-hidden
+                  />
                   <span>
                     <strong className="font-medium">Upload from this folder</strong> copies your local
                     planning markdown into the shared cloud docs teammates will see.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="mt-2 inline-block size-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
+                  <span
+                    className="mt-[7px] inline-block size-1 shrink-0 rounded-full bg-muted-foreground"
+                    aria-hidden
+                  />
                   <span>
                     <strong className="font-medium">Not now</strong> leaves the cloud empty until someone
                     else initializes docs or you upload later — nothing is overwritten silently.
                   </span>
                 </li>
               </ul>
-              <p className="text-xs text-muted-foreground">
-                Files under <code className="text-foreground">_flux_unsynced/</code> are never uploaded.
+              <p className="text-[12px] leading-snug text-muted-foreground">
+                Files under <code className="text-foreground/80">_flux_unsynced/</code> are never uploaded.
               </p>
             </div>
           </AlertDialogDescription>
