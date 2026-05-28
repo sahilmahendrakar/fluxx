@@ -164,19 +164,19 @@ export function validationRunStatusDetailClass(status: ValidationRunStatus): str
   switch (status) {
     case 'queued':
     case 'running':
-      return 'text-sky-200/95';
+      return 'text-status-review';
     case 'passed':
-      return 'text-emerald-200/95';
+      return 'text-status-success';
     case 'failed':
-      return 'text-red-200/95';
+      return 'text-destructive';
     case 'needs-human-review':
-      return 'text-amber-200/95';
+      return 'text-status-needs-input';
     case 'errored':
-      return 'text-orange-200/95';
+      return 'text-status-needs-input';
     case 'cancelled':
-      return 'text-zinc-500';
+      return 'text-muted-foreground';
     default:
-      return 'text-zinc-300';
+      return 'text-foreground';
   }
 }
 

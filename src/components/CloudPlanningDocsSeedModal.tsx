@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Spinner } from '@/components/ui/spinner';
 
 interface Props {
   projectName: string;
@@ -73,7 +74,14 @@ export function CloudPlanningDocsSeedModal({
             Not now
           </AlertDialogCancel>
           <AlertDialogAction disabled={busy} onClick={onUploadToCloud}>
-            {busy ? 'Uploading…' : 'Upload from this folder'}
+            {busy ? (
+              <>
+                <Spinner />
+                Uploading…
+              </>
+            ) : (
+              'Upload from this folder'
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

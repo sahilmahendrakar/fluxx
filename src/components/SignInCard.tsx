@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../renderer/auth/useAuth';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '../renderer/auth/useAuth';
 
 export function SignInCard() {
   const { status, user, signIn, signOut } = useAuth();
@@ -17,8 +20,8 @@ export function SignInCard() {
     return (
       <Card className="border-border/80 bg-card/50 shadow-none">
         <CardContent className="px-4 py-3 text-[12px] text-muted-foreground">
-          Sign-in disabled — set <code className="font-mono text-foreground/80">VITE_FIREBASE_*</code>{' '}
-          and <code className="font-mono text-foreground/80">VITE_GOOGLE_DESKTOP_CLIENT_ID</code> in{' '}
+          Sign-in disabled — set <code className="font-mono text-foreground/80">VITE_FIREBASE_*</code> and{' '}
+          <code className="font-mono text-foreground/80">VITE_GOOGLE_DESKTOP_CLIENT_ID</code> in{' '}
           <code className="font-mono text-foreground/80">.env.local</code> to enable teams.
         </CardContent>
       </Card>
@@ -28,7 +31,8 @@ export function SignInCard() {
   if (status === 'loading') {
     return (
       <Card className="border-border/80 bg-card/50 shadow-none">
-        <CardContent className="px-4 py-3 text-[13px] text-muted-foreground">
+        <CardContent className="flex items-center gap-2 px-4 py-3 text-[13px] text-muted-foreground">
+          <Spinner />
           Checking sign-in…
         </CardContent>
       </Card>
@@ -58,22 +62,21 @@ export function SignInCard() {
   };
 
   if (status === 'signedIn' && user) {
+    const initial = (user.displayName ?? user.email ?? '?').slice(0, 1).toUpperCase();
     return (
       <Card className="border-border/80 bg-card/50 shadow-none">
         <CardContent className="flex items-center gap-3 px-4 py-3">
-          {user.photoURL && !photoFailed ? (
-            <img
-              src={user.photoURL}
-              alt=""
-              referrerPolicy="no-referrer"
-              onError={() => setPhotoFailed(true)}
-              className="size-9 rounded-full border border-border"
-            />
-          ) : (
-            <div className="flex size-9 items-center justify-center rounded-full bg-muted text-[13px] font-medium text-foreground">
-              {(user.displayName ?? user.email ?? '?').slice(0, 1).toUpperCase()}
-            </div>
-          )}
+          <Avatar className="size-9">
+            {user.photoURL && !photoFailed ? (
+              <AvatarImage
+                src={user.photoURL}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setPhotoFailed(true)}
+              />
+            ) : null}
+            <AvatarFallback>{initial}</AvatarFallback>
+          </Avatar>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13px] font-medium text-foreground">
               {user.displayName ?? 'Signed in'}
@@ -102,7 +105,7 @@ export function SignInCard() {
         variant="outline"
         onClick={() => void handleSignIn()}
         disabled={busy}
-        className="h-auto justify-center gap-2 py-2.5 text-[13px]"
+        className="h-auto w-full justify-center gap-2 py-2.5 text-[13px]"
       >
         <GoogleGlyph />
         {busy ? 'Opening browser…' : 'Sign in with Google'}
@@ -111,12 +114,9 @@ export function SignInCard() {
         Sign in to create team projects and sync tasks. Local projects work without signing in.
       </p>
       {error ? (
-        <p
-          className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] text-destructive"
-          role="alert"
-        >
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription className="text-[12px]">{error}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   );
