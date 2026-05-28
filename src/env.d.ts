@@ -680,6 +680,10 @@ declare global {
           preference: import('./theme/appearance').AppearancePreference;
         }>;
       };
+      window: {
+        isFullscreen: () => Promise<boolean>;
+        onFullscreenChanged: (cb: (isFullscreen: boolean) => void) => () => void;
+      };
       notifications: {
         getAutoTransitionPrefs: () => Promise<
           import('./taskAutoTransitionNotificationPrefs').AutoTransitionNotificationPrefs

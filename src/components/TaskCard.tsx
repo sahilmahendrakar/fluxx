@@ -44,12 +44,12 @@ import TaskCardValidationBadge from './validation/TaskCardValidationBadge';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
 
-/** Repo / branch chips on the card footer — readable but softer than column chrome. */
+/** Repo / branch chips — faint tinted fill; foreground token is dark in light mode, light in dark. */
 const TASK_CARD_REPO_BADGE_CLASS =
-  'max-w-[10rem] shrink-0 gap-0.5 truncate rounded border-status-success/35 bg-status-success/12 px-1.5 py-0.5 text-[10px] font-medium text-status-success/90 dark:border-status-success/30 dark:bg-status-success/10 dark:font-medium dark:text-status-success-foreground';
+  'max-w-[10rem] shrink-0 gap-0.5 truncate rounded-md border border-status-success/25 bg-status-success/10 px-1.5 py-0.5 text-[10px] font-medium text-status-success-foreground dark:border-status-success/30';
 
 const TASK_CARD_BRANCH_BADGE_CLASS =
-  'max-w-[11rem] gap-0.5 truncate rounded border-status-review/35 bg-status-review/12 px-1.5 py-0.5 text-[10px] font-medium text-status-review/90 dark:border-status-review/30 dark:bg-status-review/10 dark:font-medium dark:text-status-review-foreground';
+  'max-w-[11rem] gap-0.5 truncate rounded-md border border-status-review/25 bg-status-review/10 px-1.5 py-0.5 text-[10px] font-medium text-status-review-foreground dark:border-status-review/30';
 
 /** Shared 24px hit box for footer icon controls (blocked, assignee, status dot). */
 const TASK_CARD_FOOTER_ACTION_SLOT =

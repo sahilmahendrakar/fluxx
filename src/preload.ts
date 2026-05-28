@@ -976,6 +976,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
         preference: import('./theme/appearance').AppearancePreference;
       }>,
   },
+  window: {
+    isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:isFullscreen'),
+    onFullscreenChanged: (cb: (isFullscreen: boolean) => void) => {
+      const ch = 'window:fullscreenChanged' as const;
+      const handler = (_e: IpcRendererEvent, value: boolean) => cb(value);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
+    },
+  },
   notifications: {
     getAutoTransitionPrefs: () =>
       ipcRenderer.invoke('notifications:getAutoTransitionPrefs') as Promise<

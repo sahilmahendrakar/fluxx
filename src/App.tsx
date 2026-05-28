@@ -35,6 +35,7 @@ import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
 import { ShadcnThemeSmoke } from './components/dev/ShadcnThemeSmoke';
 import { AppShell } from './components/AppShell';
+import { MacTitleBarInset } from './components/shell/MacTitleBarInset';
 import { TopBar } from './components/TopBar';
 import { Button } from '@/components/ui/button';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -218,7 +219,6 @@ export default function App() {
     return <ShadcnThemeSmoke />;
   }
 
-  const isMac = window.electronAPI.platform === 'darwin';
   const { devices: executionDevices } = useExecutionDevices();
   const [project, setProject] = useState<ActiveProject | null>(null);
   const executionDeviceDefaults = useExecutionDeviceDefaults(project);
@@ -3492,9 +3492,7 @@ export default function App() {
   if (activationLoading || pendingCloudActive) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-        {isMac ? (
-          <div className="app-window-drag h-10 w-full shrink-0" aria-hidden />
-        ) : null}
+        <MacTitleBarInset />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <LoadingScreen />
         </div>
@@ -3505,9 +3503,7 @@ export default function App() {
   if (!project) {
     return (
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-        {isMac ? (
-          <div className="app-window-drag h-10 w-full shrink-0" aria-hidden />
-        ) : null}
+        <MacTitleBarInset />
         <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
           <ProjectsListView
             onProjectActivated={handleProjectActivated}
@@ -3523,9 +3519,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      {isMac ? (
-        <div className="app-window-drag h-10 w-full shrink-0" aria-hidden />
-      ) : null}
+      <MacTitleBarInset />
       <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
         {cleanupError ? (
           <div
