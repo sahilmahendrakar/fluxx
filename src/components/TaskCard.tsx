@@ -24,7 +24,7 @@ import {
 import { resolveTaskChipExecutionDevice } from '../executionDevices/resolveTaskChipDevice';
 import { TaskCardExecutionDeviceMenu } from './TaskCardExecutionDeviceMenu';
 import type { ExecutionDeviceDefaults } from '../hooks/useExecutionDeviceDefaults';
-import { getBlockedTasks, isTaskBlocked } from '../taskDependencies';
+import { isTaskBlocked } from '../taskDependencies';
 import { effectiveTaskSourceBranchShort, taskCardShouldShowSourceBranchChip } from '../taskBranches';
 import { TaskCardAgentSpawnMenu, type TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
@@ -35,6 +35,10 @@ import {
 import { type ProjectMember, projectMemberDisplayLabel } from '../renderer/projects/members';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
 import { TASK_STATUS_DOT as STATUS_DOT } from '../taskStatusDot';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import TaskCardValidationBadge from './validation/TaskCardValidationBadge';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
@@ -124,7 +128,7 @@ function TaskCardAssigneeFooter({
   if (hasAssigneeUid) {
     return (
       <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-500/[0.15] text-[10px] font-medium text-zinc-400 ring-1 ring-white/10"
+        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-1 ring-border"
         title="Unknown member"
         aria-label="Assignee is an unknown member"
       >
@@ -141,7 +145,7 @@ function TaskCardAssigneeFooter({
           id={listboxId}
           role="listbox"
           aria-labelledby={triggerId}
-          className="fixed z-[300] max-h-56 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111113] py-1 shadow-xl shadow-black/50"
+          className="fixed z-[300] max-h-56 overflow-y-auto rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl"
           style={{
             top: menuPos.top,
             left: menuPos.left,
@@ -150,19 +154,21 @@ function TaskCardAssigneeFooter({
           }}
         >
           {cloudProjectMembers.length === 0 ? (
-            <p className="px-2.5 py-2 text-left text-[12px] text-zinc-500">No team members yet.</p>
+            <p className="px-2.5 py-2 text-left text-[12px] text-muted-foreground">No team members yet.</p>
           ) : (
             cloudProjectMembers.map((m) => {
               const selected = assigneeId === m.uid;
               return (
-                <button
+                <Button
                   key={m.uid}
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  className={`flex w-full items-center gap-2 px-2.5 py-2 text-left text-[12px] hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none ${
-                    selected ? 'bg-white/[0.04] text-zinc-50' : 'text-zinc-200'
-                  }`}
+                  variant="ghost"
+                  className={cn(
+                    'h-auto w-full justify-start gap-2 rounded-none px-2.5 py-2 text-left text-[12px]',
+                    selected && 'bg-accent text-accent-foreground',
+                  )}
                   onClick={() => {
                     assignMember(taskId, m.uid);
                     setMenuOpen(false);
@@ -170,7 +176,7 @@ function TaskCardAssigneeFooter({
                 >
                   <ProjectMemberAvatar member={m} size="sm" />
                   <span className="min-w-0 flex-1 truncate">{projectMemberDisplayLabel(m)}</span>
-                </button>
+                </Button>
               );
             })
           )}
@@ -182,10 +188,13 @@ function TaskCardAssigneeFooter({
   return (
     <>
       <div ref={wrapRef} className="relative shrink-0">
-        <button
+        <Button
           ref={triggerRef}
           type="button"
           id={triggerId}
+          variant="outline"
+          size="icon"
+          className="-m-0.5 size-6 shrink-0 rounded-full bg-muted text-muted-foreground"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -200,10 +209,9 @@ function TaskCardAssigneeFooter({
               : 'Task unassigned — open menu to assign a project member'
           }
           title="Assign to a project member"
-          className="-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-zinc-800/90 text-zinc-500 ring-1 ring-white/10 transition hover:bg-zinc-700/90 hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45"
         >
-          <UserCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
-        </button>
+          <UserCircle2 className="size-3.5" strokeWidth={1.75} aria-hidden />
+        </Button>
       </div>
       {menu}
     </>
@@ -299,7 +307,6 @@ export default function TaskCard({
   const isDone = task.status === 'done';
   const workspaceCleaned = Boolean(task.workspaceCleanedAt);
   const blocked = isTaskBlocked(task, allTasks);
-  const blocksCount = getBlockedTasks(task.id, allTasks).length;
   const projectUnblockAuto = autoStartWhenUnblockedProject;
   const effectiveUnblockAutostart = whenUnblockedAutostartBoardChipEffective(task, projectUnblockAuto);
   const prUrl = task.githubPr?.url?.trim() ?? '';
@@ -342,30 +349,34 @@ export default function TaskCard({
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
-        <div
+        <Card
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className={`group rounded-md border border-white/[0.06] bg-[#141416] shadow-sm transition-colors ${
-            isNeedsInput ? 'border-l-[3px] border-l-amber-400/65' : ''
-          } ${isValidation ? 'border-l-[3px] border-l-violet-400/65' : ''} ${
-            isReview ? 'border-l-[3px] border-l-sky-400/60' : ''
-          } ${isDone ? 'opacity-55' : ''} ${
+          className={cn(
+            'group rounded-lg border border-border bg-card py-0 shadow-md ring-1 ring-border/40 transition-[box-shadow,background-color,border-color]',
+            isNeedsInput && 'border-l-[3px] border-l-status-needs-input',
+            isValidation && 'border-l-[3px] border-l-status-validation',
+            isReview && 'border-l-[3px] border-l-status-review',
+            isDone && 'opacity-55',
             snapshot.isDragging
-              ? 'border-white/[0.12] bg-[#18181b] shadow-lg ring-1 ring-white/[0.08]'
-              : 'hover:border-white/[0.1] hover:bg-[#161618]'
-          }`}
+              ? 'border-foreground/15 bg-card shadow-xl brightness-110'
+              : 'hover:border-foreground/15 hover:shadow-lg hover:brightness-105',
+          )}
         >
           <div
             {...provided.dragHandleProps}
-            className="cursor-grab rounded-md p-3 active:cursor-grabbing"
+            className="cursor-grab rounded-lg p-3 active:cursor-grabbing"
           >
             <div role="presentation" className="cursor-grab">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={tryOpenTaskDetail}>
                   <p
-                    className={`text-[13px] font-medium leading-snug tracking-tight break-words ${
-                      isDone ? 'text-zinc-500 line-through decoration-zinc-600' : 'text-zinc-200'
-                    }`}
+                    className={cn(
+                      'text-[13px] font-medium leading-snug tracking-tight break-words',
+                      isDone
+                        ? 'text-muted-foreground line-through decoration-muted-foreground/60'
+                        : 'text-card-foreground',
+                    )}
                   >
                     {task.title}
                   </p>
@@ -373,9 +384,10 @@ export default function TaskCard({
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {task.labels.map((lb) =>
                         onLabelClick ? (
-                          <button
+                          <Button
                             key={lb}
                             type="button"
+                            variant="ghost"
                             title="Filter by this label"
                             aria-label={`Filter board by label ${lb}`}
                             onMouseDown={(e) => e.stopPropagation()}
@@ -383,35 +395,38 @@ export default function TaskCard({
                               e.stopPropagation();
                               onLabelClick(lb);
                             }}
-                            className="max-w-full cursor-pointer truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-left text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10 transition hover:border-violet-400/35 hover:from-violet-500/18 hover:to-violet-600/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
+                            className="h-auto max-w-full cursor-pointer truncate rounded-full border border-border/80 bg-muted/60 px-2 py-0.5 text-left text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                           >
                             {lb}
-                          </button>
+                          </Button>
                         ) : (
-                          <span
+                          <Badge
                             key={lb}
-                            className="max-w-full truncate rounded-full border border-violet-400/20 bg-gradient-to-b from-violet-500/12 to-violet-600/8 px-2 py-0.5 text-[10px] font-medium text-violet-200/90 ring-1 ring-inset ring-violet-500/10"
+                            variant="outline"
+                            className="max-w-full truncate rounded-full border-border/80 bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
                             title={lb}
                           >
                             {lb}
-                          </span>
+                          </Badge>
                         ),
                       )}
                     </div>
                   ) : null}
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(task.id);
                   }}
-                  className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[13px] leading-none text-zinc-600 opacity-0 transition hover:bg-white/[0.06] hover:text-zinc-300 group-hover:opacity-100"
+                  className="h-auto shrink-0 px-1.5 py-0.5 text-[13px] leading-none text-muted-foreground opacity-0 group-hover:opacity-100"
                   aria-label="Delete task"
                 >
                   ×
-                </button>
+                </Button>
               </div>
               <div
                 className="mt-3 flex items-center justify-between gap-2"
@@ -436,8 +451,10 @@ export default function TaskCard({
                       onPick={(ref) => onTaskExecutionDeviceChange(task.id, ref)}
                     />
                   ) : null}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     disabled={!canOpenTaskWorkspaceTab}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
@@ -445,11 +462,12 @@ export default function TaskCard({
                       if (!canOpenTaskWorkspaceTab) return;
                       onOpenTaskWorkspaceTab(task.id);
                     }}
-                    className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/45 ${
+                    className={cn(
+                      '-m-0.5 size-6 shrink-0',
                       canOpenTaskWorkspaceTab
-                        ? 'cursor-pointer text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
-                        : 'cursor-not-allowed border border-transparent text-zinc-600/50 opacity-70'
-                    }`}
+                        ? 'text-muted-foreground'
+                        : 'text-muted-foreground/25 hover:bg-transparent disabled:opacity-100',
+                    )}
                     aria-label={
                       canOpenTaskWorkspaceTab
                         ? 'Open task workspace in tab'
@@ -461,40 +479,51 @@ export default function TaskCard({
                         : 'No session yet — open task details and start a session'
                     }
                   >
-                    <Terminal className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-                  </button>
+                    <Terminal
+                      className={cn(
+                        'size-3.5 shrink-0',
+                        !canOpenTaskWorkspaceTab && 'opacity-60',
+                      )}
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  </Button>
                   {repoChip ? (
-                    <span
+                    <Badge
                       role="img"
                       title={repoChip.title}
                       aria-label={repoChip.title}
-                      className="inline-flex max-w-[10rem] shrink-0 items-center gap-0.5 truncate rounded border border-emerald-500/25 bg-emerald-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-emerald-200/90"
+                      variant="outline"
+                      className="max-w-[10rem] shrink-0 gap-0.5 truncate rounded border-status-success/30 bg-status-success/10 px-1.5 py-0.5 text-[10px] font-medium text-status-success-foreground"
                     >
-                      <FolderGit2 className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <FolderGit2 className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
                       <span className="truncate" aria-hidden>
                         {repoChip.label}
                       </span>
-                    </span>
+                    </Badge>
                   ) : null}
                   {showBranchChip ? (
-                    <span
+                    <Badge
                       role="img"
                       title={branchChipTitle}
                       aria-label={branchChipTitle}
-                      className="inline-flex max-w-[11rem] items-center gap-0.5 truncate rounded border border-sky-500/25 bg-sky-500/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-sky-200/90"
+                      variant="outline"
+                      className="max-w-[11rem] gap-0.5 truncate rounded border-status-review/30 bg-status-review/10 px-1.5 py-0.5 text-[10px] font-medium text-status-review-foreground"
                     >
-                      <GitBranch className="h-3 w-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <GitBranch className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
                       <span className="truncate font-mono" aria-hidden>
                         {branchChipLabel}
                       </span>
-                    </span>
+                    </Badge>
                   ) : null}
                   {validationEnabledProject ? <TaskCardValidationBadge task={task} /> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {blocked && !isDone ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="icon"
                       disabled={unblockToggleLockedByOtherAssignee}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
@@ -507,49 +536,41 @@ export default function TaskCard({
                       }}
                       title={unblockChipTitle}
                       aria-label={unblockChipAriaLabel}
-                      className={`-m-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border transition ${
+                      className={cn(
+                        '-m-0.5 size-6 shrink-0',
                         unblockToggleLockedByOtherAssignee
-                          ? 'cursor-not-allowed border-white/[0.06] bg-white/[0.03] text-zinc-500 opacity-80'
+                          ? 'border-border bg-muted/50 text-muted-foreground opacity-80'
                           : effectiveUnblockAutostart
-                            ? 'border-emerald-500/35 bg-emerald-500/[0.1] text-emerald-200/90 hover:border-emerald-400/45'
-                            : 'border-amber-500/25 bg-amber-500/[0.08] text-amber-200/90 hover:border-amber-400/35'
-                      }`}
+                            ? 'border-status-success/35 bg-status-success/10 text-status-success-foreground hover:bg-status-success/15'
+                            : 'border-status-needs-input/30 bg-status-needs-input/10 text-status-needs-input-foreground hover:bg-status-needs-input/15',
+                      )}
                     >
                       {effectiveUnblockAutostart ? (
-                        <CirclePlay className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                        <CirclePlay className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       ) : (
-                        <Ban className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                        <Ban className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
                       )}
-                    </button>
-                  ) : null}
-                  {blocksCount > 0 ? (
-                    <span
-                      className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
-                      title={`${blocksCount} task(s) depend on this one`}
-                    >
-                      Blocks {blocksCount}
-                    </span>
+                    </Button>
                   ) : null}
                   {onTaskPrClick && hasWorktree ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       disabled={prLoading}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onTaskPrClick(task.id);
                       }}
-                      className={`-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                        prMerged
-                          ? 'text-purple-400/85 hover:bg-purple-500/12 hover:text-purple-300/90'
-                          : prIsOpen
-                            ? 'text-emerald-500/75 hover:bg-emerald-500/10 hover:text-emerald-400/85'
-                            : prLinked
-                              ? 'text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
-                              : prAwaitingAgent
-                                ? 'text-amber-400/80 hover:bg-amber-500/10 hover:text-amber-300/85'
-                                : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-300'
-                      }`}
+                      className={cn(
+                        '-m-0.5 size-6 shrink-0',
+                        prMerged && 'text-status-validation hover:bg-status-validation/10 hover:text-status-validation',
+                        prIsOpen && 'text-status-success hover:bg-status-success/10 hover:text-status-success',
+                        prLinked && 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        prAwaitingAgent && 'text-status-needs-input hover:bg-status-needs-input/10 hover:text-status-needs-input',
+                        !prMerged && !prIsOpen && !prLinked && !prAwaitingAgent && 'text-muted-foreground',
+                      )}
                       aria-label={
                         prLoading
                           ? 'Working with pull request…'
@@ -583,22 +604,22 @@ export default function TaskCard({
                     >
                       {prLoading ? (
                         <Loader2
-                          className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                          className="size-3.5 shrink-0 animate-spin text-muted-foreground"
                           aria-hidden
                         />
                       ) : prMerged ? (
-                        <GitMerge className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                        <GitMerge className="size-3.5" strokeWidth={2} aria-hidden />
                       ) : prLinked ? (
-                        <GitPullRequest className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                        <GitPullRequest className="size-3.5" strokeWidth={2} aria-hidden />
                       ) : (
-                        <GitPullRequestCreate className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+                        <GitPullRequestCreate className="size-3.5" strokeWidth={2} aria-hidden />
                       )}
-                    </button>
+                    </Button>
                   ) : null}
                   {isDone && onRequestCleanupTask ? (
                     workspaceCleaned ? (
                       <span
-                        className="-m-0.5 flex h-6 w-6 cursor-default items-center justify-center rounded text-zinc-600/45 opacity-50"
+                        className="-m-0.5 flex size-6 cursor-default items-center justify-center rounded text-muted-foreground/45 opacity-50"
                         title="task cleaned"
                         aria-label="Task workspace already cleaned"
                       >
@@ -606,20 +627,22 @@ export default function TaskCard({
                           iconNode={broom}
                           size={14}
                           strokeWidth={1.75}
-                          className="text-zinc-600/70"
+                          className="text-muted-foreground/70"
                           aria-hidden
                         />
                       </span>
                     ) : (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         disabled={cleanupLoading}
                         onMouseDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRequestCleanupTask(task.id);
                         }}
-                        className="-m-0.5 flex h-6 w-6 cursor-pointer items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-100"
+                        className="-m-0.5 size-6 shrink-0 text-muted-foreground"
                         aria-label={
                           cleanupLoading
                             ? 'Cleaning up workspace…'
@@ -629,7 +652,7 @@ export default function TaskCard({
                       >
                         {cleanupLoading ? (
                           <Loader2
-                            className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                            className="size-3.5 shrink-0 animate-spin text-muted-foreground"
                             aria-hidden
                           />
                         ) : (
@@ -640,7 +663,7 @@ export default function TaskCard({
                             aria-hidden
                           />
                         )}
-                      </button>
+                      </Button>
                     )
                   ) : null}
                   <TaskCardAssigneeFooter
@@ -651,14 +674,14 @@ export default function TaskCard({
                     onAssigneeChange={onTaskAssigneeChange}
                   />
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status]}`}
+                    className={cn('size-1.5 rounded-full', STATUS_DOT[task.status])}
                     aria-hidden
                   />
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       )}
     </Draggable>
   );

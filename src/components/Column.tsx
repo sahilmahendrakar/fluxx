@@ -15,6 +15,8 @@ import {
   repoDisplayLabel,
 } from '../repoIdentity';
 import { normalizeGitBranchShortName } from '../taskBranches';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import TaskCard from './TaskCard';
 import type { TaskAgentSpawnPatch } from './TaskCardAgentSpawnMenu';
 import type { TaskPatch } from '../renderer/tasks/TaskProvider';
@@ -98,51 +100,53 @@ export default function Column({
   const isNeedsInput = id === 'needs-input';
   const isValidation = id === 'validation';
   const isReview = id === 'review';
-  const isDone = id === 'done';
-
   const headerTint = isNeedsInput
-    ? 'text-amber-400/90'
+    ? 'text-status-needs-input'
     : isValidation
-      ? 'text-purple-400/90'
+      ? 'text-status-validation'
       : isReview
-        ? 'text-sky-400/90'
-        : isDone
-          ? 'text-zinc-500'
-          : 'text-zinc-400';
+        ? 'text-status-review'
+        : 'text-muted-foreground';
 
   const countClass = isNeedsInput
-    ? 'bg-amber-500/10 text-amber-400/90 ring-1 ring-amber-500/15'
+    ? 'border-status-needs-input/25 bg-status-needs-input/15 text-status-needs-input-foreground'
     : isValidation
-      ? 'bg-purple-500/10 text-purple-300/95 ring-1 ring-purple-500/20'
+      ? 'border-status-validation/25 bg-status-validation/15 text-status-validation-foreground'
       : isReview
-        ? 'bg-sky-500/10 text-sky-300/95 ring-1 ring-sky-500/18'
-        : isDone
-          ? 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]'
-          : 'bg-zinc-800/80 text-zinc-500 ring-1 ring-white/[0.05]';
+        ? 'border-status-review/25 bg-status-review/15 text-status-review-foreground'
+        : 'border-border bg-muted/60 text-muted-foreground';
 
   return (
-    <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-lg border border-white/[0.06] bg-[#0c0c0e]/80">
+    <div className="flex min-h-0 min-w-[272px] flex-1 flex-col rounded-xl border border-border bg-muted dark:bg-background">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2
-            className={`truncate text-[11px] font-semibold uppercase tracking-[0.14em] ${headerTint}`}
+            className={cn(
+              'truncate text-[11px] font-semibold uppercase tracking-[0.14em]',
+              headerTint,
+            )}
           >
             {label}
           </h2>
           <span
-            className={`inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums ${countClass}`}
+            className={cn(
+              'inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium tabular-nums',
+              countClass,
+            )}
           >
             {tasks.length}
           </span>
         </div>
         {onNewTask ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[11px] text-muted-foreground"
             onClick={onNewTask}
-            className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
           >
             + New
-          </button>
+          </Button>
         ) : null}
       </div>
       <Droppable droppableId={id}>
@@ -153,9 +157,10 @@ export default function Column({
             className="flex min-h-0 flex-1 flex-col"
           >
             <div
-              className={`flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3 transition-colors ${
-                snapshot.isDraggingOver ? 'bg-white/[0.02]' : ''
-              }`}
+              className={cn(
+                'flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-2 pb-3 transition-colors',
+                snapshot.isDraggingOver && 'bg-accent/40',
+              )}
             >
               {tasks.map((task, index) => {
                 const sessionWorktree = sessions.some(
@@ -221,7 +226,7 @@ export default function Column({
               })}
               {provided.placeholder}
               {tasks.length === 0 && emptyState ? (
-                <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-[13px] leading-relaxed text-zinc-600">
+                <div className="flex flex-1 items-center justify-center px-3 py-10 text-center text-[13px] leading-relaxed text-muted-foreground">
                   {emptyState}
                 </div>
               ) : null}
