@@ -9,7 +9,9 @@ Auto-update builds fetch the matching `Fluxx-darwin-{arch}-{{VERSION}}.zip` via 
 
 ### Highlights
 
-- 
+- Shadcn visual refresh across the app shell, board, task detail, planning docs, settings, terminals, and runtime chrome for a more consistent UI.
+- Improved light-mode contrast and fullscreen chrome polish, including clearer repository/branch badges on task cards.
+- Accessibility and regression QA follow-ups for the visual refresh migration.
 
 ### Install
 
