@@ -10,6 +10,7 @@ import {
 } from '../sidebarRepoSectionCollapse';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
+import { cn } from '@/lib/utils';
 
 function formatPlanningDocShortTime(iso: string | undefined): string {
   if (!iso) return '';
@@ -35,7 +36,7 @@ function PlanningCloudDocsSyncHint({
   if (!t) return null;
 
   return (
-    <p className="mb-1 px-2 py-0.5 text-[10px] leading-snug text-zinc-600">
+    <p className="mb-1 px-2 py-0.5 text-[10px] leading-snug text-muted-foreground">
       Last sync {t}
     </p>
   );
@@ -461,12 +462,12 @@ export function Sidebar({
     ].join(' ');
 
   const fileRowClass = (active: boolean) =>
-    [
+    cn(
       'flex w-full min-w-0 items-center gap-1 rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
       active
-        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-    ].join(' ');
+        ? 'bg-accent text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))]'
+        : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
+    );
 
   const planNavActive =
     !settingsRouteActive && (activeTabId === 'plan' || activeTabId.startsWith('plan:'));
@@ -561,18 +562,18 @@ export function Sidebar({
                   docsSidebarExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
                 ].join(' ')}
               >
-                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l border-white/[0.06] pl-2 pt-0.5">
+                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l border-border pl-2 pt-0.5">
                   {project.kind === 'cloud' ? (
                     <PlanningCloudDocsSyncHint
                       meta={planningDocsCloudListMeta}
                     />
                   ) : null}
                   {planningDocsListError ? (
-                    <p className="py-1 text-[10px] leading-snug text-red-400/90">{planningDocsListError}</p>
+                    <p className="py-1 text-[10px] leading-snug text-destructive">{planningDocsListError}</p>
                   ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] text-zinc-600">Loading…</p>
+                    <p className="py-1 text-[10px] text-muted-foreground">Loading…</p>
                   ) : planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] leading-snug text-zinc-600">No .md files yet.</p>
+                    <p className="py-1 text-[10px] leading-snug text-muted-foreground">No .md files yet.</p>
                   ) : (
                     <ul className="flex flex-col gap-0.5 pb-1">
                       {planningDocFiles.map((f) => (
@@ -590,7 +591,7 @@ export function Sidebar({
                             <span className="min-w-0 flex-1 truncate">{f.relativePath}</span>
                             {f.syncStatus === 'conflict' ? (
                               <span
-                                className="shrink-0 text-[10px] font-sans font-semibold text-amber-400/95"
+                                className="shrink-0 text-[10px] font-sans font-semibold text-status-needs-input"
                                 title="Sync conflict"
                                 aria-hidden
                               >
@@ -598,7 +599,7 @@ export function Sidebar({
                               </span>
                             ) : f.syncStatus === 'pending_push' ? (
                               <span
-                                className="shrink-0 text-[10px] font-sans text-sky-400/90"
+                                className="shrink-0 text-[10px] font-sans text-primary"
                                 title="Pending upload"
                                 aria-hidden
                               >
