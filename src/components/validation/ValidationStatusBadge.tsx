@@ -1,4 +1,6 @@
 import { Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import {
   validationBoardBadgeClass,
   validationBoardBadgeLabel,
@@ -20,16 +22,20 @@ export default function ValidationStatusBadge({
   const title = validationBoardBadgeLabel(status);
 
   return (
-    <span
+    <Badge
       role="status"
       title={title}
       aria-label={title}
-      className={`inline-flex max-w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium ${validationBoardBadgeClass(status)}`}
+      variant="outline"
+      className={cn(
+        'max-w-full gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium',
+        validationBoardBadgeClass(status),
+      )}
     >
       {loading || status === 'running' ? (
-        <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-80" strokeWidth={2} aria-hidden />
+        <Loader2 className="size-3 shrink-0 animate-spin opacity-80" strokeWidth={2} aria-hidden />
       ) : null}
       <span className="truncate">{label}</span>
-    </span>
+    </Badge>
   );
 }
