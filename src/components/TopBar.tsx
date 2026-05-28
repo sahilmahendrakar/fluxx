@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Project } from '../types';
+import { shellDivider } from '@/components/shell/shellNavStyles';
+import { cn } from '@/lib/utils';
 
 interface TopBarProps {
   project: Project;
@@ -12,18 +14,16 @@ interface TopBarProps {
 export function TopBar({ project, statusLine, leadingInset, children }: TopBarProps) {
   return (
     <header
-      className="flex shrink-0 items-center gap-3 border-b border-white/[0.06] bg-[#09090b]/80 px-3 py-1.5 backdrop-blur-md"
+      className={cn(
+        'flex shrink-0 items-center gap-3 border-b bg-background/80 px-3 py-1.5 backdrop-blur-md',
+        shellDivider,
+      )}
       aria-label={`Project: ${project.name}`}
     >
-      <div
-        className={[
-          'flex min-w-0 flex-1 items-center',
-          leadingInset ? 'pl-9' : '',
-        ].join(' ')}
-      >
+      <div className={cn('flex min-w-0 flex-1 items-center', leadingInset && 'pl-9')}>
         {children}
       </div>
-      <p className="shrink-0 pl-4 text-[11px] tabular-nums text-zinc-600">{statusLine}</p>
+      <p className="shrink-0 pl-4 text-[11px] tabular-nums text-muted-foreground">{statusLine}</p>
     </header>
   );
 }

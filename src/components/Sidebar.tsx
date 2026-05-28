@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { FolderGit2 } from 'lucide-react';
+import { FolderGit2, Minus, PanelLeftClose, Trash2 } from 'lucide-react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
@@ -10,7 +10,26 @@ import {
 } from '../sidebarRepoSectionCollapse';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
+import { AppearanceToggle } from './AppearanceToggle';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import {
+  shellDivider,
+  shellIconButtonClass,
+  shellNavButtonClass,
+  shellNavFileRowClass,
+  shellNavRowClass,
+  shellRadius,
+  shellSidebarLabelButton,
+} from './shell/shellNavStyles';
 
 function formatPlanningDocShortTime(iso: string | undefined): string {
   if (!iso) return '';
@@ -36,7 +55,7 @@ function PlanningCloudDocsSyncHint({
   if (!t) return null;
 
   return (
-    <p className="mb-1 px-2 py-0.5 text-[10px] leading-snug text-muted-foreground">
+    <p className="mb-1 px-2 py-0.5 text-left text-[10px] leading-snug text-muted-foreground">
       Last sync {t}
     </p>
   );
@@ -69,24 +88,6 @@ interface SidebarProps {
   onCollapse: () => void;
   /** Bottom chrome above “Close project” (e.g. app update control). */
   updateFooter?: ReactNode;
-}
-
-function SidebarCollapseIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={14}
-      height={14}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M5.5 2.5v11" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M10.5 6L8 8l2.5 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function BoardIcon({ className }: { className?: string }) {
@@ -167,13 +168,7 @@ function SettingsIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle
-        cx="12"
-        cy="12"
-        r="3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
@@ -192,11 +187,11 @@ function ChevronWorkspacesIcon({
       viewBox="0 0 10 10"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={[
-        'shrink-0 text-zinc-600 transition-transform',
-        expanded ? 'rotate-90' : '',
-        className ?? '',
-      ].join(' ')}
+      className={cn(
+        'shrink-0 text-muted-foreground transition-transform',
+        expanded && 'rotate-90',
+        className,
+      )}
       aria-hidden
     >
       <path
@@ -206,22 +201,6 @@ function ChevronWorkspacesIcon({
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function MinimizeWorkspaceIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={12}
-      height={12}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path d="M3.5 8h9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -248,61 +227,74 @@ function WorkspaceSidebarRow({
   const running = session.status === 'running';
   return (
     <div
-      className={[
-        'group relative flex w-full items-center rounded-md text-left text-[13px] transition-colors',
-        active
-          ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-          : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-      ].join(' ')}
+      className={cn(
+        'group relative flex w-full items-center text-left text-[13px]',
+        shellRadius,
+        active && 'bg-accent/80 ring-1 ring-border',
+      )}
     >
-      <button
+      <Button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 pr-11 text-left"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          'h-auto min-w-0 flex-1 gap-2 py-1.5 pl-2.5 pr-11 text-[13px]',
+          shellSidebarLabelButton,
+          active ? 'text-accent-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
         onClick={() => onOpenSession(session.id)}
         title={title}
       >
         {restoring ? (
-          <span
-            className="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-zinc-500"
-            title="Connecting workspace…"
-            aria-hidden
-          />
+          <Skeleton className="size-1.5 shrink-0 rounded-full" aria-hidden />
         ) : (
           <span
-            className={[
-              'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+            className={cn(
+              'inline-block size-1.5 shrink-0 rounded-full',
               workspaceSessionStatusDotClass(taskStatus, running),
-            ].join(' ')}
+            )}
             aria-hidden
           />
         )}
         <span className="min-w-0 flex-1 truncate">{title}</span>
-      </button>
-      <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMinimizeSession(session.id);
-          }}
-          aria-label={`Minimize ${title}`}
-          title="Minimize — hide from sidebar, keep agent running"
-          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200"
-        >
-          <MinimizeWorkspaceIcon />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteWorkspace(session.id);
-          }}
-          aria-label={`Delete workspace ${title}`}
-          title="Delete workspace — kill agent, terminals, and remove worktree"
-          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 transition hover:bg-red-500/[0.18] hover:text-red-300"
-        >
-          <TrashIcon />
-        </button>
+      </Button>
+      <div className="pointer-events-none absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMinimizeSession(session.id);
+              }}
+              aria-label={`Minimize ${title}`}
+            >
+              <Minus />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Minimize — keep agent running</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-5 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteWorkspace(session.id);
+              }}
+              aria-label={`Delete workspace ${title}`}
+            >
+              <Trash2 />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Delete workspace</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -372,30 +364,30 @@ function TaskWorkspaceSidebarList({
         const expanded = !collapsedRepoIds.has(group.repoId);
         return (
           <section key={group.repoId} aria-label={group.label}>
-            <div className={['ml-2', index === 0 ? 'mt-0.5' : 'mt-2'].join(' ')}>
-              <button
+            <div className={cn('ml-2', index === 0 ? 'mt-0.5' : 'mt-2')}>
+              <Button
                 type="button"
-                onClick={() => toggleRepoSection(group.repoId)}
+                variant="ghost"
+                size="sm"
                 aria-expanded={expanded}
                 title={group.label}
-                className={[
-                  'group flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left transition-colors',
-                  'text-[12px] font-semibold text-zinc-300 hover:bg-white/[0.05] hover:text-zinc-100',
-                ].join(' ')}
+                className={cn(
+                  'h-auto w-full gap-1 px-2 py-1 text-[12px] font-semibold text-foreground/90 hover:bg-accent/50',
+                  shellRadius,
+                  shellSidebarLabelButton,
+                )}
+                onClick={() => toggleRepoSection(group.repoId)}
               >
-                <ChevronWorkspacesIcon
-                  expanded={expanded}
-                  className="text-zinc-500 transition-colors group-hover:text-zinc-200"
-                />
+                <ChevronWorkspacesIcon expanded={expanded} />
                 <FolderGit2
-                  className="h-3.5 w-3.5 shrink-0 text-emerald-400/90 opacity-80"
+                  className="size-3.5 shrink-0 text-status-success"
                   strokeWidth={2}
                   aria-hidden
                 />
                 <span className="min-w-0 flex-1 truncate">{group.label}</span>
-              </button>
+              </Button>
               {expanded ? (
-                <div className="ml-2 mt-0.5 flex flex-col gap-0.5 border-l border-white/[0.06] pl-2">
+                <div className={cn('ml-2 mt-0.5 flex flex-col gap-0.5 border-l pl-2', shellDivider)}>
                   {group.items.map(renderItem)}
                 </div>
               ) : null}
@@ -404,25 +396,6 @@ function TaskWorkspaceSidebarList({
         );
       })}
     </>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width={12}
-      height={12}
-      viewBox="0 0 16 16"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path d="M2.5 4h11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M6 4V2.75A0.75 0.75 0 0 1 6.75 2h2.5a0.75 0.75 0 0 1 0.75 0.75V4" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M4 4.5V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path d="M6.5 7v4M9.5 7v4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -453,136 +426,167 @@ export function Sidebar({
 }: SidebarProps) {
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
 
-  const navItemClass = (active: boolean) =>
-    [
-      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
-      active
-        ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-        : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
-    ].join(' ');
-
-  const fileRowClass = (active: boolean) =>
-    cn(
-      'flex w-full min-w-0 items-center gap-1 rounded-lg py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
-      active
-        ? 'bg-accent text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))]'
-        : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',
-    );
-
   const planNavActive =
     !settingsRouteActive && (activeTabId === 'plan' || activeTabId.startsWith('plan:'));
 
+  const docsNavActive = activeTabId === 'docs' && !settingsRouteActive;
+
   return (
-    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0c0c0e] text-zinc-100">
+    <aside
+      className={cn(
+        'flex h-full w-[220px] shrink-0 flex-col border-r bg-card text-left text-card-foreground',
+        shellDivider,
+      )}
+    >
       <div className="px-3 pb-3 pt-3.5">
-        <div className="flex items-center justify-between">
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">Fluxx</div>
-          <button
-            type="button"
-            onClick={onCollapse}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-            className="-mr-1 shrink-0 rounded p-1 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-          >
-            <SidebarCollapseIcon />
-          </button>
+        <div className="flex items-center justify-between gap-1">
+          <div className="text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Fluxx
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={onCollapse}
+                  aria-label="Collapse sidebar"
+                  className={shellIconButtonClass()}
+                >
+                  <PanelLeftClose />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Collapse sidebar</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-        <div className="mt-1 flex items-center gap-1.5">
+        <div className="mt-1.5 flex items-start gap-1.5">
           <span
-            className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-zinc-100"
+            className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-tight text-foreground"
             title={project.rootPath}
           >
             {project.name}
           </span>
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            aria-label="Project settings"
-            title="Project settings"
-            aria-pressed={settingsRouteActive}
-            className={[
-              '-mr-2 shrink-0 rounded p-1 transition',
-              settingsRouteActive
-                ? 'bg-white/[0.06] text-zinc-200'
-                : 'text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200',
-            ].join(' ')}
-          >
-            <SettingsIcon className="opacity-80" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onOpenSettings}
+                aria-label="Project settings"
+                aria-pressed={settingsRouteActive}
+                className={shellIconButtonClass(settingsRouteActive)}
+              >
+                <SettingsIcon className="opacity-80" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Project settings</TooltipContent>
+          </Tooltip>
         </div>
       </div>
-      <div className="mx-3 border-t border-white/[0.06]" />
+      <Separator className={cn('mx-3 w-auto bg-border/40')} />
       <div className="flex min-h-0 flex-1 flex-col px-2 py-3">
-        <div className="px-2 pb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
+        <div className="px-2 pb-2 text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Workspace
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
           <div className="flex flex-col gap-0.5">
-            <button
+            <Button
               type="button"
-              className={navItemClass(activeTabId === 'board' && !settingsRouteActive)}
+              variant="ghost"
+              size="sm"
+              className={shellNavButtonClass(activeTabId === 'board' && !settingsRouteActive)}
               onClick={() => onSelectTab('board')}
             >
               <BoardIcon className="shrink-0 opacity-80" />
               <span>Board</span>
-            </button>
-            <button type="button" className={navItemClass(planNavActive)} onClick={onPlanNavClick}>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={shellNavButtonClass(planNavActive)}
+              onClick={onPlanNavClick}
+            >
               <PlanIcon className="shrink-0 opacity-80" />
               <span>Plan</span>
-            </button>
+            </Button>
             <div className="flex flex-col gap-0.5">
-              <div
-                className={navItemClass(activeTabId === 'docs' && !settingsRouteActive)}
-              >
-                <button
+              <div className={shellNavRowClass(docsNavActive)}>
+                <Button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'min-w-0 flex-1 gap-2 shadow-none',
+                    shellSidebarLabelButton,
+                    docsNavActive
+                      ? 'text-accent-foreground hover:bg-transparent'
+                      : 'text-muted-foreground hover:bg-transparent',
+                  )}
                   onClick={onDocsNavClick}
                 >
                   <DocsIcon className="shrink-0 opacity-80" />
-                  <span className="min-w-0 flex-1 truncate">Docs</span>
-                </button>
-                <button
+                  <span className="truncate">Docs</span>
+                </Button>
+                <Button
                   type="button"
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 transition hover:bg-white/[0.06] hover:text-zinc-300"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    'size-7 shrink-0 shadow-none',
+                    docsNavActive
+                      ? 'text-accent-foreground hover:bg-transparent'
+                      : 'text-muted-foreground hover:bg-transparent',
+                  )}
                   aria-expanded={docsSidebarExpanded}
                   aria-label={docsSidebarExpanded ? 'Collapse document list' : 'Expand document list'}
-                  title={docsSidebarExpanded ? 'Hide file list' : 'Show file list'}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDocsSidebarExpandToggle();
                   }}
                 >
                   <ChevronWorkspacesIcon expanded={docsSidebarExpanded} />
-                </button>
+                </Button>
               </div>
               <div
-                className={[
+                className={cn(
                   'grid transition-[grid-template-rows,opacity] duration-200 ease-out',
                   docsSidebarExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-                ].join(' ')}
+                )}
               >
-                <div className="ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l border-border pl-2 pt-0.5">
+                <div
+                  className={cn(
+                    'ml-2 max-h-[min(12rem,calc(100vh-16rem))] min-h-0 overflow-y-auto border-l pl-2 pt-0.5',
+                    shellDivider,
+                  )}
+                >
                   {project.kind === 'cloud' ? (
-                    <PlanningCloudDocsSyncHint
-                      meta={planningDocsCloudListMeta}
-                    />
+                    <PlanningCloudDocsSyncHint meta={planningDocsCloudListMeta} />
                   ) : null}
                   {planningDocsListError ? (
-                    <p className="py-1 text-[10px] leading-snug text-destructive">{planningDocsListError}</p>
+                    <p className="px-2 py-1 text-left text-[10px] leading-snug text-destructive">
+                      {planningDocsListError}
+                    </p>
                   ) : planningDocsListLoading && planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] text-muted-foreground">Loading…</p>
+                    <p className="px-2 py-1 text-left text-[10px] text-muted-foreground">Loading…</p>
                   ) : planningDocFiles.length === 0 ? (
-                    <p className="py-1 text-[10px] leading-snug text-muted-foreground">No .md files yet.</p>
+                    <p className="px-2 py-1 text-left text-[10px] leading-snug text-muted-foreground">
+                      No .md files yet.
+                    </p>
                   ) : (
-                    <ul className="flex flex-col gap-0.5 pb-1">
+                    <ul className="flex w-full flex-col gap-0.5 pb-0">
                       {planningDocFiles.map((f) => (
-                        <li key={f.relativePath}>
-                          <button
+                        <li key={f.relativePath} className="w-full">
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             title={f.relativePath}
                             onClick={() => onSelectPlanningDoc(f.relativePath)}
-                            className={fileRowClass(
+                            className={shellNavFileRowClass(
                               activeTabId === 'docs' &&
                                 !settingsRouteActive &&
                                 f.relativePath === selectedPlanningDocPath,
@@ -590,23 +594,23 @@ export function Sidebar({
                           >
                             <span className="min-w-0 flex-1 truncate">{f.relativePath}</span>
                             {f.syncStatus === 'conflict' ? (
-                              <span
-                                className="shrink-0 text-[10px] font-sans font-semibold text-status-needs-input"
+                              <Badge
+                                variant="outline"
+                                className="h-4 min-w-4 shrink-0 justify-center border-status-needs-input/30 bg-status-needs-input/15 px-0.5 text-[9px] text-status-needs-input-foreground"
                                 title="Sync conflict"
-                                aria-hidden
                               >
                                 !
-                              </span>
+                              </Badge>
                             ) : f.syncStatus === 'pending_push' ? (
-                              <span
-                                className="shrink-0 text-[10px] font-sans text-primary"
+                              <Badge
+                                variant="outline"
+                                className="h-4 shrink-0 border-status-review/30 bg-status-review/10 px-1 text-[9px] text-status-review-foreground"
                                 title="Pending upload"
-                                aria-hidden
                               >
                                 ↑
-                              </span>
+                              </Badge>
                             ) : null}
-                          </button>
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -616,16 +620,21 @@ export function Sidebar({
             </div>
           </div>
 
-          <div className="mt-5 flex min-h-0 flex-col">
-            <button
+          <div className="mt-0.5 flex min-h-0 flex-col">
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setWorkspacesExpanded((v) => !v)}
-              className="flex items-center gap-1 px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600 transition hover:text-zinc-400"
+              className={cn(
+                'h-auto gap-1 px-2 pb-0.5 pt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground',
+                shellSidebarLabelButton,
+              )}
               aria-expanded={workspacesExpanded}
             >
               <ChevronWorkspacesIcon expanded={workspacesExpanded} />
               <span>Task Workspaces</span>
-            </button>
+            </Button>
             {workspacesExpanded ? (
               <div className="flex flex-col gap-0.5 overflow-y-auto">
                 <TaskWorkspaceSidebarList
@@ -644,15 +653,21 @@ export function Sidebar({
 
           <div className="min-h-0 flex-1" aria-hidden />
         </div>
-        <div className="border-t border-white/[0.06] pt-2">
-          {updateFooter ? <div className="mb-2">{updateFooter}</div> : null}
-          <button
+        <div className={cn('border-t pt-2 text-left', shellDivider)}>
+          {updateFooter ? <div className="mb-2 text-left">{updateFooter}</div> : null}
+          <AppearanceToggle variant="footer" />
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={onClearProject}
-            className="w-full rounded-md px-2 py-1.5 text-left text-[12px] text-zinc-600 transition-colors hover:bg-white/[0.03] hover:text-zinc-400"
+            className={cn(
+              'h-auto w-full px-2 py-1.5 text-[12px] text-muted-foreground hover:text-foreground',
+              shellSidebarLabelButton,
+            )}
           >
             Close project
-          </button>
+          </Button>
         </div>
       </div>
     </aside>

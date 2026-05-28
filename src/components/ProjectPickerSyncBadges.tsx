@@ -1,4 +1,10 @@
 import { Cloud, Laptop } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface ProjectPickerSyncBadgesProps {
   syncBadge: 'local' | 'team-synced';
@@ -7,19 +13,28 @@ interface ProjectPickerSyncBadgesProps {
 export function ProjectPickerSyncBadges({ syncBadge }: ProjectPickerSyncBadgesProps) {
   if (syncBadge === 'team-synced') {
     return (
-      <Cloud
-        className="h-3.5 w-3.5 shrink-0 text-sky-300/80"
-        aria-label="Team synced"
-        title="Team synced"
-      />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex shrink-0" tabIndex={0}>
+            <Cloud
+              className="size-3.5 text-status-review"
+              aria-label="Team synced"
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">Team synced</TooltipContent>
+      </Tooltip>
     );
   }
 
   return (
-    <Laptop
-      className="h-3.5 w-3.5 shrink-0 text-zinc-400"
-      aria-label="Local"
-      title="Local"
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex shrink-0" tabIndex={0}>
+          <Laptop className={cn('size-3.5 text-muted-foreground')} aria-label="Local" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">Local</TooltipContent>
+    </Tooltip>
   );
 }
