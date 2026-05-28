@@ -88,7 +88,7 @@ export function TaskCardExecutionDeviceMenu({
           className={cn(
             '-m-0.5 size-6 shrink-0',
             tone,
-            editable && 'hover:bg-accent/60 hover:brightness-110',
+            editable && 'hover:bg-muted/40',
           )}
         >
           <ExecutionDeviceKindIcon

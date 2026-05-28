@@ -18,9 +18,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import AgentModelPicker from './AgentModelPicker';
-import { AGENT_SESSION_PREFS_SURFACE, isAgentSessionPrefsSurfaceTarget } from './agentSessionPrefsSurface';
+import {
+  AGENT_SESSION_PREFS_BACKDROP_Z,
+  AGENT_SESSION_PREFS_MENU_Z,
+  AGENT_SESSION_PREFS_NESTED_Z_CLASS,
+  AGENT_SESSION_PREFS_SURFACE,
+  isAgentSessionPrefsSurfaceTarget,
+} from './agentSessionPrefsSurface';
 import { SettingsSwitch } from './SettingsSwitch';
-export { AGENT_SESSION_PREFS_SURFACE, isAgentSessionPrefsSurfaceTarget } from './agentSessionPrefsSurface';
+export {
+  AGENT_SESSION_PREFS_SURFACE,
+  isAgentSessionPrefsSurfaceTarget,
+} from './agentSessionPrefsSurface';
 
 /** Shared compact select for agent pickers (task detail, settings, spawn menus). */
 export const AGENT_SPAWN_AGENT_SELECT_CLASS =
@@ -98,7 +107,7 @@ export function AgentSessionPrefsMenuContent({
         <SelectTrigger id={agentSelectId} aria-label="Agent" className={AGENT_SPAWN_AGENT_SELECT_CLASS}>
           <SelectValue placeholder="Agent" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className={AGENT_SESSION_PREFS_NESTED_Z_CLASS}>
           <SelectGroup>
             {AGENTS.map((a) => (
               <SelectItem key={a.id} value={a.id}>
@@ -265,7 +274,8 @@ export function AgentSessionPrefsMenuPortal({
   return createPortal(
     <>
       <div
-        className="fixed inset-0 z-[5600] bg-background/40"
+        className="fixed inset-0 bg-background/40"
+        style={{ zIndex: AGENT_SESSION_PREFS_BACKDROP_Z }}
         aria-hidden
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
@@ -274,8 +284,9 @@ export function AgentSessionPrefsMenuPortal({
       <div
         ref={dropdownRef as React.LegacyRef<HTMLDivElement>}
         {...{ [AGENT_SESSION_PREFS_SURFACE]: '' } as React.HTMLAttributes<HTMLDivElement>}
-        className="fixed z-[5610] flex max-h-[min(85vh,calc(100vh-16px))] flex-col overflow-y-auto overflow-x-visible rounded-md border border-border bg-popover p-0 text-popover-foreground shadow-md"
+        className="fixed flex max-h-[min(85vh,calc(100vh-16px))] flex-col overflow-y-auto overflow-x-visible rounded-md border border-border bg-popover p-0 text-popover-foreground shadow-md"
         style={{
+          zIndex: AGENT_SESSION_PREFS_MENU_Z,
           top: layout.top,
           left: layout.left,
           width: layout.width,

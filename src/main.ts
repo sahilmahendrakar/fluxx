@@ -304,6 +304,10 @@ import {
   registerAppearanceIpc,
 } from './main/registerAppearanceIpc';
 import {
+  attachWindowFullscreenListeners,
+  registerWindowChromeIpc,
+} from './main/registerWindowChromeIpc';
+import {
   DEFAULT_APPEARANCE_PREFERENCE,
   resolveAppearanceWithSystemDark,
   windowBackgroundForAppearance,
@@ -613,6 +617,8 @@ const createWindow = () => {
     mainWindow = null;
   });
 
+  attachWindowFullscreenListeners(mainWindow);
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[mainWindow] did-fail-load', {
       errorCode,
@@ -648,6 +654,7 @@ app.whenReady().then(async () => {
   await appStateStore.init();
   appStateStoreForAppearance = appStateStore;
   registerAppearanceIpc(appStateStore, () => mainWindow);
+  registerWindowChromeIpc(() => mainWindow);
   nativeTheme.on('updated', () => {
     const pref = appStateStore.get().appearance ?? DEFAULT_APPEARANCE_PREFERENCE;
     if (pref !== 'system' || !mainWindow || mainWindow.isDestroyed()) return;

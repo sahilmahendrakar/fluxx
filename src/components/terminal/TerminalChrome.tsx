@@ -11,7 +11,20 @@ export const terminalWorkspaceShellClass =
 export const terminalToolbarClass =
   'flex shrink-0 items-center gap-2 border-b border-status-terminal-foreground/10 bg-status-terminal pl-1 pr-2.5 py-1';
 
-/** xterm container frame — always dark regardless of app theme. */
+/** Shell for neutral toolbar actions (border, fill, shadow). */
+export const workspaceToolbarActionButtonShellClass =
+  'rounded-lg border border-border bg-background shadow-sm';
+
+/** Neutral secondary actions in the workspace toolbar (Open in, Mark as done, …). */
+export const workspaceToolbarActionButtonClass = cn(
+  workspaceToolbarActionButtonShellClass,
+  'font-medium text-foreground hover:bg-muted',
+);
+
+export const workspaceToolbarActionButtonDisabledClass =
+  'cursor-not-allowed bg-muted/50 text-muted-foreground hover:bg-muted/50 disabled:opacity-100';
+
+/** xterm container frame — follows `status-terminal` tokens for the active app theme. */
 export const terminalFrameClass =
   'flex h-full min-h-0 w-full min-w-0 flex-col bg-status-terminal';
 
@@ -120,7 +133,7 @@ export function TerminalWorkspaceTab({
         'group flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors',
         active
           ? 'bg-status-terminal-foreground/10 text-status-terminal-foreground shadow-[inset_0_0_0_1px_hsl(var(--status-terminal-foreground)/0.12)]'
-          : 'text-status-terminal-foreground/55 hover:bg-status-terminal-foreground/5 hover:text-status-terminal-foreground',
+          : 'text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/5 hover:text-status-terminal-foreground',
       )}
     >
       <button type="button" onClick={onClick} className="flex items-center gap-1.5">

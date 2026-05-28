@@ -674,7 +674,7 @@ export function ProjectsListView({
                     const p = row.cloud;
                     return (
                       <li key={row.id}>
-                        <div className="group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-border hover:bg-accent/30">
+                        <div className="group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-foreground/25 hover:bg-transparent">
                           <button
                             type="button"
                             disabled={activatingId === p.id}
@@ -743,7 +743,7 @@ export function ProjectsListView({
                     <li key={row.id}>
                       <div
                         className={cn(
-                          'group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-border hover:bg-accent/30',
+                          'group flex items-center gap-3 rounded-lg border border-border bg-card/40 px-3 py-2.5 transition hover:border-foreground/25 hover:bg-transparent',
                           removing && 'border-border bg-muted/30',
                         )}
                         aria-busy={removing}

@@ -91,7 +91,7 @@ export function ShadcnThemeSmoke() {
             value="terminal"
             className="rounded-lg border border-status-terminal/25 bg-status-terminal p-4 font-mono text-sm text-status-terminal-foreground"
           >
-            Terminal chrome stays dark in both themes for TUI readability.
+            Terminal chrome and xterm follow light/dark status-terminal tokens.
           </TabsContent>
         </Tabs>
 

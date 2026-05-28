@@ -8,6 +8,11 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  workspaceToolbarActionButtonClass,
+  workspaceToolbarActionButtonDisabledClass,
+} from '@/components/terminal/TerminalChrome';
 import type { OpenWorkspaceTarget } from '../types';
 import { OpenWorkspaceTargetIcon } from './openWorkspaceTargetIcons';
 
@@ -56,10 +61,11 @@ export function OpenInWorkspaceButton({
     size === 'sm'
       ? 'gap-1 px-3 py-1.5 text-[12px]'
       : 'gap-1.5 px-3 py-2 text-[13px]';
-  const triggerIdle =
-    'rounded-lg bg-white/[0.04] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
-  const triggerDisabled =
-    'cursor-not-allowed rounded-lg bg-zinc-800/50 font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
+  const triggerIdle = cn(
+    workspaceToolbarActionButtonClass,
+    'transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+  );
+  const triggerDisabled = workspaceToolbarActionButtonDisabledClass;
 
   const measureMenu = useCallback(() => {
     const tr = triggerRef.current;
@@ -159,11 +165,7 @@ export function OpenInWorkspaceButton({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={toggleMenu}
-        className={[
-          'inline-flex items-center',
-          sizeClass,
-          enabled ? triggerIdle : triggerDisabled,
-        ].join(' ')}
+        className={cn('inline-flex items-center', sizeClass, enabled ? triggerIdle : triggerDisabled)}
       >
         Open in
         <ChevronDown
@@ -178,7 +180,7 @@ export function OpenInWorkspaceButton({
       {menu}
       {openError ? (
         <p
-          className="mt-1 max-w-[14rem] text-[11px] leading-snug text-red-300/90"
+          className="mt-1 max-w-[14rem] text-[11px] leading-snug text-destructive"
           role="status"
           aria-live="polite"
         >
@@ -203,7 +205,7 @@ function OpenWorkspaceMenu({
       ref={menuRef}
       role="menu"
       aria-label="Open workspace in"
-      className="fixed max-h-56 overflow-y-auto rounded-lg border border-white/[0.08] bg-[#121214] py-1 shadow-lg ring-1 ring-black/40"
+      className="fixed max-h-56 overflow-y-auto rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-lg"
       style={{
         zIndex: MENU_Z,
         top: menuPos.top,
@@ -219,7 +221,7 @@ function OpenWorkspaceMenu({
           key={target}
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] text-zinc-200 transition hover:bg-white/[0.06] focus-visible:bg-white/[0.06] focus-visible:outline-none"
+          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
           onClick={() => onPick(target)}
         >
           <OpenWorkspaceTargetIcon target={target} />

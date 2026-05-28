@@ -6,22 +6,22 @@
   :root,
   .light {
     --background: 40 20% 98%;
-    --foreground: 240 6% 10%;
+    --foreground: 240 8% 8%;
     --card: 40 25% 99%;
-    --card-foreground: 240 6% 10%;
+    --card-foreground: 240 8% 8%;
     --popover: 40 25% 99%;
-    --popover-foreground: 240 6% 10%;
+    --popover-foreground: 240 8% 8%;
     --muted: 40 12% 93%;
-    --muted-foreground: 240 4% 46%;
+    --muted-foreground: 240 6% 32%;
     --accent: 40 14% 91%;
-    --accent-foreground: 240 6% 10%;
+    --accent-foreground: 240 8% 8%;
     --border: 40 10% 88%;
     --input: 40 10% 88%;
     --ring: 262 55% 52%;
     --primary: 262 72% 54%;
     --primary-foreground: 0 0% 100%;
     --secondary: 40 12% 93%;
-    --secondary-foreground: 240 6% 10%;
+    --secondary-foreground: 240 8% 8%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     --status-needs-input: 38 92% 50%;
@@ -29,14 +29,14 @@
     --status-validation: 262 72% 54%;
     --status-validation-foreground: 0 0% 100%;
     --status-review: 199 89% 48%;
-    --status-review-foreground: 204 80% 16%;
+    --status-review-foreground: 205 88% 13%;
     --status-success: 142 71% 45%;
-    --status-success-foreground: 144 61% 12%;
-    --status-blocked: 240 4% 46%;
-    --status-blocked-foreground: 240 6% 10%;
-    /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
-    --status-terminal: 240 10% 4%;
-    --status-terminal-foreground: 240 5% 84%;
+    --status-success-foreground: 145 65% 11%;
+    --status-blocked: 240 5% 40%;
+    --status-blocked-foreground: 240 8% 8%;
+    /* #faf8f5 — keep aligned with TERMINAL_SURFACE_HEX_LIGHT in src/terminal/xtermTheme.ts */
+    --status-terminal: 40 20% 98%;
+    --status-terminal-foreground: 240 8% 8%;
     --radius: 0.5rem;
   }
 
@@ -70,7 +70,7 @@
     --status-success-foreground: 141 84% 93%;
     --status-blocked: 240 5% 52%;
     --status-blocked-foreground: 240 5% 84%;
-    /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
+    /* #09090b — keep aligned with TERMINAL_SURFACE_HEX_DARK in src/terminal/xtermTheme.ts */
     --status-terminal: 240 10% 4%;
     --status-terminal-foreground: 240 5% 84%;
     --radius: 0.5rem;

@@ -9,15 +9,26 @@ export const shellRadius = 'rounded-lg';
 /** Left-aligned label buttons in the sidebar (not icon-only controls). */
 export const shellSidebarLabelButton = 'justify-start text-left font-normal';
 
+/** Faint fill for selected sidebar / nav rows (overrides ghost `hover:bg-accent`). */
+export const shellNavActiveClass = 'bg-muted/40 text-foreground';
+
+/** Subtle hover for sidebar ghost rows. */
+export const shellNavHoverClass = 'hover:bg-muted/30 hover:text-foreground';
+
+/** Secondary sidebar labels and inactive nav — darker in light mode. */
+export const shellMutedTextClass = 'text-foreground/80 dark:text-muted-foreground';
+
+/** Bordered chips/cards: deepen edge on hover instead of brightening fill. */
+export const shellBorderDeepenHoverClass =
+  'transition-[border-color,box-shadow] hover:border-foreground/30 hover:shadow-none';
+
 /** Sidebar nav row — use with `Button variant="ghost" size="sm"`. */
 export function shellNavButtonClass(active: boolean) {
   return cn(
     'w-full',
     shellRadius,
     shellSidebarLabelButton,
-    active
-      ? 'bg-accent text-accent-foreground'
-      : 'text-muted-foreground',
+    active ? shellNavActiveClass : cn(shellMutedTextClass, shellNavHoverClass),
   );
 }
 
@@ -27,7 +38,7 @@ export function shellNavFileRowClass(active: boolean) {
     'h-7 w-full gap-1 px-2 font-mono text-[11px]',
     shellRadius,
     shellSidebarLabelButton,
-    active ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+    active ? shellNavActiveClass : cn(shellMutedTextClass, shellNavHoverClass),
   );
 }
 
@@ -36,15 +47,15 @@ export function shellNavRowClass(active: boolean) {
   return cn(
     'flex w-full items-center justify-start',
     shellRadius,
-    active && 'bg-accent text-accent-foreground',
+    active && shellNavActiveClass,
   );
 }
 
 /** Sidebar header icon control. */
 export function shellIconButtonClass(active?: boolean) {
   return cn(
-    'size-7 shrink-0 text-muted-foreground',
+    'size-7 shrink-0',
     shellRadius,
-    active && 'bg-accent text-accent-foreground',
+    active ? shellNavActiveClass : cn(shellMutedTextClass, shellNavHoverClass),
   );
 }

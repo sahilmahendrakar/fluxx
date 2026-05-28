@@ -39,9 +39,24 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { shellBorderDeepenHoverClass } from './shell/shellNavStyles';
 import TaskCardValidationBadge from './validation/TaskCardValidationBadge';
 
 const ASSIGNEE_MENU_MAX_H_PX = 224;
+
+/** Repo / branch chips — faint tinted fill; foreground token is dark in light mode, light in dark. */
+const TASK_CARD_REPO_BADGE_CLASS =
+  'max-w-[10rem] shrink-0 gap-0.5 truncate rounded-md border border-status-success/25 bg-status-success/10 px-1.5 py-0.5 text-[10px] font-medium text-status-success-foreground dark:border-status-success/30';
+
+const TASK_CARD_BRANCH_BADGE_CLASS =
+  'max-w-[11rem] gap-0.5 truncate rounded-md border border-status-review/25 bg-status-review/10 px-1.5 py-0.5 text-[10px] font-medium text-status-review-foreground dark:border-status-review/30';
+
+/** Shared 24px hit box for footer icon controls (blocked, assignee, status dot). */
+const TASK_CARD_FOOTER_ACTION_SLOT =
+  '-m-0.5 flex size-6 shrink-0 items-center justify-center';
+
+const TASK_CARD_FOOTER_ICON_BUTTON =
+  'size-6 min-h-6 min-w-6 shrink-0 rounded-full p-0';
 
 function TaskCardAssigneeFooter({
   taskId,
@@ -121,23 +136,16 @@ function TaskCardAssigneeFooter({
     return null;
   }
 
-  if (assigneeMember) {
-    return <ProjectMemberAvatar member={assigneeMember} size="sm" />;
-  }
-
-  if (hasAssigneeUid) {
-    return (
-      <span
-        className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-1 ring-border"
-        title="Unknown member"
-        aria-label="Assignee is an unknown member"
-      >
-        ?
-      </span>
-    );
-  }
-
   const assignMember = onAssigneeChange;
+  const assigneeLabel = assigneeMember
+    ? projectMemberDisplayLabel(assigneeMember)
+    : hasAssigneeUid
+      ? 'Unknown member'
+      : 'Unassigned';
+  const triggerTitle = menuOpen
+    ? 'Choose assignee'
+    : `Assignee: ${assigneeLabel} — click to change`;
+
   const menu = menuOpen
     ? createPortal(
         <div
@@ -153,6 +161,23 @@ function TaskCardAssigneeFooter({
             maxHeight: ASSIGNEE_MENU_MAX_H_PX,
           }}
         >
+          <Button
+            type="button"
+            role="option"
+            aria-selected={!hasAssigneeUid}
+            variant="ghost"
+            className={cn(
+              'h-auto w-full justify-start gap-2 rounded-none px-2.5 py-2 text-left text-[12px]',
+              !hasAssigneeUid && 'bg-accent text-accent-foreground',
+            )}
+            onClick={() => {
+              assignMember(taskId, null);
+              setMenuOpen(false);
+            }}
+          >
+            <UserCircle2 className="size-5 shrink-0 text-muted-foreground" strokeWidth={1.5} aria-hidden />
+            <span className="text-muted-foreground">Unassigned</span>
+          </Button>
           {cloudProjectMembers.length === 0 ? (
             <p className="px-2.5 py-2 text-left text-[12px] text-muted-foreground">No team members yet.</p>
           ) : (
@@ -187,14 +212,18 @@ function TaskCardAssigneeFooter({
 
   return (
     <>
-      <div ref={wrapRef} className="relative shrink-0">
+      <div ref={wrapRef} className={cn('relative', TASK_CARD_FOOTER_ACTION_SLOT)}>
         <Button
           ref={triggerRef}
           type="button"
           id={triggerId}
-          variant="outline"
+          variant="ghost"
           size="icon"
-          className="-m-0.5 size-6 shrink-0 rounded-full bg-muted text-muted-foreground"
+          className={cn(
+            TASK_CARD_FOOTER_ICON_BUTTON,
+            'hover:bg-muted/40',
+            !assigneeMember && !hasAssigneeUid && 'bg-muted text-muted-foreground',
+          )}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
@@ -203,14 +232,21 @@ function TaskCardAssigneeFooter({
           aria-haspopup="listbox"
           aria-expanded={menuOpen}
           aria-controls={listboxId}
-          aria-label={
-            menuOpen
-              ? 'Member menu open — choose who to assign'
-              : 'Task unassigned — open menu to assign a project member'
-          }
-          title="Assign to a project member"
+          aria-label={triggerTitle}
+          title={triggerTitle}
         >
-          <UserCircle2 className="size-3.5" strokeWidth={1.75} aria-hidden />
+          {assigneeMember ? (
+            <ProjectMemberAvatar member={assigneeMember} size="sm" className="block" />
+          ) : hasAssigneeUid ? (
+            <span
+              className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-medium leading-none text-muted-foreground ring-1 ring-border"
+              aria-hidden
+            >
+              ?
+            </span>
+          ) : (
+            <UserCircle2 className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+          )}
         </Button>
       </div>
       {menu}
@@ -359,8 +395,8 @@ export default function TaskCard({
             isReview && 'border-l-[3px] border-l-status-review',
             isDone && 'opacity-55',
             snapshot.isDragging
-              ? 'border-foreground/15 bg-card shadow-xl brightness-110'
-              : 'hover:border-foreground/15 hover:shadow-lg hover:brightness-105',
+              ? 'border-foreground/25 bg-card shadow-lg'
+              : shellBorderDeepenHoverClass,
           )}
         >
           <div
@@ -466,7 +502,7 @@ export default function TaskCard({
                       '-m-0.5 size-6 shrink-0',
                       canOpenTaskWorkspaceTab
                         ? 'text-muted-foreground'
-                        : 'text-muted-foreground/25 hover:bg-transparent disabled:opacity-100',
+                        : 'text-foreground/50 dark:text-muted-foreground/35 hover:bg-transparent disabled:opacity-100',
                     )}
                     aria-label={
                       canOpenTaskWorkspaceTab
@@ -482,7 +518,7 @@ export default function TaskCard({
                     <Terminal
                       className={cn(
                         'size-3.5 shrink-0',
-                        !canOpenTaskWorkspaceTab && 'opacity-60',
+                        !canOpenTaskWorkspaceTab && 'opacity-80',
                       )}
                       strokeWidth={2}
                       aria-hidden
@@ -494,9 +530,9 @@ export default function TaskCard({
                       title={repoChip.title}
                       aria-label={repoChip.title}
                       variant="outline"
-                      className="max-w-[10rem] shrink-0 gap-0.5 truncate rounded border-status-success/30 bg-status-success/10 px-1.5 py-0.5 text-[10px] font-medium text-status-success-foreground"
+                      className={TASK_CARD_REPO_BADGE_CLASS}
                     >
-                      <FolderGit2 className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <FolderGit2 className="size-3 shrink-0" strokeWidth={2} aria-hidden />
                       <span className="truncate" aria-hidden>
                         {repoChip.label}
                       </span>
@@ -508,9 +544,9 @@ export default function TaskCard({
                       title={branchChipTitle}
                       aria-label={branchChipTitle}
                       variant="outline"
-                      className="max-w-[11rem] gap-0.5 truncate rounded border-status-review/30 bg-status-review/10 px-1.5 py-0.5 text-[10px] font-medium text-status-review-foreground"
+                      className={TASK_CARD_BRANCH_BADGE_CLASS}
                     >
-                      <GitBranch className="size-3 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
+                      <GitBranch className="size-3 shrink-0" strokeWidth={2} aria-hidden />
                       <span className="truncate font-mono" aria-hidden>
                         {branchChipLabel}
                       </span>
@@ -537,7 +573,7 @@ export default function TaskCard({
                       title={unblockChipTitle}
                       aria-label={unblockChipAriaLabel}
                       className={cn(
-                        '-m-0.5 size-6 shrink-0',
+                        '-m-0.5 size-6 min-h-6 min-w-6 shrink-0 p-0',
                         unblockToggleLockedByOtherAssignee
                           ? 'border-border bg-muted/50 text-muted-foreground opacity-80'
                           : effectiveUnblockAutostart
@@ -673,10 +709,9 @@ export default function TaskCard({
                     cloudProjectMembers={cloudProjectMembers}
                     onAssigneeChange={onTaskAssigneeChange}
                   />
-                  <span
-                    className={cn('size-1.5 rounded-full', STATUS_DOT[task.status])}
-                    aria-hidden
-                  />
+                  <span className={TASK_CARD_FOOTER_ACTION_SLOT} aria-hidden>
+                    <span className={cn('size-1.5 shrink-0 rounded-full', STATUS_DOT[task.status])} />
+                  </span>
                 </div>
               </div>
             </div>

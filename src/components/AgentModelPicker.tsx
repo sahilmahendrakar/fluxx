@@ -10,12 +10,13 @@ import {
   choicesForPicker,
   labelForModelId,
 } from '../agentModelUi';
-import { AGENT_SESSION_PREFS_SURFACE } from './agentSessionPrefsSurface';
+import {
+  AGENT_SESSION_PREFS_NESTED_Z,
+  AGENT_SESSION_PREFS_SURFACE,
+} from './agentSessionPrefsSurface';
 
 const menuItemClass =
   'relative flex w-full cursor-pointer select-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-xs leading-tight text-popover-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
-
-const MODEL_LIST_Z = 5620;
 
 interface AgentModelPickerProps {
   kind: AgentModelUiKind;
@@ -144,7 +145,7 @@ export default function AgentModelPicker({
             aria-label={ariaLabel}
             className="fixed max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-popover p-0.5 text-popover-foreground shadow-md"
             style={{
-              zIndex: MODEL_LIST_Z,
+              zIndex: AGENT_SESSION_PREFS_NESTED_Z,
               top: dropdownBox.top,
               left: dropdownBox.left,
               width: dropdownBox.width,
