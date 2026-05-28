@@ -1,5 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import { UserCircle2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import {
   type Agent,
   type ExecutionDeviceConfig,
@@ -59,14 +86,12 @@ export default function NewTaskModal({
   multiRepo2Enabled = false,
   projectRepoReadiness,
   executionDevices,
-  cloudProject = false,
   onOpenProjectSettings,
 }: Props) {
   const [title, setTitle] = useState('');
   const [agent, setAgent] = useState<Agent | null>(defaultAgent);
   const [labels, setLabels] = useState<string[]>([]);
   const [assigneeId, setAssigneeId] = useState<string | undefined>(undefined);
-  const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
   const [branchDiscovery, setBranchDiscovery] = useState<RepoBranchDiscovery | null>(null);
   const [branchDiscoveryLoading, setBranchDiscoveryLoading] = useState(true);
   const [branchDiscoveryError, setBranchDiscoveryError] = useState<string | null>(null);
@@ -76,7 +101,6 @@ export default function NewTaskModal({
   const primaryRepoId = resolvePrimaryRepoId(projectRepos ?? []) ?? '';
   const [selectedRepoId, setSelectedRepoId] = useState(primaryRepoId);
   const inputRef = useRef<HTMLInputElement>(null);
-  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
   const [executionDevice, setExecutionDevice] = useState<TaskExecutionDeviceRef | undefined>();
 
   useEffect(() => {
@@ -103,9 +127,7 @@ export default function NewTaskModal({
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
     const discoveryArg =
-      showRepoPicker && selectedRepoId
-        ? { repoId: selectedRepoId }
-        : undefined;
+      showRepoPicker && selectedRepoId ? { repoId: selectedRepoId } : undefined;
     void window.electronAPI.repo.getBranchDiscovery(discoveryArg).then((r) => {
       if (cancelled) return;
       setBranchDiscoveryLoading(false);
@@ -127,25 +149,6 @@ export default function NewTaskModal({
     setAgent(defaultAgent);
   }, [defaultAgent]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    if (!assigneeDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!assigneeDropdownRef.current?.contains(e.target as Node)) {
-        setAssigneeDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [assigneeDropdownOpen]);
-
   const trimmed = title.trim();
   const branchTrim = branchInput.trim();
   const branchNameOk = branchTrim === '' || gitBranchShortNameLooksValid(branchInput);
@@ -156,9 +159,7 @@ export default function NewTaskModal({
     if (!canSubmit) return;
     const branch = buildCreateTaskBranchPayload(branchInput, branchDiscovery);
     const withRepo =
-      showRepoPicker && selectedRepoId
-        ? { ...branch, repoId: selectedRepoId }
-        : branch;
+      showRepoPicker && selectedRepoId ? { ...branch, repoId: selectedRepoId } : branch;
     onCreate(trimmed, agent, labels, assigneeId, withRepo, executionDevice);
   };
 
@@ -173,49 +174,50 @@ export default function NewTaskModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-[400px] rounded-lg border border-white/[0.08] bg-[#101012] p-5 shadow-2xl shadow-black/40"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-[15px] font-medium tracking-tight text-zinc-100">New task</h2>
-        <p className="mt-1 text-[13px] text-zinc-500">Add a task to the backlog.</p>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[min(400px,92vw)]">
+        <DialogHeader>
+          <DialogTitle>New task</DialogTitle>
+          <DialogDescription>Add a task to the backlog.</DialogDescription>
+        </DialogHeader>
 
-        {repoBlocked ? (
-          <div
-            className="mt-4 rounded-md border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5 text-[12px] leading-relaxed text-amber-100/90"
-            role="status"
-          >
-            <p>{projectRepoReadiness.message}</p>
-            <button
-              type="button"
-              onClick={onOpenProjectSettings}
-              className="mt-2 font-medium text-amber-50 underline decoration-amber-400/50 underline-offset-2 hover:decoration-amber-200/70"
+        <div className="flex flex-col gap-4">
+          {repoBlocked ? (
+            <Alert className="border-status-needs-input/30 bg-status-needs-input/10 text-status-needs-input-foreground">
+              <AlertDescription>
+                <p>{projectRepoReadiness.message}</p>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="mt-2 h-auto p-0 text-status-needs-input-foreground"
+                  onClick={onOpenProjectSettings}
+                >
+                  {projectRepoReadiness.ctaLabel}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="flex flex-col gap-2">
+            <Label
+              htmlFor="new-task-title"
+              className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground"
             >
-              {projectRepoReadiness.ctaLabel}
-            </button>
+              Title
+            </Label>
+            <Input
+              ref={inputRef}
+              id="new-task-title"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submit();
+              }}
+              placeholder="What should the agent do?"
+            />
           </div>
-        ) : null}
 
-        <label className="mt-5 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
-          Title
-        </label>
-        <input
-          ref={inputRef}
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
-          }}
-          placeholder="What should the agent do?"
-          className="mt-1.5 w-full rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600 outline-none transition focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12]"
-        />
-
-        <div className="mt-4">
           <TaskLabelsField
             idPrefix="new-task"
             labels={labels}
@@ -223,32 +225,32 @@ export default function NewTaskModal({
             onLabelsChange={setLabels}
             compact
           />
-        </div>
 
-        {showRepoPicker ? (
-          <div className="mt-4">
-            <label
-              htmlFor="new-task-repo"
-              className="block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
-            >
-              Repository
-            </label>
-            <select
-              id="new-task-repo"
-              value={selectedRepoId}
-              onChange={(e) => setSelectedRepoId(e.target.value)}
-              className="mt-1.5 w-full cursor-pointer rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] text-zinc-100 outline-none transition focus:border-white/[0.14] focus:ring-1 focus:ring-white/[0.12]"
-            >
-              {(projectRepos ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {repoDisplayLabel(r)}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
+          {showRepoPicker ? (
+            <div className="flex flex-col gap-2">
+              <Label
+                htmlFor="new-task-repo"
+                className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground"
+              >
+                Repository
+              </Label>
+              <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                <SelectTrigger id="new-task-repo" className="h-9 text-[13px]">
+                  <SelectValue placeholder="Repository" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {(projectRepos ?? []).map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {repoDisplayLabel(r)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
 
-        <div className="mt-4">
           <TaskSourceBranchPicker
             idPrefix="new-task"
             branchInput={branchInput}
@@ -257,19 +259,17 @@ export default function NewTaskModal({
             discoveryLoading={branchDiscoveryLoading}
             discoveryError={branchDiscoveryError}
           />
-        </div>
 
-        <div className="mt-4">
-          <label
-            htmlFor="new-task-device"
-            className="block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600"
-          >
-            Run on
-          </label>
-          <p className="mt-0.5 text-[11px] text-zinc-600">
-            Snapshotted for this task (project default → global default → local).
-          </p>
-          <div className="mt-2">
+          <div className="flex flex-col gap-2">
+            <Label
+              htmlFor="new-task-device"
+              className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground"
+            >
+              Run on
+            </Label>
+            <p className="text-[11px] text-muted-foreground">
+              Snapshotted for this task (project default → global default → local).
+            </p>
             <ExecutionDevicePicker
               id="new-task-device"
               devices={executionDevices}
@@ -278,122 +278,95 @@ export default function NewTaskModal({
               aria-label="Execution device for new task"
             />
           </div>
-        </div>
 
-        <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
-          Agent
-        </label>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {TASK_AGENT_SELECT_OPTIONS.map((a) => {
-            const active = a.id === agent;
-            return (
-              <button
-                key={a.id === null ? 'none' : a.id}
-                type="button"
-                onClick={() => setAgent(a.id)}
-                className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${
-                  active
-                    ? 'border-white/[0.14] bg-white/[0.08] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                    : 'border-transparent bg-white/[0.03] text-zinc-500 hover:border-white/[0.08] hover:bg-white/[0.05] hover:text-zinc-300'
-                }`}
-              >
-                {a.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {showAssigneePicker && (
-          <>
-            <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-600">
-              Assignee
-            </label>
-            <div className="relative mt-2" ref={assigneeDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setAssigneeDropdownOpen((v) => !v)}
-                className="flex w-full items-center gap-2 rounded-md border border-white/[0.08] bg-[#09090b] px-3 py-2 text-[13px] transition hover:border-white/[0.14]"
-              >
-                {selectedMember ? (
-                  <>
-                    <ProjectMemberAvatar member={selectedMember} size="xs" />
-                    <span className="text-zinc-100">{memberLabel(selectedMember)}</span>
-                  </>
-                ) : (
-                  <>
-                    <UserCircle2
-                      className="h-5 w-5 shrink-0 text-zinc-500"
-                      strokeWidth={1.5}
-                      aria-hidden
-                    />
-                    <span className="text-zinc-500">Unassigned</span>
-                  </>
-                )}
-                <svg
-                  className="ml-auto h-3.5 w-3.5 shrink-0 text-zinc-600"
-                  fill="none"
-                  viewBox="0 0 16 16"
-                  stroke="currentColor"
-                  strokeWidth={1.5}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6l4 4 4-4" />
-                </svg>
-              </button>
-              {assigneeDropdownOpen && (
-                <div className="absolute z-10 mt-1 w-full rounded-md border border-white/[0.08] bg-[#101012] py-1 shadow-xl shadow-black/40">
-                  <button
+          <div className="flex flex-col gap-2">
+            <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              Agent
+            </Label>
+            <div className="flex flex-wrap gap-1.5">
+              {TASK_AGENT_SELECT_OPTIONS.map((a) => {
+                const active = a.id === agent;
+                return (
+                  <Button
+                    key={a.id === null ? 'none' : a.id}
                     type="button"
-                    onClick={() => {
-                      setAssigneeId(undefined);
-                      setAssigneeDropdownOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-[13px] transition hover:bg-white/[0.04] ${
-                      !assigneeId ? 'text-zinc-300' : 'text-zinc-500'
-                    }`}
+                    size="sm"
+                    variant={active ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'h-auto border px-2.5 py-1.5 text-[11px] font-medium',
+                      active ? 'border-border shadow-sm' : 'border-transparent',
+                    )}
+                    onClick={() => setAgent(a.id)}
                   >
-                    <UserCircle2 className="h-5 w-5 shrink-0" strokeWidth={1.5} aria-hidden />
+                    {a.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {showAssigneePicker ? (
+            <div className="flex flex-col gap-2">
+              <Label className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Assignee
+              </Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 w-full justify-start gap-2 px-3 text-[13px] font-normal"
+                  >
+                    {selectedMember ? (
+                      <>
+                        <ProjectMemberAvatar member={selectedMember} size="xs" />
+                        <span className="truncate">{memberLabel(selectedMember)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserCircle2
+                          className="size-5 shrink-0 text-muted-foreground"
+                          strokeWidth={1.5}
+                          aria-hidden
+                        />
+                        <span className="text-muted-foreground">Unassigned</span>
+                      </>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                  <DropdownMenuItem
+                    className="gap-2"
+                    onSelect={() => setAssigneeId(undefined)}
+                  >
+                    <UserCircle2 className="size-5 shrink-0" strokeWidth={1.5} aria-hidden />
                     Unassigned
-                  </button>
+                  </DropdownMenuItem>
                   {(projectMembers ?? []).map((m) => (
-                    <button
+                    <DropdownMenuItem
                       key={m.uid}
-                      type="button"
-                      onClick={() => {
-                        setAssigneeId(m.uid);
-                        setAssigneeDropdownOpen(false);
-                      }}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-[13px] transition hover:bg-white/[0.04] ${
-                        assigneeId === m.uid ? 'text-zinc-100' : 'text-zinc-400'
-                      }`}
+                      className="gap-2"
+                      onSelect={() => setAssigneeId(m.uid)}
                     >
                       <ProjectMemberAvatar member={m} size="xs" />
                       {memberLabel(m)}
-                    </button>
+                    </DropdownMenuItem>
                   ))}
-                </div>
-              )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </>
-        )}
-
-        <div className="mt-6 flex justify-end gap-2 border-t border-white/[0.06] pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-[13px] text-zinc-500 transition hover:bg-white/[0.05] hover:text-zinc-200"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            className="rounded-md border border-white/[0.12] bg-white px-3 py-1.5 text-[13px] font-medium text-zinc-950 shadow-sm transition hover:bg-zinc-100 disabled:pointer-events-none disabled:border-transparent disabled:bg-zinc-800 disabled:text-zinc-600"
-          >
-            Create
-          </button>
+          ) : null}
         </div>
-      </div>
-    </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={submit} disabled={!canSubmit}>
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

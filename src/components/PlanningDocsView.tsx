@@ -392,7 +392,7 @@ export function PlanningDocsView({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               spellCheck={false}
-              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-muted/30 px-5 py-4 font-mono text-[12px] leading-relaxed shadow-none focus-visible:ring-0"
+              className="min-h-0 flex-1 resize-none rounded-none border-0 bg-muted/30 px-8 pb-4 pt-2 font-mono text-[12px] leading-relaxed shadow-none focus-visible:ring-0"
               aria-label="Markdown source"
             />
           ) : !readError && !loadingRead ? (

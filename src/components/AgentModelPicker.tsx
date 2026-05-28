@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import type { AgentModelUiKind } from '../agentModelUi';
 import {
   appendAgentModelExtra,
@@ -10,10 +13,7 @@ import {
 import { AGENT_SESSION_PREFS_SURFACE } from './agentSessionPrefsSurface';
 
 const menuItemClass =
-  'relative flex w-full cursor-pointer select-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-[12px] leading-tight text-zinc-200 outline-none transition-colors hover:bg-zinc-800/80 hover:text-zinc-50 focus:bg-zinc-800/80 data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
-
-const triggerClass =
-  'flex h-8 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-zinc-800/90 bg-zinc-950/80 px-2 py-0 text-left text-[12px] leading-none text-zinc-100 outline-none transition-colors hover:bg-zinc-900/80 focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600/30';
+  'relative flex w-full cursor-pointer select-none items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-xs leading-tight text-popover-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
 const MODEL_LIST_Z = 5620;
 
@@ -142,7 +142,7 @@ export default function AgentModelPicker({
             {...{ [AGENT_SESSION_PREFS_SURFACE]: '' } as React.HTMLAttributes<HTMLDivElement>}
             role="listbox"
             aria-label={ariaLabel}
-            className="fixed max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto overflow-x-hidden rounded-md border border-zinc-800/90 bg-zinc-950 p-0.5 text-zinc-50 shadow-md shadow-black/25"
+            className="fixed max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto overflow-x-hidden rounded-md border border-border bg-popover p-0.5 text-popover-foreground shadow-md"
             style={{
               zIndex: MODEL_LIST_Z,
               top: dropdownBox.top,
@@ -158,15 +158,19 @@ export default function AgentModelPicker({
                 type="button"
                 role="option"
                 aria-selected={!modelId.trim()}
-                className={`${menuItemClass} ${!modelId.trim() ? 'bg-zinc-800/60' : ''}`}
+                className={cn(menuItemClass, !modelId.trim() && 'bg-accent/60')}
                 onClick={() => handlePick('')}
               >
                 <span className="min-w-0 flex-1 text-left">
-                  <span className="font-medium text-zinc-100">Default</span>
-                  <span className="block text-[10px] leading-tight text-zinc-500">CLI default</span>
+                  <span className="font-medium text-foreground">Default</span>
+                  <span className="block text-[10px] leading-tight text-muted-foreground">
+                    CLI default
+                  </span>
                 </span>
-                <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden>
-                  {!modelId.trim() ? <Check className="h-3.5 w-3.5 text-zinc-400" strokeWidth={2} /> : null}
+                <span className="flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+                  {!modelId.trim() ? (
+                    <Check className="size-3.5 text-muted-foreground" strokeWidth={2} />
+                  ) : null}
                 </span>
               </button>
             ) : null}
@@ -181,71 +185,73 @@ export default function AgentModelPicker({
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  className={`${menuItemClass} ${selected ? 'bg-zinc-800/60' : ''}`}
+                  className={cn(menuItemClass, selected && 'bg-accent/60')}
                   onClick={() => handlePick(p.id)}
                 >
-                  <span className="min-w-0 flex-1 truncate text-left font-medium text-zinc-100">
+                  <span className="min-w-0 flex-1 truncate text-left font-medium text-foreground">
                     {p.label}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-zinc-500">{p.id}</span>
-                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden>
-                    {selected ? <Check className="h-3.5 w-3.5 text-zinc-400" strokeWidth={2} /> : null}
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{p.id}</span>
+                  <span className="flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+                    {selected ? (
+                      <Check className="size-3.5 text-muted-foreground" strokeWidth={2} />
+                    ) : null}
                   </span>
                 </button>
               );
             })}
 
-            <div className="my-0.5 border-t border-zinc-800/80 px-0.5 pt-0.5">
+            <div className="my-0.5 border-t border-border px-0.5 pt-0.5">
               {!addOpen ? (
                 <button
                   type="button"
-                  className={`${menuItemClass} text-zinc-400`}
+                  className={cn(menuItemClass, 'text-muted-foreground')}
                   onClick={() => {
                     setAddOpen(true);
                     setAddError(null);
                   }}
                 >
-                  <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                  <Plus data-icon="inline-start" strokeWidth={2} aria-hidden />
                   Add model…
                 </button>
               ) : (
-                <div className="space-y-1.5 px-1.5 py-1.5">
-                  <p className="text-[10px] leading-snug text-zinc-500">
-                    Id from <code className="text-zinc-400">claude --help</code> etc.
+                <div className="flex flex-col gap-1.5 px-1.5 py-1.5">
+                  <p className="text-[10px] leading-snug text-muted-foreground">
+                    Id from <code className="text-foreground/80">claude --help</code> etc.
                   </p>
-                  <input
+                  <Input
                     value={addId}
                     onChange={(e) => setAddId(e.target.value)}
                     placeholder="Model id"
-                    className="w-full rounded border border-zinc-800/90 bg-zinc-950/80 px-1.5 py-1 font-mono text-[11px] text-zinc-200 outline-none focus-visible:border-zinc-600 focus-visible:ring-1 focus-visible:ring-zinc-600/30"
+                    className="h-7 font-mono text-[11px]"
                   />
-                  <input
+                  <Input
                     value={addLabel}
                     onChange={(e) => setAddLabel(e.target.value)}
                     placeholder="Label (optional)"
-                    className="w-full rounded border border-zinc-800/90 bg-zinc-950/80 px-1.5 py-1 text-[11px] text-zinc-200 outline-none focus-visible:border-zinc-600 focus-visible:ring-1 focus-visible:ring-zinc-600/30"
+                    className="h-7 text-[11px]"
                   />
-                  {addError ? <p className="text-[10px] text-red-400/90">{addError}</p> : null}
+                  {addError ? (
+                    <p className="text-[10px] text-destructive">{addError}</p>
+                  ) : null}
                   <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleAdd}
-                      className="inline-flex h-7 flex-1 items-center justify-center rounded bg-zinc-100 px-2 text-[11px] font-medium text-zinc-900 transition hover:bg-zinc-200"
-                    >
+                    <Button type="button" size="sm" className="h-7 flex-1 text-[11px]" onClick={handleAdd}>
                       Add
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 flex-1 text-[11px]"
                       onClick={() => {
                         setAddOpen(false);
                         setAddId('');
                         setAddLabel('');
                         setAddError(null);
                       }}
-                      className="inline-flex h-7 flex-1 items-center justify-center rounded border border-zinc-800/80 bg-transparent px-2 text-[11px] text-zinc-400 transition hover:bg-zinc-800/40"
                     >
                       Cancel
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -257,10 +263,11 @@ export default function AgentModelPicker({
 
   return (
     <div ref={rootRef} className="relative min-w-0 w-full max-w-full">
-      <button
+      <Button
         ref={triggerRef}
         type="button"
-        className={triggerClass}
+        variant="outline"
+        className="h-8 w-full justify-between px-2 text-xs font-normal"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -270,12 +277,15 @@ export default function AgentModelPicker({
           setOpen((o) => !o);
         }}
       >
-        <span className="min-w-0 flex-1 truncate text-left font-normal">{displayLabel}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition ${open ? 'rotate-180' : ''}`}
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition',
+            open && 'rotate-180',
+          )}
           aria-hidden
         />
-      </button>
+      </Button>
       {listbox}
     </div>
   );
