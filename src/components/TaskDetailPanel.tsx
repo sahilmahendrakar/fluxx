@@ -11,8 +11,17 @@ import {
   type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { MarkdownContent, markdownProseClassName } from './markdownContent';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ChevronDown, FileText, Pencil, Settings, ShieldCheck, Terminal, UserCircle2, X } from 'lucide-react';
 import {
   Task,
@@ -105,25 +114,43 @@ function taskAgentSupportsCliResume(agent: Agent | null): boolean {
 }
 
 /** Prose for markdown description read mode (aligned with PlanningDocsView, panel density). */
-const MD_READ_CLASS = [
-  'min-w-0 text-[13px] leading-relaxed text-zinc-300',
-  '[&_a]:text-sky-400 [&_a]:underline [&_a]:decoration-sky-400/40 [&_a]:underline-offset-2 hover:[&_a]:text-sky-300',
-  '[&_h1]:mb-2 [&_h1]:mt-0 [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-zinc-100',
-  '[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-medium [&_h2]:text-zinc-100 first:[&_h2]:mt-0',
-  '[&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:text-[14px] [&_h3]:font-medium [&_h3]:text-zinc-200',
-  '[&_p]:my-2.5 [&_p]:text-zinc-300 first:[&_p]:mt-0 last:[&_p]:mb-0',
-  '[&_ul]:my-2.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2.5 [&_ol]:list-decimal [&_ol]:pl-5',
-  '[&_li]:my-0.5',
-  '[&_blockquote]:my-2.5 [&_blockquote]:border-l-2 [&_blockquote]:border-zinc-600 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-400',
-  '[&_code]:rounded [&_code]:bg-zinc-800/80 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12px] [&_code]:text-emerald-200/90',
-  '[&_pre]:my-2.5 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-white/[0.08] [&_pre]:bg-[#0a0a0c] [&_pre]:p-2.5',
-  '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[12px] [&_pre_code]:text-zinc-300',
-  '[&_table]:my-3 [&_table]:w-full [&_table]:border-collapse text-[12px]',
-  '[&_th]:border [&_th]:border-white/[0.08] [&_th]:bg-white/[0.04] [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium [&_th]:text-zinc-200',
-  '[&_td]:border [&_td]:border-white/[0.06] [&_td]:px-2 [&_td]:py-1',
-  '[&_hr]:my-4 [&_hr]:border-white/[0.08]',
-  '[&_strong]:font-semibold [&_strong]:text-zinc-100',
-].join(' ');
+const MD_READ_CLASS = markdownProseClassName({ density: 'panel' });
+
+function AttachPlanningDocSelect({
+  attachablePlanningDocs,
+  resetKey,
+  onAttach,
+}: {
+  attachablePlanningDocs: { relativePath: string }[];
+  resetKey: string;
+  onAttach: (relativePath: string) => void;
+}) {
+  return (
+    <Select
+      key={resetKey}
+      onValueChange={(v) => {
+        if (!v) return;
+        onAttach(v);
+      }}
+    >
+      <SelectTrigger
+        className="h-8 text-xs"
+        aria-label="Attach a planning document from the project list"
+      >
+        <SelectValue placeholder="Attach document…" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {attachablePlanningDocs.map((f) => (
+            <SelectItem key={f.relativePath} value={f.relativePath} className="text-xs">
+              {f.relativePath}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
 
 export interface TaskDetailPanelProps {
   task: Task | null;
@@ -1796,9 +1823,9 @@ export default function TaskDetailPanel({
               ) : (
                 <div className="group relative min-h-[3rem]">
                   {hasDescription ? (
-                    <article className={MD_READ_CLASS}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{descriptionRaw}</ReactMarkdown>
-                    </article>
+                    <MarkdownContent className={MD_READ_CLASS} density="panel">
+                      {descriptionRaw}
+                    </MarkdownContent>
                   ) : (
                     <button
                       type="button"
@@ -1814,16 +1841,16 @@ export default function TaskDetailPanel({
 
             {onOpenPlanningDoc ? (
               <section
-                className="border-t border-white/[0.04] px-5 py-5"
+                className="border-t border-border/60 px-5 py-5"
                 aria-label="Attached planning documents"
               >
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
-                  <h2 className="mb-1 text-sm font-medium text-zinc-300">Attached docs</h2>
-                  <p className="mb-2 text-[11px] leading-snug text-zinc-500">
+                <div className="rounded-2xl border border-border bg-card px-3.5 py-3">
+                  <h2 className="mb-1 text-sm font-medium text-card-foreground">Attached docs</h2>
+                  <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
                     Link planning markdown for quick access. Opens in the Docs workspace.
                   </p>
                   {attachedPlanningPaths.length === 0 ? (
-                    <p className="mb-2 text-xs text-zinc-600">No documents attached.</p>
+                    <p className="mb-2 text-xs text-muted-foreground">No documents attached.</p>
                   ) : (
                     <ul className="mb-2 flex flex-wrap gap-1.5" role="list">
                       {attachedPlanningPaths.map((relPath) => {
@@ -1834,40 +1861,38 @@ export default function TaskDetailPanel({
                           planningDocsListLoading,
                         );
                         const label = compactPlanningDocPathLabel(relPath);
+                        const missing = presence === 'missing';
                         return (
                           <li key={relPath} className="flex max-w-full items-stretch">
-                            {presence !== 'missing' ? (
-                              <button
+                            {missing ? (
+                              <Badge
+                                variant="outline"
+                                className="max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-status-needs-input/30 bg-status-needs-input/10 py-1 pl-2 pr-1 text-[11px] font-medium text-status-needs-input-foreground line-through"
+                                title={`${relPath} — not found in planning docs list`}
+                                aria-label={`Missing planning document ${relPath}`}
+                              >
+                                <FileText data-icon="inline-start" aria-hidden />
+                                <span className="min-w-0 truncate">{label}</span>
+                              </Badge>
+                            ) : (
+                              <Button
                                 type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => onOpenPlanningDoc(relPath)}
                                 title={relPath}
                                 aria-label={`Open planning document ${relPath}`}
-                                className="inline-flex max-w-[min(100%,14rem)] items-center gap-1 rounded-l-md border border-white/[0.08] bg-white/[0.05] py-1 pl-2 pr-1 text-left text-[11px] font-medium text-sky-200/95 ring-1 ring-inset ring-white/[0.04] transition hover:bg-white/[0.08] hover:text-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
+                                className="h-auto max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-r-0 py-1 pl-2 pr-1 text-[11px] font-medium text-primary"
                               >
-                                <FileText
-                                  className="h-3 w-3 shrink-0 opacity-80"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
+                                <FileText data-icon="inline-start" aria-hidden />
                                 <span className="min-w-0 truncate">{label}</span>
-                              </button>
-                            ) : (
-                              <span
-                                className="inline-flex max-w-[min(100%,14rem)] cursor-not-allowed items-center gap-1 rounded-l-md border border-amber-500/25 bg-amber-500/[0.08] py-1 pl-2 pr-1 text-left text-[11px] font-medium text-amber-100/90 line-through opacity-90 ring-1 ring-inset ring-amber-500/15"
-                                title={`${relPath} — not found in planning docs list`}
-                                role="status"
-                                aria-label={`Missing planning document ${relPath}`}
-                              >
-                                <FileText
-                                  className="h-3 w-3 shrink-0 opacity-70"
-                                  strokeWidth={2}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0 truncate">{label}</span>
-                              </span>
+                              </Button>
                             )}
-                            <button
+                            <Button
                               type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-auto shrink-0 rounded-l-none rounded-r-lg px-1.5"
                               onClick={() => {
                                 const docs = task.attachedPlanningDocs ?? [];
                                 const next = docs.filter((d) => d.relativePath !== relPath);
@@ -1875,52 +1900,39 @@ export default function TaskDetailPanel({
                                   attachedPlanningDocs: next.length > 0 ? next : [],
                                 });
                               }}
-                              className="shrink-0 rounded-r-md border border-l-0 border-white/[0.08] bg-white/[0.04] px-1.5 text-zinc-500 transition hover:bg-white/[0.08] hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
                               title={`Remove ${relPath}`}
                               aria-label={`Remove attached document ${relPath}`}
                             >
-                              <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
-                            </button>
+                              <X data-icon="inline-start" aria-hidden />
+                            </Button>
                           </li>
                         );
                       })}
                     </ul>
                   )}
                   {planningDocFiles.length === 0 ? (
-                    <p className="text-[11px] text-zinc-600">No planning docs loaded for this project yet.</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      No planning docs loaded for this project yet.
+                    </p>
                   ) : attachablePlanningDocs.length === 0 ? (
                     attachedPlanningPaths.length === 0 ? (
-                      <p className="text-[11px] text-zinc-600">All planning documents are already attached.</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        All planning documents are already attached.
+                      </p>
                     ) : null
                   ) : (
-                    <label className="block">
-                      <span className="sr-only">Attach planning document</span>
-                      <select
-                        defaultValue=""
-                        key={attachedPlanningPaths.join('\0')}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (!v) return;
-                          const docs = task.attachedPlanningDocs ?? [];
-                          const next = sanitizeTaskAttachedPlanningDocsInput([
-                            ...docs,
-                            { relativePath: v },
-                          ]);
-                          onUpdate(task.id, { attachedPlanningDocs: next });
-                          e.target.selectedIndex = 0;
-                        }}
-                        className={propertySelectClass}
-                        style={{ colorScheme: 'dark' } as CSSProperties}
-                        aria-label="Attach a planning document from the project list"
-                      >
-                        <option value="">Attach document…</option>
-                        {attachablePlanningDocs.map((f) => (
-                          <option key={f.relativePath} value={f.relativePath}>
-                            {f.relativePath}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <AttachPlanningDocSelect
+                      attachablePlanningDocs={attachablePlanningDocs}
+                      resetKey={attachedPlanningPaths.join('\0')}
+                      onAttach={(relativePath) => {
+                        const docs = task.attachedPlanningDocs ?? [];
+                        const next = sanitizeTaskAttachedPlanningDocsInput([
+                          ...docs,
+                          { relativePath },
+                        ]);
+                        onUpdate(task.id, { attachedPlanningDocs: next });
+                      }}
+                    />
                   )}
                 </div>
               </section>

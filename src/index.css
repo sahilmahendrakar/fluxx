@@ -37,7 +37,7 @@
     /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
     --status-terminal: 240 10% 4%;
     --status-terminal-foreground: 240 5% 84%;
-    --radius: 0.375rem;
+    --radius: 0.5rem;
   }
 
   .dark {
@@ -73,7 +73,7 @@
     /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
     --status-terminal: 240 10% 4%;
     --status-terminal-foreground: 240 5% 84%;
-    --radius: 0.375rem;
+    --radius: 0.5rem;
   }
 }
 
@@ -97,6 +97,7 @@ body,
 /* macOS custom title bar (`hiddenInset`): native drag chrome is gone. */
 .app-window-drag {
   -webkit-app-region: drag;
+  @apply border-b border-border/40 bg-background;
 }
 
 .app-window-no-drag {

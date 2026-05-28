@@ -14,6 +14,7 @@
 - Use semantic utilities (`bg-background`, `text-muted-foreground`, `border-border`) instead of raw zinc literals for new UI.
 - Fluxx workflow colors: `status-needs-input`, `status-validation`, `status-review`, `status-success`, `status-blocked`, `status-terminal`, plus `destructive` for dangerous actions.
 - Wrap the renderer in `ThemeProvider` (`src/theme/ThemeProvider.tsx`); read/write appearance with `useAppearance()`.
+- Primary appearance control: `AppearanceToggle` in the sidebar footer (and icon trigger on the projects list) (`src/components/AppearanceToggle.tsx`).
 
 ## Patterns
 

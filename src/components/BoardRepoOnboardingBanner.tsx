@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import type { ProjectRepoReadiness } from '../projectRepoReadiness';
 
 interface Props {
@@ -17,21 +18,25 @@ export function BoardRepoOnboardingBanner({ readiness, onOpenProjectSettings }: 
 
   return (
     <div
-      className="shrink-0 border-b border-sky-500/20 bg-sky-500/[0.07] px-4 py-3"
+      className="shrink-0 border-b border-status-review/25 bg-status-review/10 px-4 py-3"
       role="status"
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-sky-100/95">{title}</p>
-          <p className="mt-1 text-[12px] leading-relaxed text-sky-200/75">{readiness.message}</p>
+          <p className="text-[13px] font-medium text-status-review-foreground">{title}</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-status-review-foreground/80">
+            {readiness.message}
+          </p>
         </div>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
+          className="shrink-0 self-start border-status-review/30 bg-status-review/15 text-status-review-foreground hover:bg-status-review/25 sm:self-center"
           onClick={onOpenProjectSettings}
-          className="shrink-0 self-start rounded-md border border-sky-400/30 bg-sky-500/15 px-3 py-1.5 text-[12px] font-medium text-sky-50 transition hover:border-sky-300/40 hover:bg-sky-500/25 sm:self-center"
         >
           {readiness.ctaLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );

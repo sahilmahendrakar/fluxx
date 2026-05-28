@@ -5,6 +5,7 @@ import './index.css';
 import { applyAppearanceEarly } from './theme/applyAppearanceEarly';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
+import { TooltipProvider } from './components/ui/tooltip';
 import { LoadingScreen } from './components/LoadingScreen';
 
 applyAppearanceEarly();
@@ -17,15 +18,17 @@ if (!rootEl) {
 }
 createRoot(rootEl).render(
   <ThemeProvider>
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen w-screen flex-col">
-          <LoadingScreen />
-        </div>
-      }
-    >
-      <App />
-    </Suspense>
-    <Toaster />
+    <TooltipProvider delayDuration={300}>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen w-screen flex-col">
+            <LoadingScreen />
+          </div>
+        }
+      >
+        <App />
+      </Suspense>
+      <Toaster />
+    </TooltipProvider>
   </ThemeProvider>,
 );
