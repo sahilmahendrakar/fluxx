@@ -33,6 +33,7 @@ import Board from './components/Board';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
+import { ShadcnThemeSmoke } from './components/dev/ShadcnThemeSmoke';
 import { AppShell } from './components/AppShell';
 import { TopBar } from './components/TopBar';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -206,7 +207,16 @@ function readStoredPlanningWidth(): number | null {
   }
 }
 
+function isShadcnSmokeRoute(): boolean {
+  const path = window.location.hash.replace(/^#/, '').trim();
+  return path === '/shadcn-smoke' || path.startsWith('/shadcn-smoke/');
+}
+
 export default function App() {
+  if (isShadcnSmokeRoute()) {
+    return <ShadcnThemeSmoke />;
+  }
+
   const isMac = window.electronAPI.platform === 'darwin';
   const { devices: executionDevices } = useExecutionDevices();
   const [project, setProject] = useState<ActiveProject | null>(null);
