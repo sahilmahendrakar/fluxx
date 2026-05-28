@@ -36,7 +36,7 @@
     --status-blocked-foreground: 240 6% 10%;
     --status-terminal: 240 6% 6%;
     --status-terminal-foreground: 240 5% 84%;
-    --radius: 0.375rem;
+    --radius: 0.5rem;
   }
 
   .dark {
@@ -71,7 +71,7 @@
     --status-blocked-foreground: 240 5% 84%;
     --status-terminal: 240 6% 6%;
     --status-terminal-foreground: 240 5% 84%;
-    --radius: 0.375rem;
+    --radius: 0.5rem;
   }
 }
 
