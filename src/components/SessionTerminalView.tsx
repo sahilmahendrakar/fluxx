@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutList, ShieldCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import {
+  TerminalAttachLoading,
+  TerminalEmptyState,
+  TerminalInlineLoading,
+  TerminalStatusBanner,
+  TerminalTrustNotice,
+  TerminalWorkspaceTab,
+  terminalToolbarClass,
+  terminalWorkspaceShellClass,
+} from '@/components/terminal/TerminalChrome';
 import type { Agent, Session, Shell, ShellPlacement, Task } from '../types';
 import TaskDetailPanel, { type TaskDetailPanelProps } from './TaskDetailPanel';
 import { GithubPrIconButton } from './GithubPrIconButton';
@@ -243,16 +255,6 @@ function AgentPane({
     }
   };
 
-  const resumeBtnPrimary =
-    'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] disabled:cursor-not-allowed';
-  const resumeBtnIdle = `${resumeBtnPrimary} disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:shadow-none`;
-  const resumeBtnError =
-    'rounded-lg border border-red-500/35 bg-red-500/[0.12] px-4 py-2 text-[13px] font-medium text-red-200/90 transition hover:bg-red-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40';
-  const resumeBtnLoading =
-    'cursor-wait rounded-lg bg-zinc-800/90 px-4 py-2 text-[13px] font-medium text-zinc-500';
-  const newSessionBtn =
-    'rounded-lg bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:cursor-not-allowed disabled:opacity-50';
-
   return (
     <div
       aria-hidden={!visible}
@@ -261,19 +263,7 @@ function AgentPane({
     >
       {running ? (
         <div className="relative h-full min-h-0">
-          {!attachReady ? (
-            <div
-              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <span
-                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-                aria-hidden
-              />
-              <span className="font-medium text-zinc-300">Starting…</span>
-            </div>
-          ) : null}
+          {!attachReady ? <TerminalAttachLoading label="Starting…" /> : null}
           <Terminal
             ref={terminalRef}
             sessionId={session.id}
@@ -285,85 +275,78 @@ function AgentPane({
           />
         </div>
       ) : remoteInterrupted && session.remoteLifecycleStatus ? (
-        <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-8 text-center">
-          <p className="text-[15px] font-medium text-zinc-200">
-            {remoteLifecycleStatusHeading(session.remoteLifecycleStatus)}
-          </p>
-          <p className="max-w-lg text-[13px] leading-relaxed text-zinc-500">
-            {remoteLifecycleStatusDetail(session.remoteLifecycleStatus, session)}
-          </p>
+        <TerminalEmptyState
+          title={remoteLifecycleStatusHeading(session.remoteLifecycleStatus)}
+          detail={remoteLifecycleStatusDetail(session.remoteLifecycleStatus, session)}
+        >
           {session.remoteLifecycleStatus === 'device-unreachable' ||
           session.remoteLifecycleStatus === 'helper-mismatch' ? (
-            <button
+            <Button
               type="button"
-              onClick={() => void handleRemoteRetry()}
+              size="sm"
               disabled={remoteRetryLoading}
-              className={
-                remoteRetryLoading
-                  ? resumeBtnLoading
-                  : 'rounded-lg bg-emerald-500/90 px-4 py-2 text-[13px] font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400/90'
-              }
+              onClick={() => void handleRemoteRetry()}
+              className="bg-status-success text-status-success-foreground hover:bg-status-success/90"
             >
               {remoteRetryLoading ? 'Retrying…' : 'Retry connection'}
-            </button>
+            </Button>
           ) : null}
           {restartError ? (
-            <p className="max-w-sm text-xs leading-snug text-red-300/90" role="alert">
+            <p className="max-w-sm text-xs leading-snug text-destructive" role="alert">
               {restartError}
             </p>
           ) : null}
-        </div>
+        </TerminalEmptyState>
       ) : showRestartControls ? (
-        <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-6 text-center">
-          <p className="text-[13px] text-zinc-500">This session is no longer running.</p>
+        <TerminalEmptyState title="This session is no longer running.">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
+            <Button
               type="button"
-              onClick={() => void handleAgentRestart(true)}
+              size="sm"
               disabled={restartLoading || blocked}
+              variant={restartError ? 'destructive' : 'default'}
               title={
                 blocked
                   ? 'Blocked by incomplete dependencies'
                   : 'Continue the CLI session from disk (--resume)'
               }
+              onClick={() => void handleAgentRestart(true)}
               className={
-                restartLoading
-                  ? resumeBtnLoading
-                  : restartError
-                    ? resumeBtnError
-                    : blocked
-                      ? 'cursor-not-allowed rounded-lg bg-zinc-800/50 px-4 py-2 text-[13px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]'
-                      : resumeBtnIdle
+                restartError
+                  ? undefined
+                  : cn(
+                      !blocked &&
+                        'bg-status-success text-status-success-foreground hover:bg-status-success/90',
+                      blocked && 'bg-status-terminal-foreground/10 text-status-terminal-foreground/45',
+                    )
               }
             >
               {blocked ? 'Blocked' : restartError ? 'Retry' : 'Resume'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              onClick={() => void handleAgentRestart(false)}
+              size="sm"
+              variant="outline"
               disabled={restartLoading || blocked}
               title={
                 blocked
                   ? 'Blocked by incomplete dependencies'
                   : 'Start a new agent session with the full task prompt'
               }
-              className={
-                restartLoading || blocked ? `${newSessionBtn} disabled:cursor-not-allowed` : newSessionBtn
-              }
+              onClick={() => void handleAgentRestart(false)}
+              className="border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
             >
               {blocked ? 'Blocked' : 'New session'}
-            </button>
+            </Button>
           </div>
           {restartError && !blocked ? (
-            <p className="max-w-sm text-xs leading-snug text-red-300/90" role="alert">
+            <p className="max-w-sm text-xs leading-snug text-destructive" role="alert">
               {restartError}
             </p>
           ) : null}
-        </div>
+        </TerminalEmptyState>
       ) : (
-        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
-          This session is no longer running.
-        </div>
+        <TerminalEmptyState title="This session is no longer running." />
       )}
     </div>
   );
@@ -424,51 +407,14 @@ function ValidationPane({
       style={paneVisibilityStyle(visible)}
     >
       {runPending && !session ? (
-        <div
-          className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-zinc-400"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <span
-            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-            aria-hidden
-          />
-          <span className="font-medium text-zinc-300">Starting validator…</span>
-        </div>
+        <TerminalInlineLoading label="Starting validator…" />
       ) : awaitingPty && !session ? (
-        <div
-          className="flex h-full flex-col items-center justify-center gap-2 text-[13px] text-zinc-400"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <span
-            className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-            aria-hidden
-          />
-          <span className="font-medium text-zinc-300">Connecting to validator…</span>
-        </div>
+        <TerminalInlineLoading label="Connecting to validator…" />
       ) : running && session ? (
         <div className="relative h-full min-h-0">
-          {!attachReady ? (
-            <div
-              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-white/[0.06] bg-[#0a0a0c]/95 text-[13px] text-zinc-400"
-              aria-live="polite"
-              aria-busy="true"
-            >
-              <span
-                className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300"
-                aria-hidden
-              />
-              <span className="font-medium text-zinc-300">Connecting…</span>
-            </div>
-          ) : null}
+          {!attachReady ? <TerminalAttachLoading label="Connecting…" /> : null}
           {trustAutorespondNote ? (
-            <div
-              role="status"
-              className="absolute left-3 right-3 top-3 z-[5] rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[11.5px] leading-snug text-emerald-100/90"
-            >
-              {trustAutorespondNote}
-            </div>
+            <TerminalTrustNotice>{trustAutorespondNote}</TerminalTrustNotice>
           ) : null}
           <Terminal
             ref={terminalRef}
@@ -481,16 +427,12 @@ function ValidationPane({
           />
         </div>
       ) : session ? (
-        <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-          <p className="text-[13px] text-zinc-500">Validator session ended.</p>
-          <p className="max-w-sm text-xs leading-relaxed text-zinc-600">
-            Check the Details tab for validation status and artifacts.
-          </p>
-        </div>
+        <TerminalEmptyState
+          title="Validator session ended."
+          detail="Check the Details tab for validation status and artifacts."
+        />
       ) : (
-        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
-          No validator session available.
-        </div>
+        <TerminalEmptyState title="No validator session available." />
       )}
     </div>
   );
@@ -541,68 +483,8 @@ function ShellPane({ shell, visible }: { shell: Shell; visible: boolean }) {
           autoFit={terminalShouldAutoFit(OWNER_TERMINAL_VIEW_POLICY)}
         />
       ) : (
-        <div className="flex h-full items-center justify-center text-[13px] text-zinc-500">
-          Shell exited.
-        </div>
+        <TerminalEmptyState title="Shell exited." />
       )}
-    </div>
-  );
-}
-
-function PaneTab({
-  label,
-  active,
-  onClick,
-  onClose,
-  status,
-  icon,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  onClose?: () => void;
-  status?: 'running' | 'stopped' | 'error' | 'idle';
-  icon?: ReactNode;
-}) {
-  const running = status === 'running';
-  return (
-    <div
-      className={[
-        'group flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors',
-        active
-          ? 'bg-white/[0.06] text-zinc-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-          : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200',
-      ].join(' ')}
-    >
-      <button type="button" onClick={onClick} className="flex items-center gap-1.5">
-        {icon ? (
-          icon
-        ) : status ? (
-          <span
-            className={[
-              'inline-block h-1.5 w-1.5 rounded-full',
-              running ? 'bg-emerald-400' : 'bg-zinc-600',
-            ].join(' ')}
-            aria-hidden
-          />
-        ) : null}
-        <span>{label}</span>
-      </button>
-      {onClose ? (
-        <button
-          type="button"
-          aria-label={`Close ${label}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-zinc-600 opacity-60 transition hover:bg-white/[0.08] hover:text-zinc-200 hover:opacity-100"
-        >
-          <span className="text-[12px] leading-none" aria-hidden>
-            ×
-          </span>
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -821,14 +703,8 @@ export function SessionTerminalView({
     }
   }, [isRemoteSshSession, session.id, syncLoading]);
 
-  const markDoneBtn =
-    'shrink-0 rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-zinc-100 ring-1 ring-inset ring-white/[0.08] transition hover:bg-white/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25';
-  const markDoneBtnDisabled =
-    'shrink-0 cursor-not-allowed rounded-lg bg-zinc-800/50 px-3 py-1.5 text-[12px] font-medium text-zinc-500 ring-1 ring-inset ring-white/[0.06]';
-  const validateBtnFilled =
-    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-500/90 px-3 py-1.5 text-[12px] font-medium text-violet-50 transition hover:bg-violet-400/90 disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500';
-  const validateBtnOutline =
-    'inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-500/[0.08] px-3 py-1.5 text-[12px] font-medium text-violet-200 ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 disabled:cursor-not-allowed disabled:bg-zinc-800/80 disabled:text-zinc-500 disabled:ring-white/[0.06]';
+  const toolbarActionClass =
+    'shrink-0 border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground hover:bg-status-terminal-foreground/10';
 
   const validationEnabledProject = taskDetailPanel?.validationEnabledProject === true;
   const validateEligibility = useMemo(
@@ -844,11 +720,11 @@ export function SessionTerminalView({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#09090b]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.05] bg-[#0a0a0b] pl-1 pr-2.5 py-1">
+    <div className={terminalWorkspaceShellClass}>
+      <div className={terminalToolbarClass}>
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5 pl-0.5">
           {showDetailsTab ? (
-            <PaneTab
+            <TerminalWorkspaceTab
               label="Details"
               active={activePane === 'details'}
               onClick={() => setActivePane('details')}
@@ -861,14 +737,14 @@ export function SessionTerminalView({
               }
             />
           ) : null}
-          <PaneTab
+          <TerminalWorkspaceTab
             label="Agent"
             active={activePane === 'agent'}
             onClick={() => setActivePane('agent')}
             icon={<BotIcon className="shrink-0 opacity-80" />}
           />
           {showValidationTab ? (
-            <PaneTab
+            <TerminalWorkspaceTab
               label="Validation"
               active={activePane === 'validation'}
               onClick={() => setActivePane('validation')}
@@ -885,7 +761,7 @@ export function SessionTerminalView({
             />
           ) : null}
           {shells.map((shell) => (
-            <PaneTab
+            <TerminalWorkspaceTab
               key={shell.id}
               label={isRemoteSshSession ? shellTabLabel(shell, shells) : `Terminal ${shells.indexOf(shell) + 1}`}
               active={activePane === `shell:${shell.id}`}
@@ -901,50 +777,59 @@ export function SessionTerminalView({
               onOpenShell={handleOpenShell}
             />
           ) : (
-            <button
+            <Button
               type="button"
-              onClick={() => void handleOpenShell()}
+              variant="ghost"
+              size="icon"
               disabled={!running}
+              onClick={() => void handleOpenShell()}
               title={running ? 'Open a new terminal in this worktree' : 'Session is not running'}
               aria-label="Open a new terminal in this worktree"
-              className={[
-                'ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[16px] leading-none transition',
+              className={cn(
+                'ml-1 size-6 shrink-0 text-base leading-none',
                 running
-                  ? 'text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100'
-                  : 'cursor-not-allowed text-zinc-700',
-              ].join(' ')}
+                  ? 'text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground'
+                  : 'text-status-terminal-foreground/30',
+              )}
             >
               +
-            </button>
+            </Button>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isRemoteSshSession ? (
-            <button
+            <Button
               type="button"
-              onClick={() => void handleSyncToLocal()}
+              size="sm"
+              variant="outline"
               disabled={syncLoading}
+              onClick={() => void handleSyncToLocal()}
               title="Push the remote task branch and fetch it into your local worktree"
-              className={[
-                'shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25',
-                syncLoading
-                  ? 'cursor-wait bg-zinc-800/80 text-zinc-500 ring-white/[0.06]'
-                  : 'bg-sky-500/10 text-sky-100 ring-sky-400/25 hover:bg-sky-500/15',
-              ].join(' ')}
+              className={cn(
+                toolbarActionClass,
+                'border-status-review/30 text-status-review-foreground hover:bg-status-review/15',
+                syncLoading && 'cursor-wait opacity-60',
+              )}
             >
               {syncLoading ? 'Syncing…' : 'Sync to local'}
-            </button>
+            </Button>
           ) : null}
           {validateEligibility.canValidate && task && taskDetailPanel?.onUpdate ? (
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
               title={validateEligibility.message}
-              className={task.status === 'needs-input' ? validateBtnFilled : validateBtnOutline}
+              className={cn(
+                'shrink-0 gap-1.5',
+                task.status === 'needs-input'
+                  ? 'bg-status-validation text-status-validation-foreground hover:bg-status-validation/90'
+                  : 'border border-status-validation/30 bg-status-validation/10 text-status-validation-foreground hover:bg-status-validation/15',
+              )}
             >
-              <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              <ShieldCheck data-icon="inline-start" strokeWidth={2} aria-hidden />
               Validate
-            </button>
+            </Button>
           ) : null}
           <OpenInWorkspaceButton
             worktreePath={isRemoteSshSession ? localWorktreePath : session.worktreePath}
@@ -966,49 +851,45 @@ export function SessionTerminalView({
             />
           ) : null}
           {showMarkAsDone ? (
-            <button
+            <Button
               type="button"
-              onClick={() => onMarkAsDone?.()}
+              size="sm"
+              variant="outline"
               disabled={markDoneDisabled}
+              onClick={() => onMarkAsDone?.()}
               title={
                 markAsDoneBlocked
                   ? 'Finish blocking tasks before marking this task done'
                   : 'Move task to Done and open the board'
               }
-              className={markDoneDisabled ? markDoneBtnDisabled : markDoneBtn}
+              className={cn(toolbarActionClass, markDoneDisabled && 'opacity-50')}
             >
               Mark as done
-            </button>
+            </Button>
           ) : null}
           {showCleanUp ? (
-            <button
+            <Button
               type="button"
-              onClick={() => onRequestCleanupTask?.()}
+              size="sm"
+              variant="outline"
               disabled={cleanUpDisabled}
+              onClick={() => onRequestCleanupTask?.()}
               title={
                 cleanupLoading
                   ? 'Cleaning up workspace…'
                   : 'Tear down agent session, terminals, and worktree for this task'
               }
-              className={cleanUpDisabled ? markDoneBtnDisabled : markDoneBtn}
+              className={cn(toolbarActionClass, cleanUpDisabled && 'opacity-50')}
             >
               {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
       {syncMessage ? (
-        <div
-          className={[
-            'shrink-0 border-b px-3 py-2 text-[12px] leading-snug',
-            syncIsError
-              ? 'border-red-500/20 bg-red-500/10 text-red-200/90'
-              : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100/90',
-          ].join(' ')}
-          role={syncIsError ? 'alert' : 'status'}
-        >
+        <TerminalStatusBanner variant={syncIsError ? 'error' : 'success'}>
           {syncMessage}
-        </div>
+        </TerminalStatusBanner>
       ) : null}
       <div className="relative min-h-0 flex-1">
         {showDetailsTab && task && taskDetailPanel ? (

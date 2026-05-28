@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ExternalLink, X } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import {
+  TerminalEmptyState,
+  TerminalStatusBanner,
+  terminalWorkspaceShellClass,
+} from '@/components/terminal/TerminalChrome';
 import type { AgentModelUiKind } from '../agentModelUi';
 import { labelForModelId } from '../agentModelUi';
 import {
@@ -155,7 +160,7 @@ function PlanningTerminalPane({
   return (
     <div
       aria-hidden={!visible}
-      className="absolute inset-0 flex min-h-0 flex-col bg-status-terminal"
+      className="absolute inset-0 flex min-h-0 flex-col"
       style={planningPaneVisibilityStyle(visible)}
     >
       <div
@@ -483,6 +488,7 @@ export function PlanningPanel({
           disabled={loading || !planningApi}
           onClick={() => void handleStart()}
           title="Start a new planning session with the agent and model chosen in the header"
+          className="border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
         >
           Start new
         </Button>
@@ -518,8 +524,13 @@ export function PlanningPanel({
   );
 
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col border-l border-border bg-background text-foreground">
-      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-2.5">
+    <div
+      className={cn(
+        terminalWorkspaceShellClass,
+        'h-full w-full min-w-0 border-l border-status-terminal-foreground/10',
+      )}
+    >
+      <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-status-terminal-foreground/10 px-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
             className={cn(
@@ -528,18 +539,15 @@ export function PlanningPanel({
                 ? 'bg-status-success'
                 : activeResumable
                   ? 'bg-status-needs-input'
-                  : 'bg-muted-foreground/50',
+                  : 'bg-status-terminal-foreground/35',
             )}
             aria-hidden
           />
-          <span className="truncate text-xs font-medium text-foreground">
+          <span className="truncate text-xs font-medium text-status-terminal-foreground">
             Planning assistant
           </span>
           {sessionRunning && needsInput ? (
-            <Badge
-              variant="outline"
-              className="h-4 border-status-needs-input/40 bg-status-needs-input/10 px-1.5 py-0 text-[9px] font-normal text-status-needs-input-foreground"
-            >
+            <Badge className="h-auto border-status-needs-input/30 bg-status-needs-input/15 px-1.5 py-0 text-[9px] font-medium text-status-needs-input-foreground">
               needs input
             </Badge>
           ) : null}
@@ -548,23 +556,26 @@ export function PlanningPanel({
           {sessionRunning && activeSession ? (
             <Button
               type="button"
-              variant="outline"
               size="sm"
-              className="h-7 px-2 text-[10px]"
+              variant="outline"
               disabled={loading}
               onClick={() => void handleStopOne(activeSession.id)}
+              className="h-auto border-status-terminal-foreground/15 bg-status-terminal-foreground/5 px-2 py-1 text-[10px] text-status-terminal-foreground hover:bg-status-terminal-foreground/10"
             >
               Stop
             </Button>
           ) : null}
-          <div ref={splitAnchorRef} className="flex shrink-0 overflow-hidden rounded-lg">
+          <div
+            ref={splitAnchorRef}
+            className="flex shrink-0 overflow-hidden rounded-md border border-status-terminal-foreground/15"
+          >
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-7 min-w-0 rounded-r-none border-r-0 px-2 text-[10px]"
               disabled={loading || !planningApi}
               onClick={() => void handleStart()}
+              className="h-auto min-w-0 rounded-none bg-status-terminal-foreground/5 px-2 py-1 text-[10px] font-medium text-status-terminal-foreground hover:bg-status-terminal-foreground/10 disabled:opacity-40"
               aria-label="Start new planning session"
               title={`Start session · ${AGENTS.find((a) => a.id === selectedAgent)?.label ?? selectedAgent} · ${modelSummary}`}
             >
@@ -572,16 +583,16 @@ export function PlanningPanel({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 w-7 shrink-0 rounded-l-none px-0"
+              variant="ghost"
+              size="icon"
               disabled={loading || !planningApi}
               onClick={() => setPrefsOpen((o) => !o)}
+              className="size-7 shrink-0 rounded-none border-l border-status-terminal-foreground/15 bg-status-terminal-foreground/5 text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground disabled:opacity-40"
               aria-label="Choose agent and model for the next session"
               aria-expanded={prefsOpen}
               aria-haspopup="dialog"
             >
-              <ChevronDown data-icon="inline-start" aria-hidden />
+              <ChevronDown className="size-3.5" strokeWidth={2} aria-hidden />
             </Button>
           </div>
           {prefsMenu}
@@ -589,16 +600,16 @@ export function PlanningPanel({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-7 shrink-0"
             onClick={onClose}
+            className="size-7 text-status-terminal-foreground/55 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
             aria-label="Close planning panel"
           >
-            <X data-icon="inline-start" aria-hidden />
+            ×
           </Button>
         </div>
       </header>
 
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-background px-2 py-1.5">
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-status-terminal-foreground/10 px-2 py-1.5">
         {sessions.map((s, i) => {
           const sel = s.id === activeSessionId;
           const running = s.status === 'running';
@@ -607,10 +618,10 @@ export function PlanningPanel({
             <div
               key={s.id}
               className={cn(
-                'flex shrink-0 items-center gap-0.5 rounded-lg border px-1.5 py-0.5 text-[10px]',
+                'flex shrink-0 items-center gap-0.5 rounded-md border px-1.5 py-0.5 text-[10px]',
                 sel
-                  ? 'border-status-success/40 bg-status-success/10 text-status-success-foreground'
-                  : 'border-border bg-muted/50 text-muted-foreground',
+                  ? 'border-status-success/30 bg-status-success/15 text-status-success-foreground'
+                  : 'border-status-terminal-foreground/10 bg-status-terminal-foreground/5 text-status-terminal-foreground/60',
               )}
             >
               <button
@@ -626,7 +637,7 @@ export function PlanningPanel({
                       ? 'bg-status-success'
                       : resumable
                         ? 'bg-status-needs-input'
-                        : 'bg-muted-foreground/60',
+                        : 'bg-status-terminal-foreground/35',
                   )}
                   aria-hidden
                 />
@@ -637,19 +648,19 @@ export function PlanningPanel({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="size-5 shrink-0"
+                  className="size-5 text-status-terminal-foreground/55 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   aria-label="Open planning session in a new tab"
                   title="Open in new tab"
                   onClick={() => onOpenInMainTab(s.id)}
                 >
-                  <ExternalLink data-icon="inline-start" aria-hidden />
+                  <ExternalLink className="size-3" strokeWidth={2} aria-hidden />
                 </Button>
               ) : null}
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-5 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                className="size-5 text-status-terminal-foreground/55 hover:bg-destructive/15 hover:text-destructive"
                 aria-label={`Close ${planningTabLabel(s, i)}`}
                 title={
                   resumable
@@ -660,7 +671,9 @@ export function PlanningPanel({
                 }
                 onClick={() => void handleStopOne(s.id)}
               >
-                <X data-icon="inline-start" aria-hidden />
+                <span className="text-[12px] leading-none" aria-hidden>
+                  ×
+                </span>
               </Button>
             </div>
           );
@@ -668,24 +681,28 @@ export function PlanningPanel({
       </div>
 
       {error ? (
-        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[10px] text-destructive">
+        <TerminalStatusBanner variant="error" className="px-2.5 py-1.5 text-[10px]">
           {error}
-        </div>
+        </TerminalStatusBanner>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col bg-background">
+      <div className="flex min-h-0 flex-1 flex-col bg-status-terminal">
         {!planningApi ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-muted-foreground">Planning assistant unavailable</p>
-            <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-              This build does not expose planning IPC yet. Sessions will work once
-              the main process and preload wire up{' '}
-              <span className="font-mono text-muted-foreground">electronAPI.planning</span>
-              .
-            </p>
-          </div>
+          <TerminalEmptyState
+            title="Planning assistant unavailable"
+            detail={
+              <>
+                This build does not expose planning IPC yet. Sessions will work once the main
+                process and preload wire up{' '}
+                <span className="font-mono text-status-terminal-foreground/60">
+                  electronAPI.planning
+                </span>
+                .
+              </>
+            }
+          />
         ) : activeSession && activeWarmTerminal ? (
-          <div className="relative min-h-0 flex-1 bg-status-terminal">
+          <div className="relative min-h-0 flex-1">
             {sessions
               .filter((s) => planningSessionHasWarmTerminal(s))
               .map((s) => (
@@ -699,11 +716,11 @@ export function PlanningPanel({
                 />
               ))}
             {activeResumable && !sessionRunning ? (
-              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-border bg-background/95 px-3 py-2.5 backdrop-blur-sm">
-                <p className="mb-0.5 text-center text-xs text-foreground">
+              <div className="absolute inset-x-0 bottom-0 z-10 border-t border-status-terminal-foreground/10 bg-status-terminal/95 px-3 py-2.5 backdrop-blur-sm">
+                <p className="mb-0.5 text-center text-xs text-status-terminal-foreground">
                   {planningResumeStateHeading(activeSession)}
                 </p>
-                <p className="mb-2 text-center text-[10px] leading-relaxed text-muted-foreground">
+                <p className="mb-2 text-center text-[10px] leading-relaxed text-status-terminal-foreground/60">
                   {planningResumeStateDetail(activeSession)}
                   {resumableCount > 1
                     ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
@@ -714,31 +731,30 @@ export function PlanningPanel({
             ) : null}
           </div>
         ) : activeSession && activeResumable ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
-            <p className="text-xs text-foreground">{planningResumeStateHeading(activeSession)}</p>
-            <p className="max-w-sm text-[10px] leading-relaxed text-muted-foreground">
-              {planningResumeStateDetail(activeSession)}
-              {resumableCount > 1
+          <TerminalEmptyState
+            title={planningResumeStateHeading(activeSession)}
+            detail={`${planningResumeStateDetail(activeSession)}${
+              resumableCount > 1
                 ? ` ${resumableCount} sessions can be resumed — switch tabs to pick another.`
-                : null}
-            </p>
+                : ''
+            }`}
+          >
             {resumeActions}
-          </div>
+          </TerminalEmptyState>
         ) : activeSession ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-muted-foreground">This planning session has ended</p>
-            <p className="text-[10px] text-muted-foreground/80">
-              Close the tab or start another session from the header.
-            </p>
-          </div>
+          <TerminalEmptyState
+            title="This planning session has ended"
+            detail="Close the tab or start another session from the header."
+          />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <p className="text-xs text-muted-foreground">Select a session or start a new one</p>
-            <p className="text-[10px] leading-relaxed text-muted-foreground/80">
-              {resumableCount > 0
+          <TerminalEmptyState
+            title="Select a session or start a new one"
+            detail={
+              resumableCount > 0
                 ? `${resumableCount} session${resumableCount === 1 ? '' : 's'} can be resumed — pick a tab above.`
-                : 'Multiple assistants can run at once — switch tabs without stopping others.'}
-            </p>
+                : 'Multiple assistants can run at once — switch tabs without stopping others.'
+            }
+          >
             <Button
               type="button"
               size="sm"
@@ -748,7 +764,7 @@ export function PlanningPanel({
             >
               {loading ? 'Starting…' : 'Start session'}
             </Button>
-          </div>
+          </TerminalEmptyState>
         )}
       </div>
     </div>
