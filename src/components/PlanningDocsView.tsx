@@ -275,7 +275,7 @@ export function PlanningDocsView({
                 {saveError ? <p className="mt-1 text-[12px] text-destructive">{saveError}</p> : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                <div className="flex rounded-md border border-border p-0.5">
+                <div className="flex rounded-lg border border-border p-0.5">
                   <Button
                     type="button"
                     variant={viewMode === 'preview' ? 'secondary' : 'ghost'}

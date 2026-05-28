@@ -463,7 +463,7 @@ export function Sidebar({
 
   const fileRowClass = (active: boolean) =>
     cn(
-      'flex w-full min-w-0 items-center gap-1 rounded-md py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
+      'flex w-full min-w-0 items-center gap-1 rounded-lg py-1 pl-2 pr-1.5 text-left font-mono text-[11px] transition-colors',
       active
         ? 'bg-accent text-accent-foreground shadow-[inset_0_0_0_1px_hsl(var(--border))]'
         : 'text-muted-foreground hover:bg-accent/60 hover:text-accent-foreground',

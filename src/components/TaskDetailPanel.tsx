@@ -1841,7 +1841,7 @@ export default function TaskDetailPanel({
                 className="border-t border-border/60 px-5 py-5"
                 aria-label="Attached planning documents"
               >
-                <div className="rounded-xl border border-border bg-card px-3.5 py-3">
+                <div className="rounded-2xl border border-border bg-card px-3.5 py-3">
                   <h2 className="mb-1 text-sm font-medium text-card-foreground">Attached docs</h2>
                   <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
                     Link planning markdown for quick access. Opens in the Docs workspace.
@@ -1864,7 +1864,7 @@ export default function TaskDetailPanel({
                             {missing ? (
                               <Badge
                                 variant="outline"
-                                className="max-w-[min(100%,14rem)] gap-1 rounded-r-none border-status-needs-input/30 bg-status-needs-input/10 py-1 pl-2 pr-1 text-[11px] font-medium text-status-needs-input-foreground line-through"
+                                className="max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-status-needs-input/30 bg-status-needs-input/10 py-1 pl-2 pr-1 text-[11px] font-medium text-status-needs-input-foreground line-through"
                                 title={`${relPath} — not found in planning docs list`}
                                 aria-label={`Missing planning document ${relPath}`}
                               >
@@ -1879,7 +1879,7 @@ export default function TaskDetailPanel({
                                 onClick={() => onOpenPlanningDoc(relPath)}
                                 title={relPath}
                                 aria-label={`Open planning document ${relPath}`}
-                                className="h-auto max-w-[min(100%,14rem)] gap-1 rounded-r-none border-r-0 py-1 pl-2 pr-1 text-[11px] font-medium text-primary"
+                                className="h-auto max-w-[min(100%,14rem)] gap-1 rounded-r-none rounded-l-lg border-r-0 py-1 pl-2 pr-1 text-[11px] font-medium text-primary"
                               >
                                 <FileText data-icon="inline-start" aria-hidden />
                                 <span className="min-w-0 truncate">{label}</span>
@@ -1889,7 +1889,7 @@ export default function TaskDetailPanel({
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-auto shrink-0 rounded-l-none px-1.5"
+                              className="h-auto shrink-0 rounded-l-none rounded-r-lg px-1.5"
                               onClick={() => {
                                 const docs = task.attachedPlanningDocs ?? [];
                                 const next = docs.filter((d) => d.relativePath !== relPath);
