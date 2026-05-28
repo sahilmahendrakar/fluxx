@@ -299,6 +299,15 @@ import {
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
 import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
+import {
+  applyInitialAppearanceChrome,
+  registerAppearanceIpc,
+} from './main/registerAppearanceIpc';
+import {
+  DEFAULT_APPEARANCE_PREFERENCE,
+  resolveAppearanceWithSystemDark,
+  windowBackgroundForAppearance,
+} from './theme/appearance';
 import { installMacApplicationMenu } from './main/macApplicationMenu';
 import { expectedFluxxWorkBranchForTask } from './main/fluxxTaskBranch';
 import {
@@ -532,10 +541,6 @@ async function migrateTaskRepoIdsForProject(
   await taskStore.migrateMissingRepoIds(primary);
 }
 
-// Matches renderer `bg-gray-950` (Tailwind default palette) so native chrome
-// and any pre-paint window surface are not a contrasting light color.
-const WINDOW_BACKGROUND = '#030712';
-
 /** PNG copied next to `main.js` by `vite.main.config.ts` for dev + packaged builds. */
 function resolveWindowIconPath(): string | undefined {
   const nextToMain = path.join(__dirname, 'app-icon.png');
@@ -546,6 +551,7 @@ function resolveWindowIconPath(): string | undefined {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let appStateStoreForAppearance: AppStateStore | null = null;
 
 if (gotSingleInstanceLock) {
   installFluxxDeepLinkEventHandlers(() => mainWindow);
@@ -579,11 +585,17 @@ const APP_QUIT_TERMINAL_TEARDOWN_MS = 3000;
 
 const createWindow = () => {
   const windowIcon = resolveWindowIconPath();
+  const appearancePref =
+    appStateStoreForAppearance?.get().appearance ?? DEFAULT_APPEARANCE_PREFERENCE;
+  const resolvedAppearance = resolveAppearanceWithSystemDark(
+    appearancePref,
+    nativeTheme.shouldUseDarkColors,
+  );
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     title: 'Fluxx',
-    backgroundColor: WINDOW_BACKGROUND,
+    backgroundColor: windowBackgroundForAppearance(resolvedAppearance),
     ...(windowIcon ? { icon: windowIcon } : {}),
     ...(process.platform === 'darwin'
       ? {
@@ -621,23 +633,26 @@ const createWindow = () => {
     );
   }
 
+  if (appStateStoreForAppearance && mainWindow) {
+    applyInitialAppearanceChrome(appStateStoreForAppearance, mainWindow);
+  }
 };
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-  if (process.platform === 'darwin') {
-    // With `hiddenInset`, a light system appearance can leave a 1px bright seam on
-    // the top edge (macOS + Electron; see electron/electron#51015). Dark window chrome
-    // matches this app and removes that line.
-    nativeTheme.themeSource = 'dark';
-  }
-
   const fluxxBaseDir = await ensureFluxxBaseDirMigrated();
 
   const appStateStore = new AppStateStore();
   await appStateStore.init();
+  appStateStoreForAppearance = appStateStore;
+  registerAppearanceIpc(appStateStore, () => mainWindow);
+  nativeTheme.on('updated', () => {
+    const pref = appStateStore.get().appearance ?? DEFAULT_APPEARANCE_PREFERENCE;
+    if (pref !== 'system' || !mainWindow || mainWindow.isDestroyed()) return;
+    applyInitialAppearanceChrome(appStateStore, mainWindow);
+  });
   const taskAutoTransitionNotify = registerTaskAutoTransitionNotificationIpc(appStateStore);
 
   const projectStore = new ProjectStore(fluxxBaseDir);

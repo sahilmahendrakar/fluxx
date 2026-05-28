@@ -1,14 +1,39 @@
 <!doctype html>
 <!-- Fluxx renderer shell -->
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>Fluxx</title>
+    <script>
+      (function () {
+        var b = window.__FLUXX_APPEARANCE_BOOTSTRAP__;
+        var resolved =
+          b && (b.resolved === 'light' || b.resolved === 'dark') ? b.resolved : 'dark';
+        document.documentElement.classList.add(resolved);
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
     <style>
       @keyframes fluxx-boot-spin {
         to {
           transform: rotate(360deg);
         }
+      }
+      html.dark #app-boot {
+        background: hsl(240 6% 4%);
+        color: hsl(240 5% 65%);
+      }
+      html.light #app-boot {
+        background: hsl(40 20% 98%);
+        color: hsl(240 4% 46%);
+      }
+      html.dark #app-boot span[aria-hidden='true'] {
+        border-color: hsl(240 4% 26%);
+        border-top-color: hsl(0 0% 90%);
+      }
+      html.light #app-boot span[aria-hidden='true'] {
+        border-color: hsl(40 10% 85%);
+        border-top-color: hsl(240 6% 20%);
       }
     </style>
   </head>
@@ -24,8 +49,6 @@
           justify-content: center;
           flex-direction: column;
           gap: 20px;
-          background: #09090b;
-          color: #a1a1aa;
           font-family: system-ui, -apple-system, sans-serif;
         "
       >
@@ -34,8 +57,7 @@
             display: block;
             width: 20px;
             height: 20px;
-            border: 2px solid #3f3f46;
-            border-top-color: #e4e4e7;
+            border: 2px solid transparent;
             border-radius: 50%;
             animation: fluxx-boot-spin 0.8s linear infinite;
           "

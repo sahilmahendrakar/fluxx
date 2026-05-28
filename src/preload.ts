@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type { AppearanceBootstrap } from './theme/appearance';
 import type {
   ActiveProjectKey,
   Agent,
@@ -95,6 +96,23 @@ type ActivateCloudResult =
   | { ok: true }
   | { error: 'NOT_GIT_REPO' }
   | null;
+
+const defaultAppearanceBootstrap: AppearanceBootstrap = {
+  preference: 'dark',
+  resolved: 'dark',
+};
+
+try {
+  (
+    window as Window & { __FLUXX_APPEARANCE_BOOTSTRAP__?: AppearanceBootstrap }
+  ).__FLUXX_APPEARANCE_BOOTSTRAP__ = ipcRenderer.sendSync(
+    'appearance:getBootstrap',
+  ) as AppearanceBootstrap;
+} catch {
+  (
+    window as Window & { __FLUXX_APPEARANCE_BOOTSTRAP__?: AppearanceBootstrap }
+  ).__FLUXX_APPEARANCE_BOOTSTRAP__ = defaultAppearanceBootstrap;
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
@@ -946,6 +964,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
           payload,
         ) as Promise<{ ok: true } | { error: string }>,
     },
+  },
+  appearance: {
+    getPreference: () =>
+      ipcRenderer.invoke('appearance:getPreference') as Promise<
+        import('./theme/appearance').AppearancePreference
+      >,
+    setPreference: (preference: import('./theme/appearance').AppearancePreference) =>
+      ipcRenderer.invoke('appearance:setPreference', preference) as Promise<{
+        ok: true;
+        preference: import('./theme/appearance').AppearancePreference;
+      }>,
   },
   notifications: {
     getAutoTransitionPrefs: () =>
