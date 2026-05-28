@@ -30,7 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
@@ -91,6 +90,10 @@ import {
   terminalShouldAutoFit,
 } from '../terminal/terminalGeometryPolicy';
 import { useTerminalPtyStream } from '../terminal/useTerminalPtyStream';
+import {
+  TerminalAttachLoading,
+  TerminalResizeHandle,
+} from '@/components/terminal/TerminalChrome';
 import TerminalComponent, { type TerminalHandle } from './Terminal';
 import { TaskLabelsField } from './TaskLabelsField';
 import { ProjectMemberAvatar } from './ProjectMemberAvatar';
@@ -1237,12 +1240,10 @@ export default function TaskDetailPanel({
   const panelShell = (
     <>
       {!sessionWorkspace ? (
-        <div
-          role="separator"
-          aria-orientation="vertical"
+        <TerminalResizeHandle
+          orientation="vertical"
           aria-label="Resize task details"
           title="Drag to resize. Double-click to reset."
-          className="absolute bottom-0 left-0 top-0 z-30 w-3 -translate-x-1/2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-accent before:content-[''] hover:before:bg-muted-foreground/40 focus-visible:ring-1 focus-visible:ring-ring"
           onPointerDown={handleResizePointerDown}
           onDoubleClick={handleResizeDoubleClick}
         />
@@ -2223,13 +2224,10 @@ export default function TaskDetailPanel({
 
           {!sessionWorkspace ? (
             <>
-              <div
-                role="separator"
-                aria-orientation="horizontal"
+              <TerminalResizeHandle
+                orientation="horizontal"
                 aria-label="Resize between task details and session output"
                 title="Drag to resize session. Double-click to reset."
-                tabIndex={0}
-                className="relative z-10 h-1.5 w-full shrink-0 cursor-row-resize touch-none border-t border-border bg-background outline-none transition before:pointer-events-none before:absolute before:left-2 before:right-2 before:top-1/2 before:h-px before:-translate-y-1/2 before:bg-border before:content-[''] hover:before:bg-white/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onPointerDown={handleSessionSplitPointerDown}
                 onDoubleClick={handleSessionSplitDoubleClick}
                 onKeyDown={onSessionSplitKeyDown}
@@ -2237,37 +2235,43 @@ export default function TaskDetailPanel({
 
               {/* Session: secondary when idle; compact chrome when live */}
               <div
-            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-status-terminal"
+            className="flex min-w-0 min-h-0 shrink-0 flex-col overflow-hidden bg-status-terminal text-status-terminal-foreground"
             style={{ height: sessionPaneHeightPx }}
           >
             {sessionRunning && session ? (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-status-terminal-foreground/10 px-4 py-2.5">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400/90" />
-                  <span className="truncate text-xs font-medium text-muted-foreground">Session running</span>
+                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-status-success" />
+                  <span className="truncate text-xs font-medium text-status-terminal-foreground/70">
+                    Session running
+                  </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleOpenInTab}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-auto px-2.5 py-1 text-xs text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   >
                     Open in tab
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={handleMinimizeFromPanel}
-                    className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title="Minimize — hide from sidebar, keep agent running"
+                    className="h-auto px-2.5 py-1 text-xs text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground"
                   >
                     Minimize
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
               <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <Terminal className="h-3.5 w-3.5 opacity-70" strokeWidth={2} aria-hidden />
+                <div className="flex items-center gap-1.5 text-xs font-medium text-status-terminal-foreground/55">
+                  <Terminal className="size-3.5 opacity-70" strokeWidth={2} aria-hidden />
                   {sessionIdleAfterRun ? 'Session output (ended)' : 'Output'}
                 </div>
               </div>
@@ -2275,8 +2279,8 @@ export default function TaskDetailPanel({
 
             <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3">
               {remoteRunner && !session ? (
-                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-6 text-center">
-                  <div className="flex items-center gap-2.5 text-sm text-foreground">
+                <div className="flex h-full min-h-[7rem] flex-col items-center justify-center gap-2 rounded-xl border border-status-terminal-foreground/10 bg-status-terminal-foreground/[0.03] px-4 py-6 text-center">
+                  <div className="flex items-center gap-2.5 text-sm text-status-terminal-foreground">
                     <ProjectMemberAvatar
                       member={{
                         uid: remoteRunner.uid,
@@ -2285,12 +2289,12 @@ export default function TaskDetailPanel({
                       }}
                       size="sm"
                     />
-                    <span className="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+                    <span className="inline-flex size-2 shrink-0 animate-pulse rounded-full bg-status-success" />
                     <span className="min-w-0 font-medium">
                       {remoteRunner.displayName ?? 'A teammate'} has a Fluxx Desktop session
                     </span>
                   </div>
-                  <p className="max-w-[18rem] text-xs leading-relaxed text-muted-foreground">
+                  <p className="max-w-[18rem] text-xs leading-relaxed text-status-terminal-foreground/60">
                     Their terminal stays on their computer. Direct SSH tasks require Fluxx Desktop on
                     the machine that owns the SSH connection — you cannot start or attach from the web.
                   </p>
@@ -2298,14 +2302,10 @@ export default function TaskDetailPanel({
               ) : !hasLocalSession ? (
                 <div className="relative flex h-full min-h-[6.5rem] flex-col">
                   {showSessionStarting ? (
-                    <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border border-border bg-background/95 text-[13px] text-muted-foreground"
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <Spinner className="size-4 shrink-0" aria-hidden />
-                      <span className="font-medium text-foreground/80">Starting…</span>
-                    </div>
+                    <TerminalAttachLoading
+                      label="Starting…"
+                      className="rounded-xl border-status-terminal-foreground/15"
+                    />
                   ) : null}
                   {repoBlocked && !sessionRunning && !session ? (
                     <p
@@ -2317,7 +2317,7 @@ export default function TaskDetailPanel({
                         <button
                           type="button"
                           onClick={onOpenProjectSettings}
-                          className="font-medium text-amber-50 underline decoration-amber-400/50 underline-offset-2 hover:decoration-amber-200/70"
+                          className="font-medium underline decoration-status-needs-input/50 underline-offset-2 hover:decoration-status-needs-input"
                         >
                           {projectRepoReadiness.ctaLabel}
                         </button>
@@ -2331,9 +2331,9 @@ export default function TaskDetailPanel({
                       Start session is off until blockers are cleared.
                     </p>
                   ) : null}
-                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-5 text-center">
-                    <p className="text-sm text-muted-foreground">No live session in this panel</p>
-                    <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                  <div className="flex min-h-[5rem] flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-status-terminal-foreground/15 bg-status-terminal-foreground/[0.03] px-4 py-5 text-center">
+                    <p className="text-sm text-status-terminal-foreground/70">No live session in this panel</p>
+                    <p className="max-w-sm text-xs leading-relaxed text-status-terminal-foreground/50">
                       {blocked
                         ? 'Unblock the task, then use Start session above. Output streams here and in a workspace tab.'
                         : 'When you start a session, the agent’s terminal streams here. Open in a tab for the full view.'}
@@ -2342,16 +2342,7 @@ export default function TaskDetailPanel({
                 </div>
               ) : (
                 <div className="relative h-full min-h-[120px]">
-                  {showSessionStarting ? (
-                    <div
-                      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-md border border-border bg-background/95 text-[13px] text-muted-foreground"
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <Spinner className="size-4 shrink-0" aria-hidden />
-                      <span className="font-medium text-foreground/80">Starting…</span>
-                    </div>
-                  ) : null}
+                  {showSessionStarting ? <TerminalAttachLoading label="Starting…" /> : null}
                   <TerminalComponent
                     ref={terminalRef}
                     sessionId={session?.id ?? null}

@@ -3626,7 +3626,7 @@ export default function App() {
                 <div
                   key={item.session.id}
                   aria-hidden={!isActive || settingsRouteActive}
-                  className="absolute inset-0 flex min-h-0 flex-col bg-[#09090b]"
+                  className="absolute inset-0 flex min-h-0 flex-col bg-status-terminal"
                   style={{
                     visibility: isActive && !settingsRouteActive ? 'visible' : 'hidden',
                     pointerEvents: isActive && !settingsRouteActive ? 'auto' : 'none',

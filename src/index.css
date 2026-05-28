@@ -34,7 +34,8 @@
     --status-success-foreground: 144 61% 12%;
     --status-blocked: 240 4% 46%;
     --status-blocked-foreground: 240 6% 10%;
-    --status-terminal: 240 6% 6%;
+    /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
+    --status-terminal: 240 10% 4%;
     --status-terminal-foreground: 240 5% 84%;
     --radius: 0.5rem;
   }
@@ -69,7 +70,8 @@
     --status-success-foreground: 141 84% 93%;
     --status-blocked: 240 5% 52%;
     --status-blocked-foreground: 240 5% 84%;
-    --status-terminal: 240 6% 6%;
+    /* #09090b — keep aligned with TERMINAL_SURFACE_HEX in src/terminal/xtermTheme.ts */
+    --status-terminal: 240 10% 4%;
     --status-terminal-foreground: 240 5% 84%;
     --radius: 0.5rem;
   }
