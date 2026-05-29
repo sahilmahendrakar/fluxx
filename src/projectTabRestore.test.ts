@@ -109,6 +109,19 @@ describe('normalizeRestoredProjectTabState', () => {
     expect(out.minimizedTaskWorkspaceIds).toEqual([]);
   });
 
+  it('defaults taskViewMode to board when absent', () => {
+    const out = normalizeRestoredProjectTabState(base, restorable([]));
+    expect(out.taskViewMode).toBe('board');
+  });
+
+  it('restores taskViewMode list when persisted', () => {
+    const out = normalizeRestoredProjectTabState(
+      { ...base, taskViewMode: 'list' },
+      restorable([]),
+    );
+    expect(out.taskViewMode).toBe('list');
+  });
+
   it('clears planning sidebar active when session is not restorable', () => {
     const out = normalizeRestoredProjectTabState(
       {
