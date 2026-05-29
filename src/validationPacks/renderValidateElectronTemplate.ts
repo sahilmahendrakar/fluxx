@@ -13,7 +13,7 @@ export function renderValidateElectronTemplate(
 ): string {
   const project = ctx.projectConfig ?? {};
   const worktreeCwd = ctx.worktreeCwd ?? project.worktreeCwd ?? '.';
-  const ready = project.ready ?? { type: 'timeout', ms: 15_000 };
+  const ready = project.ready ?? null;
 
   return template
     .replaceAll('{{RUN_ID}}', ctx.runId)
@@ -21,7 +21,8 @@ export function renderValidateElectronTemplate(
     .replaceAll('{{RUN_ID_JSON}}', jsonLiteral(ctx.runId))
     .replaceAll('{{WORKTREE_CWD_JSON}}', jsonLiteral(worktreeCwd))
     .replaceAll('{{LAUNCH_COMMAND_JSON}}', jsonLiteral(project.launchCommand ?? null))
-    .replaceAll('{{READY_JSON}}', jsonLiteral(ready));
+    .replaceAll('{{READY_JSON}}', jsonLiteral(ready))
+    .replaceAll('{{CLEAN_USER_DATA_JSON}}', jsonLiteral(project.cleanUserData ?? null));
 }
 
 export function defaultElectronPlaywrightProjectConfig(): ElectronPlaywrightPackProjectConfig {

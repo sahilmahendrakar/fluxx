@@ -15,6 +15,7 @@ const WORKTREE_CWD = {{WORKTREE_CWD_JSON}};
 const RUN_ID = {{RUN_ID_JSON}};
 const LAUNCH_COMMAND = {{LAUNCH_COMMAND_JSON}};
 const READY = {{READY_JSON}};
+const CLEAN_USER_DATA = {{CLEAN_USER_DATA_JSON}};
 
 const ARTIFACTS = {
   screenshots: path.join(RUN_DIR, 'artifacts/screenshots'),
