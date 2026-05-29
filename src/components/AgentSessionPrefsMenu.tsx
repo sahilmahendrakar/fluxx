@@ -107,7 +107,10 @@ export function AgentSessionPrefsMenuContent({
         <SelectTrigger id={agentSelectId} aria-label="Agent" className={AGENT_SPAWN_AGENT_SELECT_CLASS}>
           <SelectValue placeholder="Agent" />
         </SelectTrigger>
-        <SelectContent className={AGENT_SESSION_PREFS_NESTED_Z_CLASS}>
+        <SelectContent
+          className={AGENT_SESSION_PREFS_NESTED_Z_CLASS}
+          {...({ [AGENT_SESSION_PREFS_SURFACE]: '' } as React.HTMLAttributes<HTMLDivElement>)}
+        >
           <SelectGroup>
             {AGENTS.map((a) => (
               <SelectItem key={a.id} value={a.id}>
