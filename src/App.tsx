@@ -3980,12 +3980,12 @@ export default function App() {
               </div>
             </div>
             {settingsRouteActive ? (
-              <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-[#09090b]">
-                <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2">
+              <div className="absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden bg-background text-foreground">
+                <div className="app-window-no-drag flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
                   <button
                     type="button"
                     onClick={() => replaceProjectWorkspaceRoute()}
-                    className="rounded-md px-2 py-1 text-[12px] font-medium text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-100"
+                    className="rounded-md px-2 py-1 text-[12px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     ← Workspace
                   </button>
