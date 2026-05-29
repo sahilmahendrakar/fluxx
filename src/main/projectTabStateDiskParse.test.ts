@@ -83,4 +83,35 @@ describe('parseProjectTabStateDiskValue', () => {
       }),
     ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
   });
+
+  it('preserves taskViewMode when list', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskViewMode: 'list',
+      }),
+    ).toEqual({
+      openTaskIds: [],
+      activeTaskId: 'board',
+      taskViewMode: 'list',
+    });
+  });
+
+  it('drops taskViewMode when board or invalid', () => {
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskViewMode: 'board',
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+    expect(
+      parseProjectTabStateDiskValue({
+        openTaskIds: [],
+        activeTaskId: 'board',
+        taskViewMode: 'grid',
+      }),
+    ).toEqual({ openTaskIds: [], activeTaskId: 'board' });
+  });
 });

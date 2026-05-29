@@ -54,6 +54,8 @@ export interface ProjectTabState {
    * stay running; reopen from the board or a tab clears the id from this set.
    */
   minimizedTaskWorkspaceIds?: string[];
+  /** Board workspace surface: kanban columns or list table (default board when absent). */
+  taskViewMode?: 'board' | 'list';
 }
 
 /** Task workspace tab identity for restore placeholders before live SSH reconcile. */

@@ -110,6 +110,7 @@ export function normalizeRestoredProjectTabState(
   planningSidebarActiveSessionId: string | null;
   planningSidebarOpen: boolean;
   minimizedTaskWorkspaceIds: string[];
+  taskViewMode: 'board' | 'list';
   activeTabId: string;
   openSettingsRoute: boolean;
 } {
@@ -156,6 +157,7 @@ export function normalizeRestoredProjectTabState(
     planningSidebarActiveSessionId,
     planningSidebarOpen: persisted.planningSidebarOpen === true,
     minimizedTaskWorkspaceIds,
+    taskViewMode: persisted.taskViewMode === 'list' ? 'list' : 'board',
     activeTabId,
     openSettingsRoute,
   };

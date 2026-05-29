@@ -29,7 +29,7 @@ import {
   type TaskPullRequestIpcResult,
   type TaskRequestPullRequestFromAgentResult,
 } from './types';
-import Board from './components/Board';
+import TaskWorkspace from './components/TaskWorkspace';
 import { PlanningPanel } from './components/PlanningPanel';
 import { PlanningDocsView } from './components/PlanningDocsView';
 import TaskDetailPanel from './components/TaskDetailPanel';
@@ -252,6 +252,8 @@ export default function App() {
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   /** Persisted: user wants the board planning strip open (see {@link ProjectTabState.planningSidebarOpen}). */
   const [planningSidebarOpen, setPlanningSidebarOpen] = useState(false);
+  /** Persisted: board workspace surface (see {@link ProjectTabState.taskViewMode}). */
+  const [taskViewMode, setTaskViewMode] = useState<'board' | 'list'>('board');
   const [planPanelWidth, setPlanPanelWidth] = useState(DEFAULT_PLANNING_PANEL_WIDTH);
   const [planningSessions, setPlanningSessions] = useState<PlanningSession[]>([]);
   const [showPlanningInitCallout, setShowPlanningInitCallout] = useState(false);
@@ -1441,6 +1443,7 @@ export default function App() {
       setPlanningSidebarActiveId(null);
       setOpenPlanningMainTabIds(new Set());
       setPlanningSidebarOpen(false);
+      setTaskViewMode('board');
       setPlanPanelOpen(false);
       setShowPlanningInitCallout(false);
       setPlanningInitBusy(false);
@@ -1459,6 +1462,7 @@ export default function App() {
     setOpenPlanningMainTabIds(new Set());
     setPlanningSidebarActiveId(null);
     setPlanningSidebarOpen(false);
+    setTaskViewMode('board');
     setMinimizedWorkspaceIds(new Set());
     setRestoringWorkspaceIds(new Set());
     setSessionsRestorePending(true);
@@ -1608,6 +1612,7 @@ export default function App() {
           resolvePlanningSidebarActiveId(persisted, planningList, normalized),
         );
         setPlanningSidebarOpen(normalized.planningSidebarOpen);
+        setTaskViewMode(normalized.taskViewMode);
         if (normalized.openSettingsRoute) {
           setActiveTabId('board');
           pushProjectSettingsRoute();
@@ -1753,6 +1758,7 @@ export default function App() {
       planningSidebarActiveSessionId: planningSidebarActiveId,
       planningSidebarOpen,
       minimizedTaskWorkspaceIds: Array.from(minimizedWorkspaceIds),
+      ...(taskViewMode === 'list' ? { taskViewMode: 'list' as const } : {}),
     };
     void window.electronAPI.projects
       .setTabs(projectKey, tabs)
@@ -1767,6 +1773,7 @@ export default function App() {
     openPlanningMainTabIds,
     planningSidebarActiveId,
     planningSidebarOpen,
+    taskViewMode,
     minimizedWorkspaceIds,
     tabPersistNonce,
   ]);
@@ -3776,8 +3783,10 @@ export default function App() {
                           isBoardOrPlanTab && !isFullscreenPlanTab ? 'auto' : 'none',
                       }}
                     >
-                      <Board
+                      <TaskWorkspace
                         allTasks={sortedTasks}
+                        taskViewMode={taskViewMode}
+                        onTaskViewModeChange={setTaskViewMode}
                         onDragEnd={handleDragEnd}
                         onCreateTask={handleCreateTask}
                         defaultTaskAgent={defaultTaskAgentForProject(project)}

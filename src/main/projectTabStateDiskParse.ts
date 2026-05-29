@@ -24,6 +24,7 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
     Array.isArray(v.minimizedTaskWorkspaceIds) && v.minimizedTaskWorkspaceIds.length > 0
       ? v.minimizedTaskWorkspaceIds.filter((x): x is string => typeof x === 'string')
       : undefined;
+  const taskViewMode = v.taskViewMode === 'list' ? ('list' as const) : undefined;
   return {
     openTaskIds: ids,
     activeTaskId: active,
@@ -35,5 +36,6 @@ export function parseProjectTabStateDiskValue(value: unknown): ProjectTabState |
     ...(minimizedRaw && minimizedRaw.length > 0
       ? { minimizedTaskWorkspaceIds: minimizedRaw }
       : {}),
+    ...(taskViewMode ? { taskViewMode } : {}),
   };
 }
