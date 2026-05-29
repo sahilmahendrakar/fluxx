@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { FolderGit2, Minus, PanelLeftClose, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Folder, FolderGit2, Minus, PanelLeftClose, Trash2 } from 'lucide-react';
 import type { Project } from '../types';
 import type { SessionTabMeta } from './TabBar';
 import { workspaceSessionStatusDotClass } from '../taskStatusDot';
@@ -8,6 +8,18 @@ import {
   readCollapsedRepoIdsForProject,
   writeCollapsedRepoIdsForProject,
 } from '../sidebarRepoSectionCollapse';
+import {
+  buildPlanningDocsSidebarLayout,
+  collectPlanningDocFolderPaths,
+  planningDocSidebarFileLabel,
+  type PlanningDocsSidebarTreeNode,
+} from '../planningDocsSidebarTree';
+import {
+  defaultCollapsedPlanningDocFolderPaths,
+  hasPlanningDocFolderCollapseStateForProject,
+  readCollapsedPlanningDocFolderPathsForProject,
+  writeCollapsedPlanningDocFolderPathsForProject,
+} from '../sidebarPlanningDocFolderCollapse';
 import type { PlanningDocFileEntry, PlanningDocsCloudListMeta } from '../planningDocs/types';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { AppearanceToggle } from './AppearanceToggle';
@@ -301,6 +313,172 @@ function WorkspaceSidebarRow({
   );
 }
 
+function PlanningDocFileSidebarRow({
+  file,
+  selected,
+  onSelectPlanningDoc,
+}: {
+  file: PlanningDocFileEntry;
+  selected: boolean;
+  onSelectPlanningDoc: (relativePath: string) => void;
+}) {
+  return (
+    <li className="w-full">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        title={file.relativePath}
+        onClick={() => onSelectPlanningDoc(file.relativePath)}
+        className={shellNavFileRowClass(selected)}
+      >
+        <span className="min-w-0 flex-1 truncate">{planningDocSidebarFileLabel(file.relativePath)}</span>
+        {file.syncStatus === 'conflict' ? (
+          <Badge
+            variant="outline"
+            className="h-4 min-w-4 shrink-0 justify-center border-status-needs-input/30 bg-status-needs-input/15 px-0.5 text-[9px] text-status-needs-input-foreground"
+            title="Sync conflict"
+          >
+            !
+          </Badge>
+        ) : file.syncStatus === 'pending_push' ? (
+          <Badge
+            variant="outline"
+            className="h-4 shrink-0 border-status-review/30 bg-status-review/10 px-1 text-[9px] text-status-review-foreground"
+            title="Pending upload"
+          >
+            ↑
+          </Badge>
+        ) : null}
+      </Button>
+    </li>
+  );
+}
+
+function PlanningDocsSidebarList({
+  projectId,
+  files,
+  activeTabId,
+  settingsRouteActive,
+  selectedPlanningDocPath,
+  onSelectPlanningDoc,
+}: {
+  projectId: string;
+  files: PlanningDocFileEntry[];
+  activeTabId: string;
+  settingsRouteActive: boolean;
+  selectedPlanningDocPath: string | null;
+  onSelectPlanningDoc: (relativePath: string) => void;
+}) {
+  const layout = useMemo(() => buildPlanningDocsSidebarLayout(files), [files]);
+  const allFolderPaths = useMemo(
+    () => (layout.kind === 'tree' ? collectPlanningDocFolderPaths(layout.nodes) : []),
+    [layout],
+  );
+  const allFolderPathsKey = allFolderPaths.join('\0');
+
+  const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (hasPlanningDocFolderCollapseStateForProject(projectId)) {
+      setCollapsedFolderPaths(readCollapsedPlanningDocFolderPathsForProject(projectId));
+      return;
+    }
+    if (allFolderPaths.length > 0) {
+      const defaults = defaultCollapsedPlanningDocFolderPaths(allFolderPaths);
+      setCollapsedFolderPaths(defaults);
+      writeCollapsedPlanningDocFolderPathsForProject(projectId, defaults);
+      return;
+    }
+    setCollapsedFolderPaths(new Set());
+  }, [projectId, allFolderPathsKey]);
+
+  const toggleFolderSection = (folderPath: string) => {
+    setCollapsedFolderPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      writeCollapsedPlanningDocFolderPathsForProject(projectId, next);
+      return next;
+    });
+  };
+
+  const isDocSelected = (relativePath: string) =>
+    activeTabId === 'docs' && !settingsRouteActive && relativePath === selectedPlanningDocPath;
+
+  const renderTreeNode = (node: PlanningDocsSidebarTreeNode, depth: number) => {
+    if (node.kind === 'file') {
+      return (
+        <PlanningDocFileSidebarRow
+          key={node.file.relativePath}
+          file={node.file}
+          selected={isDocSelected(node.file.relativePath)}
+          onSelectPlanningDoc={onSelectPlanningDoc}
+        />
+      );
+    }
+
+    const expanded = !collapsedFolderPaths.has(node.folderPath);
+    return (
+      <li key={node.folderPath} className="w-full list-none">
+        <section aria-label={`${node.segment} folder`}>
+          <div className={cn('ml-2', depth === 0 ? 'mt-0.5' : 'mt-1')}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.segment} folder`}
+              title={node.folderPath}
+              className={cn(
+                'h-auto w-full gap-1 px-2 py-1 text-[12px] font-semibold text-foreground/90 hover:bg-muted/30',
+                shellRadius,
+                shellSidebarLabelButton,
+              )}
+              onClick={() => toggleFolderSection(node.folderPath)}
+            >
+              <ChevronWorkspacesIcon expanded={expanded} />
+              <Folder className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} aria-hidden />
+              <span className="min-w-0 flex-1 truncate">{node.segment}</span>
+            </Button>
+            {expanded ? (
+              <ul
+                className={cn(
+                  'ml-2 mt-0.5 flex list-none flex-col gap-0.5 border-l pl-2',
+                  shellDivider,
+                )}
+              >
+                {node.children.map((child) => renderTreeNode(child, depth + 1))}
+              </ul>
+            ) : null}
+          </div>
+        </section>
+      </li>
+    );
+  };
+
+  if (layout.kind === 'flat') {
+    return (
+      <ul className="flex w-full flex-col gap-0.5 pb-0">
+        {layout.files.map((file) => (
+          <PlanningDocFileSidebarRow
+            key={file.relativePath}
+            file={file}
+            selected={isDocSelected(file.relativePath)}
+            onSelectPlanningDoc={onSelectPlanningDoc}
+          />
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <ul className="flex w-full flex-col gap-0.5 pb-0">
+      {layout.nodes.map((node) => renderTreeNode(node, 0))}
+    </ul>
+  );
+}
+
 function TaskWorkspaceSidebarList({
   projectId,
   sessionLayout,
@@ -588,43 +766,14 @@ export function Sidebar({
                       No .md files yet.
                     </p>
                   ) : (
-                    <ul className="flex w-full flex-col gap-0.5 pb-0">
-                      {planningDocFiles.map((f) => (
-                        <li key={f.relativePath} className="w-full">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            title={f.relativePath}
-                            onClick={() => onSelectPlanningDoc(f.relativePath)}
-                            className={shellNavFileRowClass(
-                              activeTabId === 'docs' &&
-                                !settingsRouteActive &&
-                                f.relativePath === selectedPlanningDocPath,
-                            )}
-                          >
-                            <span className="min-w-0 flex-1 truncate">{f.relativePath}</span>
-                            {f.syncStatus === 'conflict' ? (
-                              <Badge
-                                variant="outline"
-                                className="h-4 min-w-4 shrink-0 justify-center border-status-needs-input/30 bg-status-needs-input/15 px-0.5 text-[9px] text-status-needs-input-foreground"
-                                title="Sync conflict"
-                              >
-                                !
-                              </Badge>
-                            ) : f.syncStatus === 'pending_push' ? (
-                              <Badge
-                                variant="outline"
-                                className="h-4 shrink-0 border-status-review/30 bg-status-review/10 px-1 text-[9px] text-status-review-foreground"
-                                title="Pending upload"
-                              >
-                                ↑
-                              </Badge>
-                            ) : null}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
+                    <PlanningDocsSidebarList
+                      projectId={project.id}
+                      files={planningDocFiles}
+                      activeTabId={activeTabId}
+                      settingsRouteActive={settingsRouteActive}
+                      selectedPlanningDocPath={selectedPlanningDocPath}
+                      onSelectPlanningDoc={onSelectPlanningDoc}
+                    />
                   )}
                 </div>
               </div>
