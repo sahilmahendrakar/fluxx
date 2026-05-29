@@ -1,4 +1,5 @@
 import type { Task, TaskValidationPlan } from '../types';
+import type { ElectronPlaywrightPackProjectConfig } from '../validationPacks/types';
 import type { ValidationRun } from '../validationRuns/types';
 import { formatValidationPlanForValidatorPrompt } from '../validationPlans/formatForValidatorPrompt';
 
@@ -8,6 +9,8 @@ export type ValidatorSessionPromptInput = {
   worktreeCwd: string;
   instructionsMarkdown: string;
   verdictSchemaJson: string;
+  /** Resolved project validation config (may be empty). `appendPrompt` is prompt-only. */
+  projectConfig?: ElectronPlaywrightPackProjectConfig;
   changeSummary?: string;
   planJsonPath?: string;
   validationPlan?: TaskValidationPlan;
