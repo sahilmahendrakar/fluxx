@@ -843,6 +843,7 @@ export function SessionTerminalView({
             <GithubPrIconButton
               githubPr={task.githubPr}
               taskId={task.id}
+              taskStatus={task.status}
               hasWorktree={Boolean(session.worktreePath?.trim())}
               onTaskPrClick={onTaskPrClick}
               prLoading={prLoading}
