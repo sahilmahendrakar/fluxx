@@ -1610,14 +1610,27 @@ function ProjectConfigPane({
             />
             <AutomationSettingRow
               key={`${project.id}-auto-cleanup-on-done`}
-              title="Clean up workspace when moved to Done"
+              title={
+                gitIntegrationEnabled
+                  ? 'Clean up workspace when moved to Done'
+                  : 'Stop running sessions when moved to Done'
+              }
               description={
-                <>
-                  After a task reaches Done, automatically run the same cleanup as the broom on the
-                  card: stop agent sessions and remove the task git worktree on this machine. The task
-                  stays in Done with the broom marked complete. Applies to drags, detail status changes,
-                  and Flux CLI updates. For cloud projects this preference is stored per machine.
-                </>
+                gitIntegrationEnabled ? (
+                  <>
+                    After a task reaches Done, automatically run the same cleanup as the broom on the
+                    card: stop agent sessions and remove the task git worktree on this machine. The task
+                    stays in Done with the broom marked complete. Applies to drags, detail status changes,
+                    and Flux CLI updates. For cloud projects this preference is stored per machine.
+                  </>
+                ) : (
+                  <>
+                    After a task reaches Done, automatically stop any running agent sessions for that
+                    task (same as the broom on the card). Your working folder is not deleted. Applies to
+                    drags, detail status changes, and Flux CLI updates. For cloud projects this preference
+                    is stored per machine.
+                  </>
+                )
               }
               checked={autoCleanupOnDoneEnabled}
               onCheckedChange={(next) => void handleAutoCleanupOnDoneChange(next)}
@@ -1628,6 +1641,8 @@ function ProjectConfigPane({
               saveState={autoCleanupOnDoneSaveState}
               error={autoCleanupOnDoneError}
             />
+            {gitIntegrationEnabled ? (
+              <>
             <AutomationSettingRow
               key={`${project.id}-auto-done-pr-merged`}
               title="Move to Done when linked PR merges"
@@ -1669,6 +1684,8 @@ function ProjectConfigPane({
               saveState={autoReviewOnOpenPrSaveState}
               error={autoReviewOnOpenPrError}
             />
+              </>
+            ) : null}
           </div>
         </section>
 
@@ -2114,6 +2131,7 @@ function ProjectConfigPane({
               project={project}
               localRepoConfigs={repos ?? []}
               sshDevices={sshDevices}
+              gitIntegrationEnabled={gitIntegrationEnabled}
               onLocalReposChanged={(nextRepos) => setRepos(nextRepos)}
               onBindingsChanged={onProjectAgentPrefsRefresh}
               onSharedReposChanged={onCloudSharedReposChanged}
@@ -2155,6 +2173,7 @@ function ProjectConfigPane({
                         multiRepoManagementEnabled={multiRepoLocalManagementEnabled}
                         sshDevices={sshDevices}
                         projectDefaultDeviceId={project.defaultDeviceId}
+                        gitIntegrationEnabled={gitIntegrationEnabled}
                         expanded={expanded[key] ?? false}
                         onToggle={() =>
                           setExpanded((prev) => ({
@@ -2257,6 +2276,7 @@ function CloudTeamReposBindingsSection({
   project,
   localRepoConfigs,
   sshDevices,
+  gitIntegrationEnabled,
   onLocalReposChanged,
   onBindingsChanged,
   onSharedReposChanged,
@@ -2266,6 +2286,7 @@ function CloudTeamReposBindingsSection({
   project: CloudProject;
   localRepoConfigs: RepoConfig[];
   sshDevices: ExecutionDeviceConfig[];
+  gitIntegrationEnabled: boolean;
   onLocalReposChanged?: (repos: RepoConfig[]) => void;
   onBindingsChanged?: () => void | Promise<void>;
   onSharedReposChanged?: (repos: CloudSharedRepo[]) => void;
@@ -2414,14 +2435,21 @@ function CloudTeamReposBindingsSection({
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Base branch:{' '}
-                  <span className="font-mono text-muted-foreground">{sr.baseBranch}</span>
-                  {localRepoConfig?.setupScript ? ' · setup script' : ''}
-                  {localRepoConfig?.env ? ' · .env' : ''}
+                  {gitIntegrationEnabled ? (
+                    <>
+                      Base branch:{' '}
+                      <span className="font-mono text-muted-foreground">{sr.baseBranch}</span>
+                    </>
+                  ) : null}
+                  {gitIntegrationEnabled && (localRepoConfig?.setupScript || localRepoConfig?.env || sr.remoteUrl)
+                    ? ' · '
+                    : null}
+                  {localRepoConfig?.setupScript ? 'setup script' : ''}
+                  {localRepoConfig?.setupScript && localRepoConfig?.env ? ' · ' : ''}
+                  {localRepoConfig?.env ? '.env' : ''}
                   {sr.remoteUrl ? (
                     <>
-                      {' '}
-                      ·{' '}
+                      {(gitIntegrationEnabled || localRepoConfig?.setupScript || localRepoConfig?.env) ? ' · ' : ''}
                       <span
                         className="font-mono text-muted-foreground"
                         title={sr.remoteUrl}
@@ -2447,6 +2475,7 @@ function CloudTeamReposBindingsSection({
                 <CloudRepoFields
                   project={project}
                   repo={sr}
+                  gitIntegrationEnabled={gitIntegrationEnabled}
                   localRepoConfig={localRepoConfig}
                   status={st}
                   sshDevices={sshDevices}
@@ -2483,6 +2512,7 @@ function CloudTeamReposBindingsSection({
 function CloudRepoFields({
   project,
   repo,
+  gitIntegrationEnabled,
   localRepoConfig,
   status,
   sshDevices,
@@ -2494,6 +2524,7 @@ function CloudRepoFields({
 }: {
   project: CloudProject;
   repo: CloudSharedRepo;
+  gitIntegrationEnabled: boolean;
   localRepoConfig?: RepoConfig;
   status?: CloudRepoLocalBindingStatus;
   sshDevices: ExecutionDeviceConfig[];
@@ -2626,15 +2657,17 @@ function CloudRepoFields({
           className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
-      <label className="block">
-        <span className="text-[12px] font-medium text-foreground">Base branch</span>
-        <input
-          value={baseBranch}
-          onChange={(e) => setBaseBranch(e.target.value)}
-          placeholder="main"
-          className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </label>
+      {gitIntegrationEnabled ? (
+        <label className="block">
+          <span className="text-[12px] font-medium text-foreground">Base branch</span>
+          <input
+            value={baseBranch}
+            onChange={(e) => setBaseBranch(e.target.value)}
+            placeholder="main"
+            className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </label>
+      ) : null}
       <label className="block">
         <span className="text-[12px] font-medium text-foreground">Remote origin</span>
         <input
@@ -2706,6 +2739,7 @@ interface RepoCardProps {
   multiRepoManagementEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
+  gitIntegrationEnabled: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSaved: (repos: RepoConfig[]) => void;
@@ -2720,6 +2754,7 @@ function RepoCard({
   multiRepoManagementEnabled,
   sshDevices,
   projectDefaultDeviceId,
+  gitIntegrationEnabled,
   expanded,
   onToggle,
   onSaved,
@@ -2767,9 +2802,10 @@ function RepoCard({
               </span>
             ) : null}
             {multiRepoManagementEnabled ? ' · ' : ''}
-            base: {repo.baseBranch}
-            {repo.setupScript ? ' · setup script' : ''}
-            {repo.env ? ' · .env' : ''}
+            {gitIntegrationEnabled ? <>base: {repo.baseBranch}</> : null}
+            {gitIntegrationEnabled && repo.setupScript ? ' · setup script' : repo.setupScript ? 'setup script' : ''}
+            {repo.setupScript && repo.env ? ' · ' : ''}
+            {repo.env ? '.env' : ''}
           </div>
         </div>
       </button>
@@ -2783,6 +2819,7 @@ function RepoCard({
             multiRepoManagementEnabled={multiRepoManagementEnabled}
             sshDevices={sshDevices}
             projectDefaultDeviceId={projectDefaultDeviceId}
+            gitIntegrationEnabled={gitIntegrationEnabled}
             onSaved={onSaved}
             onReposChanged={onReposChanged}
           />
@@ -2824,6 +2861,7 @@ interface RepoFieldsProps {
   multiRepoManagementEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
+  gitIntegrationEnabled: boolean;
   onSaved: (repos: RepoConfig[]) => void;
   onReposChanged: (repos: RepoConfig[]) => void | Promise<void>;
 }
@@ -2836,6 +2874,7 @@ function RepoFields({
   multiRepoManagementEnabled,
   sshDevices,
   projectDefaultDeviceId,
+  gitIntegrationEnabled,
   onSaved,
   onReposChanged,
 }: RepoFieldsProps) {
@@ -2937,17 +2976,19 @@ function RepoFields({
         sshDevices={sshDevices}
         projectDefaultDeviceId={projectDefaultDeviceId}
       />
-      <FieldEditor
-        label="Base branch"
-        description="Branch fetched from origin and used as the base for new task worktrees."
-        repoId={repo.id}
-        rootPath={repo.rootPath}
-        useRepoId={multiRepoManagementEnabled}
-        field="baseBranch"
-        initialValue={repo.baseBranch}
-        placeholder="main"
-        onSaved={onSaved}
-      />
+      {gitIntegrationEnabled ? (
+        <FieldEditor
+          label="Base branch"
+          description="Branch fetched from origin and used as the base for new task worktrees."
+          repoId={repo.id}
+          rootPath={repo.rootPath}
+          useRepoId={multiRepoManagementEnabled}
+          field="baseBranch"
+          initialValue={repo.baseBranch}
+          placeholder="main"
+          onSaved={onSaved}
+        />
+      ) : null}
       <FieldEditor
         label="Setup script"
         description="Bash script run inside each new worktree after creation. Output is logged to .flux-setup.log."

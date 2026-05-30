@@ -11,6 +11,15 @@ describe('shouldAutoMoveTaskToReviewForOpenPr', () => {
   it('requires enabled + open PR + allowed source column', () => {
     expect(
       shouldAutoMoveTaskToReviewForOpenPr({
+        enabled: true,
+        gitIntegrationEnabled: false,
+        taskStatus: 'in-progress',
+        githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },
+        task: legacyTask,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoMoveTaskToReviewForOpenPr({
         enabled: false,
         taskStatus: 'in-progress',
         githubPr: { url: 'https://github.com/o/r/pull/1', state: 'open' },

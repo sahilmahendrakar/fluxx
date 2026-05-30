@@ -15,8 +15,16 @@ export function buildCloudGithubPrRefreshPatch(input: {
   snapshot: Task[];
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
+  gitIntegrationEnabled?: boolean;
 }): TaskPatch | null {
-  const { live, refreshed, snapshot, autoMarkDoneWhenPrMerged, autoMoveToReviewWhenPrOpen } = input;
+  const {
+    live,
+    refreshed,
+    snapshot,
+    autoMarkDoneWhenPrMerged,
+    autoMoveToReviewWhenPrOpen,
+    gitIntegrationEnabled,
+  } = input;
   const prViewEqual = githubPrRefreshViewEqual(live.githubPr, refreshed);
 
   const patch: TaskPatch = {};
@@ -31,6 +39,7 @@ export function buildCloudGithubPrRefreshPatch(input: {
       refreshedGithubPr: refreshed,
       prefEnabled: autoMarkDoneWhenPrMerged,
       allTasks: snapshot,
+      gitIntegrationEnabled,
     })
   ) {
     const destCol = sortColumn(
@@ -50,6 +59,7 @@ export function buildCloudGithubPrRefreshPatch(input: {
   } else if (
     shouldAutoMoveTaskToReviewForOpenPr({
       enabled: autoMoveToReviewWhenPrOpen,
+      gitIntegrationEnabled,
       taskStatus: live.status,
       githubPr: refreshed,
       task: live,
