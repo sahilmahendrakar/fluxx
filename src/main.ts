@@ -310,6 +310,12 @@ import { registerAppUpdater } from './main/AppUpdater';
 import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
 import { registerGlobalOnboardingIpc } from './main/registerGlobalOnboardingIpc';
 import {
+  cloudBindingAgentPrefsIfUnset,
+  mergeProjectPlanningDefaultsWithGlobal,
+  readGlobalOnboardingDefaultAgent,
+  syncGlobalOnboardingAgentToActiveProject,
+} from './globalOnboarding/globalDefaultAgent';
+import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
 } from './main/registerAppearanceIpc';
@@ -1637,25 +1643,16 @@ app.whenReady().then(async () => {
     },
   );
 
-  registerGlobalOnboardingIpc(appStateStore, async (agent) => {
-    const key = appStateStore.get().activeProjectKey;
-    if (!key) return { ok: true };
-    try {
-      if (key.kind === 'cloud') {
-        await bindingStore.setPrefs(key.id, {
-          planningAgent: agent,
-          defaultTaskAgent: agent,
-        });
-        return { ok: true };
-      }
-      await projectStore.setPlanningAgent(agent);
-      await projectStore.setDefaultTaskAgent(agent);
-      return { ok: true };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { error: message };
-    }
-  });
+  registerGlobalOnboardingIpc(appStateStore, async (agent) =>
+    syncGlobalOnboardingAgentToActiveProject(agent, {
+      activeProjectKey: appStateStore.get().activeProjectKey,
+      setCloudPrefs: async (projectId, prefs) => {
+        await bindingStore.setPrefs(projectId, prefs);
+      },
+      setLocalPlanningAgent: (a) => projectStore.setPlanningAgent(a),
+      setLocalDefaultTaskAgent: (a) => projectStore.setDefaultTaskAgent(a),
+    }),
+  );
 
   ipcMain.handle(
     'project:patchAgentSpawnDefaults',
@@ -2824,7 +2821,14 @@ app.whenReady().then(async () => {
         return { ok: false, error: validated.error };
       }
       try {
-        const { project, projectDir } = await projectStore.createFromInput(validated.value);
+        const globalAgent = readGlobalOnboardingDefaultAgent(appStateStore.get());
+        const { project, projectDir } = await projectStore.createFromInput({
+          ...validated.value,
+          planningDefaults: mergeProjectPlanningDefaultsWithGlobal(
+            validated.value.planningDefaults,
+            globalAgent,
+          ),
+        });
         await writeOnboardingPending(projectDir);
         await projectStore.init(projectDir);
         await taskStore.reinit(projectDir);
@@ -3092,6 +3096,16 @@ app.whenReady().then(async () => {
           projectDir,
           sharedRepos,
         });
+      }
+      const globalAgent = readGlobalOnboardingDefaultAgent(appStateStore.get());
+      if (globalAgent) {
+        const patch = cloudBindingAgentPrefsIfUnset(
+          bindingStore.get(cloudProjectId),
+          globalAgent,
+        );
+        if (patch) {
+          await bindingStore.setPrefs(cloudProjectId, patch);
+        }
       }
       return { ok: true };
     },
@@ -4129,6 +4143,7 @@ app.whenReady().then(async () => {
         createdAt: '',
       },
       binding,
+      { globalDefaultAgent: readGlobalOnboardingDefaultAgent(appStateStore.get()) },
     );
   }
 
@@ -5659,7 +5674,9 @@ app.whenReady().then(async () => {
         if (!binding || !projectDir) {
           return { error: 'No project open' };
         }
-        const prefs = bindingStore.getPrefs(activeKey.id);
+        const prefs = bindingStore.getPrefs(activeKey.id, {
+          globalDefaultAgent: readGlobalOnboardingDefaultAgent(appStateStore.get()),
+        });
         if (!resumeRequested) {
           planningAgent = isPlanningAgent(requestedAgent)
             ? requestedAgent
@@ -5690,6 +5707,7 @@ app.whenReady().then(async () => {
             createdAt: '',
           },
           binding,
+          { globalDefaultAgent: readGlobalOnboardingDefaultAgent(appStateStore.get()) },
         );
       }
 

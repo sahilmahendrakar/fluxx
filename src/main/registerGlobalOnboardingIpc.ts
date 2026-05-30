@@ -71,8 +71,7 @@ export function registerGlobalOnboardingIpc(
       const next = buildGlobalOnboardingPatch(stored, { selectedAgent: raw });
       await appStateStore.set({ globalOnboarding: next });
       if (syncProjectAgents) {
-        const synced = await syncProjectAgents(raw);
-        if ('error' in synced) return synced;
+        return syncProjectAgents(raw);
       }
       return { ok: true };
     },

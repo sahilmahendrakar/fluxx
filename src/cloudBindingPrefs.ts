@@ -60,17 +60,25 @@ function isAgent(value: unknown): value is Agent {
   );
 }
 
+export type ResolvedPrefsFromBindingOptions = {
+  /** Global onboarding default when binding has no per-project agent. */
+  globalDefaultAgent?: Agent;
+};
+
 /** Effective prefs for a cloud machine binding; missing automation keys use {@link DEFAULT_AUTO_START_SESSION_ON_IN_PROGRESS} and related constants. */
 export function resolvedPrefsFromBinding(
   binding: CloudProjectLocalBinding | null | undefined,
+  options?: ResolvedPrefsFromBindingOptions,
 ): ResolvedCloudBindingPrefs {
+  const fallbackAgent = options?.globalDefaultAgent ?? CLOUD_BINDING_DEFAULT_PLANNING_AGENT;
+  const taskFallbackAgent = options?.globalDefaultAgent ?? CLOUD_BINDING_DEFAULT_TASK_AGENT;
   return {
     planningAgent: isAgent(binding?.planningAgent)
       ? binding.planningAgent
-      : CLOUD_BINDING_DEFAULT_PLANNING_AGENT,
+      : fallbackAgent,
     defaultTaskAgent: isAgent(binding?.defaultTaskAgent)
       ? binding.defaultTaskAgent
-      : CLOUD_BINDING_DEFAULT_TASK_AGENT,
+      : taskFallbackAgent,
     ...(binding?.planningModels && Object.keys(binding.planningModels).length > 0
       ? { planningModels: binding.planningModels }
       : {}),
@@ -177,9 +185,11 @@ export function hydrateCloudProject(
     validationEnabled?: boolean;
   },
   binding: CloudProjectLocalBinding,
-  options?: { materializationRootPath?: string },
+  options?: { materializationRootPath?: string; globalDefaultAgent?: Agent },
 ): CloudProject {
-  const prefs = resolvedPrefsFromBinding(binding);
+  const prefs = resolvedPrefsFromBinding(binding, {
+    globalDefaultAgent: options?.globalDefaultAgent,
+  });
   const migrated = migrateLegacyCloudBinding(summary.id, binding);
   const primary = primaryMachineBinding(summary.id, migrated, summary.repos);
   const materializationRoot = options?.materializationRootPath?.trim();
