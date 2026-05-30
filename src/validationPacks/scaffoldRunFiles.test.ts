@@ -61,6 +61,8 @@ describe('scaffoldValidationRunFiles', () => {
     expect(script).toContain(JSON.stringify('pnpm start:aux'));
     expect(script).toContain('CLEAN_USER_DATA');
     expect(script).toContain('true');
+    expect(script).toContain('spawnLaunchCommand');
+    expect(script).toContain('connectOverCDP');
   });
 
   it('scaffolds with null launch command when config is empty', async () => {
@@ -82,5 +84,8 @@ describe('scaffoldValidationRunFiles', () => {
     expect(script).toContain('const LAUNCH_COMMAND = null;');
     expect(script).toContain('const READY = null;');
     expect(script).toContain('const CLEAN_USER_DATA = null;');
+    expect(script).toContain('package.json');
+    expect(script).toContain('launchAppWithoutSavedCommand');
+    expect(script).not.toContain('configure settings');
   });
 });
