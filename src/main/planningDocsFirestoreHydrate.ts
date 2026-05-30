@@ -151,8 +151,7 @@ export async function applyFirestorePlanningDocsSnapshot(
 
     const shouldApply =
       prevMeta === undefined ||
-      prevMeta.lastSyncedContentHash === diskHash ||
-      diskHash === null;
+      (diskHash !== null && prevMeta.lastSyncedContentHash === diskHash);
 
     if (!shouldApply) {
       continue;
@@ -237,6 +236,26 @@ export async function applyFirestorePlanningDocsSnapshot(
   }
 
   return { ok: true, changed };
+}
+
+/** Clears sync metadata after a local delete successfully propagated to Firestore. */
+export async function recordPlanningDocsDeleteSuccess(
+  planningDir: string,
+  normPath: string,
+): Promise<void> {
+  let state = await readPlanningDocsSyncState(planningDir);
+  const nextFiles = { ...state.files };
+  delete nextFiles[normPath];
+  const nextPaused = state.pausedPushPaths ? { ...state.pausedPushPaths } : undefined;
+  if (nextPaused && normPath in nextPaused) {
+    delete nextPaused[normPath];
+  }
+  state = {
+    ...state,
+    files: nextFiles,
+    pausedPushPaths: nextPaused && Object.keys(nextPaused).length > 0 ? nextPaused : undefined,
+  };
+  await writePlanningDocsSyncState(planningDir, state);
 }
 
 export async function recordPlanningDocsPushSuccess(

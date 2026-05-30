@@ -7,6 +7,7 @@ import {
   applyFirestorePlanningDocsSnapshot,
   persistPlanningDocsConflictLocal,
   readPlanningDocsSyncState,
+  recordPlanningDocsDeleteSuccess,
 } from './planningDocsFirestoreHydrate';
 import { planningRelativePathToFirestoreDocId } from '../planningDocs/path';
 
@@ -256,5 +257,107 @@ describe('applyFirestorePlanningDocsSnapshot', () => {
     st = await readPlanningDocsSyncState(planningDir);
     expect(st.pausedPushPaths?.[rel]).toBeUndefined();
     expect(st.files[rel]?.remoteRevision).toBe('3_0');
+  });
+
+  it('does not resurrect a locally deleted file while delete push is pending', async () => {
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'synced',
+          remoteRevision: '9_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+
+    await fs.unlink(userDocAbs(planningDir, rel));
+
+    const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'from-cloud',
+          remoteRevision: '10_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    expect(r).toEqual({ ok: true, changed: false });
+
+    await expect(fs.access(userDocAbs(planningDir, rel))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const state = await readPlanningDocsSyncState(planningDir);
+    expect(state.files[rel]?.remoteRevision).toBe('9_0');
+  });
+
+  it('still applies remote doc when file missing and path was never synced', async () => {
+    const r = await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'brand-new',
+          remoteRevision: '1_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    expect(r).toEqual({ ok: true, changed: true });
+
+    const body = await fs.readFile(userDocAbs(planningDir, rel), 'utf8');
+    expect(body).toBe('brand-new');
+  });
+});
+
+describe('recordPlanningDocsDeleteSuccess', () => {
+  let planningDir: string;
+  const rel = 'notes/remove-me.md';
+
+  beforeEach(async () => {
+    planningDir = await mkPlanningDir();
+    const docId = planningRelativePathToFirestoreDocId(rel);
+    if (!docId) throw new Error('doc id');
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [{ docId, relativePath: rel, markdown: 'x', remoteRevision: '2_0' }],
+      removedDocIds: [],
+    });
+  });
+
+  it('removes path from sync state files', async () => {
+    let state = await readPlanningDocsSyncState(planningDir);
+    expect(state.files[rel]).toBeDefined();
+
+    await recordPlanningDocsDeleteSuccess(planningDir, rel);
+
+    state = await readPlanningDocsSyncState(planningDir);
+    expect(state.files[rel]).toBeUndefined();
+  });
+
+  it('clears pausedPushPaths for the path', async () => {
+    await persistPlanningDocsConflictLocal(planningDir, {
+      schemaVersion: 1,
+      relativePath: rel,
+      createdAt: new Date().toISOString(),
+      baseRemoteRevision: '2_0',
+      localMarkdown: '',
+      remoteMarkdown: 'remote',
+      remoteRevision: '3_0',
+      remoteUpdatedBy: 'other',
+      localUpdatedBy: 'me',
+    });
+
+    await recordPlanningDocsDeleteSuccess(planningDir, rel);
+
+    const state = await readPlanningDocsSyncState(planningDir);
+    expect(state.files[rel]).toBeUndefined();
+    expect(state.pausedPushPaths?.[rel]).toBeUndefined();
   });
 });

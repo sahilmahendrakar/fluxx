@@ -102,4 +102,26 @@ describe('FilesystemPlanningDocsProvider', () => {
     const w = await provider.write('top.md', 'a\0b');
     expect(w).toEqual({ error: 'INVALID_CONTENT' });
   });
+
+  it('delete removes markdown under planning/docs', async () => {
+    const d = await provider.delete('notes/deep.md');
+    expect(d).toEqual({ ok: true });
+    await expect(fs.access(path.join(planningDir, 'docs', 'notes', 'deep.md'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    const list = await provider.list();
+    expect('error' in list).toBe(false);
+    if ('error' in list) return;
+    expect(list.files.map((f) => f.relativePath)).toEqual(['top.md']);
+  });
+
+  it('delete returns FORBIDDEN_PATH for instruction seed paths', async () => {
+    const d = await provider.delete('CLAUDE.md');
+    expect(d).toEqual({ error: 'FORBIDDEN_PATH' });
+  });
+
+  it('delete returns NOT_FOUND for missing file', async () => {
+    const d = await provider.delete('missing.md');
+    expect(d).toEqual({ error: 'NOT_FOUND' });
+  });
 });

@@ -51,9 +51,12 @@ import {
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
 import type {
   PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListDeleteCandidatesResult,
   PlanningDocsListPushCandidatesResult,
   PlanningDocsPersistConflictPayload,
   PlanningDocsPersistConflictResult,
+  PlanningDocsRecordDeleteSuccessPayload,
+  PlanningDocsRecordDeleteSuccessResult,
   PlanningDocsRecordPushSuccessPayload,
   PlanningDocsRecordPushSuccessResult,
   PlanningDocsResolveConflictIpcResult,
@@ -62,6 +65,7 @@ import type {
 } from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsDeleteResult,
   PlanningDocsListResult,
   PlanningDocsWriteResult,
 } from './planningDocs/types';
@@ -898,6 +902,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     write: (relativePath: string, content: string) =>
       ipcRenderer.invoke('planningDocs:write', relativePath, content) as Promise<PlanningDocsWriteResult>,
+    delete: (relativePath: string) =>
+      ipcRenderer.invoke('planningDocs:delete', relativePath) as Promise<PlanningDocsDeleteResult>,
     applyFirestoreSnapshot: (payload: {
       projectId: string;
       docs: Array<{
@@ -917,6 +923,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         'planningDocs:listPushCandidates',
         projectId,
       ) as Promise<PlanningDocsListPushCandidatesResult>,
+    listDeleteCandidates: (projectId: string) =>
+      ipcRenderer.invoke(
+        'planningDocs:listDeleteCandidates',
+        projectId,
+      ) as Promise<PlanningDocsListDeleteCandidatesResult>,
+    recordDeleteSuccess: (payload: PlanningDocsRecordDeleteSuccessPayload) =>
+      ipcRenderer.invoke(
+        'planningDocs:recordDeleteSuccess',
+        payload,
+      ) as Promise<PlanningDocsRecordDeleteSuccessResult>,
     recordPushSuccess: (payload: PlanningDocsRecordPushSuccessPayload) =>
       ipcRenderer.invoke(
         'planningDocs:recordPushSuccess',

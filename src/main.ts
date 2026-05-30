@@ -205,9 +205,13 @@ import {
 import {
   applyFirestorePlanningDocsSnapshot,
   persistPlanningDocsConflictLocal,
+  recordPlanningDocsDeleteSuccess,
   recordPlanningDocsPushSuccess,
 } from './main/planningDocsFirestoreHydrate';
-import { listPlanningDocsPushCandidates } from './main/planningDocsFirestorePush';
+import {
+  listPlanningDocsDeleteCandidates,
+  listPlanningDocsPushCandidates,
+} from './main/planningDocsFirestorePush';
 import {
   planningDocsSyncFolderAbs,
   resolvePlanningDocConflictMarkMerged,
@@ -224,8 +228,11 @@ import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDo
 import type {
   PlanningDocsApplyFirestoreSnapshotResult,
   PlanningDocsConflictRecordV1,
+  PlanningDocsListDeleteCandidatesResult,
   PlanningDocsListPushCandidatesResult,
   PlanningDocsPersistConflictPayload,
+  PlanningDocsRecordDeleteSuccessPayload,
+  PlanningDocsRecordDeleteSuccessResult,
   PlanningDocsRecordPushSuccessPayload,
   PlanningDocsRecordPushSuccessResult,
   PlanningDocsResolveConflictIpcResult,
@@ -234,6 +241,7 @@ import type {
 } from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsDeleteResult,
   PlanningDocsWriteResult,
 } from './planningDocs/types';
 import {
@@ -6268,6 +6276,21 @@ app.whenReady().then(async () => {
     },
   );
 
+  ipcMain.handle(
+    'planningDocs:delete',
+    async (_e, relativePath: unknown): Promise<PlanningDocsDeleteResult> => {
+      if (typeof relativePath !== 'string') {
+        return { error: 'INVALID_PATH' };
+      }
+      const result = await activePlanningDocsProvider().delete(relativePath);
+      if ('ok' in result && result.ok) {
+        notifyPlanningDocsChanged();
+        planningDocsWatcher?.sync();
+      }
+      return result;
+    },
+  );
+
   ipcMain.handle('planningDocs:cloudMigration:getState', async (_e, cloudProjectId: string) => {
     const key = appStateStore.get().activeProjectKey;
     if (!key || key.kind !== 'cloud' || key.id !== cloudProjectId) {
@@ -6361,6 +6384,36 @@ app.whenReady().then(async () => {
       if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
       const candidates = await listPlanningDocsPushCandidates(planningDir, projectId);
       return { ok: true, candidates };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:listDeleteCandidates',
+    async (_e, projectId: string): Promise<PlanningDocsListDeleteCandidatesResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      const candidates = await listPlanningDocsDeleteCandidates(planningDir, projectId);
+      return { ok: true, candidates };
+    },
+  );
+
+  ipcMain.handle(
+    'planningDocs:recordDeleteSuccess',
+    async (_e, payload: PlanningDocsRecordDeleteSuccessPayload): Promise<PlanningDocsRecordDeleteSuccessResult> => {
+      const key = appStateStore.get().activeProjectKey;
+      if (!key || key.kind !== 'cloud' || key.id !== payload.projectId) {
+        return { ok: false, code: 'NOT_ACTIVE_CLOUD' };
+      }
+      const norm = normalizePlanningDocRelativePath(payload.relativePath);
+      if (!norm) return { ok: false, code: 'INVALID_PATH' };
+      const planningDir = resolvePlanningDocsDir();
+      if (!planningDir) return { ok: false, code: 'NO_PLANNING_DIR' };
+      await recordPlanningDocsDeleteSuccess(planningDir, norm);
+      return { ok: true };
     },
   );
 

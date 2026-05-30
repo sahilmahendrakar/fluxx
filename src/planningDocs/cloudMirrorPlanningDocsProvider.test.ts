@@ -9,6 +9,7 @@ describe('CloudMirrorPlanningDocsProvider', () => {
       list: vi.fn(async () => ({ files: [{ relativePath: 'a.md' }] })),
       read: vi.fn(async () => ({ content: 'body' })),
       write: vi.fn(async () => ({ ok: true as const })),
+      delete: vi.fn(async () => ({ ok: true as const })),
     };
     const cloud = new CloudMirrorPlanningDocsProvider(inner);
     expect(cloud.backendKind).toBe('cloud-workspace-mirror-disk');
@@ -16,8 +17,10 @@ describe('CloudMirrorPlanningDocsProvider', () => {
     await expect(cloud.list()).resolves.toEqual({ files: [{ relativePath: 'a.md' }] });
     await expect(cloud.read('a.md')).resolves.toEqual({ content: 'body' });
     await expect(cloud.write('a.md', 'next')).resolves.toEqual({ ok: true });
+    await expect(cloud.delete('a.md')).resolves.toEqual({ ok: true });
     expect(inner.list).toHaveBeenCalledTimes(1);
     expect(inner.read).toHaveBeenCalledWith('a.md');
     expect(inner.write).toHaveBeenCalledWith('a.md', 'next');
+    expect(inner.delete).toHaveBeenCalledWith('a.md');
   });
 });
