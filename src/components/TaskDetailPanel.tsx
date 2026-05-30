@@ -1319,6 +1319,7 @@ export default function TaskDetailPanel({
               <GithubPrIconButton
                 githubPr={task.githubPr}
                 taskId={task.id}
+                taskStatus={task.status}
                 hasWorktree={Boolean(resolvedWorktreePath?.trim())}
                 onTaskPrClick={onTaskPrClick}
                 prLoading={prLoading}
