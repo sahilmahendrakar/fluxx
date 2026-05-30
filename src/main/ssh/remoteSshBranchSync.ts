@@ -30,6 +30,8 @@ import {
   resolveCreateSourceBranchIfMissingForStart,
 } from '../../taskBranches';
 import { collectRepoBranchDiscovery } from '../repoGit';
+import { hasLegacyPastedRepoEnv } from '../../repoEnvFiles';
+import { resolveEnabledEnvFileCopySources } from '../../worktreeEnvFiles';
 
 export type RemoteSshBranchSyncDeps = {
   deviceStore: DeviceStore;
@@ -236,6 +238,10 @@ export async function syncRemoteSshTaskToLocal(
   let localWorktreePath = expectedLocalPath;
   try {
     const sourceOpts = await resolveLocalSourceBranchOpts(task, repoCfg);
+    const enabledEnvFileSources = await resolveEnabledEnvFileCopySources(repoCfg.rootPath, {
+      envFiles: repoCfg.envFiles,
+      legacyPastedEnvActive: hasLegacyPastedRepoEnv(repoCfg),
+    });
     deps.worktreeService.setProjectDir(projectDir);
     deps.worktreeService.setRootPath(repoCfg.rootPath);
     const created = await deps.worktreeService.create({
@@ -250,6 +256,7 @@ export async function syncRemoteSshTaskToLocal(
         baseBranch: repoCfg.baseBranch,
         setupScript: repoCfg.setupScript,
         env: repoCfg.env,
+        enabledEnvFileSources,
       },
       source: sourceOpts,
       layout: 'repo-scoped',

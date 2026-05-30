@@ -90,6 +90,8 @@ import {
 import type { TaskExecutionDeviceRef } from './types';
 import { ensureFluxxBaseDirMigrated } from './main/fluxxBaseDir';
 import { WorktreeService } from './main/WorktreeService';
+import { hasLegacyPastedRepoEnv } from './repoEnvFiles';
+import { resolveEnabledEnvFileCopySources } from './worktreeEnvFiles';
 import {
   cwdUnderTrustPromptAutorespondRoots,
   trustPromptAutorespondRootsForProject,
@@ -4714,6 +4716,13 @@ app.whenReady().then(async () => {
         sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir);
         const sourceOpts = await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg);
         const layout = 'repo-scoped' as const;
+        const enabledEnvFileSources = await resolveEnabledEnvFileCopySources(
+          sessionRepoCfg.rootPath,
+          {
+            envFiles: sessionRepoCfg.envFiles,
+            legacyPastedEnvActive: hasLegacyPastedRepoEnv(sessionRepoCfg),
+          },
+        );
         const created = await worktreeService.create({
           task: {
             id: merged.id,
@@ -4726,6 +4735,7 @@ app.whenReady().then(async () => {
             baseBranch: sessionRepoCfg.baseBranch,
             setupScript: sessionRepoCfg.setupScript,
             env: sessionRepoCfg.env,
+            enabledEnvFileSources,
           },
           source: sourceOpts,
           layout,

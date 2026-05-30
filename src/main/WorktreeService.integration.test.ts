@@ -158,6 +158,153 @@ describe('WorktreeService.create integration', () => {
     }
   });
 
+  it('copies multiple enabled env files into a new worktree before setup', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-files-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      await fs.writeFile(path.join(gitRoot, '.env'), 'ROOT_ENV=1\n', 'utf8');
+      await fs.writeFile(path.join(gitRoot, '.env.local'), 'LOCAL_ONLY=1\n', 'utf8');
+
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const { worktreePath } = await svc.create({
+        task: { id: 'task-multi-env', title: 'Multi env files' },
+        repo: {
+          repoId:
+            '1313131313131313131313131313131313131313131313131313131313131313',
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+          enabledEnvFileSources: [
+            { fileName: '.env', sourcePath: path.join(gitRoot, '.env') },
+            { fileName: '.env.local', sourcePath: path.join(gitRoot, '.env.local') },
+          ],
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      await expect(fs.readFile(path.join(worktreePath, '.env'), 'utf8')).resolves.toBe(
+        'ROOT_ENV=1\n',
+      );
+      await expect(fs.readFile(path.join(worktreePath, '.env.local'), 'utf8')).resolves.toBe(
+        'LOCAL_ONLY=1\n',
+      );
+
+      await svc.remove(worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('warns and continues when an enabled env source file is missing', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-missing-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    try {
+      await initGitRepo(gitRoot);
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const { worktreePath } = await svc.create({
+        task: { id: 'task-missing-env', title: 'Missing env source' },
+        repo: {
+          repoId:
+            '1414141414141414141414141414141414141414141414141414141414141414',
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+          enabledEnvFileSources: [
+            {
+              fileName: '.env.local',
+              sourcePath: path.join(gitRoot, '.env.local'),
+            },
+          ],
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      await expect(fs.access(path.join(worktreePath, '.env.local'))).rejects.toThrow();
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes('enabled env file missing at source'),
+        ),
+      ).toBe(true);
+
+      await svc.remove(worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not refresh env files when reusing a healthy existing worktree', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-reuse-'));
+    const gitRoot = path.join(root, 'repo');
+    const projectDir = path.join(root, 'flux-project');
+    const repoId = primaryRepoId;
+    try {
+      await initGitRepo(gitRoot);
+      await fs.writeFile(path.join(gitRoot, '.env'), 'SNAPSHOT=v1\n', 'utf8');
+
+      const svc = new WorktreeService(gitRoot, projectDir);
+      const first = await svc.create({
+        task: { id: 'env-snapshot-task', title: 'Env snapshot' },
+        repo: {
+          repoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+          enabledEnvFileSources: [
+            { fileName: '.env', sourcePath: path.join(gitRoot, '.env') },
+          ],
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+      await expect(fs.readFile(path.join(first.worktreePath, '.env'), 'utf8')).resolves.toBe(
+        'SNAPSHOT=v1\n',
+      );
+
+      await fs.writeFile(path.join(gitRoot, '.env'), 'SNAPSHOT=v2\n', 'utf8');
+      const second = await svc.create({
+        task: {
+          id: 'env-snapshot-task',
+          title: 'Env snapshot',
+          fluxxWorkBranch: first.branch,
+        },
+        repo: {
+          repoId,
+          gitRootPath: gitRoot,
+          baseBranch: 'main',
+          enabledEnvFileSources: [
+            { fileName: '.env', sourcePath: path.join(gitRoot, '.env') },
+          ],
+        },
+        source: {
+          sourceBranchShort: 'main',
+          createSourceBranchIfMissing: false,
+        },
+        layout: 'repo-scoped',
+      });
+
+      expect(second.worktreePath).toBe(first.worktreePath);
+      await expect(fs.readFile(path.join(second.worktreePath, '.env'), 'utf8')).resolves.toBe(
+        'SNAPSHOT=v1\n',
+      );
+
+      await svc.remove(second.worktreePath, path.resolve(gitRoot));
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('writes env contents and runs the selected repo setup script', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-'));
     const gitRoot = path.join(root, 'repo');

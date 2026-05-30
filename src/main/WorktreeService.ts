@@ -18,6 +18,11 @@ import {
   worktreePathSegmentsForFluxxBranch,
 } from './fluxxTaskWorkBranchNaming';
 import { normalizeGitBranchShortName, validateStoredTaskSourceBranchName } from '../taskBranches';
+import {
+  copyEnabledEnvFilesIntoWorktree,
+  writeLegacyPastedEnvToWorktree,
+  type WorktreeEnvFileCopySource,
+} from '../worktreeEnvFiles';
 
 const execFile = promisify(execFileCallback);
 
@@ -52,7 +57,10 @@ export type WorktreeRepoCreateParams = {
   gitRootPath: string;
   baseBranch: string;
   setupScript?: string;
+  /** Legacy pasted contents written to `<worktree>/.env` when set. */
   env?: string;
+  /** Enabled root env files to copy into the new worktree (file copy, not symlinks). */
+  enabledEnvFileSources?: readonly WorktreeEnvFileCopySource[];
 };
 
 export class WorktreeService {
@@ -232,15 +240,12 @@ export class WorktreeService {
       );
     }
 
+    if (repo.enabledEnvFileSources && repo.enabledEnvFileSources.length > 0) {
+      await copyEnabledEnvFilesIntoWorktree(worktreePath, repo.enabledEnvFileSources);
+    }
+
     if (repo.env && repo.env.length > 0) {
-      try {
-        await fs.writeFile(path.join(worktreePath, '.env'), repo.env, 'utf8');
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `[WorktreeService.create] failed to write .env at ${worktreePath}: ${message}`,
-        );
-      }
+      await writeLegacyPastedEnvToWorktree(worktreePath, repo.env);
     }
 
     if (repo.setupScript && repo.setupScript.trim().length > 0) {
