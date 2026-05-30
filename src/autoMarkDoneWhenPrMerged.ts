@@ -32,8 +32,10 @@ export function shouldAutoMarkDoneAfterPrMergeRefresh(args: {
   refreshedGithubPr: TaskGithubPr;
   prefEnabled: boolean;
   allTasks: Task[];
+  gitIntegrationEnabled?: boolean;
 }): boolean {
-  const { task, refreshedGithubPr, prefEnabled, allTasks } = args;
+  const { task, refreshedGithubPr, prefEnabled, allTasks, gitIntegrationEnabled } = args;
+  if (gitIntegrationEnabled === false) return false;
   if (!prefEnabled) return false;
   if (task.status === 'done') return false;
   if (!ALLOWED_STATUS_FOR_PR_MERGE_AUTO_DONE.has(task.status)) return false;

@@ -1867,6 +1867,14 @@ app.whenReady().then(async () => {
     }
   }
 
+  async function readGitIntegrationEnabled(): Promise<boolean> {
+    try {
+      return await projectStore.getGitIntegrationEnabledAt(activeProjectDir());
+    } catch {
+      return true;
+    }
+  }
+
   ipcMain.handle('project:getRepos', async (): Promise<RepoConfig[]> => {
     return projectStore.getReposAt(activeProjectDir());
   });
@@ -3835,6 +3843,13 @@ app.whenReady().then(async () => {
       if (!parsed.ok) {
         return { ok: false, code: 'NO_PROJECT', message: parsed.message };
       }
+      if (!(await readGitIntegrationEnabled())) {
+        return {
+          ok: false,
+          code: 'PR_CREATE_FAILED',
+          message: 'Git integration is off for this project. Enable it in Project settings to use pull requests.',
+        };
+      }
       const { taskId, title: payloadTitle } = parsed.payload;
       const rootPath = worktreeService.getRootPath();
       if (!rootPath) {
@@ -4003,6 +4018,13 @@ app.whenReady().then(async () => {
       if (!taskId) {
         return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
       }
+      if (!(await readGitIntegrationEnabled())) {
+        return {
+          ok: false,
+          code: 'NO_PROJECT',
+          message: 'Git integration is off for this project.',
+        };
+      }
       const rootPath = worktreeService.getRootPath();
       const projectDir = worktreeService.getProjectDir();
       if (!rootPath || !projectDir) {
@@ -4076,8 +4098,11 @@ app.whenReady().then(async () => {
         }
 
         let autoMarkPref = false;
+        const gitEnabled = await readGitIntegrationEnabled();
         try {
-          autoMarkPref = await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir());
+          autoMarkPref = gitEnabled
+            ? await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir())
+            : false;
         } catch (err) {
           console.warn('[tasks:refreshPullRequest] failed to read autoMarkDoneWhenPrMerged', err);
         }
@@ -4090,6 +4115,7 @@ app.whenReady().then(async () => {
             refreshedGithubPr: viewed.githubPr,
             prefEnabled: autoMarkPref,
             allTasks,
+            gitIntegrationEnabled: gitEnabled,
           })
         ) {
           const destCol = sortColumn(
@@ -4120,10 +4146,11 @@ app.whenReady().then(async () => {
             console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
           }
         } else {
-          const autoReview = await readAutoMoveToReviewWhenPrOpen();
+          const autoReview = gitEnabled ? await readAutoMoveToReviewWhenPrOpen() : false;
           if (
             shouldAutoMoveTaskToReviewForOpenPr({
               enabled: autoReview,
+              gitIntegrationEnabled: gitEnabled,
               taskStatus: rowForAuto.status,
               githubPr: viewed.githubPr,
               task: rowForAuto,

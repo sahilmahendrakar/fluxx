@@ -16,7 +16,7 @@ import {
 import type { OpenWorkspaceTarget } from '../types';
 import { OpenWorkspaceTargetIcon } from './openWorkspaceTargetIcons';
 
-const DEFAULT_DISABLED_TITLE = "Start a session to create this task's worktree first.";
+const DEFAULT_DISABLED_TITLE = "Start a session to open this task's working folder.";
 const MENU_MAX_H_PX = 220;
 const MENU_Z = 300;
 

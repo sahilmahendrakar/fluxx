@@ -16,6 +16,7 @@ export async function applyGithubPrRefreshFromRenderer(input: {
   provider: TaskProvider | null;
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
+  gitIntegrationEnabled?: boolean;
   onCloudPrMergedAutoDone?: (args: { previous: Task; updated: Task }) => Promise<void>;
 }): Promise<void> {
   const {
@@ -27,6 +28,7 @@ export async function applyGithubPrRefreshFromRenderer(input: {
     provider,
     autoMarkDoneWhenPrMerged,
     autoMoveToReviewWhenPrOpen,
+    gitIntegrationEnabled,
     onCloudPrMergedAutoDone,
   } = input;
   if (projectKind === 'local') {
@@ -42,6 +44,7 @@ export async function applyGithubPrRefreshFromRenderer(input: {
     snapshot,
     autoMarkDoneWhenPrMerged,
     autoMoveToReviewWhenPrOpen,
+    gitIntegrationEnabled,
   });
   if (!patch) return;
   const updated = await provider.update(taskId, patch);

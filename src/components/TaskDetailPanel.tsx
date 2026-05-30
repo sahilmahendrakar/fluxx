@@ -225,6 +225,8 @@ export interface TaskDetailPanelProps {
   autoStartWhenUnblockedProject?: boolean;
   /** Electron Playwright validation opt-in for this project. */
   validationEnabledProject?: boolean;
+  /** When false, hides PR controls, source-branch picker, and git SSH sync (gitless). Defaults to on. */
+  gitEnabledProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
@@ -349,6 +351,7 @@ export default function TaskDetailPanel({
   cleanupLoading = false,
   autoStartWhenUnblockedProject = false,
   validationEnabledProject = false,
+  gitEnabledProject = true,
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
@@ -541,7 +544,7 @@ export default function TaskDetailPanel({
   }, [task, primaryRepoId, showRepoSection, repoFieldLocked, repoDraftId]);
 
   useEffect(() => {
-    if (!task) return;
+    if (!task || !gitEnabledProject) return;
     let cancelled = false;
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
@@ -559,7 +562,7 @@ export default function TaskDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, discoveryRepoId, primaryRepoId]);
+  }, [task?.id, discoveryRepoId, primaryRepoId, gitEnabledProject]);
 
   useEffect(() => {
     if (!task || !branchDiscovery) return;
@@ -1315,12 +1318,22 @@ export default function TaskDetailPanel({
                   disabled={cleanUpDisabled}
                   title={
                     cleanupLoading
-                      ? 'Cleaning up workspace…'
-                      : 'Tear down agent session, terminals, and worktree for this task'
+                      ? gitEnabledProject
+                        ? 'Cleaning up workspace…'
+                        : 'Stopping sessions…'
+                      : gitEnabledProject
+                        ? 'Tear down agent session, terminals, and worktree for this task'
+                        : 'Stop running agent sessions for this task'
                   }
                   className={cleanUpDisabled ? markDoneBtnDisabled : markDoneBtn}
                 >
-                  {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
+                  {cleanupLoading
+                    ? gitEnabledProject
+                      ? 'Cleaning up…'
+                      : 'Stopping sessions…'
+                    : gitEnabledProject
+                      ? 'Clean up'
+                      : 'Stop sessions'}
                 </button>
               ) : null}
               <OpenInWorkspaceButton
@@ -1336,6 +1349,7 @@ export default function TaskDetailPanel({
                 githubPr={task.githubPr}
                 taskId={task.id}
                 hasWorktree={Boolean(resolvedWorktreePath?.trim())}
+                gitEnabled={gitEnabledProject}
                 onTaskPrClick={onTaskPrClick}
                 prLoading={prLoading}
                 prAgentAwaiting={prAgentAwaiting}
@@ -1820,6 +1834,7 @@ export default function TaskDetailPanel({
                 ) : null}
 
                 <TaskSourceBranchPicker
+                  gitEnabled={gitEnabledProject}
                   variant="panel"
                   idPrefix={`task-${task.id}-branch`}
                   branchInput={branchDraft}
@@ -1831,23 +1846,23 @@ export default function TaskDetailPanel({
                   repoScopeLabel={branchScopeLabel}
                   onInputBlur={() => void persistSourceMetadata()}
                 />
-                {sourceMetadataError ? (
+                {gitEnabledProject && sourceMetadataError ? (
                   <p className="mt-2 text-[11px] leading-snug text-destructive" role="alert">
                     {sourceMetadataError}
                   </p>
                 ) : null}
-                {repoFieldLocked ? (
+                {gitEnabledProject && repoFieldLocked ? (
                   <p className="mt-2 text-[11px] leading-snug text-status-needs-input-foreground">
                     {task.githubPr?.url?.trim()
                       ? 'Repository and source branch cannot be edited while a GitHub pull request is linked to this task. Clear the pull request metadata first.'
                       : 'The repository and source branch are fixed once there is a worktree or any agent session for this task (including after the session ends), or while a session is starting. On cloud projects, metadata is shared with your team; git branch lists are always read from this computer.'}
                   </p>
-                ) : (
+                ) : gitEnabledProject ? (
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     Updates when you leave the repository or branch field. If session start fails
                     locally, check the error message and your clone.
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
 

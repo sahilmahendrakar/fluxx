@@ -15,10 +15,12 @@ export const AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN_SOURCE_STATUSES: readonly TaskStat
 
 export function shouldAutoMoveTaskToReviewForOpenPr(input: {
   enabled: boolean;
+  gitIntegrationEnabled?: boolean;
   taskStatus: TaskStatus;
   githubPr: TaskGithubPr | undefined;
   task: Pick<Task, 'id' | 'fluxxWorkBranch'>;
 }): boolean {
+  if (input.gitIntegrationEnabled === false) return false;
   if (!input.enabled) return false;
   if (input.githubPr?.state !== 'open') return false;
   if (!AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN_SOURCE_STATUSES.includes(input.taskStatus)) {
