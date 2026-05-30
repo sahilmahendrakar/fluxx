@@ -287,6 +287,31 @@ describe('ProjectStore repo-id operations', () => {
     await expect(store.addRepoAt(projectDir, rootB)).rejects.toThrow(/already part of this project/);
   });
 
+  it('addRepoAt auto-detects root env files for the new repository', async () => {
+    const rootA = path.join(tmp, 'a');
+    const rootB = path.join(tmp, 'b');
+    const projectDir = path.join(tmp, 'project-env');
+    await fs.mkdir(rootA, { recursive: true });
+    await fs.mkdir(rootB, { recursive: true });
+    await touchGitRepo(rootA);
+    await touchGitRepo(rootB);
+    await fs.writeFile(path.join(rootB, '.env'), 'A=1\n', 'utf8');
+    await fs.writeFile(path.join(rootB, '.env.local'), 'B=2\n', 'utf8');
+    await writeLegacyConfig(projectDir, rootA);
+
+    const store = new ProjectStore(tmp);
+    await store.init(projectDir);
+    const repos = await store.addRepoAt(projectDir, rootB);
+    const added = repos.find((r) => path.resolve(r.rootPath) === path.resolve(rootB));
+    expect(added?.envFiles?.sources).toEqual(
+      expect.arrayContaining([
+        { fileName: '.env', enablement: 'enabled' },
+        { fileName: '.env.local', enablement: 'enabled' },
+      ]),
+    );
+    expect(added?.envFiles?.lastDetectedAt).toEqual(expect.any(String));
+  });
+
   it('preserves added repos after reopening the local project root', async () => {
     const rootA = path.join(tmp, 'a');
     const rootB = path.join(tmp, 'b');

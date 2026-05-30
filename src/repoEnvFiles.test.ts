@@ -7,7 +7,9 @@ import { parseRepoBindingsRecord } from './cloudLocalBindingMigration';
 import {
   REPO_ENV_FILE_ALLOWLIST,
   REPO_ENV_FILE_EXCLUDED_NAMES,
+  detectAndBuildEnvFilesConfig,
   detectRepoRootEnvFiles,
+  envFileSourcesConfigFromDetection,
   hasLegacyPastedRepoEnv,
   isExcludedRepoEnvFileName,
   isRepoEnvFileName,
@@ -126,6 +128,27 @@ describe('detectRepoRootEnvFiles', () => {
     expect(dotEnv?.presence).toBe('found');
     expect(dotEnv?.enablement).toBe('disabled');
     expect(result.legacyPastedEnvActive).toBe(true);
+  });
+});
+
+describe('envFileSourcesConfigFromDetection', () => {
+  it('maps detection rows to persisted sources without file bodies', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-env-persist-'));
+    try {
+      await fs.writeFile(path.join(tmp, '.env'), 'A=1\n', 'utf8');
+      const { detection } = await detectAndBuildEnvFilesConfig({ rootPath: tmp });
+      const config = envFileSourcesConfigFromDetection(detection);
+      expect(config.lastDetectedAt).toBe(detection.detectedAt);
+      expect(config.sources).toEqual(
+        detection.files.map((f) => ({
+          fileName: f.fileName,
+          enablement: f.enablement,
+        })),
+      );
+      expect(JSON.stringify(config)).not.toMatch(/A=1/);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
   });
 });
 

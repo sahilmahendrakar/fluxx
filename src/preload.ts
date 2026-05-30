@@ -15,6 +15,9 @@ import type {
   RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  RepoEnvFileDetectionResult,
+  RepoEnvFileEnablement,
+  RepoEnvFileName,
   RepoManagementState,
   RepoSettingsPatch,
   ResolveTaskWorktreeIpcPayload,
@@ -217,6 +220,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:bindCloudSharedRepo', payload) as Promise<
         | { ok: true; binding: CloudProjectLocalBinding }
         | { error: string; code?: 'NOT_GIT_REPO' }
+      >,
+    detectRepoEnvFiles: (payload: { repoId: string }) =>
+      ipcRenderer.invoke('project:detectRepoEnvFiles', payload) as Promise<
+        | { ok: true; detection: RepoEnvFileDetectionResult }
+        | { error: string }
+      >,
+    rescanRepoEnvFiles: (payload: {
+      repoId: string;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('project:rescanRepoEnvFiles', payload) as Promise<
+        | { ok: true; detection: RepoEnvFileDetectionResult; repos: RepoConfig[] }
+        | { error: string }
+      >,
+    setRepoEnvFileEnablement: (payload: {
+      repoId: string;
+      fileName: RepoEnvFileName;
+      enablement: RepoEnvFileEnablement;
+      sharedRepos?: CloudSharedRepo[];
+    }) =>
+      ipcRenderer.invoke('project:setRepoEnvFileEnablement', payload) as Promise<
+        | { ok: true; detection: RepoEnvFileDetectionResult; repos: RepoConfig[] }
+        | { error: string }
       >,
     syncCloudSharedRepos: (sharedRepos: CloudSharedRepo[]) =>
       ipcRenderer.invoke('project:syncCloudSharedRepos', sharedRepos) as Promise<

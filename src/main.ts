@@ -56,6 +56,15 @@ import {
 } from './cloudLocalBindingMigration';
 import { canonicalCloudProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
+import {
+  bindingEnvFilesForRepo,
+  detectAndPersistRepoEnvFiles,
+  detectRepoEnvFilesForSettings,
+  envFilesWithEnablement,
+  persistRepoEnvFilesForCloudBinding,
+  persistRepoEnvFilesForLocalProject,
+} from './main/repoEnvFileSettings';
+import { isRepoEnvFileName } from './repoEnvFiles';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
@@ -266,6 +275,8 @@ import type {
   RepoBranchDiscoveryRequest,
   RepoBranchDiscoveryResponse,
   RepoConfig,
+  RepoEnvFileDetectionResult,
+  RepoEnvFileEnablement,
   RepoManagementState,
   RepoSettingsPatch,
   Session,
@@ -2423,6 +2434,180 @@ app.whenReady().then(async () => {
         }
         const repos = await projectStore.addRepoAt(activeProjectDir(), root);
         return { ok: true, repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  async function resolveRepoEnvFilesContext(repoId: string): Promise<
+    | {
+        projectDir: string;
+        projectKind: 'local' | 'cloud';
+        cloudProjectId?: string;
+        repo: RepoConfig;
+      }
+    | { error: string }
+  > {
+    const rid = repoId.trim();
+    if (!rid) return { error: 'repoId is required' };
+    const projectDir = worktreeService.getProjectDir();
+    if (!projectDir) return { error: 'No workspace' };
+    const repos = await projectStore.getReposAt(projectDir);
+    const repo = repos.find((r) => r.id === rid);
+    if (!repo) return { error: `Unknown repository id: ${rid}` };
+    const key = appStateStore.get().activeProjectKey;
+    const projectKind = key?.kind === 'cloud' ? 'cloud' : 'local';
+    return {
+      projectDir,
+      projectKind,
+      cloudProjectId: key?.kind === 'cloud' ? key.id : undefined,
+      repo,
+    };
+  }
+
+  ipcMain.handle(
+    'project:detectRepoEnvFiles',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; detection: RepoEnvFileDetectionResult }
+      | { error: string }
+    > => {
+      try {
+        const repoId =
+          payload && typeof payload === 'object' && typeof (payload as { repoId?: unknown }).repoId === 'string'
+            ? (payload as { repoId: string }).repoId
+            : '';
+        const ctx = await resolveRepoEnvFilesContext(repoId);
+        if ('error' in ctx) return ctx;
+        const bindingEnvFiles =
+          ctx.projectKind === 'cloud' && ctx.cloudProjectId
+            ? bindingEnvFilesForRepo(bindingStore, ctx.cloudProjectId, ctx.repo.id)
+            : undefined;
+        const detection = await detectRepoEnvFilesForSettings(ctx.repo, bindingEnvFiles);
+        return { ok: true, detection };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'project:rescanRepoEnvFiles',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; detection: RepoEnvFileDetectionResult; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        const repoId =
+          payload && typeof payload === 'object' && typeof (payload as { repoId?: unknown }).repoId === 'string'
+            ? (payload as { repoId: string }).repoId
+            : '';
+        const sharedRepos =
+          payload && typeof payload === 'object'
+            ? parseCloudSharedReposArg((payload as { sharedRepos?: unknown }).sharedRepos)
+            : [];
+        const ctx = await resolveRepoEnvFilesContext(repoId);
+        if ('error' in ctx) return ctx;
+        const result = await detectAndPersistRepoEnvFiles({
+          projectKind: ctx.projectKind,
+          projectStore,
+          bindingStore,
+          projectDir: ctx.projectDir,
+          cloudProjectId: ctx.cloudProjectId,
+          repoId: ctx.repo.id,
+          repo: ctx.repo,
+        });
+        if (ctx.projectKind === 'cloud' && ctx.cloudProjectId && sharedRepos.length > 0) {
+          await syncCloudReposDiskFromBinding({
+            cloudProjectId: ctx.cloudProjectId,
+            projectDir: ctx.projectDir,
+            sharedRepos,
+          });
+          result.repos = await projectStore.getReposAt(ctx.projectDir);
+        }
+        return { ok: true, detection: result.detection, repos: result.repos };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'project:setRepoEnvFileEnablement',
+    async (
+      _e,
+      payload: unknown,
+    ): Promise<
+      | { ok: true; detection: RepoEnvFileDetectionResult; repos: RepoConfig[] }
+      | { error: string }
+    > => {
+      try {
+        if (!payload || typeof payload !== 'object') {
+          return { error: 'Invalid payload' };
+        }
+        const p = payload as Record<string, unknown>;
+        const repoId = typeof p.repoId === 'string' ? p.repoId : '';
+        const fileName = typeof p.fileName === 'string' ? p.fileName : '';
+        const enablement = p.enablement;
+        const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
+        if (!isRepoEnvFileName(fileName)) {
+          return { error: 'Unknown env file name' };
+        }
+        if (enablement !== 'enabled' && enablement !== 'disabled') {
+          return { error: 'enablement must be enabled or disabled' };
+        }
+        const ctx = await resolveRepoEnvFilesContext(repoId);
+        if ('error' in ctx) return ctx;
+        const bindingEnvFiles =
+          ctx.projectKind === 'cloud' && ctx.cloudProjectId
+            ? bindingEnvFilesForRepo(bindingStore, ctx.cloudProjectId, ctx.repo.id)
+            : undefined;
+        const detection = await detectRepoEnvFilesForSettings(ctx.repo, bindingEnvFiles);
+        const envFiles = envFilesWithEnablement(
+          detection,
+          fileName,
+          enablement as RepoEnvFileEnablement,
+        );
+        let repos: RepoConfig[];
+        if (ctx.projectKind === 'cloud' && ctx.cloudProjectId) {
+          await persistRepoEnvFilesForCloudBinding({
+            bindingStore,
+            cloudProjectId: ctx.cloudProjectId,
+            repoId: ctx.repo.id,
+            envFiles,
+          });
+          if (sharedRepos.length > 0) {
+            await syncCloudReposDiskFromBinding({
+              cloudProjectId: ctx.cloudProjectId,
+              projectDir: ctx.projectDir,
+              sharedRepos,
+            });
+          }
+          repos = await projectStore.getReposAt(ctx.projectDir);
+        } else {
+          repos = await persistRepoEnvFilesForLocalProject({
+            projectStore,
+            projectDir: ctx.projectDir,
+            repoId: ctx.repo.id,
+            envFiles,
+          });
+        }
+        const nextDetection = await detectRepoEnvFilesForSettings(
+          repos.find((r) => r.id === ctx.repo.id) ?? ctx.repo,
+          ctx.projectKind === 'cloud' && ctx.cloudProjectId
+            ? bindingEnvFilesForRepo(bindingStore, ctx.cloudProjectId, ctx.repo.id)
+            : undefined,
+        );
+        return { ok: true, detection: nextDetection, repos };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
