@@ -16,7 +16,10 @@ import {
   parseRepoBindingsRecord,
   stripLegacyRootPathForPersistence,
 } from '../cloudLocalBindingMigration';
-import { resolvedPrefsFromBinding } from '../cloudBindingPrefs';
+import {
+  resolvedPrefsFromBinding,
+  type ResolvedPrefsFromBindingOptions,
+} from '../cloudBindingPrefs';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
 
 /**
@@ -224,8 +227,8 @@ export class LocalBindingStore {
     return out;
   }
 
-  getPrefs(projectId: string) {
-    return resolvedPrefsFromBinding(this.bindings[projectId]);
+  getPrefs(projectId: string, options?: ResolvedPrefsFromBindingOptions) {
+    return resolvedPrefsFromBinding(this.bindings[projectId], options);
   }
 
   getDefaultDeviceId(projectId: string): string | undefined {

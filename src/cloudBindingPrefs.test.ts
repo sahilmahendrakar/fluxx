@@ -56,6 +56,19 @@ describe('resolvedPrefsFromBinding', () => {
     expect(project.repoMachineBindings).toEqual({});
   });
 
+  it('uses global onboarding default agents when binding omits them', () => {
+    const prefs = resolvedPrefsFromBinding(
+      {
+        lastOpenedAt: 't',
+        repoBindings: { r1: { rootPath: '/x', lastOpenedAt: 't' } },
+        primaryRepoId: 'r1',
+      },
+      { globalDefaultAgent: 'codex' },
+    );
+    expect(prefs.planningAgent).toBe('codex');
+    expect(prefs.defaultTaskAgent).toBe('codex');
+  });
+
   it('treats legacy autoDeleteTaskWhenDone as cleanup enabled', () => {
     const prefs = resolvedPrefsFromBinding({
       lastOpenedAt: 't',
