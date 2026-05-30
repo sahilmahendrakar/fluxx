@@ -8,6 +8,7 @@ import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
+import { mergeRepoEnvFileSources } from './repoEnvFiles';
 
 /**
  * Builds `repos[]` + primary root for `~/.fluxx/.../config.json` from Firestore
@@ -53,11 +54,13 @@ export function repoConfigsFromCloudSharedAndBinding(
   for (const sr of sharedRepos) {
     const machine = rb[sr.id];
     if (!machine?.rootPath) continue;
+    const envFiles = mergeRepoEnvFileSources(undefined, machine.envFiles);
     withBindings.push({
       id: sr.id,
       name: sr.name,
       rootPath: path.resolve(machine.rootPath),
       baseBranch: sr.baseBranch,
+      ...(envFiles ? { envFiles } : {}),
     });
   }
   if (withBindings.length === 0) {

@@ -99,8 +99,67 @@ export type RepoBranchDiscoveryRequest = {
 
 /** Fields editable through project repo settings IPC (by root path or repo id). */
 export type RepoSettingsPatch = Partial<
-  Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env' | 'name'>
+  Pick<RepoConfig, 'baseBranch' | 'setupScript' | 'env' | 'envFiles' | 'name'>
 >;
+
+/**
+ * Root-level env filenames Fluxx may auto-detect in v1 (repo root only).
+ * Excludes templates, production, and nested monorepo paths.
+ */
+export type RepoEnvFileName =
+  | '.env'
+  | '.env.local'
+  | '.env.development'
+  | '.env.development.local'
+  | '.env.test';
+
+/** User preference for whether a detected env file is copied into new worktrees. */
+export type RepoEnvFileEnablement = 'enabled' | 'disabled';
+
+export type RepoEnvFilePresence = 'found' | 'missing';
+
+/**
+ * Persisted per-file preference (local config / machine binding only — never Firestore).
+ * Does not include secret file contents.
+ */
+export interface RepoEnvFileSource {
+  fileName: RepoEnvFileName;
+  enablement: RepoEnvFileEnablement;
+}
+
+/**
+ * Local-only env file source metadata for a bound repo clone.
+ * {@link RepoConfig.env} legacy pasted contents remain supported until migrated.
+ */
+export interface RepoEnvFileSourcesConfig {
+  sources?: RepoEnvFileSource[];
+  /** ISO timestamp of the last filesystem scan used to refresh detection metadata. */
+  lastDetectedAt?: string;
+}
+
+/**
+ * Ephemeral detection row for one allowlisted root env file (never includes file body).
+ */
+export interface RepoEnvFileDetectionEntry {
+  fileName: RepoEnvFileName;
+  /** Absolute path at the repo root. */
+  sourcePath: string;
+  presence: RepoEnvFilePresence;
+  enablement: RepoEnvFileEnablement;
+  sizeBytes?: number;
+  modifiedAt?: string;
+  /** SHA-256 hex digest of file bytes when {@link presence} is `found`. */
+  contentHash?: string;
+}
+
+/** Root-only env scan for one repository clone. */
+export interface RepoEnvFileDetectionResult {
+  repoRoot: string;
+  detectedAt: string;
+  files: RepoEnvFileDetectionEntry[];
+  /** True when legacy {@link RepoConfig.env} pasted content is still active. */
+  legacyPastedEnvActive: boolean;
+}
 
 /**
  * Per-repo configuration stored locally. The schema supports multiple repos
@@ -124,8 +183,16 @@ export interface RepoConfig {
   baseBranch: string;
   /** Optional shell script run inside each new worktree after `git worktree add`. */
   setupScript?: string;
-  /** Optional .env contents written to `<worktree>/.env` for each new task. */
+  /**
+   * Optional pasted .env contents written to `<worktree>/.env` for each new task.
+   * Prefer {@link envFiles} once migrated; kept for back-compat.
+   */
   env?: string;
+  /**
+   * Root-level env file sources on this machine (not synced for cloud projects).
+   * Never stores raw secret file contents — only filenames and enablement.
+   */
+  envFiles?: RepoEnvFileSourcesConfig;
 }
 
 export type RepoPathStatus = 'valid' | 'missing' | 'not_git';
@@ -245,6 +312,11 @@ export interface CloudSharedRepo {
 export interface CloudRepoMachineBinding {
   rootPath: string;
   lastOpenedAt: string;
+  /**
+   * Per-machine env file source prefs for this clone (localBindings.json only).
+   * When set, takes precedence over any `envFiles` row in the project `config.json` repo entry.
+   */
+  envFiles?: RepoEnvFileSourcesConfig;
 }
 
 /**
