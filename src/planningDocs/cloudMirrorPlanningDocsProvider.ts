@@ -2,6 +2,7 @@ import type { PlanningDocsProvider } from './FilesystemPlanningDocsProvider';
 import type {
   PlanningDocsBackendKind,
   PlanningDocsListResult,
+  PlanningDocsDeleteResult,
   PlanningDocsReadResult,
   PlanningDocsWriteResult,
 } from './types';
@@ -27,5 +28,9 @@ export class CloudMirrorPlanningDocsProvider implements PlanningDocsProvider {
 
   write(relativePath: string, content: string): Promise<PlanningDocsWriteResult> {
     return this.disk.write(relativePath, content);
+  }
+
+  delete(relativePath: string): Promise<PlanningDocsDeleteResult> {
+    return this.disk.delete(relativePath);
   }
 }

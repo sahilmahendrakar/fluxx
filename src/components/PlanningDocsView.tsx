@@ -6,11 +6,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Trash2 } from 'lucide-react';
 import type {
   PlanningDocFileEntry,
   PlanningDocsCloudListMeta,
+  PlanningDocsDeleteErrorCode,
   PlanningDocsWriteErrorCode,
 } from '../planningDocs/types';
+import ConfirmDialog from './ConfirmDialog';
 import type { PlanningDocsFirestoreStreamState } from '../renderer/planningDocs/usePlanningDocsFirestoreSync';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +32,7 @@ interface PlanningDocsViewProps {
   planningDocsFirestoreStream: PlanningDocsFirestoreStreamState;
   firebaseConfigured: boolean;
   onPlanningDocsMutated: () => void;
+  onDocDeleted?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
@@ -43,6 +47,22 @@ function formatDocSyncTime(iso: string | undefined): string | null {
     });
   } catch {
     return null;
+  }
+}
+
+function deleteErrorMessage(code: PlanningDocsDeleteErrorCode): string {
+  switch (code) {
+    case 'NO_PROJECT':
+      return 'No workspace is open.';
+    case 'INVALID_PATH':
+      return 'That path is not allowed.';
+    case 'FORBIDDEN_PATH':
+      return 'This path cannot be deleted here.';
+    case 'NOT_FOUND':
+      return 'This file is already gone.';
+    case 'IO_ERROR':
+    default:
+      return 'Could not delete the file. Check disk permissions and try again.';
   }
 }
 
@@ -70,6 +90,7 @@ export function PlanningDocsView({
   planningDocFiles,
   firebaseConfigured,
   onPlanningDocsMutated,
+  onDocDeleted,
   onDirtyChange,
 }: PlanningDocsViewProps) {
   const api = window.electronAPI.planningDocs;
@@ -84,6 +105,9 @@ export function PlanningDocsView({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [diskChangedBanner, setDiskChangedBanner] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const lastLoadedKeyRef = useRef('');
 
@@ -104,6 +128,7 @@ export function PlanningDocsView({
 
   useEffect(() => {
     setResolveMsg(null);
+    setDeleteError(null);
   }, [selectedPath]);
 
   useEffect(() => {
@@ -204,6 +229,21 @@ export function PlanningDocsView({
     onPlanningDocsMutated();
   }, [api, selectedPath, draft, editingAllowed, saving, onPlanningDocsMutated]);
 
+  const handleConfirmDelete = useCallback(async () => {
+    if (!selectedPath || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const r = await api.delete(selectedPath);
+    setDeleting(false);
+    setDeleteConfirmOpen(false);
+    if ('error' in r) {
+      setDeleteError(deleteErrorMessage(r.error));
+      return;
+    }
+    onDocDeleted?.();
+    onPlanningDocsMutated();
+  }, [api, selectedPath, deleting, onDocDeleted, onPlanningDocsMutated]);
+
   const reloadFromDisk = useCallback(() => {
     if (!selectedPath) return;
     setDiskChangedBanner(false);
@@ -273,8 +313,23 @@ export function PlanningDocsView({
                   <p className="mt-1 text-[12px] text-muted-foreground">Loading…</p>
                 ) : null}
                 {saveError ? <p className="mt-1 text-[12px] text-destructive">{saveError}</p> : null}
+                {deleteError ? (
+                  <p className="mt-1 text-[12px] text-destructive">{deleteError}</p>
+                ) : null}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                  disabled={!selectedPath || loadingRead || !!readError || deleting}
+                  title="Delete document"
+                  aria-label="Delete document"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                </Button>
                 <div className="flex rounded-lg border border-border p-0.5">
                   <Button
                     type="button"
@@ -411,6 +466,28 @@ export function PlanningDocsView({
           ) : null}
         </div>
       )}
+      {deleteConfirmOpen && selectedPath ? (
+        <ConfirmDialog
+          title="Delete planning document?"
+          description={
+            showCloudChrome
+              ? `Remove ${selectedPath} from this workspace. The deletion will sync to your team's shared docs.`
+              : `Permanently remove ${selectedPath} from planning/docs/.`
+          }
+          bullets={[
+            ...(dirty ? ['Unsaved edits in this tab will be lost.'] : []),
+            ...(conflictActive
+              ? ['This file has a sync conflict; deleting may still require resolving team copies.']
+              : []),
+          ]}
+          confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+          destructive
+          onConfirm={() => void handleConfirmDelete()}
+          onCancel={() => {
+            if (!deleting) setDeleteConfirmOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

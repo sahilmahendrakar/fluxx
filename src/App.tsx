@@ -3974,6 +3974,7 @@ export default function App() {
                     planningDocsFirestoreStream={planningDocsFirestoreStream}
                     firebaseConfigured={isFirebaseConfigured()}
                     onPlanningDocsMutated={() => void refreshPlanningDocList()}
+                    onDocDeleted={() => setSelectedPlanningDocPath(null)}
                     onDirtyChange={handlePlanningDocsDirtyChange}
                   />
                 </div>

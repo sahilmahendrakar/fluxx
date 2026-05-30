@@ -3,7 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { listPlanningDocsPushCandidates } from './planningDocsFirestorePush';
+import {
+  listPlanningDocsDeleteCandidates,
+  listPlanningDocsPushCandidates,
+} from './planningDocsFirestorePush';
 import {
   applyFirestorePlanningDocsSnapshot,
   persistPlanningDocsConflictLocal,
@@ -136,5 +139,90 @@ describe('listPlanningDocsPushCandidates', () => {
     const unlocked = await listPlanningDocsPushCandidates(freshDir, 'other-cloud-id');
     expect(unlocked).toHaveLength(1);
     expect(unlocked[0]?.relativePath).toBe('only.md');
+  });
+});
+
+describe('listPlanningDocsDeleteCandidates', () => {
+  let planningDir: string;
+
+  beforeEach(async () => {
+    planningDir = await mkPlanningDir();
+    await patchPlanningDocsCloudMigrationState(planningDir, TEST_CLOUD_PROJECT_ID, {
+      didInitialHydrateFromCloud: true,
+    });
+  });
+
+  it('returns paths tracked in sync state whose markdown file was removed', async () => {
+    const rel = 'notes/gone.md';
+    const docId = planningRelativePathToFirestoreDocId(rel);
+    if (!docId) throw new Error('id');
+    await fs.mkdir(path.join(planningDir, 'docs', 'notes'), { recursive: true });
+
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId,
+          relativePath: rel,
+          markdown: 'remote',
+          remoteRevision: '4_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+
+    await fs.unlink(path.join(planningDir, 'docs', rel));
+
+    const candidates = await listPlanningDocsDeleteCandidates(planningDir, TEST_CLOUD_PROJECT_ID);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.relativePath).toBe(rel);
+    expect(candidates[0]?.expectedRemoteRevision).toBe('4_0');
+  });
+
+  it('skips paths that still exist on disk', async () => {
+    const rel = 'still.md';
+    const docId = planningRelativePathToFirestoreDocId(rel);
+    if (!docId) throw new Error('id');
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [{ docId, relativePath: rel, markdown: 'body', remoteRevision: '1_0' }],
+      removedDocIds: [],
+    });
+
+    const candidates = await listPlanningDocsDeleteCandidates(planningDir, TEST_CLOUD_PROJECT_ID);
+    expect(candidates).toHaveLength(0);
+  });
+
+  it('skips paths paused after a conflict', async () => {
+    const rel = 'paused.md';
+    await fs.mkdir(path.join(planningDir, 'docs'), { recursive: true });
+    await applyFirestorePlanningDocsSnapshot(planningDir, {
+      projectId: 'p1',
+      docs: [
+        {
+          docId: planningRelativePathToFirestoreDocId(rel)!,
+          relativePath: rel,
+          markdown: 'x',
+          remoteRevision: '1_0',
+        },
+      ],
+      removedDocIds: [],
+    });
+    await fs.unlink(path.join(planningDir, 'docs', rel));
+
+    await persistPlanningDocsConflictLocal(planningDir, {
+      schemaVersion: 1,
+      relativePath: rel,
+      createdAt: new Date().toISOString(),
+      baseRemoteRevision: '1_0',
+      localMarkdown: '',
+      remoteMarkdown: 'y',
+      remoteRevision: '2_0',
+      remoteUpdatedBy: 'other',
+      localUpdatedBy: 'me',
+    });
+
+    const candidates = await listPlanningDocsDeleteCandidates(planningDir, TEST_CLOUD_PROJECT_ID);
+    expect(candidates).toHaveLength(0);
   });
 });

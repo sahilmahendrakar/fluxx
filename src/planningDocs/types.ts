@@ -82,6 +82,15 @@ export type PlanningDocsWriteErrorCode =
 
 export type PlanningDocsWriteResult = { ok: true } | { error: PlanningDocsWriteErrorCode };
 
+export type PlanningDocsDeleteErrorCode =
+  | 'NO_PROJECT'
+  | 'INVALID_PATH'
+  | 'FORBIDDEN_PATH'
+  | 'NOT_FOUND'
+  | 'IO_ERROR';
+
+export type PlanningDocsDeleteResult = { ok: true } | { error: PlanningDocsDeleteErrorCode };
+
 /**
  * Firestore document shape for `projects/{projectId}/planningDocs/{docId}`.
  *

@@ -176,6 +176,84 @@ export async function pushPlanningDocToFirestore(
   return { ok: true, newRemoteRevision };
 }
 
+export type PlanningDocDeleteExpectation = { remoteRevision: string };
+
+export type PlanningDocDeleteFromFirestoreResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'remote_changed';
+      remoteRevision: string;
+      remoteMarkdown: string;
+      remoteUpdatedBy: string;
+    }
+  | { ok: false; reason: 'remote_missing' };
+
+/**
+ * Atomically deletes a planning doc when the remote revision matches the local base.
+ */
+export async function deletePlanningDocFromFirestore(
+  projectId: string,
+  relativePath: string,
+  expectation: PlanningDocDeleteExpectation,
+): Promise<PlanningDocDeleteFromFirestoreResult> {
+  const db = getFirebaseFirestore();
+  const docId = planningRelativePathToFirestoreDocId(relativePath);
+  if (!docId) {
+    throw new Error(`Invalid planning path for Firestore: ${relativePath}`);
+  }
+  const ref = doc(db, 'projects', projectId, 'planningDocs', docId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists()) {
+        throw Object.assign(new Error('planning_doc_remote_missing'), {
+          code: 'planning_doc_remote_missing' as const,
+        });
+      }
+
+      const cur = parsePlanningDocSnapshotForPush(snap.data() as Partial<FirestorePlanningDocDocumentV1>);
+      if (cur.revision !== expectation.remoteRevision) {
+        throw Object.assign(new Error('planning_doc_push_conflict'), {
+          code: 'planning_doc_push_conflict' as const,
+          payload: cur,
+        });
+      }
+
+      transaction.delete(ref);
+    });
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code?: string }).code === 'planning_doc_push_conflict' &&
+      'payload' in err
+    ) {
+      const p = (err as { payload: { revision: string; markdown: string; updatedBy: string } }).payload;
+      return {
+        ok: false,
+        reason: 'remote_changed',
+        remoteRevision: p.revision,
+        remoteMarkdown: p.markdown,
+        remoteUpdatedBy: p.updatedBy,
+      };
+    }
+    if (
+      err &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code?: string }).code === 'planning_doc_remote_missing'
+    ) {
+      return { ok: false, reason: 'remote_missing' };
+    }
+    throw err;
+  }
+
+  return { ok: true };
+}
+
 const CONFLICT_DOC_SCHEMA = 1;
 
 /** Append conflict diagnostics for teammates (`planningDocs/{docId}/conflicts/*`). */
