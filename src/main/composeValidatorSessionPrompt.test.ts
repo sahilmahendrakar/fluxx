@@ -41,13 +41,87 @@ describe('composeValidatorSessionPrompt', () => {
     expect(prompt).toContain('### Acceptance criteria');
     expect(prompt).toContain('Task in Review can start a validator session');
     expect(prompt).toContain('Do **not** implement product source changes');
-    expect(prompt).toContain('pnpm run build:validation');
+    expect(prompt).toContain('Infer launch from the project');
+    expect(prompt).toContain('package.json');
+    expect(prompt).not.toContain('pnpm run build:validation');
     expect(prompt).toContain('/tmp/project/validation-runs/run-abc');
     expect(prompt).toContain('verdict.json');
     expect(prompt).toContain('fluxx validation finish');
     expect(prompt).toContain('FLUXX_VALIDATION_RUN_ID');
     expect(prompt).toContain('Launch Electron with Playwright');
     expect(prompt).toContain('M src/main.ts');
+  });
+
+  it('uses saved launch command and ready config when project config is set', () => {
+    const prompt = composeValidatorSessionPrompt({
+      task,
+      run: {
+        id: 'run-abc',
+        artifactDir: '/tmp/project/validation-runs/run-abc',
+        packId: 'electron-playwright',
+        validatorAgent: 'cursor',
+      },
+      worktreeCwd: '/tmp/worktrees/task-1',
+      instructionsMarkdown: 'Pack skill',
+      verdictSchemaJson: '{ "verdict": "passed" }',
+      projectConfig: {
+        launchCommand: 'pnpm start:aux',
+        ready: { type: 'selector', value: "[data-testid='app-shell']", timeoutMs: 120_000 },
+        cleanUserData: true,
+      },
+    });
+
+    expect(prompt).toContain('pnpm start:aux');
+    expect(prompt).toContain("[data-testid='app-shell']");
+    expect(prompt).toContain('isolated user-data directory');
+    expect(prompt).not.toContain('Infer launch from the project');
+    expect(prompt).not.toContain('pnpm run build:validation');
+  });
+
+  it('includes Project validation notes when appendPrompt is set', () => {
+    const prompt = composeValidatorSessionPrompt({
+      task,
+      run: {
+        id: 'run-abc',
+        artifactDir: '/tmp/project/validation-runs/run-abc',
+        packId: 'electron-playwright',
+        validatorAgent: 'cursor',
+      },
+      worktreeCwd: '/tmp/worktrees/task-1',
+      instructionsMarkdown: 'Pack skill',
+      verdictSchemaJson: '{ "verdict": "passed" }',
+      projectConfig: {
+        appendPrompt: 'Always open Settings before asserting sync.',
+      },
+    });
+
+    expect(prompt).toContain('## Project validation notes');
+    expect(prompt).toContain('Always open Settings before asserting sync.');
+    expect(prompt.indexOf('## Pack instructions')).toBeLessThan(
+      prompt.indexOf('## Project validation notes'),
+    );
+    expect(prompt).toContain('Infer launch from the project');
+  });
+
+  it('omits Project validation notes when appendPrompt is empty', () => {
+    const prompt = composeValidatorSessionPrompt({
+      task,
+      run: {
+        id: 'run-abc',
+        artifactDir: '/tmp/project/validation-runs/run-abc',
+        packId: 'electron-playwright',
+        validatorAgent: 'cursor',
+      },
+      worktreeCwd: '/tmp/worktrees/task-1',
+      instructionsMarkdown: 'Pack skill',
+      verdictSchemaJson: '{ "verdict": "passed" }',
+      projectConfig: {
+        launchCommand: 'pnpm start',
+        appendPrompt: '   ',
+      },
+    });
+
+    expect(prompt).not.toContain('## Project validation notes');
   });
 
   it('includes validation plan content and required artifacts when present', () => {

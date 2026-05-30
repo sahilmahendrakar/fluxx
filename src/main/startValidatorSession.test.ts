@@ -146,6 +146,14 @@ describe('startValidatorSession', () => {
     );
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      const prompt = await fs.readFile(
+        path.join(result.run.artifactDir, 'validator-prompt.md'),
+        'utf8',
+      );
+      expect(prompt).toContain('Infer launch from the project');
+      expect(prompt).toContain('package.json');
+    }
   });
 
   it('loads saved appendPrompt into instructions when starting validator', async () => {
@@ -196,6 +204,15 @@ describe('startValidatorSession', () => {
       );
       expect(instructions).toContain('Always open Settings first.');
       expect(instructions).toContain('pnpm start:aux');
+
+      const prompt = await fs.readFile(
+        path.join(result.run.artifactDir, 'validator-prompt.md'),
+        'utf8',
+      );
+      expect(prompt).toContain('## Project validation notes');
+      expect(prompt).toContain('Always open Settings first.');
+      expect(prompt).toContain('pnpm start:aux');
+      expect(prompt).not.toContain('Infer launch from the project');
     }
   });
 });
