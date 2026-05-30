@@ -1001,6 +1001,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
         preference: import('./theme/appearance').AppearancePreference;
       }>,
   },
+  globalOnboarding: {
+    getState: () =>
+      ipcRenderer.invoke('globalOnboarding:getState') as Promise<
+        import('./globalOnboarding/types').ResolvedGlobalOnboardingState
+      >,
+    probeClis: () =>
+      ipcRenderer.invoke('globalOnboarding:probeClis') as Promise<
+        import('./globalOnboarding/types').GlobalOnboardingCliProbeResult[]
+      >,
+    skip: () =>
+      ipcRenderer.invoke('globalOnboarding:skip') as Promise<{ ok: true }>,
+    complete: () =>
+      ipcRenderer.invoke('globalOnboarding:complete') as Promise<{ ok: true }>,
+    selectAgent: (agent: Agent) =>
+      ipcRenderer.invoke('globalOnboarding:selectAgent', agent) as Promise<
+        { ok: true } | { error: string }
+      >,
+  },
   window: {
     isFullscreen: (): Promise<boolean> => ipcRenderer.invoke('window:isFullscreen'),
     onFullscreenChanged: (cb: (isFullscreen: boolean) => void) => {

@@ -308,6 +308,7 @@ import {
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
 import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
+import { registerGlobalOnboardingIpc } from './main/registerGlobalOnboardingIpc';
 import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
@@ -1635,6 +1636,27 @@ app.whenReady().then(async () => {
       }
     },
   );
+
+  registerGlobalOnboardingIpc(appStateStore, async (agent) => {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) return { ok: true };
+    try {
+      if (key.kind === 'cloud') {
+        await bindingStore.setPrefs(key.id, {
+          planningAgent: agent,
+          defaultTaskAgent: agent,
+        });
+        return { ok: true };
+      }
+      await projectStore.setPlanningAgent(agent);
+      await projectStore.setDefaultTaskAgent(agent);
+      return { ok: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { error: message };
+    }
+  });
+
   ipcMain.handle(
     'project:patchAgentSpawnDefaults',
     async (
