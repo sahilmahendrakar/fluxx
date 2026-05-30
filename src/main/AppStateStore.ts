@@ -6,7 +6,11 @@ import type { AutoTransitionNotificationPrefs } from '../taskAutoTransitionNotif
 import { normalizeAutoTransitionNotificationPrefs } from '../taskAutoTransitionNotificationPrefs';
 import type { AppearancePreference } from '../theme/appearance';
 import { normalizeAppearancePreference } from '../theme/appearance';
+import { migrateGlobalOnboardingFromDisk } from '../globalOnboarding/globalOnboardingState';
+import type { GlobalOnboardingStateV1 } from '../globalOnboarding/types';
 import { parseProjectTabStateDiskValue } from './projectTabStateDiskParse';
+
+export type { GlobalOnboardingStateV1 };
 
 export type { ProjectTabState };
 
@@ -22,6 +26,8 @@ export interface AppState {
   autoTransitionNotifications?: AutoTransitionNotificationPrefs;
   /** Renderer + native chrome appearance (`light` / `dark` / `system`). */
   appearance?: AppearancePreference;
+  /** App-wide first-run onboarding (`pending` / `skipped` / `completed`). */
+  globalOnboarding?: GlobalOnboardingStateV1;
 }
 
 export function projectStateKey(key: ActiveProjectKey): string {
@@ -47,12 +53,19 @@ export class AppStateStore {
     this.filePath = opts?.filePath ?? path.join(app.getPath('userData'), 'app-state.json');
   }
 
+  private applyGlobalOnboardingMigration(diskValue: unknown): void {
+    this.state.globalOnboarding = migrateGlobalOnboardingFromDisk(diskValue, this.state);
+  }
+
   async init(): Promise<void> {
     let raw: string;
     try {
       raw = await fs.readFile(this.filePath, 'utf8');
     } catch (err: unknown) {
-      if (errnoCode(err) === 'ENOENT') return;
+      if (errnoCode(err) === 'ENOENT') {
+        this.applyGlobalOnboardingMigration(undefined);
+        return;
+      }
       throw err;
     }
 
@@ -60,9 +73,13 @@ export class AppStateStore {
     try {
       parsed = JSON.parse(raw) as unknown;
     } catch {
+      this.applyGlobalOnboardingMigration(undefined);
       return;
     }
-    if (!parsed || typeof parsed !== 'object') return;
+    if (!parsed || typeof parsed !== 'object') {
+      this.applyGlobalOnboardingMigration(undefined);
+      return;
+    }
     const o = parsed as Partial<AppState>;
     if (typeof o.lastOpenedProjectDir === 'string' || o.lastOpenedProjectDir === null) {
       this.state.lastOpenedProjectDir = o.lastOpenedProjectDir;
@@ -106,6 +123,7 @@ export class AppStateStore {
     if (o.appearance !== undefined) {
       this.state.appearance = normalizeAppearancePreference(o.appearance);
     }
+    this.applyGlobalOnboardingMigration(o.globalOnboarding);
   }
 
   get(): AppState {

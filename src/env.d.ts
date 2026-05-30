@@ -694,6 +694,15 @@ declare global {
           preference: import('./theme/appearance').AppearancePreference;
         }>;
       };
+      globalOnboarding: {
+        getState: () => Promise<import('./globalOnboarding/types').ResolvedGlobalOnboardingState>;
+        probeClis: () => Promise<
+          import('./globalOnboarding/types').GlobalOnboardingCliProbeResult[]
+        >;
+        skip: () => Promise<{ ok: true }>;
+        complete: () => Promise<{ ok: true }>;
+        selectAgent: (agent: Agent) => Promise<{ ok: true } | { error: string }>;
+      };
       window: {
         isFullscreen: () => Promise<boolean>;
         onFullscreenChanged: (cb: (isFullscreen: boolean) => void) => () => void;
