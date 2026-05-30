@@ -111,6 +111,7 @@ import {
 import { sanitizeTaskAttachedPlanningDocsInput } from '../taskAttachedPlanningDocs';
 import TaskValidationSection from './validation/TaskValidationSection';
 import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
+import { validateButtonClassNameForStatus } from '../validationRuns/validateButtonClassNames';
 import { evaluateValidateActionEligibility } from '../validationRuns/validateTaskAction';
 import {
   buildTaskSourceBranchPersistPatch,
@@ -1220,10 +1221,8 @@ export default function TaskDetailPanel({
     'rounded-lg bg-muted/60 px-4 py-2 text-[13px] font-medium text-foreground ring-1 ring-inset ring-border transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
   const markDoneBtnDisabled =
     'cursor-not-allowed rounded-lg bg-muted px-4 py-2 text-[13px] font-medium text-muted-foreground ring-1 ring-inset ring-border';
-  const validateBtnFilled =
-    'inline-flex items-center gap-2 rounded-lg bg-violet-500/90 px-4 py-2 text-[13px] font-medium text-violet-50 shadow-sm transition hover:bg-violet-400/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none';
-  const validateBtnOutline =
-    'inline-flex items-center gap-2 rounded-lg bg-violet-500/[0.08] px-4 py-2 text-[13px] font-medium text-status-validation-foreground ring-1 ring-inset ring-violet-500/30 transition hover:bg-violet-500/[0.14] hover:ring-violet-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:ring-border';
+  const validateBtnBase =
+    'inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none';
 
   /** Any local session (running or after exit) — keep embedded terminal for buffer continuity. */
   const hasLocalSession = Boolean(session?.id);
@@ -1268,7 +1267,11 @@ export default function TaskDetailPanel({
                   type="button"
                   onClick={() => onUpdate(task.id, { status: 'validation' })}
                   title={validateEligibility.message}
-                  className={task.status === 'needs-input' ? validateBtnFilled : validateBtnOutline}
+                  className={cn(
+                    validateBtnBase,
+                    validateButtonClassNameForStatus(task.status),
+                    task.status === 'needs-input' && 'shadow-sm',
+                  )}
                 >
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                   Validate

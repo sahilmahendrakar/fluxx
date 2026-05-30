@@ -21,6 +21,7 @@ import {
   taskWorkspaceShouldShowValidationTab,
   validationRunIsActive,
 } from '../validationRuns/display';
+import { validateButtonClassNameForStatus } from '../validationRuns/validateButtonClassNames';
 import { evaluateValidateActionEligibility } from '../validationRuns/validateTaskAction';
 import { useTaskValidationRuns } from '../validationRuns/useTaskValidationRuns';
 import {
@@ -823,12 +824,7 @@ export function SessionTerminalView({
               variant="outline"
               onClick={() => taskDetailPanel.onUpdate!(task.id, { status: 'validation' })}
               title={validateEligibility.message}
-              className={cn(
-                'shrink-0 gap-1.5',
-                task.status === 'needs-input'
-                  ? 'border-status-validation/40 bg-status-validation text-white hover:bg-status-validation/90 hover:text-white'
-                  : 'border-status-validation/35 bg-status-validation/12 text-status-validation hover:bg-status-validation/20 dark:text-status-validation-foreground dark:hover:bg-status-validation/15',
-              )}
+              className={cn('shrink-0 gap-1.5', validateButtonClassNameForStatus(task.status))}
             >
               <ShieldCheck data-icon="inline-start" strokeWidth={2} aria-hidden />
               Validate
