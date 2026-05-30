@@ -1633,7 +1633,7 @@ function ProjectConfigPane({
                   type="button"
                   disabled={planSpawnSaveState === 'saving'}
                   onClick={() => void handleSavePlanningSpawnRow()}
-                  className="h-[34px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-[34px] shrink-0 rounded-md border border-status-success/25 bg-status-success/10 px-2.5 text-[12px] font-medium text-status-success-foreground transition hover:bg-status-success/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {planSpawnSaveState === 'saving' ? '…' : 'Save'}
                 </button>
@@ -1738,7 +1738,7 @@ function ProjectConfigPane({
                   type="button"
                   disabled={taskSpawnSaveState === 'saving'}
                   onClick={() => void handleSaveTaskSpawnRow()}
-                  className="h-[34px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-[34px] shrink-0 rounded-md border border-status-success/25 bg-status-success/10 px-2.5 text-[12px] font-medium text-status-success-foreground transition hover:bg-status-success/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {taskSpawnSaveState === 'saving' ? '…' : 'Save'}
                 </button>
@@ -1781,7 +1781,7 @@ function ProjectConfigPane({
                 setMcpConfigError(null);
                 setMcpConfigSaveState('idle');
               }}
-              className="h-[30px] shrink-0 rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-[30px] shrink-0 rounded-md border border-status-success/25 bg-status-success/10 px-2.5 text-[12px] font-medium text-status-success-foreground transition hover:bg-status-success/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {addMcpOpen ? 'Cancel' : 'Add MCP'}
             </button>
@@ -1820,7 +1820,7 @@ function ProjectConfigPane({
                     addMcpText.trim().length === 0
                   }
                   onClick={() => void handleAddMcpConfig()}
-                  className="h-[30px] rounded-md border border-emerald-800/50 bg-emerald-950/40 px-2.5 text-[12px] font-medium text-emerald-100/90 transition hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-[30px] rounded-md border border-status-success/25 bg-status-success/10 px-2.5 text-[12px] font-medium text-status-success-foreground transition hover:bg-status-success/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {mcpConfigSaveState === 'saving' ? 'Adding…' : 'Add'}
                 </button>
@@ -2805,7 +2805,7 @@ function RepoFields({
               type="button"
               onClick={() => void handleRemove()}
               disabled={removalBlocked || actionState === 'saving'}
-              className="rounded-md border border-red-500/30 bg-red-500/[0.06] px-2.5 py-1.5 text-[12px] font-medium text-red-200 transition hover:bg-red-500/[0.1] disabled:pointer-events-none disabled:opacity-45"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[12px] font-medium text-destructive transition hover:bg-destructive/15 disabled:pointer-events-none disabled:opacity-45"
             >
               {actionState === 'saving' ? 'Working…' : 'Remove'}
             </button>
