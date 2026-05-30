@@ -7,6 +7,7 @@ import type { ProjectStore } from './ProjectStore';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import type { ValidationRunStore } from './ValidationRunStore';
+import { isDirectWorkspaceKind } from './DirectFolderWorkspaceProvider';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 import { teardownValidationRunsForTask } from './teardownValidationRunsForTask';
 import type { DeviceStore } from './DeviceStore';
@@ -79,6 +80,10 @@ export async function deleteSessionWorkspaceAndStop(
         });
       }
     }
+    return;
+  }
+
+  if (isDirectWorkspaceKind(target.workspaceKind)) {
     return;
   }
 
