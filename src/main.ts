@@ -59,6 +59,7 @@ import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
+import { DirectRemoteFolderWorkspaceProvider } from './main/ssh/DirectRemoteFolderWorkspaceProvider';
 import { RemoteHelperClient } from './main/ssh/RemoteHelperClient';
 import {
   formatRemoteSshReconcileLogLine,
@@ -1111,6 +1112,7 @@ app.whenReady().then(async () => {
     ),
   });
   const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
+  const directRemoteFolderWorkspaceProvider = new DirectRemoteFolderWorkspaceProvider();
   const remoteRepoBindingService = new RemoteRepoBindingService(
     bindingStore,
     projectStore,
@@ -2207,25 +2209,28 @@ app.whenReady().then(async () => {
       }
       const repos = await projectStore.getReposAt(projectDir);
       const cloudProject = project.kind === 'cloud' ? project : null;
-      const task = { repoId } as Task;
-      let remoteUrl: string;
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+      let remoteUrl = '';
       try {
         const ctx = await resolveRemoteRepoForTaskSession(
           project,
-          task,
+          { repoId } as Task,
           repos,
           cloudProject,
+          { gitEnabled },
         );
         remoteUrl = ctx.remoteUrl;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
       }
-      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
-        device,
-        remotePath,
-        remoteUrl,
-      );
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(device, remotePath, {
+        gitEnabled,
+        ...(gitEnabled ? { remoteUrl } : {}),
+      });
       if (!probed.ok) {
         return { error: probed.message, code: probed.code };
       }
@@ -2269,24 +2274,28 @@ app.whenReady().then(async () => {
       }
       const repos = await projectStore.getReposAt(projectDir);
       const cloudProject = project.kind === 'cloud' ? project : null;
-      let remoteUrl: string;
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+      let remoteUrl = '';
       try {
         const ctx = await resolveRemoteRepoForTaskSession(
           project,
           { repoId } as Task,
           repos,
           cloudProject,
+          { gitEnabled },
         );
         remoteUrl = ctx.remoteUrl;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
       }
-      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
-        device,
-        remotePath,
-        remoteUrl,
-      );
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(device, remotePath, {
+        gitEnabled,
+        ...(gitEnabled ? { remoteUrl } : {}),
+      });
       if (!probed.ok) {
         return { error: probed.message, code: probed.code };
       }
@@ -4555,10 +4564,20 @@ app.whenReady().then(async () => {
             bindingStore,
             sshTerminalBackend: sshBackend,
             gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+            directRemoteWorkspace: directRemoteFolderWorkspaceProvider,
             taskAgentSessionRecordStore,
             terminalSessionRecordStore,
             resolvePlanningDocsDir,
             activeProjectDir,
+            gitEnabledForProject: () =>
+              gitEnabledForActiveProject({
+                getProjectDir: activeProjectDir,
+                getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+              }),
+            gitlessSingleSessionPerFolderForProject: gitlessSingleSessionPerFolderForActiveProject,
+            listRunningSessions: () => terminalBackend.listSessions(),
+            resolveTaskTitle: (taskId) =>
+              taskStore.getAll(project.id).find((t) => t.id === taskId)?.title,
           },
           {
             task: merged,
@@ -4573,7 +4592,7 @@ app.whenReady().then(async () => {
         }
         sessionTaskMap.set(sshResult.id, task.id);
         const priorFw = (merged.fluxxWorkBranch ?? '').trim();
-        if (priorFw !== sshResult.branch) {
+        if (sshResult.branch && priorFw !== sshResult.branch) {
           if (project.kind === 'local') {
             const p = projectStore.get();
             if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
@@ -5469,6 +5488,15 @@ app.whenReady().then(async () => {
         phase: 'remote-status' as const,
         error: 'INTERNAL' as const,
         message: 'Session not found.',
+      };
+    }
+    if (session.workspaceKind === 'direct') {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'NOT_SSH_SESSION' as const,
+        message:
+          'Sync to local is not available for gitless SSH sessions. The agent runs directly in your bound remote folder.',
       };
     }
     const tasks = taskStore.getAll(project.id);
@@ -6696,6 +6724,11 @@ app.whenReady().then(async () => {
 
     let worktreePath = session.worktreePath;
     if (session.deviceKind === 'ssh' && placement === 'local') {
+      if (session.workspaceKind === 'direct') {
+        throw new Error(
+          'Local terminals are not available for gitless SSH sessions. Open an SSH terminal instead.',
+        );
+      }
       const projectDir = activeProjectDir();
       const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
       const localPath = projectDir

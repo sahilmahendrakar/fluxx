@@ -46,7 +46,7 @@ export async function deleteSessionWorkspaceAndStop(
 
   if (target.deviceKind === 'ssh' && target.deviceId && remote) {
     const device = remote.deviceStore.getDevice(target.deviceId);
-    if (device?.kind === 'ssh') {
+    if (device?.kind === 'ssh' && !isDirectWorkspaceKind(target.workspaceKind)) {
       const repoId = target.repoId?.trim();
       if (repoId) {
         const boundRepoPath = resolveBoundRemoteRepoPath(remote, target.projectId, device.id, repoId);

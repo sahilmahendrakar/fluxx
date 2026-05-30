@@ -58,9 +58,11 @@ import {
   type RepoBranchDiscovery,
   type RepoConfig,
   type ResolveTaskWorktreeIpcResult,
+  type SessionStartErrorCode,
   type TaskExecutionDeviceRef,
 } from '../types';
 import { ExecutionDevicePicker } from './ExecutionDevicePicker';
+import { RemoteSshRepoBindingPanel } from './RemoteSshRepoBindingPanel';
 import {
   isTaskExecutionDeviceEditable,
   sessionStartButtonLabel,
@@ -378,6 +380,7 @@ export default function TaskDetailPanel({
   /** Attach + snapshot applied; terminal may still be blank until first PTY output. */
   const [sessionStreamReady, setSessionStreamReady] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionErrorCode, setSessionErrorCode] = useState<SessionStartErrorCode | null>(null);
   const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [depSearch, setDepSearch] = useState('');
   const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
@@ -1011,6 +1014,7 @@ export default function TaskDetailPanel({
     }
     setSessionLoading(true);
     setSessionError(null);
+    setSessionErrorCode(null);
     try {
       const result = await window.electronAPI.sessions.start(
         task,
@@ -1019,6 +1023,7 @@ export default function TaskDetailPanel({
         opts?.resume ? { resume: true } : undefined,
       );
       if ('error' in result) {
+        setSessionErrorCode(result.error);
         if (result.error === 'TASK_BLOCKED') {
           setSessionError(result.message ?? 'This task is blocked by incomplete work.');
         } else if (result.error === 'NO_TASK_AGENT') {
@@ -1035,6 +1040,7 @@ export default function TaskDetailPanel({
         }
         return;
       }
+      setSessionErrorCode(null);
       setSession(result);
       const statusPatch: Partial<Task> = { status: 'in-progress' };
       if (implicitSessionAssigneeUid && !task.assigneeId) {
@@ -1203,6 +1209,19 @@ export default function TaskDetailPanel({
     });
     setDependencyError(null);
   };
+
+  const sshDevices = useMemo(
+    () => executionDevices.filter((d) => d.kind === 'ssh' && d.enabled),
+    [executionDevices],
+  );
+  const remoteFolderBindRepoId = task
+    ? effectiveTaskRepoId(task, primaryRepoId)
+    : primaryRepoId;
+  const showRemoteFolderBinding =
+    sessionErrorCode === 'REMOTE_FOLDER_REQUIRED' &&
+    resolvedDevice?.kind === 'ssh' &&
+    Boolean(remoteFolderBindRepoId.trim()) &&
+    sshDevices.length > 0;
 
   const startButtonLabel = startInFlight
     ? 'Starting…'
@@ -1427,6 +1446,26 @@ export default function TaskDetailPanel({
               ) : null}
               {sessionError && !sessionRunning ? (
                 <p className="min-w-0 text-xs leading-snug text-destructive">{sessionError}</p>
+              ) : null}
+              {showRemoteFolderBinding && task ? (
+                <div className="mt-3 min-w-0 rounded-lg border border-border/80 bg-muted/30 p-3">
+                  <RemoteSshRepoBindingPanel
+                    repoId={remoteFolderBindRepoId}
+                    repoLabel={repoDisplayLabel(
+                      findRepoByIdOrPrimary(projectRepos ?? [], remoteFolderBindRepoId) ?? {
+                        id: remoteFolderBindRepoId,
+                        rootPath: '',
+                        baseBranch: 'main',
+                      },
+                    )}
+                    sshDevices={sshDevices}
+                    projectDefaultDeviceId={
+                      resolvedDevice?.kind === 'ssh'
+                        ? resolvedDevice.deviceId
+                        : task.executionDevice?.deviceId
+                    }
+                  />
+                </div>
               ) : null}
             </div>
           </div>
