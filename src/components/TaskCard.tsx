@@ -602,7 +602,10 @@ export default function TaskCard({
                       className={cn(
                         '-m-0.5 size-6 shrink-0',
                         prMerged && 'text-status-validation hover:bg-status-validation/10 hover:text-status-validation',
-                        prIsOpen && 'text-status-success hover:bg-status-success/10 hover:text-status-success',
+                        prIsOpen &&
+                          (isReview
+                            ? 'text-status-review hover:bg-status-review/10 hover:text-status-review'
+                            : 'text-status-success hover:bg-status-success/10 hover:text-status-success'),
                         prLinked && 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         prAwaitingAgent && 'text-status-needs-input hover:bg-status-needs-input/10 hover:text-status-needs-input',
                         !prMerged && !prIsOpen && !prLinked && !prAwaitingAgent && 'text-muted-foreground',
