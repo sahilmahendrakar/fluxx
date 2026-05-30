@@ -77,6 +77,19 @@ describe('backfillRepoIdentities (multi-repo2)', () => {
     expect(out.repos[0].env).toBe('X=1');
   });
 
+  it('preserves envFiles through backfillRepoIdentities', () => {
+    const envFiles = {
+      lastDetectedAt: '2026-05-30T00:00:00.000Z',
+      sources: [{ fileName: '.env.local' as const, enablement: 'enabled' as const }],
+    };
+    const out = backfillRepoIdentities({
+      projectId: TEST_PROJECT_ID,
+      primaryRootPath: '/abs/repo',
+      repos: [{ rootPath: '/abs/repo', baseBranch: 'main', envFiles }],
+    });
+    expect(out.repos[0].envFiles).toEqual(envFiles);
+  });
+
   it('is idempotent on already-migrated configs', () => {
     const seeded = backfillRepoIdentities({
       projectId: TEST_PROJECT_ID,

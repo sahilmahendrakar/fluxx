@@ -12,6 +12,7 @@ import type {
   RepoSettingsPatch,
 } from '../types';
 import { parseRemoteRepoBindingsByDevice } from '../remoteRepoBindings';
+import { parseRepoEnvFileSourcesConfig } from '../repoEnvFiles';
 import {
   deriveRepoIdForRootPath,
   deriveStablePrimaryRepoIdForProject,
@@ -170,6 +171,7 @@ function parseRepoConfig(value: unknown): ParsedRepoConfig | null {
       : DEFAULT_BASE_BRANCH,
     setupScript: typeof r.setupScript === 'string' ? r.setupScript : undefined,
     env: typeof r.env === 'string' ? r.env : undefined,
+    envFiles: parseRepoEnvFileSourcesConfig(r.envFiles),
   };
 }
 
@@ -228,6 +230,7 @@ export function backfillRepoIdentities(params: {
       baseBranch: r.baseBranch,
       ...(r.setupScript !== undefined ? { setupScript: r.setupScript } : {}),
       ...(r.env !== undefined ? { env: r.env } : {}),
+      ...(r.envFiles !== undefined ? { envFiles: r.envFiles } : {}),
     } satisfies RepoConfig;
   });
   return { repos: out, mutated };
@@ -482,6 +485,7 @@ export class ProjectStore {
         ...nr,
         ...(old.setupScript !== undefined ? { setupScript: old.setupScript } : {}),
         ...(old.env !== undefined ? { env: old.env } : {}),
+        ...(old.envFiles !== undefined ? { envFiles: old.envFiles } : {}),
       };
     });
     const next: ConfigFile = {

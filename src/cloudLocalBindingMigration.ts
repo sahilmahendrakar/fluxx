@@ -1,3 +1,4 @@
+import { parseRepoEnvFileSourcesConfig } from './repoEnvFiles';
 import type {
   CloudProjectLocalBinding,
   CloudRepoMachineBinding,
@@ -17,7 +18,12 @@ export function parseRepoBindingsRecord(
     if (!val || typeof val !== 'object') continue;
     const v = val as Record<string, unknown>;
     if (typeof v.rootPath !== 'string' || typeof v.lastOpenedAt !== 'string') continue;
-    out[key] = { rootPath: v.rootPath, lastOpenedAt: v.lastOpenedAt };
+    const envFiles = parseRepoEnvFileSourcesConfig(v.envFiles);
+    out[key] = {
+      rootPath: v.rootPath,
+      lastOpenedAt: v.lastOpenedAt,
+      ...(envFiles ? { envFiles } : {}),
+    };
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
