@@ -50,6 +50,7 @@ import {
 } from './sidebarSessionGroups';
 import { SessionTerminalView } from './components/SessionTerminalView';
 import ConfirmDialog from './components/ConfirmDialog';
+import { GlobalOnboardingDialog } from './components/GlobalOnboardingDialog';
 import { taskDeleteNeedsWorkspaceConfirmation } from './taskDeleteWorkspaceConfirmation';
 import {
   readTaskCleanupSkipConfirmation,
@@ -3518,18 +3519,21 @@ export default function App() {
 
   if (!project) {
     return (
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-        <MacTitleBarInset />
-        <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ProjectsListView
-            onProjectActivated={handleProjectActivated}
-            auth={auth}
-            cloudProjects={cloudProjectsState}
-            invites={invitesState}
-            authSlot={<SignInCard />}
-          />
+      <>
+        <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+          <MacTitleBarInset />
+          <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ProjectsListView
+              onProjectActivated={handleProjectActivated}
+              auth={auth}
+              cloudProjects={cloudProjectsState}
+              invites={invitesState}
+              authSlot={<SignInCard />}
+            />
+          </div>
         </div>
-      </div>
+        <GlobalOnboardingDialog />
+      </>
     );
   }
 
@@ -4063,6 +4067,7 @@ export default function App() {
         />
       ) : null}
       {cloudPlanningDocsSeedModal}
+      <GlobalOnboardingDialog />
     </div>
   );
 }
