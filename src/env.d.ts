@@ -71,6 +71,7 @@ import type {
   ValidationPackDetail,
   ValidationPackResolvedInstructions,
   ValidationPackSummary,
+  ElectronPlaywrightPackProjectConfig,
 } from './validationPacks/types';
 import type {
   ValidationArtifactRegisterInput,
@@ -618,6 +619,33 @@ declare global {
           projectDir?: string;
         }) => Promise<
           { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+        >;
+        getProjectConfig: (packId: string) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
+        >;
+        saveProjectConfig: (payload: {
+          packId: string;
+          config: ElectronPlaywrightPackProjectConfig;
+        }) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
+        >;
+        clearProjectConfig: (packId: string) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
         >;
       };
       planningDocs: {

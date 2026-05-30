@@ -136,8 +136,8 @@ import {
   getValidationPackById,
   listValidationPacks,
 } from './validationPacks/registry';
-import { loadValidationPacksProjectConfig } from './validationPacks/projectConfig';
 import { resolveValidationPackInstructions } from './validationPacks/buildInstructions';
+import { resolveValidationPackConfig } from './validationPacks/resolveValidationPackConfig';
 import type {
   ValidationArtifactRegisterInput,
   ValidationRunCreateInput,
@@ -308,6 +308,7 @@ import {
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
 import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
+import { registerValidationPackProjectConfigIpc } from './main/validationPackProjectConfigIpc';
 import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
@@ -6221,17 +6222,23 @@ app.whenReady().then(async () => {
         if (!pack) return { error: `Validation pack not found: ${payload.packId}` };
         const projectDir = payload.projectDir?.trim();
         const projectConfig = projectDir
-          ? loadValidationPacksProjectConfig(projectDir, pack.manifest.id)
-          : undefined;
+          ? resolveValidationPackConfig({ projectDir, packId: pack.manifest.id })
+          : {};
+        const hasProjectConfig = Object.keys(projectConfig).length > 0;
         return {
           ok: true as const,
-          resolved: resolveValidationPackInstructions(pack, projectConfig),
+          resolved: resolveValidationPackInstructions(
+            pack,
+            hasProjectConfig ? projectConfig : undefined,
+          ),
         };
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
+
+  registerValidationPackProjectConfigIpc(activeProjectDir);
 
   const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 
