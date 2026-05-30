@@ -28,6 +28,13 @@ function parseReady(raw: unknown): ValidationReadyConfig | undefined {
   return undefined;
 }
 
+/** Normalizes renderer/IPC pack config input (trims strings; omits invalid/empty fields). */
+export function parseElectronPlaywrightPackConfigInput(
+  raw: unknown,
+): ElectronPlaywrightPackProjectConfig | undefined {
+  return parsePackConfig(raw);
+}
+
 function parsePackConfig(raw: unknown): ElectronPlaywrightPackProjectConfig | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;

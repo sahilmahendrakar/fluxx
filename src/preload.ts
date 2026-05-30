@@ -71,6 +71,7 @@ import type {
   ValidationPackDetail,
   ValidationPackResolvedInstructions,
   ValidationPackSummary,
+  ElectronPlaywrightPackProjectConfig,
 } from './validationPacks/types';
 import type {
   ValidationArtifactRegisterInput,
@@ -887,6 +888,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resolveInstructions: (payload: { packId: string; projectDir?: string }) =>
       ipcRenderer.invoke('validationPacks:resolveInstructions', payload) as Promise<
         { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+      >,
+    getProjectConfig: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:getProjectConfig', packId) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
+      >,
+    saveProjectConfig: (payload: { packId: string; config: ElectronPlaywrightPackProjectConfig }) =>
+      ipcRenderer.invoke('validationPacks:saveProjectConfig', payload) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
+      >,
+    clearProjectConfig: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:clearProjectConfig', packId) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
       >,
   },
   planningDocs: {
