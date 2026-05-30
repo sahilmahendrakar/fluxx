@@ -170,10 +170,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         | Record<string, RepoManagementState>
         | { error: string }
       >,
-    pickRepoDirectory: () =>
-      ipcRenderer.invoke('project:pickRepoDirectory') as Promise<
+    pickRepoDirectory: (options?: {
+      gitIntegrationEnabled?: boolean;
+      forProjectCreate?: boolean;
+    }) =>
+      ipcRenderer.invoke('project:pickRepoDirectory', options) as Promise<
         | { rootPath: string }
-        | { error: 'NOT_GIT_REPO' }
+        | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
         | { error: string }
         | null
       >,

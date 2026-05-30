@@ -581,6 +581,7 @@ export default function App() {
       cloudBindingOverview: cloudRepoBindingOverview,
       cloudNeedsPrimaryBinding,
       repoPathById,
+      gitIntegrationEnabled: project.gitIntegrationEnabled !== false,
     });
   }, [
     project,

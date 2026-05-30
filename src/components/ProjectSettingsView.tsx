@@ -37,6 +37,7 @@ import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './Agen
 import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
 import { ValidationConfigSettingsSection } from './ValidationConfigSettingsSection';
+import { repoDirectoryPickErrorMessage } from '../projectCreate';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -1343,18 +1344,16 @@ function ProjectConfigPane({
     setAddRepoState('saving');
     setAddRepoError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setAddRepoState('idle');
         return;
       }
       if ('error' in picked) {
         setAddRepoState('error');
-        setAddRepoError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
 
@@ -1382,25 +1381,23 @@ function ProjectConfigPane({
       setAddRepoState('error');
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
-  }, [multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates]);
+  }, [gitIntegrationEnabled, multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates]);
 
   const handleAddCloudRepo = useCallback(async () => {
     if (!multiRepoCloudBindingsEnabled || project.kind !== 'cloud') return;
     setAddRepoState('saving');
     setAddRepoError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setAddRepoState('idle');
         return;
       }
       if ('error' in picked) {
         setAddRepoState('error');
-        setAddRepoError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
 
@@ -1460,6 +1457,7 @@ function ProjectConfigPane({
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
   }, [
+    gitIntegrationEnabled,
     multiRepoCloudBindingsEnabled,
     onCloudSharedReposChanged,
     onProjectAgentPrefsRefresh,
@@ -2171,6 +2169,7 @@ function ProjectConfigPane({
                         repoState={repoStates[repo.id]}
                         primary={index === 0}
                         multiRepoManagementEnabled={multiRepoLocalManagementEnabled}
+                        gitIntegrationEnabled={gitIntegrationEnabled}
                         sshDevices={sshDevices}
                         projectDefaultDeviceId={project.defaultDeviceId}
                         gitIntegrationEnabled={gitIntegrationEnabled}
@@ -2247,7 +2246,13 @@ function ProjectConfigPane({
   );
 }
 
-function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBindingStatus }) {
+function CloudRepoBindingStatusBadge({
+  status,
+  gitIntegrationEnabled = true,
+}: {
+  status: CloudRepoLocalBindingStatus;
+  gitIntegrationEnabled?: boolean;
+}) {
   if (status.kind === 'missing_binding') {
     return (
       <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -2264,6 +2269,9 @@ function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBinding
         Path missing
       </span>
     );
+  }
+  if (!gitIntegrationEnabled) {
+    return null;
   }
   return (
     <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
@@ -2327,17 +2335,15 @@ function CloudTeamReposBindingsSection({
     setActionRepoId(repoId);
     setActionError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setActionRepoId(null);
         return;
       }
       if ('error' in picked) {
-        setActionError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setActionError(repoDirectoryPickErrorMessage(picked.error));
         setActionRepoId(null);
         return;
       }
@@ -2429,7 +2435,10 @@ function CloudTeamReposBindingsSection({
                     </span>
                   ) : null}
                   {st ? (
-                    <CloudRepoBindingStatusBadge status={st} />
+                    <CloudRepoBindingStatusBadge
+                      status={st}
+                      gitIntegrationEnabled={gitIntegrationEnabled}
+                    />
                   ) : (
                     <span className="text-[10px] text-muted-foreground">…</span>
                   )}
@@ -2478,6 +2487,7 @@ function CloudTeamReposBindingsSection({
                   gitIntegrationEnabled={gitIntegrationEnabled}
                   localRepoConfig={localRepoConfig}
                   status={st}
+                  gitIntegrationEnabled={gitIntegrationEnabled}
                   sshDevices={sshDevices}
                   bindLocalBusy={actionRepoId === sr.id}
                   onBindLocalFolder={() => void handleBind(sr.id)}
@@ -2515,6 +2525,7 @@ function CloudRepoFields({
   gitIntegrationEnabled,
   localRepoConfig,
   status,
+  gitIntegrationEnabled,
   sshDevices,
   bindLocalBusy,
   onBindLocalFolder,
@@ -2527,6 +2538,7 @@ function CloudRepoFields({
   gitIntegrationEnabled: boolean;
   localRepoConfig?: RepoConfig;
   status?: CloudRepoLocalBindingStatus;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   bindLocalBusy?: boolean;
   onBindLocalFolder?: () => void;
@@ -2621,7 +2633,7 @@ function CloudRepoFields({
                 This path no longer exists on disk. Bind a different folder.
               </p>
             ) : null}
-            {isLocallyBound && status.pathStatus === 'not_git' ? (
+            {isLocallyBound && status.pathStatus === 'not_git' && gitIntegrationEnabled ? (
               <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder is not a git repository root. Choose another folder.
               </p>
@@ -2737,6 +2749,7 @@ interface RepoCardProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
   gitIntegrationEnabled: boolean;
@@ -2752,6 +2765,7 @@ function RepoCard({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
   gitIntegrationEnabled,
@@ -2792,7 +2806,7 @@ function RepoCard({
               </span>
             ) : null}
             {multiRepoManagementEnabled && repoState ? (
-              <RepoStateBadge state={repoState} />
+              <RepoStateBadge state={repoState} gitIntegrationEnabled={gitIntegrationEnabled} />
             ) : null}
           </div>
           <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
@@ -2817,6 +2831,7 @@ function RepoCard({
             repoState={repoState}
             primary={primary}
             multiRepoManagementEnabled={multiRepoManagementEnabled}
+            gitIntegrationEnabled={gitIntegrationEnabled}
             sshDevices={sshDevices}
             projectDefaultDeviceId={projectDefaultDeviceId}
             gitIntegrationEnabled={gitIntegrationEnabled}
@@ -2829,7 +2844,13 @@ function RepoCard({
   );
 }
 
-function RepoStateBadge({ state }: { state: RepoManagementState }) {
+function RepoStateBadge({
+  state,
+  gitIntegrationEnabled = true,
+}: {
+  state: RepoManagementState;
+  gitIntegrationEnabled?: boolean;
+}) {
   if (state.pathStatus === 'valid' && !state.removalBlocked) {
     return null;
   }
@@ -2843,6 +2864,9 @@ function RepoStateBadge({ state }: { state: RepoManagementState }) {
   }
 
   if (state.pathStatus === 'not_git') {
+    if (!gitIntegrationEnabled) {
+      return null;
+    }
     return (
       <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
         Not a git repo
@@ -2859,6 +2883,7 @@ interface RepoFieldsProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
   gitIntegrationEnabled: boolean;
@@ -2872,6 +2897,7 @@ function RepoFields({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
   gitIntegrationEnabled,
@@ -2936,7 +2962,12 @@ function RepoFields({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {repoState ? <RepoStateBadge state={repoState} /> : null}
+                {repoState ? (
+                  <RepoStateBadge
+                    state={repoState}
+                    gitIntegrationEnabled={gitIntegrationEnabled}
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void handleSetPrimary()}
@@ -2951,7 +2982,7 @@ function RepoFields({
               <p className="mt-2 text-[11px] text-destructive">
                 This path no longer exists on disk.
               </p>
-            ) : repoState?.pathStatus === 'not_git' ? (
+            ) : repoState?.pathStatus === 'not_git' && gitIntegrationEnabled ? (
               <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder exists, but Fluxx cannot find a .git directory in it.
               </p>

@@ -17,6 +17,7 @@ import {
   writeOnboardingPending,
 } from './main/projectOnboarding';
 import {
+  inferGitIntegrationEnabledForProjectCreate,
   normalizeProjectCreateInput,
   validateLocalProjectCreateInput,
   type ProjectCreateInput,
@@ -31,8 +32,10 @@ import {
   resolveLocalTaskRepoIdForCreate,
   resolvePrimaryRepoId,
   resolveRepoForBranchDiscovery,
+  stableLocalProjectIdForRoot,
   validateTaskRepoIdPatchValue,
 } from './repoIdentity';
+import { validateRepoFolderForBinding } from './repoFolderAcceptance';
 import { AutomationHttpServer } from './main/AutomationHttpServer';
 import {
   invokeFluxAutomationRequest,
@@ -54,7 +57,7 @@ import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
-import { canonicalCloudProjectDir } from './main/projectDirLayout';
+import { canonicalCloudProjectDir, canonicalLocalProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
@@ -1551,10 +1554,47 @@ app.whenReady().then(async () => {
   const authServer = new AuthServer();
   const emailService = new EmailService();
 
+  async function gitIntegrationEnabledForRepoRoot(rootPath: string): Promise<boolean> {
+    try {
+      const resolved = path.resolve(rootPath);
+      const projectDir = canonicalLocalProjectDir(
+        fluxxBaseDir,
+        stableLocalProjectIdForRoot(resolved),
+      );
+      const config = await projectStore.readStoredProjectConfig(projectDir);
+      if (config?.gitIntegrationEnabled === false) return false;
+    } catch {
+      // Unmaterialised or unreadable — default git-on validation.
+    }
+    return true;
+  }
+
+  async function gitIntegrationEnabledForCloudProject(cloudProjectId: string): Promise<boolean> {
+    const binding = bindingStore.get(cloudProjectId);
+    if (binding?.gitIntegrationEnabled === false) return false;
+    try {
+      const matDir = path.resolve(canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId));
+      const { projectDir } = await projectStore.ensureCloudLayoutForRoot(cloudProjectId, matDir);
+      return await projectStore.getGitIntegrationEnabledAt(projectDir);
+    } catch {
+      return true;
+    }
+  }
+
+  async function gitIntegrationEnabledForActiveProject(): Promise<boolean> {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) return true;
+    if (key.kind === 'local') {
+      return projectStore.get()?.gitIntegrationEnabled !== false;
+    }
+    return gitIntegrationEnabledForCloudProject(key.id);
+  }
+
   async function pickDirectory(
     title: string,
     buttonLabel = 'Open project',
-  ): Promise<{ rootPath: string } | { error: 'NOT_GIT_REPO' } | null> {
+    options?: { gitIntegrationEnabled?: boolean; forProjectCreate?: boolean },
+  ): Promise<{ rootPath: string } | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' } | null> {
     const win = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
       properties: ['openDirectory' as const],
@@ -1566,12 +1606,18 @@ app.whenReady().then(async () => {
       : await dialog.showOpenDialog(dialogOpts);
     if (result.canceled || result.filePaths.length === 0) return null;
     const rootPath = result.filePaths[0];
-    try {
-      await fs.access(path.join(rootPath, '.git'));
-    } catch {
+    const gitEnabled = options?.forProjectCreate
+      ? false
+      : (options?.gitIntegrationEnabled ??
+        (await gitIntegrationEnabledForActiveProject()));
+    const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+    if (!validated.ok) {
+      if (validated.error === 'NOT_WRITABLE') {
+        return { error: 'NOT_WRITABLE' as const };
+      }
       return { error: 'NOT_GIT_REPO' as const };
     }
-    return { rootPath };
+    return { rootPath: validated.resolved };
   }
 
   async function openLocalProjectFromRoot(rootPath: string): Promise<LocalProject> {
@@ -1701,13 +1747,16 @@ app.whenReady().then(async () => {
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const rootPath = result.filePaths[0];
-    try {
-      await fs.access(path.join(rootPath, '.git'));
-    } catch {
+    const gitEnabled = await gitIntegrationEnabledForRepoRoot(rootPath);
+    const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+    if (!validated.ok) {
+      if (validated.error === 'NOT_WRITABLE') {
+        return { error: 'NOT_WRITABLE' as const };
+      }
       return { error: 'NOT_GIT_REPO' as const };
     }
 
-    const proj = await openLocalProjectFromRoot(rootPath);
+    const proj = await openLocalProjectFromRoot(validated.resolved);
     return proj;
   });
   ipcMain.handle('project:clear', async () => {
@@ -2055,13 +2104,16 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'project:pickRepoDirectory',
-    async (): Promise<
+    async (
+      _e,
+      options?: { gitIntegrationEnabled?: boolean; forProjectCreate?: boolean },
+    ): Promise<
       | { rootPath: string }
-      | { error: 'NOT_GIT_REPO' }
+      | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
       | { error: string }
       | null
     > => {
-      return pickDirectory('Add repository to project', 'Add repository');
+      return pickDirectory('Add repository to project', 'Add repository', options);
     },
   );
 
@@ -2118,12 +2170,18 @@ app.whenReady().then(async () => {
       const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
       if (!repoId) return { error: 'repoId is required' };
       if (!rootPath) return { error: 'rootPath is required' };
-      try {
-        await fs.access(path.join(rootPath, '.git'));
-      } catch {
+      const gitEnabled = await gitIntegrationEnabledForCloudProject(key.id);
+      const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+      if (!validated.ok) {
+        if (validated.error === 'NOT_WRITABLE') {
+          return { error: 'That folder is not writable.', code: 'NOT_WRITABLE' };
+        }
+        if (validated.error === 'MISSING') {
+          return { error: 'That folder does not exist.', code: 'MISSING_PATH' };
+        }
         return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
       }
-      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, rootPath);
+      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, validated.resolved);
       const projectDir = worktreeService.getProjectDir();
       if (!projectDir) {
         return { error: 'No active workspace directory.' };
@@ -2876,6 +2934,12 @@ app.whenReady().then(async () => {
         const message = err instanceof Error ? err.message : String(err);
         return { ok: false, error: 'CREATE_FAILED', message };
       }
+      if (normalized.gitIntegrationEnabled === undefined) {
+        normalized = {
+          ...normalized,
+          gitIntegrationEnabled: await inferGitIntegrationEnabledForProjectCreate(normalized),
+        };
+      }
       const validated = await validateLocalProjectCreateInput(normalized, {
         isGitRepo: async (rootPath) => {
           try {
@@ -3063,12 +3127,15 @@ app.whenReady().then(async () => {
 
       const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
       if (!shellOnly) {
-        try {
-          await fs.access(path.join(resolvedRoot, '.git'));
-        } catch {
+        const gitEnabled = await gitIntegrationEnabledForCloudProject(payload.id);
+        const validated = await validateRepoFolderForBinding(resolvedRoot, gitEnabled);
+        if (!validated.ok) {
+          if (validated.error === 'NOT_WRITABLE') {
+            return { error: 'NOT_WRITABLE' as const };
+          }
           return { error: 'NOT_GIT_REPO' as const };
         }
-        await bindingStore.set(payload.id, resolvedRoot);
+        await bindingStore.set(payload.id, validated.resolved);
       } else {
         await bindingStore.touchShell(payload.id);
       }
@@ -3131,18 +3198,21 @@ app.whenReady().then(async () => {
       const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
       const primaryRepoId =
         typeof p.primaryRepoId === 'string' ? p.primaryRepoId.trim() : '';
+      const gitEnabled = await gitIntegrationEnabledForCloudProject(cloudProjectId);
       for (const row of bindingsRaw) {
         if (!row || typeof row !== 'object') continue;
         const o = row as Record<string, unknown>;
         const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
         const rootPath = typeof o.rootPath === 'string' ? o.rootPath.trim() : '';
         if (!repoId || !rootPath) continue;
-        try {
-          await fs.access(path.join(rootPath, '.git'));
-        } catch {
+        const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+        if (!validated.ok) {
+          if (validated.error === 'NOT_WRITABLE') {
+            return { error: 'That folder is not writable.', code: 'NOT_WRITABLE' };
+          }
           return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
         }
-        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, rootPath);
+        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, validated.resolved);
       }
       if (primaryRepoId) {
         await bindingStore.setPrimaryRepoId(cloudProjectId, primaryRepoId);

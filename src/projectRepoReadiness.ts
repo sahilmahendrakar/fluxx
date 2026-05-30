@@ -37,6 +37,8 @@ export interface ResolveProjectRepoReadinessInput {
   cloudNeedsPrimaryBinding?: boolean;
   /** Per-repo disk status from `project:getRepoManagementStates`. */
   repoPathById?: Record<string, RepoPathStatus> | null;
+  /** When false, `not_git` folders are acceptable if they exist (gitless mode). */
+  gitIntegrationEnabled?: boolean;
 }
 
 function sharedRepoLabel(sr: CloudSharedRepo): string {
@@ -66,6 +68,7 @@ function listUnboundSharedRepos(input: ResolveProjectRepoReadinessInput): string
 function listInvalidPathIssues(input: ResolveProjectRepoReadinessInput): ProjectRepoReadinessIssue[] {
   const issues: ProjectRepoReadinessIssue[] = [];
   const seen = new Set<string>();
+  const gitEnabled = input.gitIntegrationEnabled !== false;
 
   const pushIssue = (repoId: string, label: string, pathStatus: 'missing' | 'not_git') => {
     if (seen.has(repoId)) return;
@@ -78,6 +81,9 @@ function listInvalidPathIssues(input: ResolveProjectRepoReadinessInput): Project
     for (const sr of input.sharedRepos) {
       const status = overview[sr.id];
       if (status?.kind === 'bound' && status.pathStatus !== 'valid') {
+        if (!gitEnabled && status.pathStatus === 'not_git') {
+          continue;
+        }
         pushIssue(sr.id, sharedRepoLabel(sr), status.pathStatus);
       }
     }
@@ -87,8 +93,12 @@ function listInvalidPathIssues(input: ResolveProjectRepoReadinessInput): Project
   if (pathById) {
     for (const repo of input.configuredRepos) {
       const pathStatus = pathById[repo.id];
-      if (pathStatus === 'missing' || pathStatus === 'not_git') {
+      if (pathStatus === 'missing') {
         pushIssue(repo.id, repoDisplayLabel(repo), pathStatus);
+      } else if (pathStatus === 'not_git') {
+        if (gitEnabled) {
+          pushIssue(repo.id, repoDisplayLabel(repo), pathStatus);
+        }
       }
     }
   }
