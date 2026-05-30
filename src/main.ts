@@ -315,6 +315,7 @@ import { registerValidationPackProjectConfigIpc } from './main/validationPackPro
 import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
+  type AppearanceSideEffects,
 } from './main/registerAppearanceIpc';
 import {
   attachWindowFullscreenListeners,
@@ -669,12 +670,16 @@ app.whenReady().then(async () => {
   const appStateStore = new AppStateStore();
   await appStateStore.init();
   appStateStoreForAppearance = appStateStore;
-  registerAppearanceIpc(appStateStore, () => mainWindow);
+  const appearanceSideEffects: AppearanceSideEffects = {};
+  registerAppearanceIpc(appStateStore, () => mainWindow, appearanceSideEffects);
   registerWindowChromeIpc(() => mainWindow);
   nativeTheme.on('updated', () => {
     const pref = appStateStore.get().appearance ?? DEFAULT_APPEARANCE_PREFERENCE;
     if (pref !== 'system' || !mainWindow || mainWindow.isDestroyed()) return;
     applyInitialAppearanceChrome(appStateStore, mainWindow);
+    appearanceSideEffects.onResolvedChange?.(
+      resolveAppearanceWithSystemDark(pref, nativeTheme.shouldUseDarkColors),
+    );
   });
   const taskAutoTransitionNotify = registerTaskAutoTransitionNotificationIpc(appStateStore);
 
@@ -692,8 +697,16 @@ app.whenReady().then(async () => {
   const terminalBackend = createMainTerminalBackend({
     deviceStore,
     tmuxSpawnLauncherPath: resolveFluxxTmuxSpawnLauncherPath(app.getAppPath(), process.execPath),
+    resolveResolvedAppearance: () =>
+      resolveAppearanceWithSystemDark(
+        appStateStore.get().appearance ?? DEFAULT_APPEARANCE_PREFERENCE,
+        nativeTheme.shouldUseDarkColors,
+      ),
   });
   mainProcessTerminalBackend = terminalBackend;
+  appearanceSideEffects.onResolvedChange = (resolved) => {
+    localTerminalBackendFrom(mainProcessTerminalBackend)?.notifyAppearanceChange(resolved);
+  };
   try {
     await terminalBackend.ensureReady();
   } catch (err) {

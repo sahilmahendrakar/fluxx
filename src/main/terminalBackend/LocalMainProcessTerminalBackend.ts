@@ -286,6 +286,10 @@ export class LocalMainProcessTerminalBackend implements TerminalBackend {
     this.mgr.stopPlanning(id);
   }
 
+  notifyAppearanceChange(resolved: import('../theme/appearance').ResolvedAppearance): void {
+    this.mgr.notifyAppearanceChange(resolved);
+  }
+
   reconcileTmuxPersistedTerminals(
     params: TmuxPersistedRestoreParams,
   ): Promise<TmuxPersistedReconcileOutput> {

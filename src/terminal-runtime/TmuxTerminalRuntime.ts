@@ -7,6 +7,7 @@ import { buildFluxxTmuxSessionName } from '../main/tmux/tmuxSessionName';
 import { spawnFluxxTmuxSession, type FluxxTmuxSpawnSpec } from '../main/tmux/tmuxSpawn';
 import { buildFluxxTmuxArgv, tmuxKillSession } from '../main/tmux/tmuxCommands';
 import { buildPtyEnv, PTY_TERM_NAME } from './terminalEnv';
+import { notifyAppearanceToTmuxPane } from './terminalAppearanceNotify';
 import { collapsedBottomScreenText } from './renderedScreenText';
 import { buildRehydrateSequences, captureSerializedSnapshot } from './terminalSnapshot';
 import type {
@@ -88,6 +89,7 @@ export class TmuxTerminalRuntime {
       cwd: spec.cwd,
       env: buildPtyEnv(spec.env ?? process.env, {
         termProgram: spec.termProgram,
+        appearance: spec.appearance,
       }) as Record<string, string | undefined>,
     };
 
@@ -122,6 +124,7 @@ export class TmuxTerminalRuntime {
       rows: number;
       env?: NodeJS.ProcessEnv;
       termProgram?: string;
+      appearance?: import('../theme/appearance').ResolvedAppearance;
     },
     callbacks: SessionRuntimeCallbacks,
     opts: { replayCapBytes?: number } = {},
@@ -134,6 +137,7 @@ export class TmuxTerminalRuntime {
       rows: spec.rows,
       env: spec.env,
       termProgram: spec.termProgram,
+      appearance: spec.appearance,
     };
     const runtime = new TmuxTerminalRuntime(
       spec.tmuxSessionName,
@@ -157,6 +161,7 @@ export class TmuxTerminalRuntime {
         cwd: spec.cwd,
         env: buildPtyEnv(spec.env ?? process.env, {
           termProgram: spec.termProgram,
+          appearance: spec.appearance,
         }),
       },
     );
@@ -254,6 +259,13 @@ export class TmuxTerminalRuntime {
 
   interrupt(): void {
     this.write('\x03');
+  }
+
+  /** Notify the tmux-hosted app that terminal fg/bg colors changed (OSC 10/11). */
+  notifyAppearance(sequence: string): void {
+    if (this.exited) return;
+    this.write(sequence);
+    notifyAppearanceToTmuxPane(this.tmuxSessionName, sequence);
   }
 
   /**

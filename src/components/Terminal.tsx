@@ -125,8 +125,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       return;
     }
 
+    const initTheme = xtermThemeForSurface({ hideCursor, appearance });
     const term = new XTerm({
-      theme: xtermThemeForSurface({ hideCursor, appearance }),
+      theme: initTheme,
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       fontSize: 12,
       // Keep at xterm.js's default of 1.0. TUIs (claude-code's banner, fzf
@@ -409,11 +410,12 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    term.options.theme = xtermThemeForSurface({ hideCursor, appearance });
+    const nextTheme = xtermThemeForSurface({ hideCursor, appearance });
+    term.options.theme = nextTheme;
     if (term.rows > 0) {
       term.refresh(0, term.rows - 1);
     }
-  }, [appearance, hideCursor]);
+  }, [appearance, hideCursor, sessionId]);
 
   // Parents mark the pane/tab hidden by passing visible=false. We don't toggle
   // display on the container (that would reflow xterm and wipe the rendered

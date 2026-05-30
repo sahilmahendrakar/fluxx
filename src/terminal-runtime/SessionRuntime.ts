@@ -2,6 +2,7 @@ import * as pty from 'node-pty';
 import type { IPty } from 'node-pty';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Terminal as HeadlessTerminal } from '@xterm/headless';
+import type { ResolvedAppearance } from '../theme/appearance';
 import type { AttachResult, TerminalSnapshot } from './protocol';
 import { buildPtyEnv, PTY_TERM_NAME } from './terminalEnv';
 import { collapsedBottomScreenText } from './renderedScreenText';
@@ -31,6 +32,8 @@ export interface SessionRuntimeSpawnSpec {
    * protocol (which xterm.js does not implement).
    */
   termProgram?: string;
+  /** Resolved UI appearance — drives COLORFGBG for agent TUIs. */
+  appearance?: ResolvedAppearance;
 }
 
 export interface SessionRuntimeCallbacks {
@@ -81,17 +84,20 @@ export class SessionRuntime {
     this.cwd = spec.cwd;
 
     // Force a curated terminal env (TERM=xterm-256color, COLORTERM=truecolor,
-    // LANG=<utf-8>, TERM_PROGRAM=kitty for CSI-u Shift+Enter, COLORFGBG=15;0).
-    // Without this, packaged GUI launches inherit launchd's bare env and TUIs
-    // like claude-code fall back to ANSI-16 + stripped banners. See `terminalEnv.ts`.
+    // LANG=<utf-8>, TERM_PROGRAM=kitty for CSI-u Shift+Enter, appearance-aware
+    // COLORFGBG). Without this, packaged GUI launches inherit launchd's bare env
+    // and TUIs like claude-code fall back to ANSI-16 + stripped banners.
+    // See `terminalEnv.ts`.
+    const ptyEnv = buildPtyEnv(spec.env ?? process.env, {
+      termProgram: spec.termProgram,
+      appearance: spec.appearance,
+    });
     this.pty = pty.spawn(spec.command, spec.args, {
       name: PTY_TERM_NAME,
       cols: spec.cols,
       rows: spec.rows,
       cwd: spec.cwd,
-      env: buildPtyEnv(spec.env ?? process.env, {
-        termProgram: spec.termProgram,
-      }),
+      env: ptyEnv,
     });
 
     this.headless = new HeadlessTerminal({

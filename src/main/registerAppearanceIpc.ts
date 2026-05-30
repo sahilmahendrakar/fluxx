@@ -6,8 +6,13 @@ import {
   type AppearancePreference,
   DEFAULT_APPEARANCE_PREFERENCE,
   normalizeAppearancePreference,
+  type ResolvedAppearance,
   resolveAppearanceWithSystemDark,
 } from '../theme/appearance';
+
+export type AppearanceSideEffects = {
+  onResolvedChange?: (resolved: ResolvedAppearance) => void;
+};
 
 function bootstrapFromStore(appStateStore: AppStateStore): AppearanceBootstrap {
   const preference =
@@ -24,6 +29,7 @@ function bootstrapFromStore(appStateStore: AppStateStore): AppearanceBootstrap {
 export function registerAppearanceIpc(
   appStateStore: AppStateStore,
   getMainWindow: () => BrowserWindow | null,
+  sideEffects: AppearanceSideEffects = {},
 ): void {
   ipcMain.on('appearance:getBootstrap', (event) => {
     event.returnValue = bootstrapFromStore(appStateStore);
@@ -38,7 +44,12 @@ export function registerAppearanceIpc(
     async (_event, raw: unknown): Promise<{ ok: true; preference: AppearancePreference }> => {
       const preference = normalizeAppearancePreference(raw);
       await appStateStore.set({ appearance: preference });
+      const resolved = resolveAppearanceWithSystemDark(
+        preference,
+        nativeTheme.shouldUseDarkColors,
+      );
       syncAppearanceChrome(preference, getMainWindow());
+      sideEffects.onResolvedChange?.(resolved);
       return { ok: true, preference };
     },
   );

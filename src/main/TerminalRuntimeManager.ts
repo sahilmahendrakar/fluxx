@@ -8,6 +8,7 @@ import {
   sleepMs,
 } from './gracefulAgentExit';
 import { tmuxAttachWriteSettleMs } from './tmux/tmuxAttachWriteSettle';
+import type { ResolvedAppearance } from '../theme/appearance';
 import type { Agent, PlanningSession, Session, Shell, TerminalSessionRecord } from '../types';
 import type {
   AgentState,
@@ -20,7 +21,8 @@ import type {
   StartPlanningResult,
   StreamFrame,
 } from '../terminal-runtime/protocol';
-import { SessionRuntime } from '../terminal-runtime/SessionRuntime';
+import { buildTerminalAppearanceNotifyBundle } from '../terminal-runtime/terminalAppearanceNotify';
+import { respondToTerminalColorQueriesIfNeeded } from '../terminal-runtime/terminalOscColorQuery';
 import { TmuxTerminalRuntime } from '../terminal-runtime/TmuxTerminalRuntime';
 import { SilenceDetector } from '../terminal-runtime/SilenceDetector';
 import { PromptAutoresponder } from '../terminal-runtime/PromptAutoresponder';
@@ -211,6 +213,8 @@ export interface TerminalRuntimeManagerOptions {
   resolveTerminalRuntimeContext?: () => TerminalRuntimeContext | null;
   /** Override launcher path (tests). */
   tmuxSpawnLauncherPath?: string;
+  /** Current resolved appearance for PTY COLORFGBG hints. */
+  resolveResolvedAppearance?: () => ResolvedAppearance;
 }
 
 /**
@@ -233,6 +237,7 @@ export class TerminalRuntimeManager {
   private readonly onPlanningPtyData?: (payload: PlanningPtyDataPayload) => void;
   private resolveTerminalRuntimeContext?: () => TerminalRuntimeContext | null;
   private readonly tmuxSpawnLauncherPath: string;
+  private readonly resolveResolvedAppearance?: () => ResolvedAppearance;
   /** Serializes awaited session writes (paste then submit for PR injection). */
   private readonly sessionWriteAwaitChains = new Map<string, Promise<void>>();
 
@@ -247,6 +252,37 @@ export class TerminalRuntimeManager {
     this.resolveTerminalRuntimeContext = opts.resolveTerminalRuntimeContext;
     this.tmuxSpawnLauncherPath =
       opts.tmuxSpawnLauncherPath ?? resolveFluxxTmuxSpawnLauncherPath();
+    this.resolveResolvedAppearance = opts.resolveResolvedAppearance;
+  }
+
+  private resolvedAppearanceForSpawn(): ResolvedAppearance {
+    return this.resolveResolvedAppearance?.() ?? 'dark';
+  }
+
+  /** Push DEC 997 + OSC responses to running PTYs so Cursor Agent re-themes mid-session. */
+  notifyAppearanceChange(resolved: ResolvedAppearance): void {
+    const sequence = buildTerminalAppearanceNotifyBundle(resolved);
+    const push = (runtime: AnyTerminalRuntime) => {
+      runtime.write(sequence);
+      if (isTmuxRuntime(runtime)) {
+        runtime.notifyAppearance(sequence);
+      }
+    };
+    for (const entry of this.sessions.values()) {
+      if (entry.session.status !== 'running') continue;
+      push(entry.runtime);
+    }
+    for (const entry of this.planning.values()) {
+      if (entry.session.status !== 'running') continue;
+      push(entry.runtime);
+    }
+  }
+
+  private respondToAgentColorQueries(runtime: AnyTerminalRuntime, data: string): void {
+    const appearance = this.resolvedAppearanceForSpawn();
+    respondToTerminalColorQueriesIfNeeded(data, appearance, (response) => {
+      runtime.write(response);
+    });
   }
 
   setResolveTerminalRuntimeContext(
@@ -453,6 +489,7 @@ export class TerminalRuntimeManager {
 
     let runtime: AnyTerminalRuntime;
     let tmuxSessionName: string | undefined;
+    const runtimeRef: { current: AnyTerminalRuntime | null } = { current: null };
     try {
       const spawned = await createTerminalRuntime(
         this.factoryContext('task', id, params.projectId),
@@ -468,9 +505,13 @@ export class TerminalRuntimeManager {
             ...(params.ptyEnv ?? {}),
           },
           termProgram: 'kitty',
+          appearance: this.resolvedAppearanceForSpawn(),
         },
         {
           onData: (data, seq) => {
+            if (runtimeRef.current) {
+              this.respondToAgentColorQueries(runtimeRef.current, data);
+            }
             this.emitFrame({ kind: 'data', target: 'session', id, data, seq });
             detector.onData();
             autoresponder?.notifyPtyData();
@@ -498,6 +539,7 @@ export class TerminalRuntimeManager {
         },
       );
       runtime = spawned.runtime;
+      runtimeRef.current = spawned.runtime;
       tmuxSessionName = spawned.tmuxSessionName;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -645,6 +687,7 @@ export class TerminalRuntimeManager {
         cols: params.cols,
         rows: params.rows,
         env: { ...process.env, HOME: process.env.HOME ?? os.homedir() },
+        appearance: this.resolvedAppearanceForSpawn(),
       },
       {
         onData: (data, seq) => {
@@ -734,6 +777,7 @@ export class TerminalRuntimeManager {
 
     let runtime: AnyTerminalRuntime;
     let tmuxSessionName: string | undefined;
+    const planningRuntimeRef: { current: AnyTerminalRuntime | null } = { current: null };
     try {
       const spawned = await createTerminalRuntime(
         this.factoryContext('planning', id, params.projectId),
@@ -749,9 +793,13 @@ export class TerminalRuntimeManager {
             ...(params.ptyEnv ?? {}),
           },
           termProgram: 'kitty',
+          appearance: this.resolvedAppearanceForSpawn(),
         },
         {
           onData: (data, seq) => {
+            if (planningRuntimeRef.current) {
+              this.respondToAgentColorQueries(planningRuntimeRef.current, data);
+            }
             this.emitFrame({ kind: 'data', target: 'planning', id, data, seq });
             autoresponder?.notifyPtyData();
             this.onPlanningPtyData?.({
@@ -776,6 +824,7 @@ export class TerminalRuntimeManager {
         },
       );
       runtime = spawned.runtime;
+      planningRuntimeRef.current = spawned.runtime;
       tmuxSessionName = spawned.tmuxSessionName;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1100,6 +1149,7 @@ export class TerminalRuntimeManager {
             HOME: process.env.HOME ?? os.homedir(),
           },
           termProgram: 'kitty',
+          appearance: this.resolvedAppearanceForSpawn(),
         },
         {
           onData: (data, seq) => {
@@ -1201,6 +1251,7 @@ export class TerminalRuntimeManager {
             HOME: process.env.HOME ?? os.homedir(),
           },
           termProgram: 'kitty',
+          appearance: this.resolvedAppearanceForSpawn(),
         },
         {
           onData: (data, seq) => {
@@ -1285,6 +1336,7 @@ export class TerminalRuntimeManager {
             ...process.env,
             HOME: process.env.HOME ?? os.homedir(),
           },
+          appearance: this.resolvedAppearanceForSpawn(),
         },
         {
           onData: (data, seq) => {
