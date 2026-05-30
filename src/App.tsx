@@ -1072,17 +1072,26 @@ export default function App() {
       JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
     const validationEnabled = fresh.validationEnabled === true;
     const validationChanged = validationEnabled !== (project.validationEnabled === true);
+    const gitIntegrationEnabled = fresh.gitIntegrationEnabled !== false;
+    const gitIntegrationChanged =
+      gitIntegrationEnabled !== (project.gitIntegrationEnabled !== false);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
       fresh.createdAt !== project.createdAt ||
       reposChanged ||
-      validationChanged;
+      validationChanged ||
+      gitIntegrationChanged;
     if (!changed) return;
     if (validationChanged) {
       void window.electronAPI.project.setValidationEnabled(validationEnabled).catch((err) => {
         console.warn('[App] sync validationEnabled to disk', err);
+      });
+    }
+    if (gitIntegrationChanged) {
+      void window.electronAPI.project.setGitIntegrationEnabled(gitIntegrationEnabled).catch((err) => {
+        console.warn('[App] sync gitIntegrationEnabled to disk', err);
       });
     }
     setProject({
@@ -1092,6 +1101,7 @@ export default function App() {
       memberIds: fresh.memberIds,
       createdAt: fresh.createdAt,
       validationEnabled,
+      gitIntegrationEnabled,
       ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
     });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);

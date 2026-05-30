@@ -25,6 +25,7 @@ import { COLUMNS } from '../types';
 import { deriveRepoIdForRootPath, repoRootBasename } from '../repoIdentity';
 import {
   updateCloudProjectRepos,
+  updateCloudProjectGitIntegrationEnabled,
   updateCloudProjectValidationEnabled,
 } from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
@@ -533,6 +534,19 @@ function ProjectConfigPane({
   const [validationLoading, setValidationLoading] = useState(true);
   const [validationSaveState, setValidationSaveState] = useState<SaveState>('idle');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [gitIntegrationEnabled, setGitIntegrationEnabled] = useState(
+    () => project.gitIntegrationEnabled !== false,
+  );
+  const [gitIntegrationLoading, setGitIntegrationLoading] = useState(true);
+  const [gitIntegrationSaveState, setGitIntegrationSaveState] = useState<SaveState>('idle');
+  const [gitIntegrationError, setGitIntegrationError] = useState<string | null>(null);
+  const [gitlessSingleSessionEnabled, setGitlessSingleSessionEnabled] = useState(
+    () => project.gitlessSingleSessionPerFolder !== false,
+  );
+  const [gitlessSingleSessionLoading, setGitlessSingleSessionLoading] = useState(true);
+  const [gitlessSingleSessionSaveState, setGitlessSingleSessionSaveState] =
+    useState<SaveState>('idle');
+  const [gitlessSingleSessionError, setGitlessSingleSessionError] = useState<string | null>(null);
   const [tmuxAvailabilityMessage, setTmuxAvailabilityMessage] = useState<string | null>(null);
   const [tmuxPlatformSupported, setTmuxPlatformSupported] = useState(true);
   const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
@@ -871,6 +885,18 @@ function ProjectConfigPane({
   }, [project.id, project.validationEnabled]);
 
   useEffect(() => {
+    setGitIntegrationEnabled(project.gitIntegrationEnabled !== false);
+    setGitIntegrationSaveState('idle');
+    setGitIntegrationError(null);
+  }, [project.id, project.gitIntegrationEnabled]);
+
+  useEffect(() => {
+    setGitlessSingleSessionEnabled(project.gitlessSingleSessionPerFolder !== false);
+    setGitlessSingleSessionSaveState('idle');
+    setGitlessSingleSessionError(null);
+  }, [project.id, project.gitlessSingleSessionPerFolder]);
+
+  useEffect(() => {
     let cancelled = false;
     setValidationLoading(true);
     setValidationError(null);
@@ -889,6 +915,56 @@ function ProjectConfigPane({
       })
       .finally(() => {
         if (!cancelled) setValidationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGitIntegrationLoading(true);
+    setGitIntegrationError(null);
+    void window.electronAPI.project
+      .getGitIntegrationEnabled()
+      .then((enabled) => {
+        if (!cancelled) {
+          setGitIntegrationEnabled(enabled);
+          setGitIntegrationSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGitIntegrationError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGitIntegrationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGitlessSingleSessionLoading(true);
+    setGitlessSingleSessionError(null);
+    void window.electronAPI.project
+      .getGitlessSingleSessionPerFolder()
+      .then((enabled) => {
+        if (!cancelled) {
+          setGitlessSingleSessionEnabled(enabled);
+          setGitlessSingleSessionSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGitlessSingleSessionError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGitlessSingleSessionLoading(false);
       });
     return () => {
       cancelled = true;
@@ -954,6 +1030,56 @@ function ProjectConfigPane({
     },
     [onProjectAgentPrefsRefresh, project],
   );
+
+  const handleGitIntegrationEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      setGitIntegrationEnabled(enabled);
+      setGitIntegrationSaveState('saving');
+      setGitIntegrationError(null);
+      try {
+        if (project.kind === 'cloud') {
+          await updateCloudProjectGitIntegrationEnabled(project.id, enabled);
+        }
+        const result = await window.electronAPI.project.setGitIntegrationEnabled(enabled);
+        if ('error' in result) {
+          setGitIntegrationSaveState('error');
+          setGitIntegrationError(result.error);
+          setGitIntegrationEnabled((prev) => !prev);
+          return;
+        }
+        setGitIntegrationEnabled(result.enabled);
+        setGitIntegrationSaveState('saved');
+        await onProjectAgentPrefsRefresh?.();
+        window.setTimeout(() => {
+          setGitIntegrationSaveState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+      } catch (err) {
+        setGitIntegrationSaveState('error');
+        setGitIntegrationError(err instanceof Error ? err.message : String(err));
+        setGitIntegrationEnabled((prev) => !prev);
+      }
+    },
+    [onProjectAgentPrefsRefresh, project],
+  );
+
+  const handleGitlessSingleSessionChange = useCallback(async (enabled: boolean) => {
+    setGitlessSingleSessionEnabled(enabled);
+    setGitlessSingleSessionSaveState('saving');
+    setGitlessSingleSessionError(null);
+    const result = await window.electronAPI.project.setGitlessSingleSessionPerFolder(enabled);
+    if ('error' in result) {
+      setGitlessSingleSessionSaveState('error');
+      setGitlessSingleSessionError(result.error);
+      setGitlessSingleSessionEnabled((prev) => !prev);
+      return;
+    }
+    setGitlessSingleSessionEnabled(result.enabled);
+    setGitlessSingleSessionSaveState('saved');
+    await onProjectAgentPrefsRefresh?.();
+    window.setTimeout(() => {
+      setGitlessSingleSessionSaveState((state) => (state === 'saved' ? 'idle' : state));
+    }, 1500);
+  }, [onProjectAgentPrefsRefresh]);
 
   const handleWhenUnblockedChange = useCallback(async (enabled: boolean) => {
     setWhenUnblockedEnabled(enabled);
@@ -1350,6 +1476,63 @@ function ProjectConfigPane({
         <p className="mt-1 text-[13px] text-muted-foreground">
           Configure how new task workspaces are created for {project.name}.
         </p>
+
+        <section
+          className="mt-6 rounded-xl border border-border bg-card px-4"
+          aria-labelledby="project-settings-config-heading"
+        >
+          <div className="border-b border-border py-4">
+            <h2
+              id="project-settings-config-heading"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
+            >
+              Project Config
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+              Core workspace mode for this project. Git integration is on by default.
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            <AutomationSettingRow
+              key={`${project.id}-git-integration-enabled`}
+              title="Git integration"
+              description={
+                <>
+                  When on, Fluxx creates git worktrees, branches, and PR features for task sessions.
+                  When off, agents run directly in the working folder without git-managed workspaces.
+                  {project.kind === 'cloud' ? ' For cloud projects this setting is shared with your team.' : null}
+                </>
+              }
+              checked={gitIntegrationEnabled}
+              onCheckedChange={(next) => void handleGitIntegrationEnabledChange(next)}
+              switchDisabled={gitIntegrationLoading || gitIntegrationSaveState === 'saving'}
+              loading={gitIntegrationLoading}
+              saveState={gitIntegrationSaveState}
+              error={gitIntegrationError}
+            />
+            {!gitIntegrationEnabled ? (
+              <AutomationSettingRow
+                key={`${project.id}-gitless-single-session`}
+                title="Single session per folder"
+                description={
+                  <>
+                    When on, starting a second task session in the same folder on this device is blocked
+                    while another session is running. Turn off to allow concurrent agents in one folder
+                    at your own risk.
+                  </>
+                }
+                checked={gitlessSingleSessionEnabled}
+                onCheckedChange={(next) => void handleGitlessSingleSessionChange(next)}
+                switchDisabled={
+                  gitlessSingleSessionLoading || gitlessSingleSessionSaveState === 'saving'
+                }
+                loading={gitlessSingleSessionLoading}
+                saveState={gitlessSingleSessionSaveState}
+                error={gitlessSingleSessionError}
+              />
+            ) : null}
+          </div>
+        </section>
 
         <section
           className="mt-6 rounded-xl border border-border bg-card px-4"

@@ -305,6 +305,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:setValidationEnabled', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
+    getGitIntegrationEnabled: () =>
+      ipcRenderer.invoke('project:getGitIntegrationEnabled') as Promise<boolean>,
+    setGitIntegrationEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setGitIntegrationEnabled', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
+    getGitlessSingleSessionPerFolder: () =>
+      ipcRenderer.invoke('project:getGitlessSingleSessionPerFolder') as Promise<boolean>,
+    setGitlessSingleSessionPerFolder: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setGitlessSingleSessionPerFolder', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
   },
   terminal: {
     inventorySnapshot: () =>

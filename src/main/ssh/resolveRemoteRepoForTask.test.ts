@@ -18,6 +18,9 @@ describe('resolveRemoteRepoForTaskSession', () => {
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
     persistTerminalsWithTmux: false,
+    validationEnabled: false,
+    gitIntegrationEnabled: true,
+    gitlessSingleSessionPerFolder: true,
     repos: [
       {
         id: 'repo-a',

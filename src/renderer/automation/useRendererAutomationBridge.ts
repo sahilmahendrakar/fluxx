@@ -325,6 +325,8 @@ async function handleRequest(
           activeKey: currentKey,
           uid: uid ?? null,
           validationEnabled: project.validationEnabled === true,
+          gitIntegrationEnabled: project.gitIntegrationEnabled !== false,
+          gitlessSingleSessionPerFolder: project.gitlessSingleSessionPerFolder !== false,
           taskCounts,
           ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
           ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),

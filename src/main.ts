@@ -2701,6 +2701,61 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle('project:getGitIntegrationEnabled', async () => {
+    try {
+      return await projectStore.getGitIntegrationEnabledAt(activeProjectDir());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(message);
+    }
+  });
+  ipcMain.handle(
+    'project:setGitIntegrationEnabled',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const next = await projectStore.setGitIntegrationEnabledAt(
+          activeProjectDir(),
+          enabled !== false,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle('project:getGitlessSingleSessionPerFolder', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder;
+    }
+    return projectStore.getGitlessSingleSessionPerFolderAt(activeProjectDir());
+  });
+  ipcMain.handle(
+    'project:setGitlessSingleSessionPerFolder',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            gitlessSingleSessionPerFolder: enabled !== false,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder,
+          };
+        }
+        const next = await projectStore.setGitlessSingleSessionPerFolderAt(
+          activeProjectDir(),
+          enabled,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle(
     'terminal:inventorySnapshot',
     async (): Promise<TerminalInventorySnapshot> => buildTerminalInventorySnapshotForActiveProject(),
