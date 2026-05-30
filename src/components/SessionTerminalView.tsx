@@ -514,7 +514,8 @@ export function SessionTerminalView({
   const [localWorktreePath, setLocalWorktreePath] = useState<string | null>(null);
   const running = session.status === 'running';
   const isRemoteSshSession = session.deviceKind === 'ssh';
-  const localWorktreeAvailable = Boolean(localWorktreePath?.trim());
+  const isGitlessDirectSession = session.workspaceKind === 'direct';
+  const localWorktreeAvailable = Boolean(localWorktreePath?.trim()) && !isGitlessDirectSession;
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
   const showCleanUp =
@@ -776,6 +777,7 @@ export function SessionTerminalView({
             <SessionShellAddMenu
               running={running}
               localWorktreeAvailable={localWorktreeAvailable}
+              showLocalShellOption={!isGitlessDirectSession}
               onOpenShell={handleOpenShell}
             />
           ) : (
@@ -799,7 +801,7 @@ export function SessionTerminalView({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {isRemoteSshSession ? (
+          {isRemoteSshSession && !isGitlessDirectSession ? (
             <Button
               type="button"
               size="sm"
@@ -835,9 +837,13 @@ export function SessionTerminalView({
             </Button>
           ) : null}
           <OpenInWorkspaceButton
-            worktreePath={isRemoteSshSession ? localWorktreePath : session.worktreePath}
+            worktreePath={
+              isRemoteSshSession && !isGitlessDirectSession
+                ? localWorktreePath
+                : session.worktreePath
+            }
             disabledReason={
-              isRemoteSshSession
+              isRemoteSshSession && !isGitlessDirectSession
                 ? 'Sync to local first to open the local copy in Cursor, VS Code, or Terminal.'
                 : undefined
             }

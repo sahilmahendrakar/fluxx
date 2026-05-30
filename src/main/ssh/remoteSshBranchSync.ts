@@ -30,6 +30,7 @@ import {
   resolveCreateSourceBranchIfMissingForStart,
 } from '../../taskBranches';
 import { collectRepoBranchDiscovery } from '../repoGit';
+import { isDirectWorkspaceKind } from '../DirectFolderWorkspaceProvider';
 
 export type RemoteSshBranchSyncDeps = {
   deviceStore: DeviceStore;
@@ -63,6 +64,13 @@ export async function syncRemoteSshTaskToLocal(
   input: RemoteSshBranchSyncInput,
 ): Promise<RemoteSshSyncResult> {
   const { session, task, project } = input;
+  if (isDirectWorkspaceKind(session.workspaceKind)) {
+    return fail(
+      'remote-status',
+      'NOT_SSH_SESSION',
+      'Sync to local is not available for gitless SSH sessions. The agent runs directly in your bound remote folder.',
+    );
+  }
   if (session.deviceKind !== 'ssh') {
     return fail(
       'remote-status',

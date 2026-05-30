@@ -857,6 +857,8 @@ export type SessionStartErrorCode =
   | 'NOT_TASK_ASSIGNEE'
   /** Gitless: folder+device already has a running session and single-session guard is on. */
   | 'WORKSPACE_BUSY'
+  /** Gitless SSH: no remote folder bound for (device, repo). */
+  | 'REMOTE_FOLDER_REQUIRED'
   | 'INTERNAL';
 
 /** How a task session workspace was provisioned (git worktree vs direct folder). */
