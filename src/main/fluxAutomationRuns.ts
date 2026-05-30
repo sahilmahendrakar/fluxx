@@ -62,6 +62,12 @@ import {
   VALIDATION_DISABLED_CODE,
   VALIDATION_DISABLED_MESSAGE,
 } from '../validation/validationEnabled';
+import {
+  GIT_BRANCH_DISCOVERY_DISABLED_NOTE,
+  gitDisabledBranchDiscoveryResponse,
+  joinGitCliStderrNotes,
+  stripGitBranchCliFields,
+} from '../gitIntegration';
 
 export type FluxAutomationResolvedActive =
   | { kind: 'none' }
@@ -210,6 +216,25 @@ export async function resolveValidationEnabledForAutomationHost(
   return false;
 }
 
+export async function resolveGitIntegrationEnabledForAutomationHost(
+  h: FluxAutomationHost,
+): Promise<boolean> {
+  const active = h.resolveActive();
+  if (active.kind === 'none') return true;
+  if (active.kind === 'local') {
+    return active.project.gitIntegrationEnabled !== false;
+  }
+  const projectDir = h.getRecordProjectDir()?.trim();
+  if (projectDir) {
+    try {
+      return await h.projectStore.getGitIntegrationEnabledAt(projectDir);
+    } catch {
+      // fall through
+    }
+  }
+  return true;
+}
+
 function parseAutomationValidationPlan(
   raw: unknown,
   mode: 'create' | 'update',
@@ -267,6 +292,9 @@ export async function automationRunCreateTask(
     };
   }
   const validationPlan = planParsed.plan;
+  const gitIntegrationEnabled = await resolveGitIntegrationEnabledForAutomationHost(h);
+  const strippedCreate = stripGitBranchCliFields(input, gitIntegrationEnabled);
+  const createInput = strippedCreate.value;
   const agent: Agent | null =
     input.agent === 'none'
       ? null
@@ -279,11 +307,16 @@ export async function automationRunCreateTask(
     active.kind === 'local' ? active.project : h.bindingStore.getPrefs(active.activeKey.id);
   const modelYolo =
     agent != null
-      ? mergedTaskCreateAgentFields(spawnDefaultsSrc, agent, input.agentModel, input.agentYolo)
+      ? mergedTaskCreateAgentFields(
+          spawnDefaultsSrc,
+          agent,
+          createInput.agentModel,
+          createInput.agentYolo,
+        )
       : {};
   if (active.kind === 'local') {
     const repos = await h.projectStore.getReposAt(active.projectDir);
-    const requestedRepoId = input.repoId;
+    const requestedRepoId = createInput.repoId;
     const repoResolved = resolveLocalTaskRepoIdForCreate(repos, requestedRepoId);
     if (!repoResolved.ok) {
       return { ok: false, error: repoResolved.message };
@@ -292,16 +325,22 @@ export async function automationRunCreateTask(
     if (!repo?.rootPath) {
       return { ok: false, error: 'No repository root configured for this project' };
     }
-    const discovery = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
-    const planned = planTaskSourceBranchFieldsForCreate(discovery, {
-      sourceBranch: input.sourceBranch,
-      createSourceBranchIfMissing: input.createSourceBranchIfMissing,
-    });
-    const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
-    if (!branchOk.ok) {
-      return { ok: false, error: branchOk.message };
+    let sourceBranch = '';
+    let createSourceBranchIfMissing = false;
+    if (gitIntegrationEnabled) {
+      const discovery = await collectRepoBranchDiscovery(repo.rootPath, repo.baseBranch);
+      const planned = planTaskSourceBranchFieldsForCreate(discovery, {
+        sourceBranch: createInput.sourceBranch,
+        createSourceBranchIfMissing: createInput.createSourceBranchIfMissing,
+      });
+      const branchOk = validateStoredTaskSourceBranchName(planned.sourceBranch);
+      if (!branchOk.ok) {
+        return { ok: false, error: branchOk.message };
+      }
+      sourceBranch = planned.sourceBranch;
+      createSourceBranchIfMissing = planned.createSourceBranchIfMissing;
     }
-    let executionDevice = input.executionDevice;
+    let executionDevice = createInput.executionDevice;
     if (executionDevice) {
       const v = validateExecutionDeviceRefForStore(h.deviceStore, executionDevice);
       if (!v.ok) return { ok: false, error: v.message };
@@ -311,61 +350,72 @@ export async function automationRunCreateTask(
       );
     }
     let task = await h.taskStore.create({
-      title: input.title,
+      title: createInput.title,
       agent,
       projectId: active.project.id,
       repoId: repoResolved.repoId,
-      sourceBranch: planned.sourceBranch,
-      createSourceBranchIfMissing: planned.createSourceBranchIfMissing,
+      ...(gitIntegrationEnabled
+        ? { sourceBranch, createSourceBranchIfMissing }
+        : {}),
       executionDevice,
       ...modelYolo,
-      ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
-      ...(input.labels !== undefined ? { labels: input.labels } : {}),
+      ...(createInput.blockedByTaskIds?.length ? { blockedByTaskIds: createInput.blockedByTaskIds } : {}),
+      ...(createInput.labels !== undefined ? { labels: createInput.labels } : {}),
       ...(attachedPlanningDocs != null && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
       ...(validationPlan !== undefined ? { validationPlan } : {}),
     });
-    if (input.description != null && input.description !== '') {
+    if (createInput.description != null && createInput.description !== '') {
       task = await h.taskStore.update(task.id, {
-        description: input.description,
+        description: createInput.description,
       });
     }
     h.notifyTasksChanged();
-    return { ok: true, data: task };
+    return {
+      ok: true,
+      data: task,
+      stderrNote: joinGitCliStderrNotes(strippedCreate.stderrNotes),
+    };
   }
   let assigneeId: string | undefined;
-  if (input.assigneeEmail != null) {
-    const resolved = await resolveEmailToIdOnHost(h, input.assigneeEmail, active.activeKey);
+  if (createInput.assigneeEmail != null) {
+    const resolved = await resolveEmailToIdOnHost(h, createInput.assigneeEmail, active.activeKey);
     if (typeof resolved !== 'string') return resolved;
     assigneeId = resolved;
   }
   const payload: AutomationBridgeTasksCreatePayload = {
     input: {
-      title: input.title,
+      title: createInput.title,
       agent,
       ...modelYolo,
-      ...(input.description != null && input.description !== '' ? { description: input.description } : {}),
-      ...(input.blockedByTaskIds?.length ? { blockedByTaskIds: input.blockedByTaskIds } : {}),
-      ...(input.labels !== undefined ? { labels: input.labels } : {}),
-      ...(assigneeId !== undefined ? { assigneeId } : {}),
-      ...(input.sourceBranch !== undefined ? { sourceBranch: input.sourceBranch } : {}),
-      ...(input.createSourceBranchIfMissing !== undefined
-        ? { createSourceBranchIfMissing: input.createSourceBranchIfMissing }
+      ...(createInput.description != null && createInput.description !== ''
+        ? { description: createInput.description }
         : {}),
-      ...(input.repoId !== undefined ? { repoId: input.repoId } : {}),
+      ...(createInput.blockedByTaskIds?.length ? { blockedByTaskIds: createInput.blockedByTaskIds } : {}),
+      ...(createInput.labels !== undefined ? { labels: createInput.labels } : {}),
+      ...(assigneeId !== undefined ? { assigneeId } : {}),
+      ...(createInput.sourceBranch !== undefined ? { sourceBranch: createInput.sourceBranch } : {}),
+      ...(createInput.createSourceBranchIfMissing !== undefined
+        ? { createSourceBranchIfMissing: createInput.createSourceBranchIfMissing }
+        : {}),
+      ...(createInput.repoId !== undefined ? { repoId: createInput.repoId } : {}),
       ...(attachedPlanningDocs != null && attachedPlanningDocs.length > 0
         ? { attachedPlanningDocs }
         : {}),
-      ...(input.executionDevice !== undefined
-        ? { executionDevice: input.executionDevice }
+      ...(createInput.executionDevice !== undefined
+        ? { executionDevice: createInput.executionDevice }
         : {}),
       ...(validationPlan !== undefined ? { validationPlan } : {}),
     },
   };
   const result = await h.bridge.request<Task>('tasks.create', active.activeKey, payload);
   if (!result.ok) return h.bridgeFailureToInvoke(result);
-  return { ok: true, data: result.data };
+  return {
+    ok: true,
+    data: result.data,
+    stderrNote: joinGitCliStderrNotes(strippedCreate.stderrNotes),
+  };
 }
 
 type UpdateTaskMcpShape = {
@@ -414,8 +464,11 @@ export async function automationRunUpdateTask(
     };
   }
   const validationPlan = planParsed.plan;
+  const gitIntegrationEnabled = await resolveGitIntegrationEnabledForAutomationHost(h);
+  const strippedUpdate = stripGitBranchCliFields(input, gitIntegrationEnabled);
+  const updateInput = strippedUpdate.value;
   if (active.kind === 'local') {
-    const existing = h.getTaskInCurrentProject(input.id);
+    const existing = h.getTaskInCurrentProject(updateInput.id);
     if (!existing) {
       return { ok: false, error: 'Task not found or not part of the current project' };
     }
@@ -438,28 +491,28 @@ export async function automationRunUpdateTask(
       attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
       validationPlan?: TaskValidationPlan | null;
     } = {};
-    if (input.title !== undefined) patch.title = input.title;
-    if (input.description !== undefined) patch.description = input.description;
-    if (input.status !== undefined) patch.status = input.status;
-    if (input.agent !== undefined) {
-      patch.agent = input.agent === 'none' ? null : input.agent;
+    if (updateInput.title !== undefined) patch.title = updateInput.title;
+    if (updateInput.description !== undefined) patch.description = updateInput.description;
+    if (updateInput.status !== undefined) patch.status = updateInput.status;
+    if (updateInput.agent !== undefined) {
+      patch.agent = updateInput.agent === 'none' ? null : updateInput.agent;
     }
-    if (input.blockedByTaskIds !== undefined) patch.blockedByTaskIds = input.blockedByTaskIds;
-    if (input.labels !== undefined) patch.labels = input.labels;
-    if (input.autoStartOnUnblock !== undefined) {
-      patch.autoStartOnUnblock = input.autoStartOnUnblock;
+    if (updateInput.blockedByTaskIds !== undefined) patch.blockedByTaskIds = updateInput.blockedByTaskIds;
+    if (updateInput.labels !== undefined) patch.labels = updateInput.labels;
+    if (updateInput.autoStartOnUnblock !== undefined) {
+      patch.autoStartOnUnblock = updateInput.autoStartOnUnblock;
     }
-    if (input.githubPr !== undefined) {
-      patch.githubPr = input.githubPr;
+    if (updateInput.githubPr !== undefined) {
+      patch.githubPr = updateInput.githubPr;
     }
-    if (input.sourceBranch !== undefined) {
-      patch.sourceBranch = input.sourceBranch;
+    if (updateInput.sourceBranch !== undefined) {
+      patch.sourceBranch = updateInput.sourceBranch;
     }
-    if (input.createSourceBranchIfMissing !== undefined) {
-      patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
+    if (updateInput.createSourceBranchIfMissing !== undefined) {
+      patch.createSourceBranchIfMissing = updateInput.createSourceBranchIfMissing;
     }
-    if (input.repoId !== undefined) {
-      patch.repoId = input.repoId;
+    if (updateInput.repoId !== undefined) {
+      patch.repoId = updateInput.repoId;
     }
     if (attachedPlanningDocs !== undefined) {
       patch.attachedPlanningDocs = attachedPlanningDocs;
@@ -467,18 +520,22 @@ export async function automationRunUpdateTask(
     if (validationPlan !== undefined) {
       patch.validationPlan = validationPlan;
     }
-    const updated = await h.taskActions.updateTask(input.id, patch);
+    const updated = await h.taskActions.updateTask(updateInput.id, patch);
     h.notifyTasksChanged();
-    return { ok: true, data: updated };
+    return {
+      ok: true,
+      data: updated,
+      stderrNote: joinGitCliStderrNotes(strippedUpdate.stderrNotes),
+    };
   }
   let assigneeId: string | null | undefined;
-  if (input.assigneeEmail !== undefined && input.unassignAssignee === true) {
+  if (updateInput.assigneeEmail !== undefined && updateInput.unassignAssignee === true) {
     return { ok: false, error: 'Pass either assigneeEmail or unassignAssignee, not both' };
   }
-  if (input.unassignAssignee === true) {
+  if (updateInput.unassignAssignee === true) {
     assigneeId = null;
-  } else if (input.assigneeEmail !== undefined) {
-    const resolved = await resolveEmailToIdOnHost(h, input.assigneeEmail, active.activeKey);
+  } else if (updateInput.assigneeEmail !== undefined) {
+    const resolved = await resolveEmailToIdOnHost(h, updateInput.assigneeEmail, active.activeKey);
     if (typeof resolved !== 'string') return resolved;
     assigneeId = resolved;
   }
@@ -502,30 +559,30 @@ export async function automationRunUpdateTask(
     attachedPlanningDocs?: TaskAttachedPlanningDoc[] | null;
     validationPlan?: TaskValidationPlan | null;
   } = {};
-  if (input.title !== undefined) patch.title = input.title;
-  if (input.description !== undefined) patch.description = input.description;
-  if (input.status !== undefined) patch.status = input.status;
-  if (input.agent !== undefined) {
-    patch.agent = input.agent === 'none' ? null : input.agent;
+  if (updateInput.title !== undefined) patch.title = updateInput.title;
+  if (updateInput.description !== undefined) patch.description = updateInput.description;
+  if (updateInput.status !== undefined) patch.status = updateInput.status;
+  if (updateInput.agent !== undefined) {
+    patch.agent = updateInput.agent === 'none' ? null : updateInput.agent;
   }
-  if (input.blockedByTaskIds !== undefined) {
-    patch.blockedByTaskIds = input.blockedByTaskIds;
+  if (updateInput.blockedByTaskIds !== undefined) {
+    patch.blockedByTaskIds = updateInput.blockedByTaskIds;
   }
-  if (input.labels !== undefined) patch.labels = input.labels;
-  if (input.autoStartOnUnblock !== undefined) {
-    patch.autoStartOnUnblock = input.autoStartOnUnblock;
+  if (updateInput.labels !== undefined) patch.labels = updateInput.labels;
+  if (updateInput.autoStartOnUnblock !== undefined) {
+    patch.autoStartOnUnblock = updateInput.autoStartOnUnblock;
   }
-  if (input.githubPr !== undefined) {
-    patch.githubPr = input.githubPr;
+  if (updateInput.githubPr !== undefined) {
+    patch.githubPr = updateInput.githubPr;
   }
-  if (input.sourceBranch !== undefined) {
-    patch.sourceBranch = input.sourceBranch;
+  if (updateInput.sourceBranch !== undefined) {
+    patch.sourceBranch = updateInput.sourceBranch;
   }
-  if (input.createSourceBranchIfMissing !== undefined) {
-    patch.createSourceBranchIfMissing = input.createSourceBranchIfMissing;
+  if (updateInput.createSourceBranchIfMissing !== undefined) {
+    patch.createSourceBranchIfMissing = updateInput.createSourceBranchIfMissing;
   }
-  if (input.repoId !== undefined) {
-    patch.repoId = input.repoId;
+  if (updateInput.repoId !== undefined) {
+    patch.repoId = updateInput.repoId;
   }
   if (assigneeId !== undefined) patch.assigneeId = assigneeId;
   if (attachedPlanningDocs !== undefined) {
@@ -534,7 +591,7 @@ export async function automationRunUpdateTask(
   if (validationPlan !== undefined) {
     patch.validationPlan = validationPlan;
   }
-  const payload: AutomationBridgeTasksUpdatePayload = { taskId: input.id, patch };
+  const payload: AutomationBridgeTasksUpdatePayload = { taskId: updateInput.id, patch };
   const result = await h.bridge.request<AutomationBridgeTasksUpdateResult>(
     'tasks.update',
     active.activeKey,
@@ -545,7 +602,11 @@ export async function automationRunUpdateTask(
   if (previous) {
     await h.taskActions.autoStartIfTransitionedToInProgress(previous, updated);
   }
-  return { ok: true, data: updated };
+  return {
+    ok: true,
+    data: updated,
+    stderrNote: joinGitCliStderrNotes(strippedUpdate.stderrNotes),
+  };
 }
 
 export async function automationRunStartTask(
@@ -677,9 +738,13 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       : path.resolve(active.project.rootPath);
     let defaultBranchShort: string | undefined;
     let branchDiscoveryError: string | undefined;
-    if (primaryRepo?.rootPath) {
+    const gitIntegrationEnabled = active.project.gitIntegrationEnabled !== false;
+    if (gitIntegrationEnabled && primaryRepo?.rootPath) {
       try {
-        const disc = await collectRepoBranchDiscovery(path.resolve(primaryRepo.rootPath), primaryRepo.baseBranch);
+        const disc = await collectRepoBranchDiscovery(
+          path.resolve(primaryRepo.rootPath),
+          primaryRepo.baseBranch,
+        );
         defaultBranchShort = disc.defaultBranchShort;
       } catch (err) {
         branchDiscoveryError = err instanceof Error ? err.message : String(err);
@@ -692,6 +757,8 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
         name: active.project.name,
         rootPath: primaryRootPath,
         validationEnabled: active.project.validationEnabled,
+        gitIntegrationEnabled: active.project.gitIntegrationEnabled,
+        gitlessSingleSessionPerFolder: active.project.gitlessSingleSessionPerFolder,
         taskCounts,
         ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
         ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
@@ -709,6 +776,8 @@ export async function automationRunProjectInfo(h: FluxAutomationHost): Promise<F
       name: data.name,
       rootPath: active.rootPath,
       validationEnabled: data.validationEnabled === true,
+      gitIntegrationEnabled: data.gitIntegrationEnabled !== false,
+      gitlessSingleSessionPerFolder: data.gitlessSingleSessionPerFolder !== false,
       taskCounts: data.taskCounts,
       ...(data.defaultBranchShort !== undefined ? { defaultBranchShort: data.defaultBranchShort } : {}),
       ...(data.branchDiscoveryError !== undefined ? { branchDiscoveryError: data.branchDiscoveryError } : {}),
@@ -725,6 +794,14 @@ export async function automationRunRepoBranches(
   const active = h.resolveActive();
   if (active.kind === 'none') {
     return { ok: false, error: 'No project open' };
+  }
+  const gitIntegrationEnabled = await resolveGitIntegrationEnabledForAutomationHost(h);
+  if (!gitIntegrationEnabled) {
+    return {
+      ok: true,
+      data: gitDisabledBranchDiscoveryResponse(),
+      stderrNote: GIT_BRANCH_DISCOVERY_DISABLED_NOTE,
+    };
   }
   if (active.kind === 'local') {
     const repos = await h.projectStore.getReposAt(active.projectDir);

@@ -125,7 +125,7 @@ export class RemoteRepoBindingService {
   async probeRemoteRepoPath(
     device: ExecutionDeviceConfig,
     remotePath: string,
-    remoteUrl: string,
+    options?: { remoteUrl?: string; gitEnabled?: boolean },
   ): Promise<RemoteRepoBindingProbeResult> {
     if (device.kind !== 'ssh') {
       return { ok: false, code: 'INTERNAL', message: 'Device is not an SSH device' };
@@ -140,11 +140,12 @@ export class RemoteRepoBindingService {
     }
     const hostLabel = deviceProbeHostLabel(device);
     const trimmedPath = remotePath.trim();
-    const trimmedUrl = remoteUrl.trim();
+    const gitEnabled = options?.gitEnabled !== false;
     if (!trimmedPath) {
       return { ok: false, code: 'INTERNAL', message: 'Remote path is required' };
     }
-    if (!trimmedUrl) {
+    const trimmedUrl = options?.remoteUrl?.trim() ?? '';
+    if (gitEnabled && !trimmedUrl) {
       return {
         ok: false,
         code: 'REMOTE_NON_GIT_UNSUPPORTED',
@@ -154,7 +155,10 @@ export class RemoteRepoBindingService {
     const result = await this.helper.runJsonCommand<RemoteHelperProbeRepoPathData>(
       device,
       'probe-repo-path',
-      { remotePath: trimmedPath, remoteUrl: trimmedUrl },
+      {
+        remotePath: trimmedPath,
+        ...(gitEnabled ? { remoteUrl: trimmedUrl } : { gitless: true }),
+      },
       120_000,
     );
     if (!result.ok) {

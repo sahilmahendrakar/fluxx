@@ -47,6 +47,8 @@ describe('fluxAutomationValidation', () => {
       autoMoveToReviewWhenPrOpen: false,
       persistTerminalsWithTmux: false,
       validationEnabled,
+      gitIntegrationEnabled: true,
+      gitlessSingleSessionPerFolder: true,
       repos: [{ id: 'r1', rootPath: tmp, baseBranch: 'main' }],
     };
     const active: FluxAutomationResolvedActive = {

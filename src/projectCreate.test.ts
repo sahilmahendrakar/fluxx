@@ -1,11 +1,15 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   assignRepoIdsForCreate,
+  inferGitIntegrationEnabledForProjectCreate,
   normalizeTeamInviteEmails,
   prepareLocalProjectCreateInput,
   PROJECT_NAME_MAX_LENGTH,
   projectCreateErrorMessage,
+  resolvePrimaryRepoRootPathForCreate,
   validateLocalProjectCreateInput,
   validateProjectName,
 } from './projectCreate';
@@ -131,6 +135,21 @@ describe('validateLocalProjectCreateInput', () => {
     );
     expect(out).toEqual({ ok: false, error: 'NOT_GIT_REPO' });
   });
+
+  it('allows non-git folders when git integration is disabled', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-gitless-create-input-'));
+    const out = await validateLocalProjectCreateInput(
+      {
+        name: 'Gitless',
+        syncMode: 'local-only',
+        repos: [{ rootPath: root }],
+        gitIntegrationEnabled: false,
+      },
+      { isGitRepo: async () => false },
+    );
+    expect(out.ok).toBe(true);
+    await fs.rm(root, { recursive: true, force: true });
+  });
 });
 
 describe('prepareLocalProjectCreateInput', () => {
@@ -147,6 +166,72 @@ describe('prepareLocalProjectCreateInput', () => {
         rootPath: root,
       }),
     );
+  });
+});
+
+describe('resolvePrimaryRepoRootPathForCreate', () => {
+  it('returns null when there are no repos', () => {
+    expect(
+      resolvePrimaryRepoRootPathForCreate({ repos: [], primaryRepoId: undefined }),
+    ).toBeNull();
+  });
+
+  it('returns the sole repo root when only one is attached', () => {
+    const root = path.resolve('/tmp/solo');
+    expect(
+      resolvePrimaryRepoRootPathForCreate({
+        repos: [{ rootPath: root }],
+        primaryRepoId: undefined,
+      }),
+    ).toBe(root);
+  });
+
+  it('resolves the primary repo by id when multiple repos exist', () => {
+    const a = path.resolve('/tmp/a');
+    const b = path.resolve('/tmp/b');
+    const primaryRepoId = deriveStablePrimaryRepoIdForProject({
+      projectId: stableLocalProjectIdForRoot(b),
+      rootPath: b,
+    });
+    expect(
+      resolvePrimaryRepoRootPathForCreate({
+        repos: [{ rootPath: a }, { rootPath: b }],
+        primaryRepoId,
+      }),
+    ).toBe(b);
+  });
+});
+
+describe('inferGitIntegrationEnabledForProjectCreate', () => {
+  it('defaults to true when no repos are attached', async () => {
+    await expect(
+      inferGitIntegrationEnabledForProjectCreate({
+        name: 'Planning',
+        repos: [],
+        syncMode: 'local-only',
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('enables git integration when the primary folder is a git repo', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-git-create-'));
+    await fs.mkdir(path.join(root, '.git'));
+    const input = prepareLocalProjectCreateInput({
+      name: 'Git project',
+      repos: [{ rootPath: root }],
+    });
+    await expect(inferGitIntegrationEnabledForProjectCreate(input)).resolves.toBe(true);
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('disables git integration when the primary folder is not a git repo', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-plain-create-'));
+    const input = prepareLocalProjectCreateInput({
+      name: 'Plain folder',
+      repos: [{ rootPath: root }],
+    });
+    await expect(inferGitIntegrationEnabledForProjectCreate(input)).resolves.toBe(false);
+    await fs.rm(root, { recursive: true, force: true });
   });
 });
 

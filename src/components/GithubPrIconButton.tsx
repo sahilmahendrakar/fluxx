@@ -1,6 +1,7 @@
 import { GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { TaskGithubPr, TaskStatus } from '../types';
+import { shouldShowGithubPrIconButton } from '../gitUiGating';
 
 export interface GithubPrIconButtonProps {
   githubPr?: TaskGithubPr | null;
@@ -9,6 +10,8 @@ export interface GithubPrIconButtonProps {
   taskStatus?: TaskStatus;
   /** Same gate as board `TaskCard` (session path or resolved disk worktree). */
   hasWorktree: boolean;
+  /** When false, the control is hidden (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
   /** After delegating PR creation to the agent; amber styling until a PR URL is linked (icon stays create). */
@@ -24,11 +27,13 @@ export function GithubPrIconButton({
   taskId,
   taskStatus,
   hasWorktree,
+  gitEnabled = true,
   onTaskPrClick,
   prLoading = false,
   prAgentAwaiting = false,
 }: GithubPrIconButtonProps) {
-  if (!hasWorktree || typeof onTaskPrClick !== 'function') return null;
+  if (!shouldShowGithubPrIconButton({ gitEnabled, hasWorktree, onTaskPrClick })) return null;
+  const onPrClick = onTaskPrClick!;
 
   const prUrl = githubPr?.url?.trim() ?? '';
   const prState = githubPr?.state;
@@ -44,7 +49,7 @@ export function GithubPrIconButton({
     <button
       type="button"
       disabled={prLoading}
-      onClick={() => onTaskPrClick(taskId)}
+      onClick={() => onPrClick(taskId)}
       className={cn(
         '-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60',
         prMerged

@@ -96,6 +96,8 @@ interface Props {
   executionDevices?: ExecutionDeviceConfig[];
   executionDeviceDefaults?: ExecutionDeviceDefaults;
   cloudProject?: boolean;
+  /** When false, hides PR/branch git affordances (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
 }
 
 export default function Board({
@@ -136,6 +138,7 @@ export default function Board({
   executionDevices,
   executionDeviceDefaults,
   cloudProject = false,
+  gitEnabled = true,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [boardFilter, setBoardFilter] = useState<BoardFilterState>(
@@ -321,6 +324,7 @@ export default function Board({
               executionDevices={executionDevices}
               executionDeviceDefaults={executionDeviceDefaults}
               cloudProject={cloudProject}
+              gitEnabled={gitEnabled}
               emptyState={
                 col.id === 'backlog' && projectIsEmpty
                   ? repoActionsBlocked
@@ -338,6 +342,7 @@ export default function Board({
       </div>
       {modalOpen ? (
         <NewTaskModal
+          gitEnabled={gitEnabled}
           labelCatalog={labelCatalog}
           defaultAgent={defaultTaskAgent}
           projectMembers={projectMembers}

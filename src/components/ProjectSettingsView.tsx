@@ -25,6 +25,7 @@ import { COLUMNS } from '../types';
 import { deriveRepoIdForRootPath, repoRootBasename } from '../repoIdentity';
 import {
   updateCloudProjectRepos,
+  updateCloudProjectGitIntegrationEnabled,
   updateCloudProjectValidationEnabled,
 } from '../renderer/projects/cloudProjects';
 import AgentModelPicker from './AgentModelPicker';
@@ -36,6 +37,7 @@ import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './Agen
 import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
 import { ValidationConfigSettingsSection } from './ValidationConfigSettingsSection';
+import { repoDirectoryPickErrorMessage } from '../projectCreate';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -533,6 +535,19 @@ function ProjectConfigPane({
   const [validationLoading, setValidationLoading] = useState(true);
   const [validationSaveState, setValidationSaveState] = useState<SaveState>('idle');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [gitIntegrationEnabled, setGitIntegrationEnabled] = useState(
+    () => project.gitIntegrationEnabled !== false,
+  );
+  const [gitIntegrationLoading, setGitIntegrationLoading] = useState(true);
+  const [gitIntegrationSaveState, setGitIntegrationSaveState] = useState<SaveState>('idle');
+  const [gitIntegrationError, setGitIntegrationError] = useState<string | null>(null);
+  const [gitlessSingleSessionEnabled, setGitlessSingleSessionEnabled] = useState(
+    () => project.gitlessSingleSessionPerFolder !== false,
+  );
+  const [gitlessSingleSessionLoading, setGitlessSingleSessionLoading] = useState(true);
+  const [gitlessSingleSessionSaveState, setGitlessSingleSessionSaveState] =
+    useState<SaveState>('idle');
+  const [gitlessSingleSessionError, setGitlessSingleSessionError] = useState<string | null>(null);
   const [tmuxAvailabilityMessage, setTmuxAvailabilityMessage] = useState<string | null>(null);
   const [tmuxPlatformSupported, setTmuxPlatformSupported] = useState(true);
   const [planningAgentSaveState, setPlanningAgentSaveState] = useState<SaveState>('idle');
@@ -871,6 +886,18 @@ function ProjectConfigPane({
   }, [project.id, project.validationEnabled]);
 
   useEffect(() => {
+    setGitIntegrationEnabled(project.gitIntegrationEnabled !== false);
+    setGitIntegrationSaveState('idle');
+    setGitIntegrationError(null);
+  }, [project.id, project.gitIntegrationEnabled]);
+
+  useEffect(() => {
+    setGitlessSingleSessionEnabled(project.gitlessSingleSessionPerFolder !== false);
+    setGitlessSingleSessionSaveState('idle');
+    setGitlessSingleSessionError(null);
+  }, [project.id, project.gitlessSingleSessionPerFolder]);
+
+  useEffect(() => {
     let cancelled = false;
     setValidationLoading(true);
     setValidationError(null);
@@ -889,6 +916,56 @@ function ProjectConfigPane({
       })
       .finally(() => {
         if (!cancelled) setValidationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGitIntegrationLoading(true);
+    setGitIntegrationError(null);
+    void window.electronAPI.project
+      .getGitIntegrationEnabled()
+      .then((enabled) => {
+        if (!cancelled) {
+          setGitIntegrationEnabled(enabled);
+          setGitIntegrationSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGitIntegrationError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGitIntegrationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGitlessSingleSessionLoading(true);
+    setGitlessSingleSessionError(null);
+    void window.electronAPI.project
+      .getGitlessSingleSessionPerFolder()
+      .then((enabled) => {
+        if (!cancelled) {
+          setGitlessSingleSessionEnabled(enabled);
+          setGitlessSingleSessionSaveState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGitlessSingleSessionError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGitlessSingleSessionLoading(false);
       });
     return () => {
       cancelled = true;
@@ -954,6 +1031,56 @@ function ProjectConfigPane({
     },
     [onProjectAgentPrefsRefresh, project],
   );
+
+  const handleGitIntegrationEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      setGitIntegrationEnabled(enabled);
+      setGitIntegrationSaveState('saving');
+      setGitIntegrationError(null);
+      try {
+        if (project.kind === 'cloud') {
+          await updateCloudProjectGitIntegrationEnabled(project.id, enabled);
+        }
+        const result = await window.electronAPI.project.setGitIntegrationEnabled(enabled);
+        if ('error' in result) {
+          setGitIntegrationSaveState('error');
+          setGitIntegrationError(result.error);
+          setGitIntegrationEnabled((prev) => !prev);
+          return;
+        }
+        setGitIntegrationEnabled(result.enabled);
+        setGitIntegrationSaveState('saved');
+        await onProjectAgentPrefsRefresh?.();
+        window.setTimeout(() => {
+          setGitIntegrationSaveState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+      } catch (err) {
+        setGitIntegrationSaveState('error');
+        setGitIntegrationError(err instanceof Error ? err.message : String(err));
+        setGitIntegrationEnabled((prev) => !prev);
+      }
+    },
+    [onProjectAgentPrefsRefresh, project],
+  );
+
+  const handleGitlessSingleSessionChange = useCallback(async (enabled: boolean) => {
+    setGitlessSingleSessionEnabled(enabled);
+    setGitlessSingleSessionSaveState('saving');
+    setGitlessSingleSessionError(null);
+    const result = await window.electronAPI.project.setGitlessSingleSessionPerFolder(enabled);
+    if ('error' in result) {
+      setGitlessSingleSessionSaveState('error');
+      setGitlessSingleSessionError(result.error);
+      setGitlessSingleSessionEnabled((prev) => !prev);
+      return;
+    }
+    setGitlessSingleSessionEnabled(result.enabled);
+    setGitlessSingleSessionSaveState('saved');
+    await onProjectAgentPrefsRefresh?.();
+    window.setTimeout(() => {
+      setGitlessSingleSessionSaveState((state) => (state === 'saved' ? 'idle' : state));
+    }, 1500);
+  }, [onProjectAgentPrefsRefresh]);
 
   const handleWhenUnblockedChange = useCallback(async (enabled: boolean) => {
     setWhenUnblockedEnabled(enabled);
@@ -1217,18 +1344,16 @@ function ProjectConfigPane({
     setAddRepoState('saving');
     setAddRepoError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setAddRepoState('idle');
         return;
       }
       if ('error' in picked) {
         setAddRepoState('error');
-        setAddRepoError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
 
@@ -1256,25 +1381,23 @@ function ProjectConfigPane({
       setAddRepoState('error');
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
-  }, [multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates]);
+  }, [gitIntegrationEnabled, multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates]);
 
   const handleAddCloudRepo = useCallback(async () => {
     if (!multiRepoCloudBindingsEnabled || project.kind !== 'cloud') return;
     setAddRepoState('saving');
     setAddRepoError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setAddRepoState('idle');
         return;
       }
       if ('error' in picked) {
         setAddRepoState('error');
-        setAddRepoError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
 
@@ -1334,6 +1457,7 @@ function ProjectConfigPane({
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
   }, [
+    gitIntegrationEnabled,
     multiRepoCloudBindingsEnabled,
     onCloudSharedReposChanged,
     onProjectAgentPrefsRefresh,
@@ -1350,6 +1474,63 @@ function ProjectConfigPane({
         <p className="mt-1 text-[13px] text-muted-foreground">
           Configure how new task workspaces are created for {project.name}.
         </p>
+
+        <section
+          className="mt-6 rounded-xl border border-border bg-card px-4"
+          aria-labelledby="project-settings-config-heading"
+        >
+          <div className="border-b border-border py-4">
+            <h2
+              id="project-settings-config-heading"
+              className="text-[14px] font-semibold tracking-tight text-foreground"
+            >
+              Project Config
+            </h2>
+            <p className="mt-1 text-[12px] leading-snug text-muted-foreground">
+              Core workspace mode for this project. Git integration is on by default.
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            <AutomationSettingRow
+              key={`${project.id}-git-integration-enabled`}
+              title="Git integration"
+              description={
+                <>
+                  When on, Fluxx creates git worktrees, branches, and PR features for task sessions.
+                  When off, agents run directly in the working folder without git-managed workspaces.
+                  {project.kind === 'cloud' ? ' For cloud projects this setting is shared with your team.' : null}
+                </>
+              }
+              checked={gitIntegrationEnabled}
+              onCheckedChange={(next) => void handleGitIntegrationEnabledChange(next)}
+              switchDisabled={gitIntegrationLoading || gitIntegrationSaveState === 'saving'}
+              loading={gitIntegrationLoading}
+              saveState={gitIntegrationSaveState}
+              error={gitIntegrationError}
+            />
+            {!gitIntegrationEnabled ? (
+              <AutomationSettingRow
+                key={`${project.id}-gitless-single-session`}
+                title="Single session per folder"
+                description={
+                  <>
+                    When on, starting a second task session in the same folder on this device is blocked
+                    while another session is running. Turn off to allow concurrent agents in one folder
+                    at your own risk.
+                  </>
+                }
+                checked={gitlessSingleSessionEnabled}
+                onCheckedChange={(next) => void handleGitlessSingleSessionChange(next)}
+                switchDisabled={
+                  gitlessSingleSessionLoading || gitlessSingleSessionSaveState === 'saving'
+                }
+                loading={gitlessSingleSessionLoading}
+                saveState={gitlessSingleSessionSaveState}
+                error={gitlessSingleSessionError}
+              />
+            ) : null}
+          </div>
+        </section>
 
         <section
           className="mt-6 rounded-xl border border-border bg-card px-4"
@@ -1427,14 +1608,27 @@ function ProjectConfigPane({
             />
             <AutomationSettingRow
               key={`${project.id}-auto-cleanup-on-done`}
-              title="Clean up workspace when moved to Done"
+              title={
+                gitIntegrationEnabled
+                  ? 'Clean up workspace when moved to Done'
+                  : 'Stop running sessions when moved to Done'
+              }
               description={
-                <>
-                  After a task reaches Done, automatically run the same cleanup as the broom on the
-                  card: stop agent sessions and remove the task git worktree on this machine. The task
-                  stays in Done with the broom marked complete. Applies to drags, detail status changes,
-                  and Flux CLI updates. For cloud projects this preference is stored per machine.
-                </>
+                gitIntegrationEnabled ? (
+                  <>
+                    After a task reaches Done, automatically run the same cleanup as the broom on the
+                    card: stop agent sessions and remove the task git worktree on this machine. The task
+                    stays in Done with the broom marked complete. Applies to drags, detail status changes,
+                    and Flux CLI updates. For cloud projects this preference is stored per machine.
+                  </>
+                ) : (
+                  <>
+                    After a task reaches Done, automatically stop any running agent sessions for that
+                    task (same as the broom on the card). Your working folder is not deleted. Applies to
+                    drags, detail status changes, and Flux CLI updates. For cloud projects this preference
+                    is stored per machine.
+                  </>
+                )
               }
               checked={autoCleanupOnDoneEnabled}
               onCheckedChange={(next) => void handleAutoCleanupOnDoneChange(next)}
@@ -1445,6 +1639,8 @@ function ProjectConfigPane({
               saveState={autoCleanupOnDoneSaveState}
               error={autoCleanupOnDoneError}
             />
+            {gitIntegrationEnabled ? (
+              <>
             <AutomationSettingRow
               key={`${project.id}-auto-done-pr-merged`}
               title="Move to Done when linked PR merges"
@@ -1486,6 +1682,8 @@ function ProjectConfigPane({
               saveState={autoReviewOnOpenPrSaveState}
               error={autoReviewOnOpenPrError}
             />
+              </>
+            ) : null}
           </div>
         </section>
 
@@ -1931,6 +2129,7 @@ function ProjectConfigPane({
               project={project}
               localRepoConfigs={repos ?? []}
               sshDevices={sshDevices}
+              gitIntegrationEnabled={gitIntegrationEnabled}
               onLocalReposChanged={(nextRepos) => setRepos(nextRepos)}
               onBindingsChanged={onProjectAgentPrefsRefresh}
               onSharedReposChanged={onCloudSharedReposChanged}
@@ -1970,8 +2169,10 @@ function ProjectConfigPane({
                         repoState={repoStates[repo.id]}
                         primary={index === 0}
                         multiRepoManagementEnabled={multiRepoLocalManagementEnabled}
+                        gitIntegrationEnabled={gitIntegrationEnabled}
                         sshDevices={sshDevices}
                         projectDefaultDeviceId={project.defaultDeviceId}
+                        gitIntegrationEnabled={gitIntegrationEnabled}
                         expanded={expanded[key] ?? false}
                         onToggle={() =>
                           setExpanded((prev) => ({
@@ -2045,7 +2246,13 @@ function ProjectConfigPane({
   );
 }
 
-function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBindingStatus }) {
+function CloudRepoBindingStatusBadge({
+  status,
+  gitIntegrationEnabled = true,
+}: {
+  status: CloudRepoLocalBindingStatus;
+  gitIntegrationEnabled?: boolean;
+}) {
   if (status.kind === 'missing_binding') {
     return (
       <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -2063,6 +2270,9 @@ function CloudRepoBindingStatusBadge({ status }: { status: CloudRepoLocalBinding
       </span>
     );
   }
+  if (!gitIntegrationEnabled) {
+    return null;
+  }
   return (
     <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
       Not a git repo
@@ -2074,6 +2284,7 @@ function CloudTeamReposBindingsSection({
   project,
   localRepoConfigs,
   sshDevices,
+  gitIntegrationEnabled,
   onLocalReposChanged,
   onBindingsChanged,
   onSharedReposChanged,
@@ -2083,6 +2294,7 @@ function CloudTeamReposBindingsSection({
   project: CloudProject;
   localRepoConfigs: RepoConfig[];
   sshDevices: ExecutionDeviceConfig[];
+  gitIntegrationEnabled: boolean;
   onLocalReposChanged?: (repos: RepoConfig[]) => void;
   onBindingsChanged?: () => void | Promise<void>;
   onSharedReposChanged?: (repos: CloudSharedRepo[]) => void;
@@ -2123,17 +2335,15 @@ function CloudTeamReposBindingsSection({
     setActionRepoId(repoId);
     setActionError(null);
     try {
-      const picked = await window.electronAPI.project.pickRepoDirectory();
+      const picked = await window.electronAPI.project.pickRepoDirectory({
+        gitIntegrationEnabled,
+      });
       if (!picked) {
         setActionRepoId(null);
         return;
       }
       if ('error' in picked) {
-        setActionError(
-          picked.error === 'NOT_GIT_REPO'
-            ? 'Choose a folder that contains a .git directory.'
-            : picked.error,
-        );
+        setActionError(repoDirectoryPickErrorMessage(picked.error));
         setActionRepoId(null);
         return;
       }
@@ -2225,20 +2435,30 @@ function CloudTeamReposBindingsSection({
                     </span>
                   ) : null}
                   {st ? (
-                    <CloudRepoBindingStatusBadge status={st} />
+                    <CloudRepoBindingStatusBadge
+                      status={st}
+                      gitIntegrationEnabled={gitIntegrationEnabled}
+                    />
                   ) : (
                     <span className="text-[10px] text-muted-foreground">…</span>
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Base branch:{' '}
-                  <span className="font-mono text-muted-foreground">{sr.baseBranch}</span>
-                  {localRepoConfig?.setupScript ? ' · setup script' : ''}
-                  {localRepoConfig?.env ? ' · .env' : ''}
+                  {gitIntegrationEnabled ? (
+                    <>
+                      Base branch:{' '}
+                      <span className="font-mono text-muted-foreground">{sr.baseBranch}</span>
+                    </>
+                  ) : null}
+                  {gitIntegrationEnabled && (localRepoConfig?.setupScript || localRepoConfig?.env || sr.remoteUrl)
+                    ? ' · '
+                    : null}
+                  {localRepoConfig?.setupScript ? 'setup script' : ''}
+                  {localRepoConfig?.setupScript && localRepoConfig?.env ? ' · ' : ''}
+                  {localRepoConfig?.env ? '.env' : ''}
                   {sr.remoteUrl ? (
                     <>
-                      {' '}
-                      ·{' '}
+                      {(gitIntegrationEnabled || localRepoConfig?.setupScript || localRepoConfig?.env) ? ' · ' : ''}
                       <span
                         className="font-mono text-muted-foreground"
                         title={sr.remoteUrl}
@@ -2264,8 +2484,10 @@ function CloudTeamReposBindingsSection({
                 <CloudRepoFields
                   project={project}
                   repo={sr}
+                  gitIntegrationEnabled={gitIntegrationEnabled}
                   localRepoConfig={localRepoConfig}
                   status={st}
+                  gitIntegrationEnabled={gitIntegrationEnabled}
                   sshDevices={sshDevices}
                   bindLocalBusy={actionRepoId === sr.id}
                   onBindLocalFolder={() => void handleBind(sr.id)}
@@ -2300,8 +2522,10 @@ function CloudTeamReposBindingsSection({
 function CloudRepoFields({
   project,
   repo,
+  gitIntegrationEnabled,
   localRepoConfig,
   status,
+  gitIntegrationEnabled,
   sshDevices,
   bindLocalBusy,
   onBindLocalFolder,
@@ -2311,8 +2535,10 @@ function CloudRepoFields({
 }: {
   project: CloudProject;
   repo: CloudSharedRepo;
+  gitIntegrationEnabled: boolean;
   localRepoConfig?: RepoConfig;
   status?: CloudRepoLocalBindingStatus;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   bindLocalBusy?: boolean;
   onBindLocalFolder?: () => void;
@@ -2407,7 +2633,7 @@ function CloudRepoFields({
                 This path no longer exists on disk. Bind a different folder.
               </p>
             ) : null}
-            {isLocallyBound && status.pathStatus === 'not_git' ? (
+            {isLocallyBound && status.pathStatus === 'not_git' && gitIntegrationEnabled ? (
               <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder is not a git repository root. Choose another folder.
               </p>
@@ -2443,15 +2669,17 @@ function CloudRepoFields({
           className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
-      <label className="block">
-        <span className="text-[12px] font-medium text-foreground">Base branch</span>
-        <input
-          value={baseBranch}
-          onChange={(e) => setBaseBranch(e.target.value)}
-          placeholder="main"
-          className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </label>
+      {gitIntegrationEnabled ? (
+        <label className="block">
+          <span className="text-[12px] font-medium text-foreground">Base branch</span>
+          <input
+            value={baseBranch}
+            onChange={(e) => setBaseBranch(e.target.value)}
+            placeholder="main"
+            className="mt-1.5 w-full rounded-md border border-border bg-muted/50 px-2.5 py-1.5 font-mono text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </label>
+      ) : null}
       <label className="block">
         <span className="text-[12px] font-medium text-foreground">Remote origin</span>
         <input
@@ -2521,8 +2749,10 @@ interface RepoCardProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
+  gitIntegrationEnabled: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSaved: (repos: RepoConfig[]) => void;
@@ -2535,8 +2765,10 @@ function RepoCard({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
+  gitIntegrationEnabled,
   expanded,
   onToggle,
   onSaved,
@@ -2574,7 +2806,7 @@ function RepoCard({
               </span>
             ) : null}
             {multiRepoManagementEnabled && repoState ? (
-              <RepoStateBadge state={repoState} />
+              <RepoStateBadge state={repoState} gitIntegrationEnabled={gitIntegrationEnabled} />
             ) : null}
           </div>
           <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
@@ -2584,9 +2816,10 @@ function RepoCard({
               </span>
             ) : null}
             {multiRepoManagementEnabled ? ' · ' : ''}
-            base: {repo.baseBranch}
-            {repo.setupScript ? ' · setup script' : ''}
-            {repo.env ? ' · .env' : ''}
+            {gitIntegrationEnabled ? <>base: {repo.baseBranch}</> : null}
+            {gitIntegrationEnabled && repo.setupScript ? ' · setup script' : repo.setupScript ? 'setup script' : ''}
+            {repo.setupScript && repo.env ? ' · ' : ''}
+            {repo.env ? '.env' : ''}
           </div>
         </div>
       </button>
@@ -2598,8 +2831,10 @@ function RepoCard({
             repoState={repoState}
             primary={primary}
             multiRepoManagementEnabled={multiRepoManagementEnabled}
+            gitIntegrationEnabled={gitIntegrationEnabled}
             sshDevices={sshDevices}
             projectDefaultDeviceId={projectDefaultDeviceId}
+            gitIntegrationEnabled={gitIntegrationEnabled}
             onSaved={onSaved}
             onReposChanged={onReposChanged}
           />
@@ -2609,7 +2844,13 @@ function RepoCard({
   );
 }
 
-function RepoStateBadge({ state }: { state: RepoManagementState }) {
+function RepoStateBadge({
+  state,
+  gitIntegrationEnabled = true,
+}: {
+  state: RepoManagementState;
+  gitIntegrationEnabled?: boolean;
+}) {
   if (state.pathStatus === 'valid' && !state.removalBlocked) {
     return null;
   }
@@ -2623,6 +2864,9 @@ function RepoStateBadge({ state }: { state: RepoManagementState }) {
   }
 
   if (state.pathStatus === 'not_git') {
+    if (!gitIntegrationEnabled) {
+      return null;
+    }
     return (
       <span className="rounded-full border border-amber-500/25 bg-amber-500/[0.06] px-1.5 py-0.5 text-[10px] text-status-needs-input">
         Not a git repo
@@ -2639,8 +2883,10 @@ interface RepoFieldsProps {
   repoState?: RepoManagementState;
   primary: boolean;
   multiRepoManagementEnabled: boolean;
+  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
+  gitIntegrationEnabled: boolean;
   onSaved: (repos: RepoConfig[]) => void;
   onReposChanged: (repos: RepoConfig[]) => void | Promise<void>;
 }
@@ -2651,8 +2897,10 @@ function RepoFields({
   repoState,
   primary,
   multiRepoManagementEnabled,
+  gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
+  gitIntegrationEnabled,
   onSaved,
   onReposChanged,
 }: RepoFieldsProps) {
@@ -2714,7 +2962,12 @@ function RepoFields({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {repoState ? <RepoStateBadge state={repoState} /> : null}
+                {repoState ? (
+                  <RepoStateBadge
+                    state={repoState}
+                    gitIntegrationEnabled={gitIntegrationEnabled}
+                  />
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void handleSetPrimary()}
@@ -2729,7 +2982,7 @@ function RepoFields({
               <p className="mt-2 text-[11px] text-destructive">
                 This path no longer exists on disk.
               </p>
-            ) : repoState?.pathStatus === 'not_git' ? (
+            ) : repoState?.pathStatus === 'not_git' && gitIntegrationEnabled ? (
               <p className="mt-2 text-[11px] text-status-needs-input">
                 This folder exists, but Fluxx cannot find a .git directory in it.
               </p>
@@ -2754,17 +3007,19 @@ function RepoFields({
         sshDevices={sshDevices}
         projectDefaultDeviceId={projectDefaultDeviceId}
       />
-      <FieldEditor
-        label="Base branch"
-        description="Branch fetched from origin and used as the base for new task worktrees."
-        repoId={repo.id}
-        rootPath={repo.rootPath}
-        useRepoId={multiRepoManagementEnabled}
-        field="baseBranch"
-        initialValue={repo.baseBranch}
-        placeholder="main"
-        onSaved={onSaved}
-      />
+      {gitIntegrationEnabled ? (
+        <FieldEditor
+          label="Base branch"
+          description="Branch fetched from origin and used as the base for new task worktrees."
+          repoId={repo.id}
+          rootPath={repo.rootPath}
+          useRepoId={multiRepoManagementEnabled}
+          field="baseBranch"
+          initialValue={repo.baseBranch}
+          placeholder="main"
+          onSaved={onSaved}
+        />
+      ) : null}
       <FieldEditor
         label="Setup script"
         description="Bash script run inside each new worktree after creation. Output is logged to .flux-setup.log."

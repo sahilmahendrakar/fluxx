@@ -58,9 +58,11 @@ import {
   type RepoBranchDiscovery,
   type RepoConfig,
   type ResolveTaskWorktreeIpcResult,
+  type SessionStartErrorCode,
   type TaskExecutionDeviceRef,
 } from '../types';
 import { ExecutionDevicePicker } from './ExecutionDevicePicker';
+import { RemoteSshRepoBindingPanel } from './RemoteSshRepoBindingPanel';
 import {
   isTaskExecutionDeviceEditable,
   sessionStartButtonLabel,
@@ -224,6 +226,8 @@ export interface TaskDetailPanelProps {
   autoStartWhenUnblockedProject?: boolean;
   /** Electron Playwright validation opt-in for this project. */
   validationEnabledProject?: boolean;
+  /** When false, hides PR controls, source-branch picker, and git SSH sync (gitless). Defaults to on. */
+  gitEnabledProject?: boolean;
   /** Cloud-only: list of project members for the Assignee field. Omit for local projects. */
   projectMembers?: ProjectMember[];
   /**
@@ -348,6 +352,7 @@ export default function TaskDetailPanel({
   cleanupLoading = false,
   autoStartWhenUnblockedProject = false,
   validationEnabledProject = false,
+  gitEnabledProject = true,
   projectMembers,
   cloudActiveRunnerSession = false,
   implicitSessionAssigneeUid,
@@ -379,6 +384,7 @@ export default function TaskDetailPanel({
   /** Attach + snapshot applied; terminal may still be blank until first PTY output. */
   const [sessionStreamReady, setSessionStreamReady] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionErrorCode, setSessionErrorCode] = useState<SessionStartErrorCode | null>(null);
   const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [depSearch, setDepSearch] = useState('');
   const [dependencyAddOpen, setDependencyAddOpen] = useState(false);
@@ -539,7 +545,7 @@ export default function TaskDetailPanel({
   }, [task, primaryRepoId, showRepoSection, repoFieldLocked, repoDraftId]);
 
   useEffect(() => {
-    if (!task) return;
+    if (!task || !gitEnabledProject) return;
     let cancelled = false;
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
@@ -557,7 +563,7 @@ export default function TaskDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [task?.id, discoveryRepoId, primaryRepoId]);
+  }, [task?.id, discoveryRepoId, primaryRepoId, gitEnabledProject]);
 
   useEffect(() => {
     if (!task || !branchDiscovery) return;
@@ -1012,6 +1018,7 @@ export default function TaskDetailPanel({
     }
     setSessionLoading(true);
     setSessionError(null);
+    setSessionErrorCode(null);
     try {
       const result = await window.electronAPI.sessions.start(
         task,
@@ -1020,6 +1027,7 @@ export default function TaskDetailPanel({
         opts?.resume ? { resume: true } : undefined,
       );
       if ('error' in result) {
+        setSessionErrorCode(result.error);
         if (result.error === 'TASK_BLOCKED') {
           setSessionError(result.message ?? 'This task is blocked by incomplete work.');
         } else if (result.error === 'NO_TASK_AGENT') {
@@ -1036,6 +1044,7 @@ export default function TaskDetailPanel({
         }
         return;
       }
+      setSessionErrorCode(null);
       setSession(result);
       const statusPatch: Partial<Task> = { status: 'in-progress' };
       if (implicitSessionAssigneeUid && !task.assigneeId) {
@@ -1205,6 +1214,19 @@ export default function TaskDetailPanel({
     setDependencyError(null);
   };
 
+  const sshDevices = useMemo(
+    () => executionDevices.filter((d) => d.kind === 'ssh' && d.enabled),
+    [executionDevices],
+  );
+  const remoteFolderBindRepoId = task
+    ? effectiveTaskRepoId(task, primaryRepoId)
+    : primaryRepoId;
+  const showRemoteFolderBinding =
+    sessionErrorCode === 'REMOTE_FOLDER_REQUIRED' &&
+    resolvedDevice?.kind === 'ssh' &&
+    Boolean(remoteFolderBindRepoId.trim()) &&
+    sshDevices.length > 0;
+
   const startButtonLabel = startInFlight
     ? 'Starting…'
     : sessionError
@@ -1299,12 +1321,22 @@ export default function TaskDetailPanel({
                   disabled={cleanUpDisabled}
                   title={
                     cleanupLoading
-                      ? 'Cleaning up workspace…'
-                      : 'Tear down agent session, terminals, and worktree for this task'
+                      ? gitEnabledProject
+                        ? 'Cleaning up workspace…'
+                        : 'Stopping sessions…'
+                      : gitEnabledProject
+                        ? 'Tear down agent session, terminals, and worktree for this task'
+                        : 'Stop running agent sessions for this task'
                   }
                   className={cleanUpDisabled ? markDoneBtnDisabled : markDoneBtn}
                 >
-                  {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
+                  {cleanupLoading
+                    ? gitEnabledProject
+                      ? 'Cleaning up…'
+                      : 'Stopping sessions…'
+                    : gitEnabledProject
+                      ? 'Clean up'
+                      : 'Stop sessions'}
                 </button>
               ) : null}
               <OpenInWorkspaceButton
@@ -1321,6 +1353,7 @@ export default function TaskDetailPanel({
                 taskId={task.id}
                 taskStatus={task.status}
                 hasWorktree={Boolean(resolvedWorktreePath?.trim())}
+                gitEnabled={gitEnabledProject}
                 onTaskPrClick={onTaskPrClick}
                 prLoading={prLoading}
                 prAgentAwaiting={prAgentAwaiting}
@@ -1431,6 +1464,26 @@ export default function TaskDetailPanel({
               ) : null}
               {sessionError && !sessionRunning ? (
                 <p className="min-w-0 text-xs leading-snug text-destructive">{sessionError}</p>
+              ) : null}
+              {showRemoteFolderBinding && task ? (
+                <div className="mt-3 min-w-0 rounded-lg border border-border/80 bg-muted/30 p-3">
+                  <RemoteSshRepoBindingPanel
+                    repoId={remoteFolderBindRepoId}
+                    repoLabel={repoDisplayLabel(
+                      findRepoByIdOrPrimary(projectRepos ?? [], remoteFolderBindRepoId) ?? {
+                        id: remoteFolderBindRepoId,
+                        rootPath: '',
+                        baseBranch: 'main',
+                      },
+                    )}
+                    sshDevices={sshDevices}
+                    projectDefaultDeviceId={
+                      resolvedDevice?.kind === 'ssh'
+                        ? resolvedDevice.deviceId
+                        : task.executionDevice?.deviceId
+                    }
+                  />
+                </div>
               ) : null}
             </div>
           </div>
@@ -1785,6 +1838,7 @@ export default function TaskDetailPanel({
                 ) : null}
 
                 <TaskSourceBranchPicker
+                  gitEnabled={gitEnabledProject}
                   variant="panel"
                   idPrefix={`task-${task.id}-branch`}
                   branchInput={branchDraft}
@@ -1796,23 +1850,23 @@ export default function TaskDetailPanel({
                   repoScopeLabel={branchScopeLabel}
                   onInputBlur={() => void persistSourceMetadata()}
                 />
-                {sourceMetadataError ? (
+                {gitEnabledProject && sourceMetadataError ? (
                   <p className="mt-2 text-[11px] leading-snug text-destructive" role="alert">
                     {sourceMetadataError}
                   </p>
                 ) : null}
-                {repoFieldLocked ? (
+                {gitEnabledProject && repoFieldLocked ? (
                   <p className="mt-2 text-[11px] leading-snug text-status-needs-input-foreground">
                     {task.githubPr?.url?.trim()
                       ? 'Repository and source branch cannot be edited while a GitHub pull request is linked to this task. Clear the pull request metadata first.'
                       : 'The repository and source branch are fixed once there is a worktree or any agent session for this task (including after the session ends), or while a session is starting. On cloud projects, metadata is shared with your team; git branch lists are always read from this computer.'}
                   </p>
-                ) : (
+                ) : gitEnabledProject ? (
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     Updates when you leave the repository or branch field. If session start fails
                     locally, check the error message and your clone.
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
 

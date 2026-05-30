@@ -69,6 +69,7 @@ import type { TaskPatch, TaskProvider } from './renderer/tasks/TaskProvider';
 import { LocalTaskProvider } from './renderer/tasks/LocalTaskProvider';
 import { FirestoreTaskProvider } from './renderer/tasks/FirestoreTaskProvider';
 import { useGithubPrBoardRefresh } from './renderer/tasks/useGithubPrBoardRefresh';
+import { isGitIntegrationEnabled } from './gitIntegration';
 import { applyGithubPrRefreshFromRenderer } from './renderer/tasks/applyGithubPrRefreshFromRenderer';
 import {
   applyProviderSnapshotWithPending,
@@ -490,6 +491,8 @@ export default function App() {
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
+  const gitEnabled = isGitIntegrationEnabled(project);
+
   const projectHashRoute = useProjectHashRoute();
   const settingsRouteActive = projectHashRoute === 'settings';
 
@@ -578,6 +581,7 @@ export default function App() {
       cloudBindingOverview: cloudRepoBindingOverview,
       cloudNeedsPrimaryBinding,
       repoPathById,
+      gitIntegrationEnabled: project.gitIntegrationEnabled !== false,
     });
   }, [
     project,
@@ -1072,17 +1076,26 @@ export default function App() {
       JSON.stringify(fresh.repos) !== JSON.stringify(project.sharedRepos);
     const validationEnabled = fresh.validationEnabled === true;
     const validationChanged = validationEnabled !== (project.validationEnabled === true);
+    const gitIntegrationEnabled = fresh.gitIntegrationEnabled !== false;
+    const gitIntegrationChanged =
+      gitIntegrationEnabled !== (project.gitIntegrationEnabled !== false);
     const changed =
       fresh.name !== project.name ||
       fresh.ownerId !== project.ownerId ||
       fresh.memberIds.join(',') !== project.memberIds.join(',') ||
       fresh.createdAt !== project.createdAt ||
       reposChanged ||
-      validationChanged;
+      validationChanged ||
+      gitIntegrationChanged;
     if (!changed) return;
     if (validationChanged) {
       void window.electronAPI.project.setValidationEnabled(validationEnabled).catch((err) => {
         console.warn('[App] sync validationEnabled to disk', err);
+      });
+    }
+    if (gitIntegrationChanged) {
+      void window.electronAPI.project.setGitIntegrationEnabled(gitIntegrationEnabled).catch((err) => {
+        console.warn('[App] sync gitIntegrationEnabled to disk', err);
       });
     }
     setProject({
@@ -1092,6 +1105,7 @@ export default function App() {
       memberIds: fresh.memberIds,
       createdAt: fresh.createdAt,
       validationEnabled,
+      gitIntegrationEnabled,
       ...(fresh.repos !== undefined ? { sharedRepos: fresh.repos } : {}),
     });
   }, [project, cloudProjectsState.status, cloudProjectsState.projects]);
@@ -1338,6 +1352,9 @@ export default function App() {
         next.delete(p.taskId);
         return next;
       });
+      if (p.notice?.trim()) {
+        toast.warning(p.notice, { id: `gitless-multi-session-${p.taskId}` });
+      }
       if ('error' in p.outcome) return;
       const s = p.outcome;
       if (s.projectId !== project.id) return;
@@ -1929,6 +1946,7 @@ export default function App() {
       const prov = providerRef.current;
       const proj = projectRef.current;
       if (!prov || !proj) return false;
+      if (!isGitIntegrationEnabled(proj)) return false;
 
       if (messageContext === 'pending-agent' && opts?.suppressBenignErrors) {
         const last = pendingAgentPrDiscoveryLastAtRef.current.get(taskId) ?? 0;
@@ -1967,8 +1985,11 @@ export default function App() {
         snapshot: tasksRef.current,
         result,
         provider: prov,
-        autoMarkDoneWhenPrMerged: proj.autoMarkDoneWhenPrMerged === true,
-        autoMoveToReviewWhenPrOpen: proj.autoMoveToReviewWhenPrOpen === true,
+        autoMarkDoneWhenPrMerged:
+          isGitIntegrationEnabled(proj) && proj.autoMarkDoneWhenPrMerged === true,
+        autoMoveToReviewWhenPrOpen:
+          isGitIntegrationEnabled(proj) && proj.autoMoveToReviewWhenPrOpen === true,
+        gitIntegrationEnabled: isGitIntegrationEnabled(proj),
         onCloudPrMergedAutoDone: handleCloudPrRefreshMergedAutoDone,
       });
 
@@ -1997,6 +2018,7 @@ export default function App() {
 
   const schedulePrAgentFollowupDiscovery = useCallback(
     (taskId: string) => {
+      if (!isGitIntegrationEnabled(projectRef.current)) return;
       cancelPrAgentFollowupTimersForTask(taskId);
       const nextGen = (taskPrDiscoveryGenRef.current.get(taskId) ?? 0) + 1;
       taskPrDiscoveryGenRef.current.set(taskId, nextGen);
@@ -2063,9 +2085,9 @@ export default function App() {
     projectKind: project?.kind,
     provider,
     tasks,
-    enabled: Boolean(project && !activationLoading && provider),
-    autoMarkDoneWhenPrMerged: project?.autoMarkDoneWhenPrMerged === true,
-    autoMoveToReviewWhenPrOpen: project?.autoMoveToReviewWhenPrOpen === true,
+    enabled: Boolean(project && !activationLoading && provider && gitEnabled),
+    autoMarkDoneWhenPrMerged: gitEnabled && project?.autoMarkDoneWhenPrMerged === true,
+    autoMoveToReviewWhenPrOpen: gitEnabled && project?.autoMoveToReviewWhenPrOpen === true,
     surfaceActive: isBoardOrPlanTab,
     awaitingGithubPrLinkTaskIds,
     onCloudPrMergedAutoDone: handleCloudPrRefreshMergedAutoDone,
@@ -2818,6 +2840,7 @@ export default function App() {
 
   const handleTaskPrClick = useCallback(
     async (taskId: string) => {
+      if (!isGitIntegrationEnabled(project)) return;
       const task = tasksRef.current.find((t) => t.id === taskId);
       if (!task) return;
       const existingUrl = task.githubPr?.url?.trim();
@@ -2863,7 +2886,7 @@ export default function App() {
         setPrLoadingTaskId(null);
       }
     },
-    [schedulePrAgentFollowupDiscovery],
+    [schedulePrAgentFollowupDiscovery, project],
   );
 
   const cancelCleanupTask = useCallback(() => {
@@ -3682,7 +3705,8 @@ export default function App() {
                         : undefined
                     }
                     cleanupLoading={cleanupLoadingTaskId === item.session.taskId}
-                    onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                    gitEnabledProject={gitEnabled}
+                    onTaskPrClick={gitEnabled ? (id) => void handleTaskPrClick(id) : undefined}
                     prLoading={prLoadingTaskId === item.session.taskId}
                     prAgentAwaiting={Boolean(prAgentAwaitingByTaskId[item.session.taskId])}
                     taskDetailPanel={
@@ -3733,9 +3757,10 @@ export default function App() {
                               project.kind === 'cloud'
                                 ? runners.isRunningFresh(tabTask.id)
                                 : false,
-                            onTaskPrClick: (id) => void handleTaskPrClick(id),
+                            onTaskPrClick: gitEnabled ? (id) => void handleTaskPrClick(id) : undefined,
                             prLoading: prLoadingTaskId === item.session.taskId,
                             prAgentAwaiting: Boolean(prAgentAwaitingByTaskId[item.session.taskId]),
+                            gitEnabledProject: gitEnabled,
                             projectRepos: projectRepos ?? undefined,
                             multiRepo2Enabled: true,
                             planningDocFiles,
@@ -3810,9 +3835,10 @@ export default function App() {
                         onPatchTaskAutoStartOnUnblock={(id, patch) =>
                           void handleUpdateTask(id, patch)
                         }
-                        onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                        onTaskPrClick={gitEnabled ? (id) => void handleTaskPrClick(id) : undefined}
                         prLoadingTaskId={prLoadingTaskId}
                         prAgentAwaitingByTaskId={prAgentAwaitingByTaskId}
+                        gitEnabled={gitEnabled}
                         planPanelOpen={planPanelOpen}
                         onTogglePlanPanel={() => {
                           leaveSettingsIfActive();
@@ -3876,6 +3902,7 @@ export default function App() {
                         )}
                         autoStartWhenUnblockedProject={autoStartWhenUnblockedProject}
                         validationEnabledProject={project.validationEnabled === true}
+                        gitEnabledProject={gitEnabled}
                         remoteRunner={remoteRunnerForSelected}
                         cloudActiveRunnerSession={
                           project.kind === 'cloud' && selectedTask
@@ -3885,7 +3912,7 @@ export default function App() {
                         onOpenSessionTab={handleOpenSessionTab}
                         onMinimizeSession={handleMinimizeSession}
                         projectMembers={projectMembers}
-                        onTaskPrClick={(id) => void handleTaskPrClick(id)}
+                        onTaskPrClick={gitEnabled ? (id) => void handleTaskPrClick(id) : undefined}
                         prLoading={
                           selectedTask ? prLoadingTaskId === selectedTask.id : false
                         }
@@ -3894,6 +3921,7 @@ export default function App() {
                             ? Boolean(prAgentAwaitingByTaskId[selectedTask.id])
                             : false
                         }
+                        gitEnabledProject={gitEnabled}
                         projectRepos={projectRepos ?? undefined}
                         multiRepo2Enabled
                         planningDocFiles={planningDocFiles}
@@ -4028,14 +4056,25 @@ export default function App() {
       ) : null}
       {cleanupConfirmTask ? (
         <ConfirmDialog
-          title="Clean up task workspace?"
-          description={`This tears down the agent workspace for "${cleanupConfirmTask.title}". The task stays in Done on the board.`}
-          bullets={[
-            'Stop any running agent session for this task',
-            'Close terminals opened in this workspace',
-            'Remove the git worktree from disk',
-          ]}
-          confirmLabel="Clean up"
+          title={gitEnabled ? 'Clean up task workspace?' : 'Stop running sessions?'}
+          description={
+            gitEnabled
+              ? `This tears down the agent workspace for "${cleanupConfirmTask.title}". The task stays in Done on the board.`
+              : `This stops agent sessions for "${cleanupConfirmTask.title}". The task stays in Done on the board.`
+          }
+          bullets={
+            gitEnabled
+              ? [
+                  'Stop any running agent session for this task',
+                  'Close terminals opened in this workspace',
+                  'Remove the git worktree from disk',
+                ]
+              : [
+                  'Stop any running agent session for this task',
+                  'Close terminals opened in this workspace',
+                ]
+          }
+          confirmLabel={gitEnabled ? 'Clean up' : 'Stop sessions'}
           destructive={false}
           dontShowAgain={{
             label: "Don't show this again",

@@ -122,6 +122,8 @@ interface SessionTerminalViewProps {
   cleanupLoading?: boolean;
   /** Open linked PR or start create flow (same IPC as board `TaskCard`). */
   onTaskPrClick?: (taskId: string) => void;
+  /** When false, hides PR control and SSH sync-to-local (gitless). Defaults to on. */
+  gitEnabledProject?: boolean;
   /** True while create PR is in flight for this session’s task. */
   prLoading?: boolean;
   prAgentAwaiting?: boolean;
@@ -503,6 +505,7 @@ export function SessionTerminalView({
   onRequestCleanupTask,
   cleanupLoading = false,
   onTaskPrClick,
+  gitEnabledProject = true,
   prLoading = false,
   prAgentAwaiting = false,
   taskDetailPanel,
@@ -515,7 +518,8 @@ export function SessionTerminalView({
   const [localWorktreePath, setLocalWorktreePath] = useState<string | null>(null);
   const running = session.status === 'running';
   const isRemoteSshSession = session.deviceKind === 'ssh';
-  const localWorktreeAvailable = Boolean(localWorktreePath?.trim());
+  const isGitlessDirectSession = session.workspaceKind === 'direct';
+  const localWorktreeAvailable = Boolean(localWorktreePath?.trim()) && !isGitlessDirectSession;
   const showMarkAsDone = task != null && task.status !== 'done';
   const markDoneDisabled = showMarkAsDone && (markAsDoneBlocked || !onMarkAsDone);
   const showCleanUp =
@@ -777,6 +781,7 @@ export function SessionTerminalView({
             <SessionShellAddMenu
               running={running}
               localWorktreeAvailable={localWorktreeAvailable}
+              showLocalShellOption={gitEnabledProject && !isGitlessDirectSession}
               onOpenShell={handleOpenShell}
             />
           ) : (
@@ -800,7 +805,7 @@ export function SessionTerminalView({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {isRemoteSshSession ? (
+          {isRemoteSshSession && gitEnabledProject && !isGitlessDirectSession ? (
             <Button
               type="button"
               size="sm"
@@ -831,9 +836,13 @@ export function SessionTerminalView({
             </Button>
           ) : null}
           <OpenInWorkspaceButton
-            worktreePath={isRemoteSshSession ? localWorktreePath : session.worktreePath}
+            worktreePath={
+              isRemoteSshSession && !isGitlessDirectSession
+                ? localWorktreePath
+                : session.worktreePath
+            }
             disabledReason={
-              isRemoteSshSession
+              isRemoteSshSession && gitEnabledProject && !isGitlessDirectSession
                 ? 'Sync to local first to open the local copy in Cursor, VS Code, or Terminal.'
                 : undefined
             }
@@ -845,6 +854,7 @@ export function SessionTerminalView({
               taskId={task.id}
               taskStatus={task.status}
               hasWorktree={Boolean(session.worktreePath?.trim())}
+              gitEnabled={gitEnabledProject}
               onTaskPrClick={onTaskPrClick}
               prLoading={prLoading}
               prAgentAwaiting={prAgentAwaiting}
@@ -879,12 +889,22 @@ export function SessionTerminalView({
               onClick={() => onRequestCleanupTask?.()}
               title={
                 cleanupLoading
-                  ? 'Cleaning up workspace…'
-                  : 'Tear down agent session, terminals, and worktree for this task'
+                  ? gitEnabledProject
+                    ? 'Cleaning up workspace…'
+                    : 'Stopping sessions…'
+                  : gitEnabledProject
+                    ? 'Tear down agent session, terminals, and worktree for this task'
+                    : 'Stop running agent sessions for this task'
               }
               className={cn(toolbarActionClass, cleanUpDisabled && 'opacity-50')}
             >
-              {cleanupLoading ? 'Cleaning up…' : 'Clean up'}
+              {cleanupLoading
+                ? gitEnabledProject
+                  ? 'Cleaning up…'
+                  : 'Stopping sessions…'
+                : gitEnabledProject
+                  ? 'Clean up'
+                  : 'Stop sessions'}
             </Button>
           ) : null}
         </div>

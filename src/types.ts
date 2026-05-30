@@ -220,6 +220,15 @@ export interface LocalProject {
    * Default off; opt in via Project settings → Experimental.
    */
   validationEnabled: boolean;
+  /**
+   * When on, Fluxx uses git worktrees, branches, and PR integrations (default on).
+   * When off, agents run directly in the working folder (gitless mode).
+   */
+  gitIntegrationEnabled: boolean;
+  /**
+   * When git is off, block starting a second session in the same folder on the same device (default on).
+   */
+  gitlessSingleSessionPerFolder: boolean;
   repos: RepoConfig[];
 }
 
@@ -299,6 +308,10 @@ export interface CloudProjectLocalBinding {
    * on this machine for CLI/automation guards.
    */
   validationEnabled?: boolean;
+  /** Team-wide git integration toggle (Firestore). Mirrored to cloud `config.json` on this machine. */
+  gitIntegrationEnabled?: boolean;
+  /** Per-machine gitless concurrency guard when git integration is off. */
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 /** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
@@ -339,6 +352,10 @@ export interface CloudProject {
   autoDeleteTaskWhenDone?: boolean;
   /** Electron Playwright validation opt-in (team setting from Firestore). */
   validationEnabled?: boolean;
+  /** Team-wide git integration toggle (from Firestore). */
+  gitIntegrationEnabled?: boolean;
+  /** Per-machine gitless concurrency guard when git integration is off. */
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;
@@ -838,7 +855,14 @@ export type SessionStartErrorCode =
   | 'REMOTE_SETUP_FAILED'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
+  /** Gitless: folder+device already has a running session and single-session guard is on. */
+  | 'WORKSPACE_BUSY'
+  /** Gitless SSH: no remote folder bound for (device, repo). */
+  | 'REMOTE_FOLDER_REQUIRED'
   | 'INTERNAL';
+
+/** How a task session workspace was provisioned (git worktree vs direct folder). */
+export type SessionWorkspaceKind = 'git' | 'direct';
 
 /** Optional flags for `session:start` / `sessions.start`. */
 export type SessionStartOptions = {
@@ -862,7 +886,13 @@ export type SessionStartResult =
 /** Main→renderer: worktree + daemon spawn in progress for a task session. */
 export type TaskSessionStartProgress =
   | { taskId: string; phase: 'starting' }
-  | { taskId: string; phase: 'settled'; outcome: SessionStartResult };
+  | {
+      taskId: string;
+      phase: 'settled';
+      outcome: SessionStartResult;
+      /** Non-fatal notice (e.g. gitless multi-session warning when guard is off). */
+      notice?: string;
+    };
 
 export interface Session {
   id: string;
@@ -877,6 +907,11 @@ export interface Session {
   repoId?: string;
   worktreePath: string;
   branch: string;
+  /**
+   * `git` = Fluxx-managed worktree (default when omitted on older rows).
+   * `direct` = agent cwd is the repo/working folder (gitless).
+   */
+  workspaceKind?: SessionWorkspaceKind;
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;
@@ -918,6 +953,7 @@ export interface TaskAgentSessionRecord {
   agent: Agent;
   worktreePath: string;
   fluxxWorkBranch: string;
+  workspaceKind?: SessionWorkspaceKind;
   sourceBranchShort?: string;
   startedAt: string;
   endedAt?: string;

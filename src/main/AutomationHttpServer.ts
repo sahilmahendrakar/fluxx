@@ -21,7 +21,7 @@ export interface FluxAutomationInvokeBody {
 }
 
 export type FluxAutomationInvokeResponse =
-  | { ok: true; data: unknown }
+  | { ok: true; data: unknown; stderrNote?: string }
   | {
       ok: false;
       error: string;

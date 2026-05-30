@@ -17,6 +17,7 @@ import {
   writeOnboardingPending,
 } from './main/projectOnboarding';
 import {
+  inferGitIntegrationEnabledForProjectCreate,
   normalizeProjectCreateInput,
   validateLocalProjectCreateInput,
   type ProjectCreateInput,
@@ -31,8 +32,10 @@ import {
   resolveLocalTaskRepoIdForCreate,
   resolvePrimaryRepoId,
   resolveRepoForBranchDiscovery,
+  stableLocalProjectIdForRoot,
   validateTaskRepoIdPatchValue,
 } from './repoIdentity';
+import { validateRepoFolderForBinding } from './repoFolderAcceptance';
 import { AutomationHttpServer } from './main/AutomationHttpServer';
 import {
   invokeFluxAutomationRequest,
@@ -54,11 +57,12 @@ import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
-import { canonicalCloudProjectDir } from './main/projectDirLayout';
+import { canonicalCloudProjectDir, canonicalLocalProjectDir } from './main/projectDirLayout';
 import { LocalBindingStore } from './main/LocalBindingStore';
 import { DeviceStore } from './main/DeviceStore';
 import { DeviceProbeService } from './main/ssh/DeviceProbeService';
 import { GitRemoteWorkspaceProvider } from './main/ssh/GitRemoteWorkspaceProvider';
+import { DirectRemoteFolderWorkspaceProvider } from './main/ssh/DirectRemoteFolderWorkspaceProvider';
 import { RemoteHelperClient } from './main/ssh/RemoteHelperClient';
 import {
   formatRemoteSshReconcileLogLine,
@@ -305,6 +309,15 @@ import {
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
 import { isWorktreeCreateError, WorktreeCreateError } from './main/worktreeCreateError';
+import { gitEnabledForActiveProject } from './gitIntegration';
+import { isDirectWorkspaceKind } from './main/DirectFolderWorkspaceProvider';
+import {
+  buildGitlessWorkspaceBusyKey,
+  findGitlessWorkspaceBusyHolder,
+  gitlessMultiSessionWarningMessage,
+  workspaceBusyErrorMessage,
+} from './main/gitlessWorkspaceBusy';
+import { createTaskWorkspaceAtSessionStart } from './main/taskWorkspaceAtSessionStart';
 import {
   taskHasBlockingWorkspaceState,
   taskSourceBranchSettingsWouldChange,
@@ -1115,6 +1128,7 @@ app.whenReady().then(async () => {
     ),
   });
   const gitRemoteWorkspaceProvider = new GitRemoteWorkspaceProvider();
+  const directRemoteFolderWorkspaceProvider = new DirectRemoteFolderWorkspaceProvider();
   const remoteRepoBindingService = new RemoteRepoBindingService(
     bindingStore,
     projectStore,
@@ -1553,10 +1567,47 @@ app.whenReady().then(async () => {
   const authServer = new AuthServer();
   const emailService = new EmailService();
 
+  async function gitIntegrationEnabledForRepoRoot(rootPath: string): Promise<boolean> {
+    try {
+      const resolved = path.resolve(rootPath);
+      const projectDir = canonicalLocalProjectDir(
+        fluxxBaseDir,
+        stableLocalProjectIdForRoot(resolved),
+      );
+      const config = await projectStore.readStoredProjectConfig(projectDir);
+      if (config?.gitIntegrationEnabled === false) return false;
+    } catch {
+      // Unmaterialised or unreadable — default git-on validation.
+    }
+    return true;
+  }
+
+  async function gitIntegrationEnabledForCloudProject(cloudProjectId: string): Promise<boolean> {
+    const binding = bindingStore.get(cloudProjectId);
+    if (binding?.gitIntegrationEnabled === false) return false;
+    try {
+      const matDir = path.resolve(canonicalCloudProjectDir(fluxxBaseDir, cloudProjectId));
+      const { projectDir } = await projectStore.ensureCloudLayoutForRoot(cloudProjectId, matDir);
+      return await projectStore.getGitIntegrationEnabledAt(projectDir);
+    } catch {
+      return true;
+    }
+  }
+
+  async function gitIntegrationEnabledForActiveProject(): Promise<boolean> {
+    const key = appStateStore.get().activeProjectKey;
+    if (!key) return true;
+    if (key.kind === 'local') {
+      return projectStore.get()?.gitIntegrationEnabled !== false;
+    }
+    return gitIntegrationEnabledForCloudProject(key.id);
+  }
+
   async function pickDirectory(
     title: string,
     buttonLabel = 'Open project',
-  ): Promise<{ rootPath: string } | { error: 'NOT_GIT_REPO' } | null> {
+    options?: { gitIntegrationEnabled?: boolean; forProjectCreate?: boolean },
+  ): Promise<{ rootPath: string } | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' } | null> {
     const win = mainWindow ?? BrowserWindow.getFocusedWindow();
     const dialogOpts = {
       properties: ['openDirectory' as const],
@@ -1568,12 +1619,18 @@ app.whenReady().then(async () => {
       : await dialog.showOpenDialog(dialogOpts);
     if (result.canceled || result.filePaths.length === 0) return null;
     const rootPath = result.filePaths[0];
-    try {
-      await fs.access(path.join(rootPath, '.git'));
-    } catch {
+    const gitEnabled = options?.forProjectCreate
+      ? false
+      : (options?.gitIntegrationEnabled ??
+        (await gitIntegrationEnabledForActiveProject()));
+    const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+    if (!validated.ok) {
+      if (validated.error === 'NOT_WRITABLE') {
+        return { error: 'NOT_WRITABLE' as const };
+      }
       return { error: 'NOT_GIT_REPO' as const };
     }
-    return { rootPath };
+    return { rootPath: validated.resolved };
   }
 
   async function openLocalProjectFromRoot(rootPath: string): Promise<LocalProject> {
@@ -1703,13 +1760,16 @@ app.whenReady().then(async () => {
     if (result.canceled || result.filePaths.length === 0) return null;
 
     const rootPath = result.filePaths[0];
-    try {
-      await fs.access(path.join(rootPath, '.git'));
-    } catch {
+    const gitEnabled = await gitIntegrationEnabledForRepoRoot(rootPath);
+    const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+    if (!validated.ok) {
+      if (validated.error === 'NOT_WRITABLE') {
+        return { error: 'NOT_WRITABLE' as const };
+      }
       return { error: 'NOT_GIT_REPO' as const };
     }
 
-    const proj = await openLocalProjectFromRoot(rootPath);
+    const proj = await openLocalProjectFromRoot(validated.resolved);
     return proj;
   });
   ipcMain.handle('project:clear', async () => {
@@ -1866,6 +1926,14 @@ app.whenReady().then(async () => {
       return await projectStore.getAutoMoveToReviewWhenPrOpenAt(activeProjectDir());
     } catch {
       return false;
+    }
+  }
+
+  async function readGitIntegrationEnabled(): Promise<boolean> {
+    try {
+      return await projectStore.getGitIntegrationEnabledAt(activeProjectDir());
+    } catch {
+      return true;
     }
   }
 
@@ -2049,13 +2117,16 @@ app.whenReady().then(async () => {
 
   ipcMain.handle(
     'project:pickRepoDirectory',
-    async (): Promise<
+    async (
+      _e,
+      options?: { gitIntegrationEnabled?: boolean; forProjectCreate?: boolean },
+    ): Promise<
       | { rootPath: string }
-      | { error: 'NOT_GIT_REPO' }
+      | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
       | { error: string }
       | null
     > => {
-      return pickDirectory('Add repository to project', 'Add repository');
+      return pickDirectory('Add repository to project', 'Add repository', options);
     },
   );
 
@@ -2112,12 +2183,18 @@ app.whenReady().then(async () => {
       const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
       if (!repoId) return { error: 'repoId is required' };
       if (!rootPath) return { error: 'rootPath is required' };
-      try {
-        await fs.access(path.join(rootPath, '.git'));
-      } catch {
+      const gitEnabled = await gitIntegrationEnabledForCloudProject(key.id);
+      const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+      if (!validated.ok) {
+        if (validated.error === 'NOT_WRITABLE') {
+          return { error: 'That folder is not writable.', code: 'NOT_WRITABLE' };
+        }
+        if (validated.error === 'MISSING') {
+          return { error: 'That folder does not exist.', code: 'MISSING_PATH' };
+        }
         return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
       }
-      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, rootPath);
+      const binding = await bindingStore.setRepoMachineBinding(key.id, repoId, validated.resolved);
       const projectDir = worktreeService.getProjectDir();
       if (!projectDir) {
         return { error: 'No active workspace directory.' };
@@ -2211,25 +2288,28 @@ app.whenReady().then(async () => {
       }
       const repos = await projectStore.getReposAt(projectDir);
       const cloudProject = project.kind === 'cloud' ? project : null;
-      const task = { repoId } as Task;
-      let remoteUrl: string;
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+      let remoteUrl = '';
       try {
         const ctx = await resolveRemoteRepoForTaskSession(
           project,
-          task,
+          { repoId } as Task,
           repos,
           cloudProject,
+          { gitEnabled },
         );
         remoteUrl = ctx.remoteUrl;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
       }
-      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
-        device,
-        remotePath,
-        remoteUrl,
-      );
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(device, remotePath, {
+        gitEnabled,
+        ...(gitEnabled ? { remoteUrl } : {}),
+      });
       if (!probed.ok) {
         return { error: probed.message, code: probed.code };
       }
@@ -2273,24 +2353,28 @@ app.whenReady().then(async () => {
       }
       const repos = await projectStore.getReposAt(projectDir);
       const cloudProject = project.kind === 'cloud' ? project : null;
-      let remoteUrl: string;
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+      let remoteUrl = '';
       try {
         const ctx = await resolveRemoteRepoForTaskSession(
           project,
           { repoId } as Task,
           repos,
           cloudProject,
+          { gitEnabled },
         );
         remoteUrl = ctx.remoteUrl;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { error: message };
       }
-      const probed = await remoteRepoBindingService.probeRemoteRepoPath(
-        device,
-        remotePath,
-        remoteUrl,
-      );
+      const probed = await remoteRepoBindingService.probeRemoteRepoPath(device, remotePath, {
+        gitEnabled,
+        ...(gitEnabled ? { remoteUrl } : {}),
+      });
       if (!probed.ok) {
         return { error: probed.message, code: probed.code };
       }
@@ -2714,6 +2798,61 @@ app.whenReady().then(async () => {
       }
     },
   );
+  ipcMain.handle('project:getGitIntegrationEnabled', async () => {
+    try {
+      return await projectStore.getGitIntegrationEnabledAt(activeProjectDir());
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(message);
+    }
+  });
+  ipcMain.handle(
+    'project:setGitIntegrationEnabled',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const next = await projectStore.setGitIntegrationEnabledAt(
+          activeProjectDir(),
+          enabled !== false,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
+  ipcMain.handle('project:getGitlessSingleSessionPerFolder', async () => {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder;
+    }
+    return projectStore.getGitlessSingleSessionPerFolderAt(activeProjectDir());
+  });
+  ipcMain.handle(
+    'project:setGitlessSingleSessionPerFolder',
+    async (_e, enabled: boolean): Promise<{ ok: true; enabled: boolean } | { error: string }> => {
+      try {
+        const key = appStateStore.get().activeProjectKey;
+        if (key?.kind === 'cloud') {
+          await bindingStore.setPrefs(key.id, {
+            gitlessSingleSessionPerFolder: enabled !== false,
+          });
+          return {
+            ok: true,
+            enabled: bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder,
+          };
+        }
+        const next = await projectStore.setGitlessSingleSessionPerFolderAt(
+          activeProjectDir(),
+          enabled,
+        );
+        return { ok: true, enabled: next };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+      }
+    },
+  );
   ipcMain.handle(
     'terminal:inventorySnapshot',
     async (): Promise<TerminalInventorySnapshot> => buildTerminalInventorySnapshotForActiveProject(),
@@ -2807,6 +2946,12 @@ app.whenReady().then(async () => {
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { ok: false, error: 'CREATE_FAILED', message };
+      }
+      if (normalized.gitIntegrationEnabled === undefined) {
+        normalized = {
+          ...normalized,
+          gitIntegrationEnabled: await inferGitIntegrationEnabledForProjectCreate(normalized),
+        };
       }
       const validated = await validateLocalProjectCreateInput(normalized, {
         isGitRepo: async (rootPath) => {
@@ -2995,12 +3140,15 @@ app.whenReady().then(async () => {
 
       const shellOnly = isCloudShellRootPath(fluxxBaseDir, payload.id, resolvedRoot);
       if (!shellOnly) {
-        try {
-          await fs.access(path.join(resolvedRoot, '.git'));
-        } catch {
+        const gitEnabled = await gitIntegrationEnabledForCloudProject(payload.id);
+        const validated = await validateRepoFolderForBinding(resolvedRoot, gitEnabled);
+        if (!validated.ok) {
+          if (validated.error === 'NOT_WRITABLE') {
+            return { error: 'NOT_WRITABLE' as const };
+          }
           return { error: 'NOT_GIT_REPO' as const };
         }
-        await bindingStore.set(payload.id, resolvedRoot);
+        await bindingStore.set(payload.id, validated.resolved);
       } else {
         await bindingStore.touchShell(payload.id);
       }
@@ -3063,18 +3211,21 @@ app.whenReady().then(async () => {
       const sharedRepos = parseCloudSharedReposArg(p.sharedRepos);
       const primaryRepoId =
         typeof p.primaryRepoId === 'string' ? p.primaryRepoId.trim() : '';
+      const gitEnabled = await gitIntegrationEnabledForCloudProject(cloudProjectId);
       for (const row of bindingsRaw) {
         if (!row || typeof row !== 'object') continue;
         const o = row as Record<string, unknown>;
         const repoId = typeof o.repoId === 'string' ? o.repoId.trim() : '';
         const rootPath = typeof o.rootPath === 'string' ? o.rootPath.trim() : '';
         if (!repoId || !rootPath) continue;
-        try {
-          await fs.access(path.join(rootPath, '.git'));
-        } catch {
+        const validated = await validateRepoFolderForBinding(rootPath, gitEnabled);
+        if (!validated.ok) {
+          if (validated.error === 'NOT_WRITABLE') {
+            return { error: 'That folder is not writable.', code: 'NOT_WRITABLE' };
+          }
           return { error: 'That folder is not a git repository.', code: 'NOT_GIT_REPO' };
         }
-        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, rootPath);
+        await bindingStore.setRepoMachineBinding(cloudProjectId, repoId, validated.resolved);
       }
       if (primaryRepoId) {
         await bindingStore.setPrimaryRepoId(cloudProjectId, primaryRepoId);
@@ -3775,6 +3926,13 @@ app.whenReady().then(async () => {
       if (!parsed.ok) {
         return { ok: false, code: 'NO_PROJECT', message: parsed.message };
       }
+      if (!(await readGitIntegrationEnabled())) {
+        return {
+          ok: false,
+          code: 'PR_CREATE_FAILED',
+          message: 'Git integration is off for this project. Enable it in Project settings to use pull requests.',
+        };
+      }
       const { taskId, title: payloadTitle } = parsed.payload;
       const rootPath = worktreeService.getRootPath();
       if (!rootPath) {
@@ -3943,6 +4101,13 @@ app.whenReady().then(async () => {
       if (!taskId) {
         return { ok: false, code: 'NO_PROJECT', message: 'taskId is required' };
       }
+      if (!(await readGitIntegrationEnabled())) {
+        return {
+          ok: false,
+          code: 'NO_PROJECT',
+          message: 'Git integration is off for this project.',
+        };
+      }
       const rootPath = worktreeService.getRootPath();
       const projectDir = worktreeService.getProjectDir();
       if (!rootPath || !projectDir) {
@@ -4016,8 +4181,11 @@ app.whenReady().then(async () => {
         }
 
         let autoMarkPref = false;
+        const gitEnabled = await readGitIntegrationEnabled();
         try {
-          autoMarkPref = await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir());
+          autoMarkPref = gitEnabled
+            ? await projectStore.getAutoMarkDoneWhenPrMergedAt(activeProjectDir())
+            : false;
         } catch (err) {
           console.warn('[tasks:refreshPullRequest] failed to read autoMarkDoneWhenPrMerged', err);
         }
@@ -4030,6 +4198,7 @@ app.whenReady().then(async () => {
             refreshedGithubPr: viewed.githubPr,
             prefEnabled: autoMarkPref,
             allTasks,
+            gitIntegrationEnabled: gitEnabled,
           })
         ) {
           const destCol = sortColumn(
@@ -4060,10 +4229,11 @@ app.whenReady().then(async () => {
             console.warn('[tasks:refreshPullRequest] auto-mark done failed', taskId, err);
           }
         } else {
-          const autoReview = await readAutoMoveToReviewWhenPrOpen();
+          const autoReview = gitEnabled ? await readAutoMoveToReviewWhenPrOpen() : false;
           if (
             shouldAutoMoveTaskToReviewForOpenPr({
               enabled: autoReview,
+              gitIntegrationEnabled: gitEnabled,
               taskStatus: rowForAuto.status,
               githubPr: viewed.githubPr,
               task: rowForAuto,
@@ -4250,6 +4420,7 @@ app.whenReady().then(async () => {
     project: Project,
     task: Task,
     projectDir: string,
+    opts?: { requireGit?: boolean },
   ): Promise<RepoConfig> {
     const repos = await projectStore.getReposAt(projectDir);
     const primaryId = resolvePrimaryRepoId(repos);
@@ -4292,16 +4463,26 @@ app.whenReady().then(async () => {
         `The repository clone path does not exist: ${resolvedClone}`,
       );
     }
-    try {
-      await fs.access(path.join(resolvedClone, '.git'));
-    } catch {
-      throw new WorktreeCreateError(
-        'WORKTREE_REPO_NOT_GIT',
-        `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
-      );
+    if (opts?.requireGit !== false) {
+      try {
+        await fs.access(path.join(resolvedClone, '.git'));
+      } catch {
+        throw new WorktreeCreateError(
+          'WORKTREE_REPO_NOT_GIT',
+          `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
+        );
+      }
     }
 
     return repoCfg;
+  }
+
+  async function gitlessSingleSessionPerFolderForActiveProject(): Promise<boolean> {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder !== false;
+    }
+    return projectStore.getGitlessSingleSessionPerFolderAt(activeProjectDir());
   }
 
   async function worktreeSourceOptsForTaskSession(
@@ -4453,10 +4634,12 @@ app.whenReady().then(async () => {
     }
 
     const taskId = task.id;
+    let startNotice: string | undefined;
     const sendTaskStartProgress = (payload: {
       taskId: string;
       phase: 'starting' | 'settled';
       outcome?: SessionStartResult;
+      notice?: string;
     }) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
@@ -4491,10 +4674,20 @@ app.whenReady().then(async () => {
             bindingStore,
             sshTerminalBackend: sshBackend,
             gitRemoteWorkspace: gitRemoteWorkspaceProvider,
+            directRemoteWorkspace: directRemoteFolderWorkspaceProvider,
             taskAgentSessionRecordStore,
             terminalSessionRecordStore,
             resolvePlanningDocsDir,
             activeProjectDir,
+            gitEnabledForProject: () =>
+              gitEnabledForActiveProject({
+                getProjectDir: activeProjectDir,
+                getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+              }),
+            gitlessSingleSessionPerFolderForProject: gitlessSingleSessionPerFolderForActiveProject,
+            listRunningSessions: () => terminalBackend.listSessions(),
+            resolveTaskTitle: (taskId) =>
+              taskStore.getAll(project.id).find((t) => t.id === taskId)?.title,
           },
           {
             task: merged,
@@ -4509,7 +4702,7 @@ app.whenReady().then(async () => {
         }
         sessionTaskMap.set(sshResult.id, task.id);
         const priorFw = (merged.fluxxWorkBranch ?? '').trim();
-        if (priorFw !== sshResult.branch) {
+        if (sshResult.branch && priorFw !== sshResult.branch) {
           if (project.kind === 'local') {
             const p = projectStore.get();
             if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
@@ -4541,50 +4734,33 @@ app.whenReady().then(async () => {
     }
 
     try {
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+
       let worktreePath = '';
       let branch = '';
+      let workspaceKind: import('./types').SessionWorkspaceKind = 'git';
       let sessionRepoCfg: RepoConfig | null = null;
+      const projectDir = activeProjectDir();
+
       try {
-        const projectDir = activeProjectDir();
-        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir);
-        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg);
-        const layout = 'repo-scoped' as const;
-        const created = await worktreeService.create({
-          task: {
-            id: merged.id,
-            title: merged.title,
-            fluxxWorkBranch: merged.fluxxWorkBranch,
-          },
-          repo: {
-            repoId: sessionRepoCfg.id,
-            gitRootPath: sessionRepoCfg.rootPath,
-            baseBranch: sessionRepoCfg.baseBranch,
-            setupScript: sessionRepoCfg.setupScript,
-            env: sessionRepoCfg.env,
-          },
-          source: sourceOpts,
-          layout,
+        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir, {
+          requireGit: gitEnabled,
         });
-        worktreePath = created.worktreePath;
-        branch = created.branch;
       } catch (err: unknown) {
         if (isWorktreeCreateError(err)) {
-          console.error('[session:start] worktree create failed', {
+          console.error('[session:start] repo resolve failed', {
             taskId: task.id,
             projectId: project.id,
             code: err.code,
-            branchName: err.branchName,
             message: err.message,
           });
           return finish({ error: err.code, message: err.message });
         }
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[session:start] worktree create failed', {
-          taskId: task.id,
-          projectId: project.id,
-          message,
-        });
-        return finish({ error: 'WORKTREE_FAILED', message });
+        return finish({ error: 'INTERNAL', message });
       }
 
       if (!sessionRepoCfg) {
@@ -4592,6 +4768,72 @@ app.whenReady().then(async () => {
           error: 'INTERNAL',
           message: 'Session start did not resolve a repository configuration.',
         });
+      }
+
+      if (!gitEnabled && executionDevice.kind === 'local') {
+        const busyKey = buildGitlessWorkspaceBusyKey(
+          sessionRepoCfg.rootPath,
+          executionDevice.deviceId,
+        );
+        const runningSessions = await terminalBackend.listSessions();
+        const busyHolder = findGitlessWorkspaceBusyHolder(
+          runningSessions,
+          busyKey,
+          merged.id,
+        );
+        const singlePerFolder = await gitlessSingleSessionPerFolderForActiveProject();
+        if (busyHolder && singlePerFolder) {
+          const holderTask =
+            allProjectTasks.find((t) => t.id === busyHolder.taskId) ?? null;
+          return finish({
+            error: 'WORKSPACE_BUSY',
+            message: workspaceBusyErrorMessage(
+              busyHolder.taskId,
+              holderTask?.title,
+            ),
+          });
+        }
+        if (busyHolder && !singlePerFolder) {
+          startNotice = gitlessMultiSessionWarningMessage();
+        }
+      }
+
+      const sourceOpts = gitEnabled
+        ? await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg)
+        : { sourceBranchShort: '', createSourceBranchIfMissing: false };
+
+      const workspaceResult = await createTaskWorkspaceAtSessionStart({
+        gitEnabled,
+        task: merged,
+        repoCfg: sessionRepoCfg,
+        worktreeService,
+        sourceOpts,
+      });
+      if (!workspaceResult.ok) {
+        const r = workspaceResult.result;
+        if ('error' in r && r.error !== 'INTERNAL') {
+          console.error('[session:start] workspace create failed', {
+            taskId: task.id,
+            projectId: project.id,
+            error: r.error,
+            message: r.message,
+          });
+        }
+        return finish(workspaceResult.result);
+      }
+
+      worktreePath = workspaceResult.descriptor.cwd;
+      branch = workspaceResult.descriptor.branch;
+      workspaceKind = workspaceResult.descriptor.workspaceKind;
+      sessionRepoCfg = workspaceResult.repoCfg;
+
+      async function removeProvisionedWorktreeIfGit(): Promise<void> {
+        if (!isDirectWorkspaceKind(workspaceKind)) {
+          await worktreeService.remove(
+            worktreePath,
+            path.resolve(sessionRepoCfg!.rootPath),
+          );
+        }
       }
 
       if (merged.agent === 'cursor') {
@@ -4605,10 +4847,7 @@ app.whenReady().then(async () => {
             message,
           });
           try {
-            await worktreeService.remove(
-              worktreePath,
-              path.resolve(sessionRepoCfg.rootPath),
-            );
+            await removeProvisionedWorktreeIfGit();
           } catch (removeErr: unknown) {
             console.error('[session:start] cleanup worktree after MCP failure', removeErr);
           }
@@ -4685,6 +4924,9 @@ app.whenReady().then(async () => {
         args,
         cols: 80,
         rows: 24,
+        workspaceKind,
+        deviceId: executionDevice.deviceId,
+        deviceKind: executionDevice.kind,
         ...trustAutorespondArg,
         ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
@@ -4697,10 +4939,7 @@ app.whenReady().then(async () => {
           message: result.message,
         });
         try {
-          await worktreeService.remove(
-            worktreePath,
-            path.resolve(sessionRepoCfg.rootPath),
-          );
+          await removeProvisionedWorktreeIfGit();
         } catch (removeErr: unknown) {
           console.error('[session:start] cleanup worktree after spawn failure', removeErr);
         }
@@ -4733,6 +4972,7 @@ app.whenReady().then(async () => {
         agent: merged.agent,
         worktreePath,
         fluxxWorkBranch: branch,
+        workspaceKind,
         ...(sourceBranchShort ? { sourceBranchShort } : {}),
         startedAt: result.startedAt,
       };
@@ -4766,7 +5006,7 @@ app.whenReady().then(async () => {
       );
       void terminalSessionRecordStore.recordTerminalStart(terminalRow);
       const priorFw = (merged.fluxxWorkBranch ?? '').trim();
-      if (priorFw !== branch) {
+      if (branch && priorFw !== branch) {
         if (project.kind === 'local') {
           const p = projectStore.get();
           if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
@@ -4793,7 +5033,12 @@ app.whenReady().then(async () => {
         error: 'INTERNAL',
         message: 'Session start did not return a result',
       };
-      sendTaskStartProgress({ taskId, phase: 'settled', outcome });
+      sendTaskStartProgress({
+        taskId,
+        phase: 'settled',
+        outcome,
+        ...(startNotice ? { notice: startNotice } : {}),
+      });
     }
   }
 
@@ -5353,6 +5598,15 @@ app.whenReady().then(async () => {
         phase: 'remote-status' as const,
         error: 'INTERNAL' as const,
         message: 'Session not found.',
+      };
+    }
+    if (session.workspaceKind === 'direct') {
+      return {
+        ok: false as const,
+        phase: 'remote-status' as const,
+        error: 'NOT_SSH_SESSION' as const,
+        message:
+          'Sync to local is not available for gitless SSH sessions. The agent runs directly in your bound remote folder.',
       };
     }
     const tasks = taskStore.getAll(project.id);
@@ -6580,6 +6834,11 @@ app.whenReady().then(async () => {
 
     let worktreePath = session.worktreePath;
     if (session.deviceKind === 'ssh' && placement === 'local') {
+      if (session.workspaceKind === 'direct') {
+        throw new Error(
+          'Local terminals are not available for gitless SSH sessions. Open an SSH terminal instead.',
+        );
+      }
       const projectDir = activeProjectDir();
       const task = taskStore.getAll(session.projectId).find((t) => t.id === session.taskId);
       const localPath = projectDir

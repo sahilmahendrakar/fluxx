@@ -6,6 +6,7 @@ import {
   normalizeRepoRootPathForIdentity,
   stableLocalProjectIdForRoot,
 } from './repoIdentity';
+import { repoFolderExists, repoFolderIsGitRepository, repoFolderIsWritable } from './repoFolderAcceptance';
 
 /** Single creation payload for local-only and team-synced projects. */
 export interface ProjectCreateInput {
@@ -15,6 +16,8 @@ export interface ProjectCreateInput {
   syncMode: 'local-only' | 'team-synced';
   teamInvites?: string[];
   planningDefaults?: ProjectPlanningDefaultsInput;
+  gitIntegrationEnabled?: boolean;
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 export interface ProjectCreateRepoInput {
@@ -80,6 +83,8 @@ export type ValidatedLocalProjectCreate = {
   name: string;
   repos: RepoConfig[];
   planningDefaults?: ProjectPlanningDefaultsInput;
+  gitIntegrationEnabled?: boolean;
+  gitlessSingleSessionPerFolder?: boolean;
 };
 
 export function validateProjectName(name: string): 'NAME_REQUIRED' | 'NAME_TOO_LONG' | { ok: true; name: string } {
@@ -114,6 +119,17 @@ export function projectCreateErrorMessage(
     default:
       return message?.trim() || 'Could not create the project. Try again.';
   }
+}
+
+/** User-facing copy for folder-picker errors from `project:pickRepoDirectory`. */
+export function repoDirectoryPickErrorMessage(error: string): string {
+  if (error === 'NOT_GIT_REPO') {
+    return 'That folder isn’t a git repository. Run git init first.';
+  }
+  if (error === 'NOT_WRITABLE') {
+    return 'That folder is not writable. Choose a folder you can modify.';
+  }
+  return error;
 }
 
 function resolvePrimaryRootPathForCreate(
@@ -166,6 +182,40 @@ export function prepareLocalProjectCreateInput(params: {
     primaryRepoId,
     syncMode: 'local-only',
   };
+}
+
+/** Primary repository root used to infer git integration during project create. */
+export function resolvePrimaryRepoRootPathForCreate(
+  input: Pick<ProjectCreateInput, 'repos' | 'primaryRepoId'>,
+): string | null {
+  const repoInputs = input.repos ?? [];
+  if (repoInputs.length === 0) return null;
+  if (repoInputs.length === 1) {
+    return path.resolve(repoInputs[0].rootPath);
+  }
+  const want = input.primaryRepoId?.trim();
+  if (!want) return null;
+  for (const repo of repoInputs) {
+    const resolved = path.resolve(repo.rootPath);
+    const projectId = stableLocalProjectIdForRoot(resolved);
+    const candidatePrimaryId = deriveStablePrimaryRepoIdForProject({
+      projectId,
+      rootPath: resolved,
+    });
+    if (candidatePrimaryId === want) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+/** Default git integration for new projects: on when the primary folder is a git repo. */
+export async function inferGitIntegrationEnabledForProjectCreate(
+  input: ProjectCreateInput,
+): Promise<boolean> {
+  const primaryRoot = resolvePrimaryRepoRootPathForCreate(input);
+  if (!primaryRoot) return true;
+  return repoFolderIsGitRepository(primaryRoot);
 }
 
 const TEAM_INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -312,7 +362,16 @@ export function validateLocalProjectCreateInput(
         ? await options.isGitRepo(resolved)
         : await defaultIsGitRepo(resolved);
       if (!isGit) {
-        return { ok: false, error: 'NOT_GIT_REPO' };
+        if (input.gitIntegrationEnabled === false) {
+          if (!(await repoFolderExists(resolved))) {
+            return { ok: false, error: 'NOT_GIT_REPO' };
+          }
+          if (!(await repoFolderIsWritable(resolved))) {
+            return { ok: false, error: 'NOT_GIT_REPO' };
+          }
+        } else {
+          return { ok: false, error: 'NOT_GIT_REPO' };
+        }
       }
     }
 
@@ -328,6 +387,8 @@ export function validateLocalProjectCreateInput(
           name: nameResult.name,
           repos: [],
           planningDefaults: input.planningDefaults,
+          gitIntegrationEnabled: input.gitIntegrationEnabled,
+          gitlessSingleSessionPerFolder: input.gitlessSingleSessionPerFolder,
         },
       };
     }
@@ -378,6 +439,8 @@ export function validateLocalProjectCreateInput(
         name: nameResult.name,
         repos: assigned.repos,
         planningDefaults: input.planningDefaults,
+        gitIntegrationEnabled: input.gitIntegrationEnabled,
+        gitlessSingleSessionPerFolder: input.gitlessSingleSessionPerFolder,
       },
     };
   });

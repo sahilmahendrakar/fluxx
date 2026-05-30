@@ -21,6 +21,11 @@ import type {
   AutomationBridgeTasksUpdatePayload,
   AutomationBridgeTasksUpdateResult,
 } from '../../rendererAutomationBridge';
+import {
+  GIT_BRANCH_DISCOVERY_DISABLED_NOTE,
+  gitDisabledBranchDiscoveryResponse,
+  stripGitBranchCliFields,
+} from '../../gitIntegration';
 import { fetchProjectMembersForBridge } from '../projects/members';
 import type { TaskProvider } from '../tasks/TaskProvider';
 import { assigneePatchForCloudAutoStartOnUnblock } from '../../cloudAutoStartUnblockAssignee';
@@ -131,8 +136,11 @@ async function handleRequest(
           };
         }
         const input = payload.input;
+        const gitIntegrationEnabled = project.gitIntegrationEnabled !== false;
+        const strippedCreate = stripGitBranchCliFields(input, gitIntegrationEnabled);
+        const createInput = strippedCreate.value;
         if (project.kind === 'cloud') {
-          const rid = input.repoId?.trim();
+          const rid = createInput.repoId?.trim();
           if (rid) {
             const known = project.sharedRepos.some((r) => r.id === rid);
             if (!known) {
@@ -145,10 +153,10 @@ async function handleRequest(
             }
           }
         }
-        const created = await provider.create(input);
-        if (input.description !== undefined) {
+        const created = await provider.create(createInput);
+        if (createInput.description !== undefined) {
           const withDescription = await provider.update(created.id, {
-            description: input.description,
+            description: createInput.description,
           });
           return { id: req.id, ok: true, data: withDescription };
         }
@@ -164,9 +172,11 @@ async function handleRequest(
             message: 'tasks.update requires payload.taskId and payload.patch',
           };
         }
+        const gitIntegrationEnabled = project.gitIntegrationEnabled !== false;
+        const strippedUpdate = stripGitBranchCliFields(payload.patch, gitIntegrationEnabled);
         const previous =
           tasksSnapshot.find((t) => t.id === payload.taskId) ?? null;
-        let patch = payload.patch;
+        let patch = strippedUpdate.value;
         if (
           project.kind === 'cloud' &&
           patch.repoId !== undefined
@@ -310,21 +320,26 @@ async function handleRequest(
         }
         let defaultBranchShort: string | undefined;
         let branchDiscoveryError: string | undefined;
-        try {
-          const disc = await window.electronAPI.repo.getBranchDiscovery();
-          if ('error' in disc) {
-            branchDiscoveryError = disc.error;
-          } else {
-            defaultBranchShort = disc.defaultBranchShort;
+        const gitIntegrationEnabled = project.gitIntegrationEnabled !== false;
+        if (gitIntegrationEnabled) {
+          try {
+            const disc = await window.electronAPI.repo.getBranchDiscovery();
+            if ('error' in disc) {
+              branchDiscoveryError = disc.error;
+            } else {
+              defaultBranchShort = disc.defaultBranchShort;
+            }
+          } catch (err) {
+            branchDiscoveryError = err instanceof Error ? err.message : String(err);
           }
-        } catch (err) {
-          branchDiscoveryError = err instanceof Error ? err.message : String(err);
         }
         const result: AutomationBridgeProjectInfoResult = {
           name: project.name,
           activeKey: currentKey,
           uid: uid ?? null,
           validationEnabled: project.validationEnabled === true,
+          gitIntegrationEnabled: project.gitIntegrationEnabled !== false,
+          gitlessSingleSessionPerFolder: project.gitlessSingleSessionPerFolder !== false,
           taskCounts,
           ...(defaultBranchShort !== undefined ? { defaultBranchShort } : {}),
           ...(branchDiscoveryError !== undefined ? { branchDiscoveryError } : {}),
@@ -338,7 +353,7 @@ async function handleRequest(
                 ? 'bound'
                 : 'missing_binding';
               let repoDefaultShort: string | undefined;
-              if (machine) {
+              if (machine && gitIntegrationEnabled) {
                 const rawDisc = await window.electronAPI.repo.getBranchDiscovery({
                   repoId: sr.id,
                 });
@@ -366,6 +381,16 @@ async function handleRequest(
       }
       case 'repo.branchDiscovery': {
         const payload = (req.payload ?? {}) as AutomationBridgeRepoBranchDiscoveryPayload;
+        if (project.gitIntegrationEnabled === false) {
+          return {
+            id: req.id,
+            ok: true,
+            data: {
+              ...gitDisabledBranchDiscoveryResponse(),
+              gitDisabledNote: GIT_BRANCH_DISCOVERY_DISABLED_NOTE,
+            },
+          };
+        }
         const repoIdArg =
           payload.repoId != null &&
           payload.repoId.trim() !== '' &&

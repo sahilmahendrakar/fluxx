@@ -24,6 +24,7 @@ import { useAuth } from '../renderer/auth/useAuth';
 import {
   normalizeTeamInviteEmails,
   projectCreateErrorMessage,
+  repoDirectoryPickErrorMessage,
   type ProjectCreateError,
   type ProjectCreateWizardPayload,
 } from '../projectCreate';
@@ -124,14 +125,12 @@ export function NewProjectModal({
 
   const handleAddRepo = async () => {
     setRepoError(null);
-    const picked = await window.electronAPI.project.pickRepoDirectory();
+    const picked = await window.electronAPI.project.pickRepoDirectory({
+      forProjectCreate: true,
+    });
     if (!picked) return;
     if ('error' in picked) {
-      if (picked.error === 'NOT_GIT_REPO') {
-        setRepoError('That folder isn’t a git repository. Run git init first.');
-      } else {
-        setRepoError(typeof picked.error === 'string' ? picked.error : 'Could not add repository.');
-      }
+      setRepoError(repoDirectoryPickErrorMessage(picked.error));
       return;
     }
     const rootPath = picked.rootPath;
@@ -534,7 +533,14 @@ function ReposSection(props: {
   setPrimaryRootPath: (v: string | undefined) => void;
   onAddRepo: () => void;
 }) {
-  const { repoError, repos, setRepos, primaryRootPath, setPrimaryRootPath, onAddRepo } = props;
+  const {
+    repoError,
+    repos,
+    setRepos,
+    primaryRootPath,
+    setPrimaryRootPath,
+    onAddRepo,
+  } = props;
 
   return (
     <div className="flex flex-col gap-2">
@@ -547,7 +553,7 @@ function ReposSection(props: {
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Attach git repositories now, or add them later in project settings.
+        Attach a folder now, or add one later in project settings.
       </p>
       {repoError ? (
         <Alert variant="destructive">
@@ -561,7 +567,7 @@ function ReposSection(props: {
           {repos.map((repo) => (
             <li
               key={repo.key}
-              className="rounded-md border bg-muted/20 px-2.5 py-2"
+              className="min-w-0 overflow-hidden rounded-md border bg-muted/20 px-2.5 py-2"
             >
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
@@ -569,7 +575,7 @@ function ReposSection(props: {
                     {repo.name ?? repoRootBasename(repo.rootPath) ?? 'Repository'}
                   </div>
                   <div
-                    className="truncate font-mono text-[11px] text-muted-foreground"
+                    className="break-all font-mono text-[11px] text-muted-foreground"
                     title={repo.rootPath}
                   >
                     {repo.rootPath}

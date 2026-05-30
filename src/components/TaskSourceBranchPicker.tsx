@@ -11,10 +11,13 @@ import {
   mergeDiscoveryBranchSuggestions,
   normalizeGitBranchShortName,
 } from '../taskBranches';
+import { shouldShowTaskSourceBranchPicker } from '../gitUiGating';
 
 export type TaskSourceBranchPickerVariant = 'modal' | 'panel';
 
 interface Props {
+  /** When false, renders nothing (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
   variant?: TaskSourceBranchPickerVariant;
   idPrefix: string;
   /** Current text in the branch field (short name, user-visible). */
@@ -60,6 +63,7 @@ export function describePendingBranchCreation(
 }
 
 export default function TaskSourceBranchPicker({
+  gitEnabled = true,
   variant = 'modal',
   idPrefix,
   branchInput,
@@ -72,6 +76,8 @@ export default function TaskSourceBranchPicker({
   onInputBlur,
   repoScopeLabel,
 }: Props) {
+  if (!shouldShowTaskSourceBranchPicker(gitEnabled)) return null;
+
   const reactId = useId();
   const listboxId = `${idPrefix}-${reactId}-branches`;
   const [listOpen, setListOpen] = useState(false);

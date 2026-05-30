@@ -54,6 +54,8 @@ interface Props {
   cloudUnblockAutostartClientUid?: string;
   sessions: Session[];
   taskHasWorktreeById: Record<string, boolean>;
+  /** When false, hides PR controls and branch chips (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   onTaskExecutionDeviceChange: (taskId: string, ref: TaskExecutionDeviceRef) => void;
   onOpenTaskWorkspaceTab: (taskId: string) => void;
@@ -90,6 +92,7 @@ export default function Column({
   cloudUnblockAutostartClientUid,
   sessions,
   taskHasWorktreeById,
+  gitEnabled = true,
   onTaskAgentSpawnPrefsChange,
   onTaskExecutionDeviceChange,
   onOpenTaskWorkspaceTab,
@@ -213,6 +216,7 @@ export default function Column({
                     repoChip={repoChip}
                     cloudUnblockAutostartClientUid={cloudUnblockAutostartClientUid}
                     hasWorktree={hasWorktree}
+                    gitEnabled={gitEnabled}
                     onTaskAgentSpawnPrefsChange={onTaskAgentSpawnPrefsChange}
                     onTaskExecutionDeviceChange={onTaskExecutionDeviceChange}
                     taskWorkspaceSessionStatus={taskWorkspaceSession?.status}

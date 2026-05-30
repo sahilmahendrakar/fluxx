@@ -157,9 +157,12 @@ declare global {
           | Record<string, RepoManagementState>
           | { error: string }
         >;
-        pickRepoDirectory: () => Promise<
+        pickRepoDirectory: (options?: {
+          gitIntegrationEnabled?: boolean;
+          forProjectCreate?: boolean;
+        }) => Promise<
           | { rootPath: string }
-          | { error: 'NOT_GIT_REPO' }
+          | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
           | { error: string }
           | null
         >;
@@ -264,6 +267,14 @@ declare global {
         setDefaultDeviceId: (deviceId: string | null) => Promise<string | null>;
         getValidationEnabled: () => Promise<boolean>;
         setValidationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitIntegrationEnabled: () => Promise<boolean>;
+        setGitIntegrationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitlessSingleSessionPerFolder: () => Promise<boolean>;
+        setGitlessSingleSessionPerFolder: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };

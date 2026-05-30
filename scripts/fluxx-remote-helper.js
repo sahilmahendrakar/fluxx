@@ -370,18 +370,9 @@ function assertRepoPathWritable(repoPath) {
   }
 }
 
-function runProbeRepoPath(params) {
-  const remotePathRaw =
-    typeof params.remotePath === 'string' ? params.remotePath.trim() : '';
-  const remoteUrl = typeof params.remoteUrl === 'string' ? params.remoteUrl.trim() : '';
+function validateRemoteFolderPath(remotePathRaw) {
   if (!remotePathRaw) {
-    fail('INTERNAL', 'probe-repo-path requires remotePath');
-  }
-  if (!remoteUrl) {
-    fail('INTERNAL', 'probe-repo-path requires remoteUrl');
-  }
-  if (!which('git')) {
-    fail('REMOTE_GIT_MISSING', 'git was not found on PATH');
+    fail('INTERNAL', 'Remote path is required');
   }
   const repoPath = expandHome(remotePathRaw);
   if (!path.isAbsolute(repoPath)) {
@@ -396,6 +387,35 @@ function runProbeRepoPath(params) {
   }
   if (!assertRepoPathWritable(repoPath)) {
     fail('REMOTE_WORKSPACE_UNWRITABLE', `Path is not writable: ${remotePathRaw}`);
+  }
+  return repoPath;
+}
+
+function runProbeRepoPath(params) {
+  const remotePathRaw =
+    typeof params.remotePath === 'string' ? params.remotePath.trim() : '';
+  const gitless = params.gitless === true;
+  const remoteUrl = typeof params.remoteUrl === 'string' ? params.remoteUrl.trim() : '';
+  if (!remotePathRaw) {
+    fail('INTERNAL', 'probe-repo-path requires remotePath');
+  }
+  const repoPath = validateRemoteFolderPath(remotePathRaw);
+  if (gitless) {
+    emit({
+      ok: true,
+      data: {
+        resolvedPath: repoPath,
+        originUrl: '',
+        writable: true,
+      },
+    });
+    return;
+  }
+  if (!remoteUrl) {
+    fail('INTERNAL', 'probe-repo-path requires remoteUrl');
+  }
+  if (!which('git')) {
+    fail('REMOTE_GIT_MISSING', 'git was not found on PATH');
   }
   const gitDir = path.join(repoPath, '.git');
   if (!fs.existsSync(gitDir)) {
@@ -426,6 +446,17 @@ function runProbeRepoPath(params) {
       writable: true,
     },
   });
+}
+
+function runPrepareDirectFolder(params) {
+  const folderPathRaw =
+    typeof params.folderPath === 'string' ? params.folderPath.trim() : '';
+  if (!folderPathRaw) {
+    fail('INTERNAL', 'prepare-direct-folder requires folderPath');
+  }
+  const folderPath = validateRemoteFolderPath(folderPathRaw);
+  writeContextFiles(folderPath, params.contextFiles);
+  emit({ ok: true, data: { folderPath } });
 }
 
 function runRepoEnsure(params) {
@@ -1335,6 +1366,9 @@ function main() {
       break;
     case 'probe-repo-path':
       runProbeRepoPath(readStdinJson());
+      break;
+    case 'prepare-direct-folder':
+      runPrepareDirectFolder(readStdinJson());
       break;
     case 'worktree-create':
       runWorktreeCreate(readStdinJson());
