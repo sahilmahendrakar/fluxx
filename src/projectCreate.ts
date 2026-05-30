@@ -15,6 +15,8 @@ export interface ProjectCreateInput {
   syncMode: 'local-only' | 'team-synced';
   teamInvites?: string[];
   planningDefaults?: ProjectPlanningDefaultsInput;
+  gitIntegrationEnabled?: boolean;
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 export interface ProjectCreateRepoInput {
@@ -80,6 +82,8 @@ export type ValidatedLocalProjectCreate = {
   name: string;
   repos: RepoConfig[];
   planningDefaults?: ProjectPlanningDefaultsInput;
+  gitIntegrationEnabled?: boolean;
+  gitlessSingleSessionPerFolder?: boolean;
 };
 
 export function validateProjectName(name: string): 'NAME_REQUIRED' | 'NAME_TOO_LONG' | { ok: true; name: string } {
@@ -328,6 +332,8 @@ export function validateLocalProjectCreateInput(
           name: nameResult.name,
           repos: [],
           planningDefaults: input.planningDefaults,
+          gitIntegrationEnabled: input.gitIntegrationEnabled,
+          gitlessSingleSessionPerFolder: input.gitlessSingleSessionPerFolder,
         },
       };
     }
@@ -378,6 +384,8 @@ export function validateLocalProjectCreateInput(
         name: nameResult.name,
         repos: assigned.repos,
         planningDefaults: input.planningDefaults,
+        gitIntegrationEnabled: input.gitIntegrationEnabled,
+        gitlessSingleSessionPerFolder: input.gitlessSingleSessionPerFolder,
       },
     };
   });

@@ -886,3 +886,52 @@ You have access to the following Flux tools for task management:
     expect(claude).toContain('validationEnabled');
   });
 });
+
+describe('git integration settings (ProjectStore)', () => {
+  let tmp: string;
+  let store: ProjectStore;
+
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-git-settings-'));
+    store = new ProjectStore(tmp);
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('defaults missing git settings to true when parsing config', async () => {
+    const root = path.join(tmp, 'repo');
+    await fs.mkdir(root, { recursive: true });
+    const projectDir = path.join(tmp, '.fluxx', 'projects', 'legacy-git-defaults');
+    await writeLegacyConfig(projectDir, root);
+    expect(await store.getGitIntegrationEnabledAt(projectDir)).toBe(true);
+    expect(await store.getGitlessSingleSessionPerFolderAt(projectDir)).toBe(true);
+  });
+
+  it('persists gitIntegrationEnabled via setter', async () => {
+    const root = path.join(tmp, 'repo2');
+    await fs.mkdir(root, { recursive: true });
+    const projectDir = path.join(tmp, '.fluxx', 'projects', 'legacy-git-set');
+    await writeLegacyConfig(projectDir, root);
+    expect(await store.setGitIntegrationEnabledAt(projectDir, false)).toBe(false);
+    expect(await store.getGitIntegrationEnabledAt(projectDir)).toBe(false);
+    const raw = JSON.parse(await fs.readFile(path.join(projectDir, 'config.json'), 'utf8')) as {
+      gitIntegrationEnabled?: boolean;
+    };
+    expect(raw.gitIntegrationEnabled).toBe(false);
+  });
+
+  it('persists gitlessSingleSessionPerFolder via setter', async () => {
+    const root = path.join(tmp, 'repo3');
+    await fs.mkdir(root, { recursive: true });
+    const projectDir = path.join(tmp, '.fluxx', 'projects', 'legacy-gitless-session');
+    await writeLegacyConfig(projectDir, root);
+    expect(await store.setGitlessSingleSessionPerFolderAt(projectDir, false)).toBe(false);
+    expect(await store.getGitlessSingleSessionPerFolderAt(projectDir)).toBe(false);
+    const raw = JSON.parse(await fs.readFile(path.join(projectDir, 'config.json'), 'utf8')) as {
+      gitlessSingleSessionPerFolder?: boolean;
+    };
+    expect(raw.gitlessSingleSessionPerFolder).toBe(false);
+  });
+});

@@ -220,6 +220,15 @@ export interface LocalProject {
    * Default off; opt in via Project settings → Experimental.
    */
   validationEnabled: boolean;
+  /**
+   * When on, Fluxx uses git worktrees, branches, and PR integrations (default on).
+   * When off, agents run directly in the working folder (gitless mode).
+   */
+  gitIntegrationEnabled: boolean;
+  /**
+   * When git is off, block starting a second session in the same folder on the same device (default on).
+   */
+  gitlessSingleSessionPerFolder: boolean;
   repos: RepoConfig[];
 }
 
@@ -299,6 +308,10 @@ export interface CloudProjectLocalBinding {
    * on this machine for CLI/automation guards.
    */
   validationEnabled?: boolean;
+  /** Team-wide git integration toggle (Firestore). Mirrored to cloud `config.json` on this machine. */
+  gitIntegrationEnabled?: boolean;
+  /** Per-machine gitless concurrency guard when git integration is off. */
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 /** Renderer-facing cloud workspace: Firestore metadata plus local clone map per shared repo id. */
@@ -339,6 +352,10 @@ export interface CloudProject {
   autoDeleteTaskWhenDone?: boolean;
   /** Electron Playwright validation opt-in (team setting from Firestore). */
   validationEnabled?: boolean;
+  /** Team-wide git integration toggle (from Firestore). */
+  gitIntegrationEnabled?: boolean;
+  /** Per-machine gitless concurrency guard when git integration is off. */
+  gitlessSingleSessionPerFolder?: boolean;
 }
 
 export type Project = LocalProject | CloudProject;

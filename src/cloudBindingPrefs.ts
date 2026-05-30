@@ -17,6 +17,11 @@ import {
   repoRootBasename,
 } from './repoIdentity';
 import { normalizeValidationEnabled } from './validation/validationEnabled';
+import {
+  DEFAULT_GITLESS_SINGLE_SESSION_PER_FOLDER,
+  normalizeGitIntegrationEnabled,
+  normalizeGitlessSingleSessionPerFolder,
+} from './gitIntegration';
 
 export { primaryRootPathFromCloudBinding } from './cloudLocalBindingMigration';
 
@@ -33,6 +38,7 @@ export const DEFAULT_AUTO_MARK_DONE_WHEN_PR_MERGED = true;
 export const DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN = true;
 /** Local tmux persistence is opt-in; see `docs/tmux-terminal-persistence-plan.md`. */
 export const DEFAULT_PERSIST_TERMINALS_WITH_TMUX = false;
+export { DEFAULT_GITLESS_SINGLE_SESSION_PER_FOLDER } from './gitIntegration';
 
 function automationPref(value: boolean | undefined, whenUnset: boolean): boolean {
   return typeof value === 'boolean' ? value : whenUnset;
@@ -52,6 +58,7 @@ export interface ResolvedCloudBindingPrefs {
   autoMarkDoneWhenPrMerged: boolean;
   autoMoveToReviewWhenPrOpen: boolean;
   persistTerminalsWithTmux: boolean;
+  gitlessSingleSessionPerFolder: boolean;
 }
 
 function isAgent(value: unknown): value is Agent {
@@ -105,6 +112,10 @@ export function resolvedPrefsFromBinding(
     persistTerminalsWithTmux: automationPref(
       binding?.persistTerminalsWithTmux,
       DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
+    ),
+    gitlessSingleSessionPerFolder: automationPref(
+      binding?.gitlessSingleSessionPerFolder,
+      DEFAULT_GITLESS_SINGLE_SESSION_PER_FOLDER,
     ),
   };
 }
@@ -175,6 +186,7 @@ export function hydrateCloudProject(
     createdAt: string;
     repos?: CloudSharedRepo[];
     validationEnabled?: boolean;
+    gitIntegrationEnabled?: boolean;
   },
   binding: CloudProjectLocalBinding,
   options?: { materializationRootPath?: string },
@@ -203,6 +215,7 @@ export function hydrateCloudProject(
     sharedRepos,
     repoMachineBindings: repoMachineBindingsForHydration(sharedRepos, migrated),
     validationEnabled: normalizeValidationEnabled(summary.validationEnabled),
+    gitIntegrationEnabled: normalizeGitIntegrationEnabled(summary.gitIntegrationEnabled),
     ...prefs,
     ...(migrated.defaultDeviceId ? { defaultDeviceId: migrated.defaultDeviceId } : {}),
   };

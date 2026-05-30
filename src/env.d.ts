@@ -266,6 +266,14 @@ declare global {
         setValidationEnabled: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitIntegrationEnabled: () => Promise<boolean>;
+        setGitIntegrationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitlessSingleSessionPerFolder: () => Promise<boolean>;
+        setGitlessSingleSessionPerFolder: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
       terminal: {
         inventorySnapshot: () => Promise<import('./types').TerminalInventorySnapshot>;
