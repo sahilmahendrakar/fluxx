@@ -2172,7 +2172,6 @@ function ProjectConfigPane({
                         gitIntegrationEnabled={gitIntegrationEnabled}
                         sshDevices={sshDevices}
                         projectDefaultDeviceId={project.defaultDeviceId}
-                        gitIntegrationEnabled={gitIntegrationEnabled}
                         expanded={expanded[key] ?? false}
                         onToggle={() =>
                           setExpanded((prev) => ({
@@ -2487,7 +2486,6 @@ function CloudTeamReposBindingsSection({
                   gitIntegrationEnabled={gitIntegrationEnabled}
                   localRepoConfig={localRepoConfig}
                   status={st}
-                  gitIntegrationEnabled={gitIntegrationEnabled}
                   sshDevices={sshDevices}
                   bindLocalBusy={actionRepoId === sr.id}
                   onBindLocalFolder={() => void handleBind(sr.id)}
@@ -2525,7 +2523,6 @@ function CloudRepoFields({
   gitIntegrationEnabled,
   localRepoConfig,
   status,
-  gitIntegrationEnabled,
   sshDevices,
   bindLocalBusy,
   onBindLocalFolder,
@@ -2538,7 +2535,6 @@ function CloudRepoFields({
   gitIntegrationEnabled: boolean;
   localRepoConfig?: RepoConfig;
   status?: CloudRepoLocalBindingStatus;
-  gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   bindLocalBusy?: boolean;
   onBindLocalFolder?: () => void;
@@ -2752,7 +2748,6 @@ interface RepoCardProps {
   gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
-  gitIntegrationEnabled: boolean;
   expanded: boolean;
   onToggle: () => void;
   onSaved: (repos: RepoConfig[]) => void;
@@ -2768,7 +2763,6 @@ function RepoCard({
   gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
-  gitIntegrationEnabled,
   expanded,
   onToggle,
   onSaved,
@@ -2834,7 +2828,6 @@ function RepoCard({
             gitIntegrationEnabled={gitIntegrationEnabled}
             sshDevices={sshDevices}
             projectDefaultDeviceId={projectDefaultDeviceId}
-            gitIntegrationEnabled={gitIntegrationEnabled}
             onSaved={onSaved}
             onReposChanged={onReposChanged}
           />
@@ -2886,7 +2879,6 @@ interface RepoFieldsProps {
   gitIntegrationEnabled: boolean;
   sshDevices: ExecutionDeviceConfig[];
   projectDefaultDeviceId?: string;
-  gitIntegrationEnabled: boolean;
   onSaved: (repos: RepoConfig[]) => void;
   onReposChanged: (repos: RepoConfig[]) => void | Promise<void>;
 }
@@ -2900,7 +2892,6 @@ function RepoFields({
   gitIntegrationEnabled,
   sshDevices,
   projectDefaultDeviceId,
-  gitIntegrationEnabled,
   onSaved,
   onReposChanged,
 }: RepoFieldsProps) {

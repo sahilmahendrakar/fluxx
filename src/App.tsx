@@ -3921,7 +3921,6 @@ export default function App() {
                             ? Boolean(prAgentAwaitingByTaskId[selectedTask.id])
                             : false
                         }
-                        gitEnabledProject={gitEnabled}
                         projectRepos={projectRepos ?? undefined}
                         multiRepo2Enabled
                         planningDocFiles={planningDocFiles}

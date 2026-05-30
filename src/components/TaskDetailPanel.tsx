@@ -1148,6 +1148,10 @@ export default function TaskDetailPanel({
   ]);
 
   const sessionRunning = session?.status === 'running';
+  const sshDevices = useMemo(
+    () => executionDevices.filter((d) => d.kind === 'ssh' && d.enabled),
+    [executionDevices],
+  );
 
   if (!task) {
     return null;
@@ -1214,10 +1218,6 @@ export default function TaskDetailPanel({
     setDependencyError(null);
   };
 
-  const sshDevices = useMemo(
-    () => executionDevices.filter((d) => d.kind === 'ssh' && d.enabled),
-    [executionDevices],
-  );
   const remoteFolderBindRepoId = task
     ? effectiveTaskRepoId(task, primaryRepoId)
     : primaryRepoId;
