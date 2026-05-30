@@ -83,4 +83,28 @@ describe('resolveProjectRepoReadiness', () => {
     expect(r.kind).toBe('ready');
     expect(projectRepoActionsBlocked(r)).toBe(false);
   });
+
+  it('accepts not_git folders when git integration is off', () => {
+    const r = resolveProjectRepoReadiness({
+      projectKind: 'local',
+      configuredRepos: [localRepo],
+      sharedRepos: [],
+      repoPathById: { 'repo-a': 'not_git' },
+      gitIntegrationEnabled: false,
+    });
+    expect(r.kind).toBe('ready');
+    expect(projectRepoActionsBlocked(r)).toBe(false);
+  });
+
+  it('still blocks not_git folders when git integration is on', () => {
+    const r = resolveProjectRepoReadiness({
+      projectKind: 'local',
+      configuredRepos: [localRepo],
+      sharedRepos: [],
+      repoPathById: { 'repo-a': 'not_git' },
+      gitIntegrationEnabled: true,
+    });
+    expect(r.kind).toBe('invalid_path');
+    expect(projectRepoActionsBlocked(r)).toBe(true);
+  });
 });

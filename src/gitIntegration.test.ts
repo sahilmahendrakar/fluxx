@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_GIT_INTEGRATION_ENABLED,
+  gitBranchFlagIgnoredNote,
   gitEnabledForActiveProject,
   isGitIntegrationEnabled,
+  joinGitCliStderrNotes,
   normalizeGitIntegrationEnabled,
   normalizeGitlessSingleSessionPerFolder,
+  stripGitBranchCliFields,
 } from './gitIntegration';
 
 describe('gitIntegration', () => {
@@ -44,5 +47,34 @@ describe('gitIntegration', () => {
         getGitIntegrationEnabledAt: vi.fn(),
       }),
     ).resolves.toBe(DEFAULT_GIT_INTEGRATION_ENABLED);
+  });
+
+  it('stripGitBranchCliFields removes branch flags when git is off', () => {
+    const { value, stderrNotes } = stripGitBranchCliFields(
+      {
+        title: 'Task',
+        sourceBranch: 'feature/x',
+        createSourceBranchIfMissing: true,
+      },
+      false,
+    );
+    expect(value.title).toBe('Task');
+    expect(value.sourceBranch).toBeUndefined();
+    expect(value.createSourceBranchIfMissing).toBeUndefined();
+    expect(stderrNotes).toEqual([
+      gitBranchFlagIgnoredNote('--source-branch'),
+      gitBranchFlagIgnoredNote('--create-source-branch-if-missing'),
+    ]);
+    expect(joinGitCliStderrNotes(stderrNotes)).toContain('git integration is disabled');
+  });
+
+  it('stripGitBranchCliFields preserves branch flags when git is on', () => {
+    const { value, stderrNotes } = stripGitBranchCliFields(
+      { sourceBranch: 'main', createSourceBranchIfMissing: false },
+      true,
+    );
+    expect(value.sourceBranch).toBe('main');
+    expect(value.createSourceBranchIfMissing).toBe(false);
+    expect(stderrNotes).toEqual([]);
   });
 });
