@@ -18,6 +18,10 @@ import {
 } from '../cloudLocalBindingMigration';
 import { resolvedPrefsFromBinding } from '../cloudBindingPrefs';
 import { deriveStablePrimaryRepoIdForProject } from '../repoIdentity';
+import {
+  detectAndBuildEnvFilesConfig,
+  type RepoEnvFileSourcesConfig,
+} from '../repoEnvFiles';
 
 /**
  * Cloud projects live in Firestore and have no intrinsic local path — each
@@ -452,7 +456,21 @@ export class LocalBindingStore {
     const prev = this.bindings[projectId];
     const prevM = prev ? migrateLegacyCloudBinding(projectId, { ...prev }) : null;
     const repoBindings = { ...(prevM?.repoBindings ?? {}) };
-    repoBindings[rid] = { rootPath: resolvedRoot, lastOpenedAt: now };
+    let envFiles: RepoEnvFileSourcesConfig | undefined;
+    try {
+      const detected = await detectAndBuildEnvFilesConfig({ rootPath: resolvedRoot });
+      envFiles = detected.envFiles;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[LocalBindingStore.setRepoMachineBinding] env file detection failed for ${resolvedRoot}: ${message}`,
+      );
+    }
+    repoBindings[rid] = {
+      rootPath: resolvedRoot,
+      lastOpenedAt: now,
+      ...(envFiles ? { envFiles } : {}),
+    };
     let primaryRepoId = prevM?.primaryRepoId;
     if (!primaryRepoId && Object.keys(repoBindings).length === 1) {
       primaryRepoId = rid;
@@ -461,6 +479,66 @@ export class LocalBindingStore {
       lastOpenedAt: now,
       repoBindings,
       ...(primaryRepoId ? { primaryRepoId } : {}),
+    };
+    if (prevM) {
+      if (prevM.planningAgent !== undefined) binding.planningAgent = prevM.planningAgent;
+      if (prevM.defaultTaskAgent !== undefined) binding.defaultTaskAgent = prevM.defaultTaskAgent;
+      if (prevM.planningModels !== undefined) binding.planningModels = { ...prevM.planningModels };
+      if (prevM.planningAgentYolo === true) binding.planningAgentYolo = true;
+      if (prevM.taskDefaultModels !== undefined) {
+        binding.taskDefaultModels = { ...prevM.taskDefaultModels };
+      }
+      if (prevM.defaultTaskAgentYolo === true) binding.defaultTaskAgentYolo = true;
+      if (prevM.autoStartSessionOnInProgress !== undefined) {
+        binding.autoStartSessionOnInProgress = prevM.autoStartSessionOnInProgress;
+      }
+      if (prevM.autoRespondToTrustPrompts !== undefined) {
+        binding.autoRespondToTrustPrompts = prevM.autoRespondToTrustPrompts;
+      }
+      if (prevM.autoStartWhenUnblocked !== undefined) {
+        binding.autoStartWhenUnblocked = prevM.autoStartWhenUnblocked;
+      }
+      if (prevM.autoCleanupWorkspaceWhenDone !== undefined) {
+        binding.autoCleanupWorkspaceWhenDone = prevM.autoCleanupWorkspaceWhenDone;
+      } else if (prevM.autoDeleteTaskWhenDone !== undefined) {
+        binding.autoDeleteTaskWhenDone = prevM.autoDeleteTaskWhenDone;
+      }
+      if (prevM.autoMarkDoneWhenPrMerged !== undefined) {
+        binding.autoMarkDoneWhenPrMerged = prevM.autoMarkDoneWhenPrMerged;
+      }
+      if (prevM.autoMoveToReviewWhenPrOpen !== undefined) {
+        binding.autoMoveToReviewWhenPrOpen = prevM.autoMoveToReviewWhenPrOpen;
+      }
+      copyBindingDevicePrefs(prevM, binding);
+    }
+    const normalized = stripLegacyRootPathForPersistence(binding);
+    this.bindings[projectId] = normalized;
+    await this.save();
+    return normalized;
+  }
+
+  /**
+   * Updates per-machine env file source metadata for one bound shared repo.
+   */
+  async updateRepoMachineEnvFiles(
+    projectId: string,
+    repoId: string,
+    envFiles: RepoEnvFileSourcesConfig,
+  ): Promise<LocalBinding> {
+    const rid = repoId.trim();
+    if (!rid) throw new Error('repoId is required');
+    const prev = this.bindings[projectId];
+    const prevM = prev ? migrateLegacyCloudBinding(projectId, { ...prev }) : null;
+    const repoBindings = { ...(prevM?.repoBindings ?? {}) };
+    const entry = repoBindings[rid];
+    if (!entry?.rootPath) {
+      throw new Error('Repository is not bound on this machine.');
+    }
+    repoBindings[rid] = { ...entry, envFiles };
+    const binding: LocalBinding = {
+      lastOpenedAt: prevM?.lastOpenedAt ?? new Date().toISOString(),
+      repoBindings,
+      ...(prevM?.primaryRepoId ? { primaryRepoId: prevM.primaryRepoId } : {}),
     };
     if (prevM) {
       if (prevM.planningAgent !== undefined) binding.planningAgent = prevM.planningAgent;

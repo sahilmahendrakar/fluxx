@@ -266,6 +266,37 @@ export async function migrateLegacyPastedEnvIfSafe(
   };
 }
 
+export async function detectAndBuildEnvFilesConfig(
+  repo: Pick<RepoConfig, 'rootPath' | 'env' | 'envFiles'>,
+  bindingEnvFiles?: RepoEnvFileSourcesConfig,
+): Promise<{
+  detection: RepoEnvFileDetectionResult;
+  envFiles: RepoEnvFileSourcesConfig;
+}> {
+  const envFilesMerged = mergeRepoEnvFileSources(repo.envFiles, bindingEnvFiles);
+  const detection = await detectRepoRootEnvFiles(repo.rootPath, {
+    envFiles: envFilesMerged,
+    legacyPastedEnvActive: hasLegacyPastedRepoEnv(repo),
+  });
+  return {
+    detection,
+    envFiles: envFileSourcesConfigFromDetection(detection),
+  };
+}
+
+/** Persists detection enablement choices (no secret file bodies). */
+export function envFileSourcesConfigFromDetection(
+  detection: RepoEnvFileDetectionResult,
+): RepoEnvFileSourcesConfig {
+  return {
+    lastDetectedAt: detection.detectedAt,
+    sources: detection.files.map((f) => ({
+      fileName: f.fileName,
+      enablement: f.enablement,
+    })),
+  };
+}
+
 /** Merges machine-binding env file prefs over repo config (cloud localBindings). */
 export function mergeRepoEnvFileSources(
   repoEnvFiles: RepoEnvFileSourcesConfig | undefined,

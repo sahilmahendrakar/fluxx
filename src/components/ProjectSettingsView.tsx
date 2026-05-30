@@ -35,6 +35,7 @@ import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
+import { RepoEnvFilesPanel } from './RepoEnvFilesPanel';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -2471,9 +2472,21 @@ function CloudRepoFields({
           void onBindingsChanged?.();
         }}
       />
+      <RepoEnvFilesPanel
+        repoId={repo.id}
+        rootPath={localRepoConfig?.rootPath ?? ''}
+        legacyPastedEnvActive={Boolean(localRepoConfig?.env && localRepoConfig.env.length > 0)}
+        sharedRepos={project.sharedRepos}
+        disabled={localRepoFieldsDisabled}
+        disabledReason={localRepoFieldsDisabledReason}
+        onReposChanged={(repos) => {
+          onLocalReposChanged?.(repos);
+          void onBindingsChanged?.();
+        }}
+      />
       <FieldEditor
-        label=".env contents"
-        description="Local to this machine. Written verbatim to .env in each new worktree for this repository. Stored locally in plaintext."
+        label=".env contents (legacy)"
+        description="Local to this machine only — not synced to teammates. Written verbatim to .env in each new worktree when env file copy is not used. Stored locally in plaintext."
         repoId={repo.id}
         rootPath={localRepoConfig?.rootPath ?? ''}
         useRepoId
@@ -2770,9 +2783,15 @@ function RepoFields({
         multiline
         onSaved={onSaved}
       />
+      <RepoEnvFilesPanel
+        repoId={repo.id}
+        rootPath={repo.rootPath}
+        legacyPastedEnvActive={Boolean(repo.env && repo.env.length > 0)}
+        onReposChanged={onSaved}
+      />
       <FieldEditor
-        label=".env contents"
-        description="Written verbatim to .env in each new worktree. Stored locally in plaintext."
+        label=".env contents (legacy)"
+        description="Local to this machine only. Written verbatim to .env in each new worktree when env file copy is not used. Stored locally in plaintext."
         repoId={repo.id}
         rootPath={repo.rootPath}
         useRepoId={multiRepoManagementEnabled}

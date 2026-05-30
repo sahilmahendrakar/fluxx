@@ -203,6 +203,36 @@ declare global {
           | { ok: true; binding: CloudProjectLocalBinding }
           | { error: string; code?: 'NOT_GIT_REPO' }
         >;
+        detectRepoEnvFiles: (payload: {
+          repoId: string;
+        }) => Promise<
+          | { ok: true; detection: import('./types').RepoEnvFileDetectionResult }
+          | { error: string }
+        >;
+        rescanRepoEnvFiles: (payload: {
+          repoId: string;
+          sharedRepos?: CloudSharedRepo[];
+        }) => Promise<
+          | {
+              ok: true;
+              detection: import('./types').RepoEnvFileDetectionResult;
+              repos: import('./types').RepoConfig[];
+            }
+          | { error: string }
+        >;
+        setRepoEnvFileEnablement: (payload: {
+          repoId: string;
+          fileName: import('./types').RepoEnvFileName;
+          enablement: import('./types').RepoEnvFileEnablement;
+          sharedRepos?: CloudSharedRepo[];
+        }) => Promise<
+          | {
+              ok: true;
+              detection: import('./types').RepoEnvFileDetectionResult;
+              repos: import('./types').RepoConfig[];
+            }
+          | { error: string }
+        >;
         syncCloudSharedRepos: (
           sharedRepos: CloudSharedRepo[],
         ) => Promise<{ ok: true } | { error: string }>;

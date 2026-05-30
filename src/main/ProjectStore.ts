@@ -12,7 +12,10 @@ import type {
   RepoSettingsPatch,
 } from '../types';
 import { parseRemoteRepoBindingsByDevice } from '../remoteRepoBindings';
-import { parseRepoEnvFileSourcesConfig } from '../repoEnvFiles';
+import {
+  detectAndBuildEnvFilesConfig,
+  parseRepoEnvFileSourcesConfig,
+} from '../repoEnvFiles';
 import {
   deriveRepoIdForRootPath,
   deriveStablePrimaryRepoIdForProject,
@@ -569,6 +572,18 @@ export class ProjectStore {
     if (patch.env !== undefined) {
       next.env = patch.env.length > 0 ? patch.env : undefined;
     }
+    if (patch.envFiles !== undefined) {
+      const sources = patch.envFiles.sources;
+      const lastDetectedAt = patch.envFiles.lastDetectedAt;
+      if ((!sources || sources.length === 0) && !lastDetectedAt) {
+        delete next.envFiles;
+      } else {
+        next.envFiles = {
+          ...(lastDetectedAt ? { lastDetectedAt } : {}),
+          ...(sources && sources.length > 0 ? { sources } : {}),
+        };
+      }
+    }
     if (patch.name !== undefined) {
       const trimmed = patch.name.trim();
       if (trimmed.length === 0) {
@@ -611,6 +626,18 @@ export class ProjectStore {
       repos,
     };
     await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    const addedRepo = repos.find((r) => path.resolve(r.rootPath) === resolved);
+    if (addedRepo) {
+      try {
+        const { envFiles } = await detectAndBuildEnvFilesConfig(addedRepo);
+        return this.updateRepoByIdAt(projectDir, addedRepo.id, { envFiles });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[ProjectStore.addRepoAt] env file detection failed for ${resolved}: ${message}`,
+        );
+      }
+    }
     if (this.projectDir === projectDir && this.project) {
       this.project = configToLocalProject(next);
     }
