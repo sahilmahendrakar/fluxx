@@ -35,6 +35,25 @@ export type PlanningDocsListPushCandidatesResult =
   | { ok: true; candidates: PlanningDocsPushCandidate[] }
   | { ok: false; code: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' };
 
+/** Local disk delete → Firestore delete candidate (main enumerates; renderer deletes). */
+export type PlanningDocsDeleteCandidate = {
+  relativePath: string;
+  expectedRemoteRevision: string;
+};
+
+export type PlanningDocsListDeleteCandidatesResult =
+  | { ok: true; candidates: PlanningDocsDeleteCandidate[] }
+  | { ok: false; code: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' };
+
+export type PlanningDocsRecordDeleteSuccessPayload = {
+  projectId: string;
+  relativePath: string;
+};
+
+export type PlanningDocsRecordDeleteSuccessResult =
+  | { ok: true }
+  | { ok: false; code: 'NOT_ACTIVE_CLOUD' | 'NO_PLANNING_DIR' | 'INVALID_PATH' };
+
 export type PlanningDocsConflictRecordV1 = {
   schemaVersion: 1;
   relativePath: string;

@@ -48,9 +48,12 @@ import type {
 import type { FirestoreHydrationWritePlan } from './planningDocs/cloudPlanningDocsMigration';
 import type {
   PlanningDocsApplyFirestoreSnapshotResult,
+  PlanningDocsListDeleteCandidatesResult,
   PlanningDocsListPushCandidatesResult,
   PlanningDocsPersistConflictPayload,
   PlanningDocsPersistConflictResult,
+  PlanningDocsRecordDeleteSuccessPayload,
+  PlanningDocsRecordDeleteSuccessResult,
   PlanningDocsRecordPushSuccessPayload,
   PlanningDocsRecordPushSuccessResult,
   PlanningDocsResolveConflictIpcResult,
@@ -59,6 +62,7 @@ import type {
 } from './planningDocs/syncTypes';
 import type {
   PlanningDocsCloudMigrationPersistedV1,
+  PlanningDocsDeleteResult,
   PlanningDocsListResult,
   PlanningDocsWriteResult,
 } from './planningDocs/types';
@@ -625,6 +629,7 @@ declare global {
           relativePath: string,
           content: string,
         ) => Promise<PlanningDocsWriteResult>;
+        delete: (relativePath: string) => Promise<PlanningDocsDeleteResult>;
         applyFirestoreSnapshot: (payload: {
           projectId: string;
           docs: Array<{
@@ -638,6 +643,12 @@ declare global {
         listPushCandidates: (
           projectId: string,
         ) => Promise<PlanningDocsListPushCandidatesResult>;
+        listDeleteCandidates: (
+          projectId: string,
+        ) => Promise<PlanningDocsListDeleteCandidatesResult>;
+        recordDeleteSuccess: (
+          payload: PlanningDocsRecordDeleteSuccessPayload,
+        ) => Promise<PlanningDocsRecordDeleteSuccessResult>;
         recordPushSuccess: (
           payload: PlanningDocsRecordPushSuccessPayload,
         ) => Promise<PlanningDocsRecordPushSuccessResult>;

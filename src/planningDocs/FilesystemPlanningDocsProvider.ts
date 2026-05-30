@@ -4,6 +4,7 @@ import type {
   PlanningDocFileEntry,
   PlanningDocsBackendKind,
   PlanningDocsListResult,
+  PlanningDocsDeleteResult,
   PlanningDocsReadResult,
   PlanningDocsWriteResult,
 } from './types';
@@ -89,6 +90,7 @@ export interface PlanningDocsProvider {
   list(): Promise<PlanningDocsListResult>;
   read(relativePath: string): Promise<PlanningDocsReadResult>;
   write(relativePath: string, content: string): Promise<PlanningDocsWriteResult>;
+  delete(relativePath: string): Promise<PlanningDocsDeleteResult>;
 }
 
 export class FilesystemPlanningDocsProvider implements PlanningDocsProvider {
@@ -173,6 +175,33 @@ export class FilesystemPlanningDocsProvider implements PlanningDocsProvider {
       await fs.writeFile(filePath, content, 'utf8');
       return { ok: true };
     } catch {
+      return { error: 'IO_ERROR' };
+    }
+  }
+
+  async delete(relativePath: string): Promise<PlanningDocsDeleteResult> {
+    const planningDir = this.getPlanningDir();
+    if (!planningDir) {
+      return { error: 'NO_PROJECT' };
+    }
+    const norm = normalizePlanningDocRelativePath(relativePath);
+    if (!norm) {
+      return { error: 'INVALID_PATH' };
+    }
+    if (isPlanningMarkdownRelativePathForbiddenForUserAttachOrWrite(relativePath)) {
+      return { error: 'FORBIDDEN_PATH' };
+    }
+    const filePath = await resolvePlanningUserMarkdownAbsPathForRead(planningDir, norm, (p) =>
+      fs.access(p),
+    );
+    if (!filePath) {
+      return { error: 'NOT_FOUND' };
+    }
+    try {
+      await fs.unlink(filePath);
+      return { ok: true };
+    } catch (err: unknown) {
+      if (errnoCode(err) === 'ENOENT') return { error: 'NOT_FOUND' };
       return { error: 'IO_ERROR' };
     }
   }

@@ -8,7 +8,7 @@ import {
   isPlanningUserDocRelativePathDisallowed,
   safeResolvePlanningMarkdownAbsPath,
 } from '../planningDocs/path';
-import type { PlanningDocsPushCandidate } from '../planningDocs/syncTypes';
+import type { PlanningDocsDeleteCandidate, PlanningDocsPushCandidate } from '../planningDocs/syncTypes';
 import { isUnderPlanningDiskSyncRelPrefix } from '../planningDocs/fluxxPlanningPaths';
 import { readPlanningDocsSyncState } from './planningDocsFirestoreHydrate';
 import { readPlanningDocsCloudMigrationState } from './planningDocsMigrationDisk';
@@ -109,6 +109,45 @@ export async function listPlanningDocsPushCandidates(
       markdown,
       contentSha256: diskHash,
       expectedRemoteRevision: meta?.remoteRevision ?? null,
+    });
+  }
+
+  out.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  return out;
+}
+
+/**
+ * Synced paths whose markdown file was removed locally and must be deleted from Firestore.
+ */
+export async function listPlanningDocsDeleteCandidates(
+  planningDir: string,
+  cloudProjectId: string,
+): Promise<PlanningDocsDeleteCandidate[]> {
+  if (!(await isPlanningDocsFirestorePushUnlocked(planningDir, cloudProjectId))) {
+    return [];
+  }
+
+  const state = await readPlanningDocsSyncState(planningDir);
+  const out: PlanningDocsDeleteCandidate[] = [];
+
+  for (const [rel, meta] of Object.entries(state.files)) {
+    const norm = normalizePlanningDocRelativePath(rel);
+    if (!norm) continue;
+    if (isPlanningUserDocRelativePathDisallowed(norm)) continue;
+    if (state.pausedPushPaths?.[norm]) continue;
+
+    const abs = safeResolvePlanningMarkdownAbsPath(planningDir, norm);
+    if (!abs) continue;
+    try {
+      await fs.access(abs);
+      continue;
+    } catch {
+      /* missing on disk — candidate for remote delete */
+    }
+
+    out.push({
+      relativePath: norm,
+      expectedRemoteRevision: meta.remoteRevision,
     });
   }
 

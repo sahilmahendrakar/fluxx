@@ -3,6 +3,7 @@ import { planningRelativePathToFirestoreDocId } from '../../planningDocs/path';
 import type { PlanningDocsConflictRecordV1 } from '../../planningDocs/syncTypes';
 import {
   appendPlanningDocFirestoreConflict,
+  deletePlanningDocFromFirestore,
   pushPlanningDocToFirestore,
 } from './firestorePlanningDocs';
 import { isFirebaseConfigured } from '../firebase';
@@ -32,6 +33,63 @@ export function usePlanningDocsFirestorePush(args: PlanningDocsFirestorePushArgs
       if (inflightRef.current) return;
       inflightRef.current = true;
       try {
+        const deleteListed = await window.electronAPI.planningDocs.listDeleteCandidates(projectId);
+        if (deleteListed.ok) {
+          for (const c of deleteListed.candidates) {
+            const del = await deletePlanningDocFromFirestore(projectId, c.relativePath, {
+              remoteRevision: c.expectedRemoteRevision,
+            });
+
+            if (del.ok) {
+              const rec = await window.electronAPI.planningDocs.recordDeleteSuccess({
+                projectId,
+                relativePath: c.relativePath,
+              });
+              if (!rec.ok) {
+                console.warn('[usePlanningDocsFirestorePush] recordDeleteSuccess failed', rec);
+              }
+              continue;
+            }
+
+            if (del.reason === 'remote_missing') {
+              const rec = await window.electronAPI.planningDocs.recordDeleteSuccess({
+                projectId,
+                relativePath: c.relativePath,
+              });
+              if (!rec.ok) {
+                console.warn('[usePlanningDocsFirestorePush] recordDeleteSuccess failed', rec);
+              }
+              continue;
+            }
+
+            const record: PlanningDocsConflictRecordV1 = {
+              schemaVersion: 1,
+              relativePath: c.relativePath,
+              createdAt: new Date().toISOString(),
+              baseRemoteRevision: c.expectedRemoteRevision,
+              localMarkdown: '',
+              remoteMarkdown: del.remoteMarkdown,
+              remoteRevision: del.remoteRevision,
+              remoteUpdatedBy: del.remoteUpdatedBy,
+              localUpdatedBy: uid,
+            };
+            const persisted = await window.electronAPI.planningDocs.persistConflict({
+              projectId,
+              record,
+            });
+            if (!persisted.ok) {
+              console.warn('[usePlanningDocsFirestorePush] persistConflict failed', persisted);
+              continue;
+            }
+            const docId = planningRelativePathToFirestoreDocId(c.relativePath);
+            if (docId) {
+              await appendPlanningDocFirestoreConflict(projectId, docId, record).catch((err) =>
+                console.warn('[usePlanningDocsFirestorePush] Firestore conflict append failed', err),
+              );
+            }
+          }
+        }
+
         const listed = await window.electronAPI.planningDocs.listPushCandidates(projectId);
         if (!listed.ok) return;
 
