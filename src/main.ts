@@ -300,6 +300,7 @@ import {
 } from './main/taskSourceBranchGuard';
 import { registerAppUpdater } from './main/AppUpdater';
 import { registerTaskAutoTransitionNotificationIpc } from './main/registerTaskAutoTransitionNotificationIpc';
+import { registerValidationPackProjectConfigIpc } from './main/validationPackProjectConfigIpc';
 import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
@@ -6228,6 +6229,8 @@ app.whenReady().then(async () => {
       }
     },
   );
+
+  registerValidationPackProjectConfigIpc(activeProjectDir);
 
   const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 

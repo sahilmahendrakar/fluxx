@@ -35,6 +35,7 @@ import { SettingsSwitch } from './SettingsSwitch';
 import { AGENT_SPAWN_AGENT_SELECT_CLASS, agentModelUiKindForAgent } from './AgentSessionPrefsMenu';
 import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
+import { ValidationConfigSettingsSection } from './ValidationConfigSettingsSection';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -2031,6 +2032,12 @@ function ProjectConfigPane({
               saveState={validationSaveState}
               error={validationError}
             />
+            {validationEnabled ? (
+              <ValidationConfigSettingsSection
+                projectId={project.id}
+                validationEnabled={validationEnabled}
+              />
+            ) : null}
           </div>
         </section>
       </div>
