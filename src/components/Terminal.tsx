@@ -16,8 +16,12 @@ import { installMacShiftDragSelectionBypass } from './terminalSelectionBypass';
 import {
   containerHasUsableSize,
   LAYOUT_FIT_DEBOUNCE_MS,
-  shouldDeferTerminalFit,
+  MIN_SETTLING_FIT_ATTEMPTS,
+  MIN_VISIBILITY_SETTLE_FIT_ATTEMPTS,
+  readContainerSize,
+  shouldContinueSettlingFit,
   shouldImmediateLayoutFit,
+  type SettlingFitOptions,
 } from '../terminal/terminalFitScheduling';
 
 export interface TerminalProps {
@@ -56,13 +60,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
   const { resolved: appearance } = useAppearance();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
-  const scheduleFitRef = useRef<((afterFit?: () => void) => void) | null>(
-    null,
-  );
+  const scheduleFitRef = useRef<
+    ((afterFit?: () => void, reason?: 'default' | 'visibility') => void) | null
+  >(null);
+  const focusInteractiveRef = useRef<(() => void) | null>(null);
   const onDataRef = useRef(onData);
   const onResizeRef = useRef(onResize);
+  const visibleRef = useRef(visible);
   onDataRef.current = onData;
   onResizeRef.current = onResize;
+  visibleRef.current = visible;
 
   useImperativeHandle(ref, () => ({
     write: (data: string, callback?: () => void) => {
@@ -219,7 +226,13 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }
     };
 
-    const runDeferredFit = (afterFit?: () => void, attempt = 0) => {
+    let chainedAfterFit: (() => void) | undefined;
+
+    const runSettlingFit = (
+      afterFit?: () => void,
+      attempt = 0,
+      settling: SettlingFitOptions = {},
+    ) => {
       if (deferredFitRaf) {
         cancelAnimationFrame(deferredFitRaf);
         deferredFitRaf = 0;
@@ -227,18 +240,33 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       deferredFitRaf = requestAnimationFrame(() => {
         deferredFitRaf = 0;
         if (cancelled) return;
-        if (doFit()) {
-          afterFit?.();
+        const sizeBeforeFit = readContainerSize(container);
+        doFit();
+        if (shouldContinueSettlingFit(attempt, sizeBeforeFit, container, settling)) {
+          runSettlingFit(afterFit, attempt + 1, settling);
           return;
         }
-        if (shouldDeferTerminalFit(container, attempt)) {
-          runDeferredFit(afterFit, attempt + 1);
-        }
+        afterFit?.();
       });
     };
 
     /** Imminent refit: after attach, tab focus, or imperative `fit()`. */
-    const scheduleResizeFit = (afterFit?: () => void) => {
+    const scheduleResizeFit = (
+      afterFit?: () => void,
+      reason: 'default' | 'visibility' = 'default',
+    ) => {
+      if (afterFit) {
+        const previous = chainedAfterFit;
+        chainedAfterFit = previous
+          ? () => {
+              previous();
+              afterFit();
+            }
+          : afterFit;
+      }
+      if (reason === 'visibility') {
+        layoutFitEstablished = false;
+      }
       cancelPendingLayoutFit();
       if (immediateRaf) cancelAnimationFrame(immediateRaf);
       immediateRaf = requestAnimationFrame(() => {
@@ -246,7 +274,16 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
         if (cancelled) return;
         requestAnimationFrame(() => {
           if (cancelled) return;
-          runDeferredFit(afterFit);
+          runSettlingFit(() => {
+            const run = chainedAfterFit;
+            chainedAfterFit = undefined;
+            run?.();
+          }, 0, {
+            minAttempts:
+              reason === 'visibility'
+                ? MIN_VISIBILITY_SETTLE_FIT_ATTEMPTS
+                : MIN_SETTLING_FIT_ATTEMPTS,
+          });
         });
       });
     };
@@ -265,19 +302,29 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }, LAYOUT_FIT_DEBOUNCE_MS);
     };
 
+    const focusInteractiveIfVisible = () => {
+      if (!onDataRef.current || !visibleRef.current) return;
+      term.focus();
+    };
+
+    const onWindowFocus = () => {
+      if (!onDataRef.current || !visibleRef.current) return;
+      const active = document.activeElement;
+      if (active && active !== document.body && container.contains(active)) {
+        return;
+      }
+      focusInteractiveIfVisible();
+    };
+    window.addEventListener('focus', onWindowFocus);
+    focusInteractiveRef.current = focusInteractiveIfVisible;
+
     const afterInitFit = () => {
       if (term.rows > 0) {
         term.refresh(0, term.rows - 1);
       }
       term.scrollToBottom();
       scrollContainerToBottom(container);
-      // Only focus interactive terminals. Read-only mirrors (onData=undefined)
-      // must NOT steal focus — and must not trigger focus-tracking escape
-      // sequences that the agent would interpret as activity, causing a
-      // false needs-input → in-progress reversion.
-      if (onDataRef.current) {
-        term.focus();
-      }
+      focusInteractiveIfVisible();
     };
 
     // xterm measures the rendered font to compute cols/rows. If the
@@ -324,6 +371,7 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       if (autoFit) {
         window.removeEventListener('resize', onWindowResize);
       }
+      window.removeEventListener('focus', onWindowFocus);
       if (layoutDebounce !== undefined) {
         clearTimeout(layoutDebounce);
         layoutDebounce = undefined;
@@ -346,7 +394,9 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       // leaves orphaned GL contexts.
       webglAddon?.dispose();
       webglAddon = null;
+      chainedAfterFit = undefined;
       scheduleFitRef.current = null;
+      focusInteractiveRef.current = null;
       ro?.disconnect();
       d1.dispose();
       d2.dispose();
@@ -383,14 +433,17 @@ const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Terminal(
       }
       term.scrollToBottom();
       scrollContainerToBottom(containerRef.current);
-      // Only focus interactive terminals — same reasoning as initFit above.
-      if (onDataRef.current) {
-        term.focus();
+      // Parents gate `onResize` while hidden; xterm only emits resize when
+      // cols/rows change, so push the current grid after a visibility refit.
+      if (term.cols > 0 && term.rows > 0) {
+        onResizeRef.current?.(term.cols, term.rows);
       }
+      // Only focus interactive, visible terminals.
+      focusInteractiveRef.current?.();
     };
     const scheduleFit = scheduleFitRef.current;
     if (scheduleFit && autoFit) {
-      scheduleFit(afterFit);
+      scheduleFit(afterFit, 'visibility');
     } else {
       afterFit();
     }

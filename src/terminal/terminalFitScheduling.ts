@@ -10,6 +10,21 @@ export const LAYOUT_FIT_DEBOUNCE_MS = 100;
  */
 export const MAX_DEFERRED_TERMINAL_FIT_ATTEMPTS = 12;
 
+/**
+ * Extra rAF passes after a usable fit when the container px look stable but
+ * flex parents, stacked visibility tabs, or WebGL/font metrics may still
+ * settle. Visibility flips use the higher minimum.
+ */
+export const MAX_SETTLING_FIT_ATTEMPTS = 6;
+export const MIN_SETTLING_FIT_ATTEMPTS = 2;
+export const MIN_VISIBILITY_SETTLE_FIT_ATTEMPTS = 4;
+
+export type ContainerSize = { width: number; height: number };
+
+export function readContainerSize(container: HTMLElement): ContainerSize {
+  return { width: container.clientWidth, height: container.clientHeight };
+}
+
 export function containerHasUsableSize(
   el: HTMLElement,
   minPx = MIN_TERMINAL_CONTAINER_PX,
@@ -38,4 +53,37 @@ export function shouldImmediateLayoutFit(
   container: HTMLElement,
 ): boolean {
   return !layoutFitEstablished && containerHasUsableSize(container);
+}
+
+export interface SettlingFitOptions {
+  minAttempts?: number;
+  maxAttempts?: number;
+}
+
+/**
+ * Keep refitting across animation frames when the container is still zero-sized,
+ * its px changed since the last pass, or we have not yet reached `minAttempts`
+ * usable fits (covers visibility stacks that report stable clientWidth/Height
+ * before the final geometry).
+ */
+export function shouldContinueSettlingFit(
+  attemptCount: number,
+  sizeBeforeFit: ContainerSize,
+  container: HTMLElement,
+  options: SettlingFitOptions = {},
+): boolean {
+  const minAttempts = options.minAttempts ?? MIN_SETTLING_FIT_ATTEMPTS;
+  const maxAttempts = options.maxAttempts ?? MAX_SETTLING_FIT_ATTEMPTS;
+
+  if (!containerHasUsableSize(container)) {
+    return attemptCount < MAX_DEFERRED_TERMINAL_FIT_ATTEMPTS;
+  }
+  if (attemptCount >= maxAttempts) {
+    return false;
+  }
+  const after = readContainerSize(container);
+  if (after.width !== sizeBeforeFit.width || after.height !== sizeBeforeFit.height) {
+    return true;
+  }
+  return attemptCount + 1 < minAttempts;
 }

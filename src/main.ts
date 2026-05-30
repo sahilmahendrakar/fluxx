@@ -146,7 +146,10 @@ import type {
 import { TerminalSessionRecordStore } from './main/terminalSessionRecords';
 import { buildTerminalInventorySnapshot } from './main/terminalInventory';
 import { probeTmuxAvailability, tmuxUnavailableSaveError } from './main/tmuxAvailability';
-import { isAuxDevInstance } from './main/auxDevInstance';
+import {
+  isAuxDevInstance,
+  shouldRequestSingleInstanceLock,
+} from './main/auxDevInstance';
 import { resolveFluxxTmuxSpawnLauncherPath } from './main/tmux/resolveFluxxTmuxSpawnLauncherPath';
 import { formatTmuxReconcileLogLine } from './main/tmux/tmuxTerminalReconcile';
 import { withTerminalRuntimeMeta } from './main/terminalSessionRecordFromRuntime';
@@ -396,10 +399,13 @@ if (started) {
   app.quit();
 }
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const auxDevInstance = isAuxDevInstance();
+const gotSingleInstanceLock = shouldRequestSingleInstanceLock()
+  ? app.requestSingleInstanceLock()
+  : true;
 if (!gotSingleInstanceLock) {
   app.quit();
-} else {
+} else if (!auxDevInstance) {
   registerFluxxProtocolClient();
 }
 
@@ -566,7 +572,7 @@ function resolveWindowIconPath(): string | undefined {
 let mainWindow: BrowserWindow | null = null;
 let appStateStoreForAppearance: AppStateStore | null = null;
 
-if (gotSingleInstanceLock) {
+if (gotSingleInstanceLock && !auxDevInstance) {
   installFluxxDeepLinkEventHandlers(() => mainWindow);
 }
 
@@ -6631,6 +6637,14 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  if (mainWindow && auxDevInstance) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    if (process.platform === 'darwin') {
+      app.focus({ steal: true });
+    }
+  }
   if (mainWindow && fluxAutomationRendererBridge) {
     fluxAutomationRendererBridge.attachWindow(mainWindow);
   }
