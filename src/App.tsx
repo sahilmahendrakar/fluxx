@@ -1348,6 +1348,9 @@ export default function App() {
         next.delete(p.taskId);
         return next;
       });
+      if (p.notice?.trim()) {
+        toast.warning(p.notice, { id: `gitless-multi-session-${p.taskId}` });
+      }
       if ('error' in p.outcome) return;
       const s = p.outcome;
       if (s.projectId !== project.id) return;

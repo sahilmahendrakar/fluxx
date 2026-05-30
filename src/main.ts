@@ -305,6 +305,15 @@ import {
 } from './taskBranches';
 import { collectRepoBranchDiscovery } from './main/repoGit';
 import { isWorktreeCreateError, WorktreeCreateError } from './main/worktreeCreateError';
+import { gitEnabledForActiveProject } from './gitIntegration';
+import { isDirectWorkspaceKind } from './main/DirectFolderWorkspaceProvider';
+import {
+  buildGitlessWorkspaceBusyKey,
+  findGitlessWorkspaceBusyHolder,
+  gitlessMultiSessionWarningMessage,
+  workspaceBusyErrorMessage,
+} from './main/gitlessWorkspaceBusy';
+import { createTaskWorkspaceAtSessionStart } from './main/taskWorkspaceAtSessionStart';
 import {
   taskHasBlockingWorkspaceState,
   taskSourceBranchSettingsWouldChange,
@@ -4292,6 +4301,7 @@ app.whenReady().then(async () => {
     project: Project,
     task: Task,
     projectDir: string,
+    opts?: { requireGit?: boolean },
   ): Promise<RepoConfig> {
     const repos = await projectStore.getReposAt(projectDir);
     const primaryId = resolvePrimaryRepoId(repos);
@@ -4334,16 +4344,26 @@ app.whenReady().then(async () => {
         `The repository clone path does not exist: ${resolvedClone}`,
       );
     }
-    try {
-      await fs.access(path.join(resolvedClone, '.git'));
-    } catch {
-      throw new WorktreeCreateError(
-        'WORKTREE_REPO_NOT_GIT',
-        `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
-      );
+    if (opts?.requireGit !== false) {
+      try {
+        await fs.access(path.join(resolvedClone, '.git'));
+      } catch {
+        throw new WorktreeCreateError(
+          'WORKTREE_REPO_NOT_GIT',
+          `Expected a Git repository at ${resolvedClone}, but no .git entry was found.`,
+        );
+      }
     }
 
     return repoCfg;
+  }
+
+  async function gitlessSingleSessionPerFolderForActiveProject(): Promise<boolean> {
+    const key = appStateStore.get().activeProjectKey;
+    if (key?.kind === 'cloud') {
+      return bindingStore.getPrefs(key.id).gitlessSingleSessionPerFolder !== false;
+    }
+    return projectStore.getGitlessSingleSessionPerFolderAt(activeProjectDir());
   }
 
   async function worktreeSourceOptsForTaskSession(
@@ -4495,10 +4515,12 @@ app.whenReady().then(async () => {
     }
 
     const taskId = task.id;
+    let startNotice: string | undefined;
     const sendTaskStartProgress = (payload: {
       taskId: string;
       phase: 'starting' | 'settled';
       outcome?: SessionStartResult;
+      notice?: string;
     }) => {
       for (const win of BrowserWindow.getAllWindows()) {
         if (win.isDestroyed()) continue;
@@ -4583,50 +4605,33 @@ app.whenReady().then(async () => {
     }
 
     try {
+      const gitEnabled = await gitEnabledForActiveProject({
+        getProjectDir: activeProjectDir,
+        getGitIntegrationEnabledAt: (dir) => projectStore.getGitIntegrationEnabledAt(dir),
+      });
+
       let worktreePath = '';
       let branch = '';
+      let workspaceKind: import('./types').SessionWorkspaceKind = 'git';
       let sessionRepoCfg: RepoConfig | null = null;
+      const projectDir = activeProjectDir();
+
       try {
-        const projectDir = activeProjectDir();
-        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir);
-        const sourceOpts = await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg);
-        const layout = 'repo-scoped' as const;
-        const created = await worktreeService.create({
-          task: {
-            id: merged.id,
-            title: merged.title,
-            fluxxWorkBranch: merged.fluxxWorkBranch,
-          },
-          repo: {
-            repoId: sessionRepoCfg.id,
-            gitRootPath: sessionRepoCfg.rootPath,
-            baseBranch: sessionRepoCfg.baseBranch,
-            setupScript: sessionRepoCfg.setupScript,
-            env: sessionRepoCfg.env,
-          },
-          source: sourceOpts,
-          layout,
+        sessionRepoCfg = await resolveRepoConfigForTaskSession(project, merged, projectDir, {
+          requireGit: gitEnabled,
         });
-        worktreePath = created.worktreePath;
-        branch = created.branch;
       } catch (err: unknown) {
         if (isWorktreeCreateError(err)) {
-          console.error('[session:start] worktree create failed', {
+          console.error('[session:start] repo resolve failed', {
             taskId: task.id,
             projectId: project.id,
             code: err.code,
-            branchName: err.branchName,
             message: err.message,
           });
           return finish({ error: err.code, message: err.message });
         }
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[session:start] worktree create failed', {
-          taskId: task.id,
-          projectId: project.id,
-          message,
-        });
-        return finish({ error: 'WORKTREE_FAILED', message });
+        return finish({ error: 'INTERNAL', message });
       }
 
       if (!sessionRepoCfg) {
@@ -4634,6 +4639,72 @@ app.whenReady().then(async () => {
           error: 'INTERNAL',
           message: 'Session start did not resolve a repository configuration.',
         });
+      }
+
+      if (!gitEnabled && executionDevice.kind === 'local') {
+        const busyKey = buildGitlessWorkspaceBusyKey(
+          sessionRepoCfg.rootPath,
+          executionDevice.deviceId,
+        );
+        const runningSessions = await terminalBackend.listSessions();
+        const busyHolder = findGitlessWorkspaceBusyHolder(
+          runningSessions,
+          busyKey,
+          merged.id,
+        );
+        const singlePerFolder = await gitlessSingleSessionPerFolderForActiveProject();
+        if (busyHolder && singlePerFolder) {
+          const holderTask =
+            allProjectTasks.find((t) => t.id === busyHolder.taskId) ?? null;
+          return finish({
+            error: 'WORKSPACE_BUSY',
+            message: workspaceBusyErrorMessage(
+              busyHolder.taskId,
+              holderTask?.title,
+            ),
+          });
+        }
+        if (busyHolder && !singlePerFolder) {
+          startNotice = gitlessMultiSessionWarningMessage();
+        }
+      }
+
+      const sourceOpts = gitEnabled
+        ? await worktreeSourceOptsForTaskSession(merged, sessionRepoCfg)
+        : { sourceBranchShort: '', createSourceBranchIfMissing: false };
+
+      const workspaceResult = await createTaskWorkspaceAtSessionStart({
+        gitEnabled,
+        task: merged,
+        repoCfg: sessionRepoCfg,
+        worktreeService,
+        sourceOpts,
+      });
+      if (!workspaceResult.ok) {
+        const r = workspaceResult.result;
+        if ('error' in r && r.error !== 'INTERNAL') {
+          console.error('[session:start] workspace create failed', {
+            taskId: task.id,
+            projectId: project.id,
+            error: r.error,
+            message: r.message,
+          });
+        }
+        return finish(workspaceResult.result);
+      }
+
+      worktreePath = workspaceResult.descriptor.cwd;
+      branch = workspaceResult.descriptor.branch;
+      workspaceKind = workspaceResult.descriptor.workspaceKind;
+      sessionRepoCfg = workspaceResult.repoCfg;
+
+      async function removeProvisionedWorktreeIfGit(): Promise<void> {
+        if (!isDirectWorkspaceKind(workspaceKind)) {
+          await worktreeService.remove(
+            worktreePath,
+            path.resolve(sessionRepoCfg!.rootPath),
+          );
+        }
       }
 
       if (merged.agent === 'cursor') {
@@ -4647,10 +4718,7 @@ app.whenReady().then(async () => {
             message,
           });
           try {
-            await worktreeService.remove(
-              worktreePath,
-              path.resolve(sessionRepoCfg.rootPath),
-            );
+            await removeProvisionedWorktreeIfGit();
           } catch (removeErr: unknown) {
             console.error('[session:start] cleanup worktree after MCP failure', removeErr);
           }
@@ -4727,6 +4795,9 @@ app.whenReady().then(async () => {
         args,
         cols: 80,
         rows: 24,
+        workspaceKind,
+        deviceId: executionDevice.deviceId,
+        deviceKind: executionDevice.kind,
         ...trustAutorespondArg,
         ...(ptyEnv !== undefined ? { ptyEnv } : {}),
       });
@@ -4739,10 +4810,7 @@ app.whenReady().then(async () => {
           message: result.message,
         });
         try {
-          await worktreeService.remove(
-            worktreePath,
-            path.resolve(sessionRepoCfg.rootPath),
-          );
+          await removeProvisionedWorktreeIfGit();
         } catch (removeErr: unknown) {
           console.error('[session:start] cleanup worktree after spawn failure', removeErr);
         }
@@ -4775,6 +4843,7 @@ app.whenReady().then(async () => {
         agent: merged.agent,
         worktreePath,
         fluxxWorkBranch: branch,
+        workspaceKind,
         ...(sourceBranchShort ? { sourceBranchShort } : {}),
         startedAt: result.startedAt,
       };
@@ -4808,7 +4877,7 @@ app.whenReady().then(async () => {
       );
       void terminalSessionRecordStore.recordTerminalStart(terminalRow);
       const priorFw = (merged.fluxxWorkBranch ?? '').trim();
-      if (priorFw !== branch) {
+      if (branch && priorFw !== branch) {
         if (project.kind === 'local') {
           const p = projectStore.get();
           if (p && taskStore.getAll(p.id).some((t) => t.id === task.id)) {
@@ -4835,7 +4904,12 @@ app.whenReady().then(async () => {
         error: 'INTERNAL',
         message: 'Session start did not return a result',
       };
-      sendTaskStartProgress({ taskId, phase: 'settled', outcome });
+      sendTaskStartProgress({
+        taskId,
+        phase: 'settled',
+        outcome,
+        ...(startNotice ? { notice: startNotice } : {}),
+      });
     }
   }
 

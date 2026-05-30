@@ -429,6 +429,9 @@ export class TerminalRuntimeManager {
       ...(params.repoId != null && params.repoId.length > 0 ? { repoId: params.repoId } : {}),
       worktreePath: params.worktreePath,
       branch: params.branch,
+      ...(params.workspaceKind ? { workspaceKind: params.workspaceKind } : {}),
+      ...(params.deviceId ? { deviceId: params.deviceId } : {}),
+      ...(params.deviceKind ? { deviceKind: params.deviceKind } : {}),
       status: 'running',
       startedAt: new Date().toISOString(),
     };

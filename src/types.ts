@@ -855,7 +855,12 @@ export type SessionStartErrorCode =
   | 'REMOTE_SETUP_FAILED'
   | 'TASK_BLOCKED'
   | 'NOT_TASK_ASSIGNEE'
+  /** Gitless: folder+device already has a running session and single-session guard is on. */
+  | 'WORKSPACE_BUSY'
   | 'INTERNAL';
+
+/** How a task session workspace was provisioned (git worktree vs direct folder). */
+export type SessionWorkspaceKind = 'git' | 'direct';
 
 /** Optional flags for `session:start` / `sessions.start`. */
 export type SessionStartOptions = {
@@ -879,7 +884,13 @@ export type SessionStartResult =
 /** Main→renderer: worktree + daemon spawn in progress for a task session. */
 export type TaskSessionStartProgress =
   | { taskId: string; phase: 'starting' }
-  | { taskId: string; phase: 'settled'; outcome: SessionStartResult };
+  | {
+      taskId: string;
+      phase: 'settled';
+      outcome: SessionStartResult;
+      /** Non-fatal notice (e.g. gitless multi-session warning when guard is off). */
+      notice?: string;
+    };
 
 export interface Session {
   id: string;
@@ -894,6 +905,11 @@ export interface Session {
   repoId?: string;
   worktreePath: string;
   branch: string;
+  /**
+   * `git` = Fluxx-managed worktree (default when omitted on older rows).
+   * `direct` = agent cwd is the repo/working folder (gitless).
+   */
+  workspaceKind?: SessionWorkspaceKind;
   status: SessionStatus;
   startedAt: string;
   stoppedAt?: string;
@@ -935,6 +951,7 @@ export interface TaskAgentSessionRecord {
   agent: Agent;
   worktreePath: string;
   fluxxWorkBranch: string;
+  workspaceKind?: SessionWorkspaceKind;
   sourceBranchShort?: string;
   startedAt: string;
   endedAt?: string;
