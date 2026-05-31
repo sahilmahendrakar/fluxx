@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, CheckCircle2, ChevronLeft, ExternalLink } from 'lucide-react';
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ExternalLink,
+  RefreshCw,
+} from 'lucide-react';
 import { AgentProviderIcon, GitHubBrandIcon } from './agentProviderIcons';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -204,20 +211,58 @@ function AgentOptionCard(props: {
   );
 }
 
+function resolveSelectedAgentFromProbes(
+  probes: GlobalOnboardingCliProbeResult[],
+  preferred: Agent | null | undefined,
+): Agent | null {
+  if (preferred && isAgentCliInstalled(agentProbeResult(probes, preferred))) {
+    return preferred;
+  }
+  const firstDetected = AGENTS.find(({ id }) =>
+    isAgentCliInstalled(agentProbeResult(probes, id)),
+  );
+  return firstDetected?.id ?? null;
+}
+
 function AgentStepBody(props: {
   cliProbes: GlobalOnboardingCliProbeResult[] | null;
+  cliProbesRefreshing: boolean;
   selectedAgent: Agent | null;
   onSelectAgent: (agent: Agent) => void;
+  onRefreshCliProbes: () => void;
 }) {
-  const { cliProbes, selectedAgent, onSelectAgent } = props;
+  const { cliProbes, cliProbesRefreshing, selectedAgent, onSelectAgent, onRefreshCliProbes } =
+    props;
   const probeLoading = cliProbes == null;
 
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-2 text-center sm:text-left">
-        <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
-          Choose your starting agent
-        </h1>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+            Choose your starting agent
+          </h1>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={probeLoading || cliProbesRefreshing}
+            className={cn('mx-auto shrink-0 sm:mx-0', onboardingActionButtonClass)}
+            onClick={onRefreshCliProbes}
+          >
+            {cliProbesRefreshing ? (
+              <>
+                <Spinner data-icon="inline-start" />
+                Refreshing…
+              </>
+            ) : (
+              <>
+                <RefreshCw data-icon="inline-start" aria-hidden />
+                Refresh
+              </>
+            )}
+          </Button>
+        </div>
         <p
           id="global-onboarding-description"
           className="text-sm leading-relaxed text-muted-foreground sm:text-base"
@@ -247,9 +292,9 @@ function AgentStepBody(props: {
           />
         ))}
       </div>
-      {probeLoading ? (
+      {probeLoading || cliProbesRefreshing ? (
         <p className="text-center text-xs text-muted-foreground sm:text-left" role="status">
-          Checking installed agent CLIs…
+          {probeLoading ? 'Checking installed agent CLIs…' : 'Refreshing agent CLI detection…'}
         </p>
       ) : null}
     </div>
@@ -403,6 +448,7 @@ export function GlobalOnboardingDialog() {
   const [flowPhase, setFlowPhase] = useState<FlowPhase>('loading');
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [cliProbes, setCliProbes] = useState<GlobalOnboardingCliProbeResult[] | null>(null);
+  const [cliProbesRefreshing, setCliProbesRefreshing] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [githubFeaturesEnabled, setGithubFeaturesEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -423,19 +469,7 @@ export function GlobalOnboardingDialog() {
         const probes = await window.electronAPI.globalOnboarding.probeClis();
         if (cancelled) return;
         setCliProbes(probes);
-        const firstDetected = AGENTS.find(({ id }) =>
-          isAgentCliInstalled(agentProbeResult(probes, id)),
-        );
-        const storedInstalled =
-          state.selectedAgent &&
-          isAgentCliInstalled(agentProbeResult(probes, state.selectedAgent));
-        if (storedInstalled) {
-          setSelectedAgent(state.selectedAgent!);
-        } else if (firstDetected) {
-          setSelectedAgent(firstDetected.id);
-        } else {
-          setSelectedAgent(null);
-        }
+        setSelectedAgent(resolveSelectedAgentFromProbes(probes, state.selectedAgent));
         if (typeof state.githubFeaturesEnabled === 'boolean') {
           setGithubFeaturesEnabled(state.githubFeaturesEnabled);
         }
@@ -466,6 +500,20 @@ export function GlobalOnboardingDialog() {
       setError(err instanceof Error ? err.message : 'Could not skip onboarding.');
     } finally {
       setBusy(false);
+    }
+  }, []);
+
+  const handleRefreshCliProbes = useCallback(async () => {
+    setError(null);
+    setCliProbesRefreshing(true);
+    try {
+      const probes = await window.electronAPI.globalOnboarding.probeClis();
+      setCliProbes(probes);
+      setSelectedAgent((current) => resolveSelectedAgentFromProbes(probes, current));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not refresh agent CLI detection.');
+    } finally {
+      setCliProbesRefreshing(false);
     }
   }, []);
 
@@ -543,8 +591,10 @@ export function GlobalOnboardingDialog() {
           ) : step === 'agents' ? (
             <AgentStepBody
               cliProbes={cliProbes}
+              cliProbesRefreshing={cliProbesRefreshing}
               selectedAgent={selectedAgent}
               onSelectAgent={setSelectedAgent}
+              onRefreshCliProbes={() => void handleRefreshCliProbes()}
             />
           ) : (
             <GitHubStepBody
@@ -606,7 +656,7 @@ export function GlobalOnboardingDialog() {
             <Button
               type="button"
               variant="outline"
-              disabled={busy || !selectedAgentInstalled || cliProbes == null}
+              disabled={busy || !selectedAgentInstalled || cliProbes == null || cliProbesRefreshing}
               className={onboardingActionButtonClass}
               onClick={() => void handleAgentContinue()}
             >
