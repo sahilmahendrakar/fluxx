@@ -50,6 +50,7 @@ import {
   normalizeGitIntegrationEnabled,
   normalizeGitlessSingleSessionPerFolder,
 } from '../gitIntegration';
+import { validateRepoFolderForBinding } from '../repoFolderAcceptance';
 
 export {
   DEFAULT_GIT_INTEGRATION_ENABLED,
@@ -600,16 +601,29 @@ export class ProjectStore {
   }
 
   /**
-   * Append a git working tree to `repos[]`. Id/name are assigned via
-   * {@link backfillRepoIdentities}.
+   * Append a working tree to `repos[]`. Id/name are assigned via
+   * {@link backfillRepoIdentities}. Requires a git repo when git integration is on.
    */
   async addRepoAt(projectDir: string, rootPath: string): Promise<RepoConfig[]> {
     const resolved = path.resolve(rootPath);
-    await assertGitRepoRoot(resolved);
     const configPath = path.join(projectDir, 'config.json');
     const raw = await fs.readFile(configPath, 'utf8');
     const parsed = parseConfig(raw);
     if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+
+    const gitEnabled = normalizeGitIntegrationEnabled(parsed.gitIntegrationEnabled);
+    if (gitEnabled) {
+      await assertGitRepoRoot(resolved);
+    } else {
+      const validated = await validateRepoFolderForBinding(resolved, false);
+      if (!validated.ok) {
+        if (validated.error === 'NOT_WRITABLE') {
+          throw new Error('That folder is not writable. Choose a folder you can modify.');
+        }
+        throw new Error('That folder does not exist.');
+      }
+    }
+
     if (parsed.repos.some((r) => path.resolve(r.rootPath) === resolved)) {
       throw new Error('That git repository is already part of this project');
     }

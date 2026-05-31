@@ -274,6 +274,26 @@ describe('ProjectStore repo-id operations', () => {
     await expect(store.addRepoAt(projectDir, rootB)).rejects.toThrow(/already part of this project/);
   });
 
+  it('addRepoAt accepts a non-git folder when git integration is off', async () => {
+    const rootA = path.join(tmp, 'a');
+    const rootB = path.join(tmp, 'b');
+    const projectDir = path.join(tmp, 'project-gitless');
+    await fs.mkdir(rootA, { recursive: true });
+    await fs.mkdir(rootB, { recursive: true });
+    await touchGitRepo(rootA);
+    await writeLegacyConfig(projectDir, rootA, { gitIntegrationEnabled: false });
+
+    const store = new ProjectStore(tmp);
+    await store.init(projectDir);
+
+    const repos = await store.addRepoAt(projectDir, rootB);
+    expect(repos).toHaveLength(2);
+    expect(repos.map((r) => path.resolve(r.rootPath))).toEqual([
+      path.resolve(rootA),
+      path.resolve(rootB),
+    ]);
+  });
+
   it('preserves added repos after reopening the local project root', async () => {
     const rootA = path.join(tmp, 'a');
     const rootB = path.join(tmp, 'b');
