@@ -51,6 +51,7 @@ import {
   isGithubRepoOnboardingAutomationOp,
   runGithubRepoOnboardingAutomation,
 } from './githubRepoOnboardingAutomation';
+import { isRepoAttachAutomationOp, runRepoAttachAutomation } from './repoAttachAutomation';
 import {
   automationRunValidationArtifacts,
   automationRunValidationFinish,
@@ -971,6 +972,9 @@ export async function runFluxAutomationInvocation(
       return automationRunValidationFinish(vh, { runId: p.runId });
     }
     default:
+      if (isRepoAttachAutomationOp(op)) {
+        return runRepoAttachAutomation(h, op, payload);
+      }
       if (isGithubRepoOnboardingAutomationOp(op)) {
         return runGithubRepoOnboardingAutomation(op, payload);
       }

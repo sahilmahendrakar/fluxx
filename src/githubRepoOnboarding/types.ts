@@ -100,4 +100,10 @@ export type GithubRepoOnboardingAutomationOp =
   | 'repo.github.clone'
   | 'repo.github.checkCloneDestination';
 
+/** Full attach flows for Fluxx CLI (`fluxx repo add-local`, `fluxx repo github add|create`). */
+export type RepoAttachAutomationOp =
+  | 'repo.addLocal'
+  | 'repo.github.add'
+  | 'repo.github.createAndAttach';
+
 export type { GithubRepoAttachInput, GithubRepoAttachMetadata } from './githubRepoAttach';

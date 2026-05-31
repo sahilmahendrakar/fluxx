@@ -254,4 +254,87 @@ describe('parseFluxCliArgs', () => {
     expect(parseFluxCliArgs(['validation', 'list']).ok).toBe(false);
     expect(parseFluxCliArgs(['validation', 'show']).ok).toBe(false);
   });
+
+  it('parses repo add-local and github subcommands', () => {
+    const addLocal = parseFluxCliArgs(['repo', 'add-local', '--path', '/tmp/my-repo', '--json']);
+    expect(addLocal.ok).toBe(true);
+    if (addLocal.ok) {
+      expect(addLocal.command).toEqual({
+        kind: 'repo',
+        action: 'add-local',
+        json: true,
+        path: '/tmp/my-repo',
+      });
+    }
+
+    const list = parseFluxCliArgs([
+      'repo',
+      'github',
+      'list',
+      '--owner',
+      'acme',
+      '--limit',
+      '25',
+      '--json',
+    ]);
+    expect(list.ok).toBe(true);
+    if (list.ok) {
+      expect(list.command).toMatchObject({
+        kind: 'repo',
+        action: 'github-list',
+        owner: 'acme',
+        limit: 25,
+        json: true,
+      });
+    }
+
+    const add = parseFluxCliArgs([
+      'repo',
+      'github',
+      'add',
+      '--repo',
+      'acme/demo',
+      '--clone-dir',
+      '/tmp/clones/demo',
+    ]);
+    expect(add.ok).toBe(true);
+    if (add.ok) {
+      expect(add.command).toMatchObject({
+        kind: 'repo',
+        action: 'github-add',
+        repo: 'acme/demo',
+        cloneDir: '/tmp/clones/demo',
+      });
+    }
+
+    const create = parseFluxCliArgs([
+      'repo',
+      'github',
+      'create',
+      '--name',
+      'new-repo',
+      '--owner',
+      'acme',
+      '--visibility',
+      'private',
+      '--description',
+      'hello',
+      '--clone-dir',
+      '/tmp/clones/new-repo',
+      '--json',
+    ]);
+    expect(create.ok).toBe(true);
+    if (create.ok) {
+      expect(create.command).toMatchObject({
+        kind: 'repo',
+        action: 'github-create',
+        name: 'new-repo',
+        owner: 'acme',
+        visibility: 'private',
+        description: 'hello',
+        cloneDir: '/tmp/clones/new-repo',
+        json: true,
+      });
+    }
+  });
 });

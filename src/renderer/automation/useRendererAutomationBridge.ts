@@ -13,6 +13,8 @@ import type {
   AutomationBridgeMember,
   AutomationBridgeProjectInfoRepoSummary,
   AutomationBridgeProjectInfoResult,
+  AutomationBridgeRepoAttachAtPathPayload,
+  AutomationBridgeRepoAttachAtPathResult,
   AutomationBridgeRepoBranchDiscoveryPayload,
   AutomationBridgeRequest,
   AutomationBridgeResponse,
@@ -21,6 +23,16 @@ import type {
   AutomationBridgeTasksUpdatePayload,
   AutomationBridgeTasksUpdateResult,
 } from '../../rendererAutomationBridge';
+import { updateCloudProjectRepos } from '../projects/cloudProjects';
+import {
+  findDuplicateCloudRepoByPath,
+  findDuplicateLocalRepoByPath,
+  githubFieldsFromAttachMetadata,
+  validateGithubRepoAttachForCloud,
+  DUPLICATE_CLOUD_PATH_MESSAGE,
+  DUPLICATE_LOCAL_PATH_MESSAGE,
+} from '../../githubRepoOnboarding/githubRepoAttach';
+import { deriveRepoIdForRootPath, repoRootBasename } from '../../repoIdentity';
 import {
   GIT_BRANCH_DISCOVERY_DISABLED_NOTE,
   gitDisabledBranchDiscoveryResponse,
@@ -377,6 +389,153 @@ async function handleRequest(
           }
           result.repos = repos;
         }
+        return { id: req.id, ok: true, data: result };
+      }
+      case 'repo.attachAtPath': {
+        const payload = req.payload as AutomationBridgeRepoAttachAtPathPayload;
+        if (!payload?.rootPath?.trim()) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'repo.attachAtPath requires payload.rootPath',
+          };
+        }
+        const rootPath = payload.rootPath.trim();
+        if (project.kind === 'cloud') {
+          if (project.gitIntegrationEnabled === false && payload.github) {
+            return {
+              id: req.id,
+              ok: false,
+              code: 'INVALID_PAYLOAD',
+              message:
+                'GitHub clone and create require git integration to be enabled for this project.',
+            };
+          }
+          let nextRepo;
+          if (payload.github) {
+            const validated = validateGithubRepoAttachForCloud({
+              projectId: project.id,
+              sharedRepos: project.sharedRepos,
+              repoMachineBindings: project.repoMachineBindings,
+              input: { rootPath, github: payload.github },
+            });
+            if (!validated.ok) {
+              return {
+                id: req.id,
+                ok: false,
+                code: 'PROVIDER_ERROR',
+                message: validated.message,
+              };
+            }
+            nextRepo = validated.sharedRepo;
+          } else {
+            if (
+              findDuplicateCloudRepoByPath({
+                repoMachineBindings: project.repoMachineBindings,
+                rootPath,
+              })
+            ) {
+              return {
+                id: req.id,
+                ok: false,
+                code: 'PROVIDER_ERROR',
+                message: DUPLICATE_CLOUD_PATH_MESSAGE,
+              };
+            }
+            const existingIds = new Set(project.sharedRepos.map((r) => r.id));
+            let repoId = deriveRepoIdForRootPath({
+              projectId: project.id,
+              rootPath,
+            });
+            let salt = 1;
+            while (existingIds.has(repoId)) {
+              repoId = deriveRepoIdForRootPath({
+                projectId: project.id,
+                rootPath,
+                salt: `dup-${salt}`,
+              });
+              salt += 1;
+            }
+            nextRepo = {
+              id: repoId,
+              name: repoRootBasename(rootPath) || `repo:${repoId.slice(0, 7)}`,
+              baseBranch: 'main',
+            };
+          }
+          const nextSharedRepos = [...project.sharedRepos, nextRepo];
+          await updateCloudProjectRepos(project.id, nextSharedRepos);
+          const bindResult = await window.electronAPI.project.bindCloudSharedRepo({
+            repoId: nextRepo.id,
+            rootPath,
+            sharedRepos: nextSharedRepos,
+          });
+          if ('error' in bindResult) {
+            return {
+              id: req.id,
+              ok: false,
+              code: 'PROVIDER_ERROR',
+              message: bindResult.error,
+            };
+          }
+          const ghFields = payload.github
+            ? githubFieldsFromAttachMetadata(payload.github)
+            : null;
+          const result: AutomationBridgeRepoAttachAtPathResult = {
+            repoId: nextRepo.id,
+            rootPath,
+            newlyAttached: true,
+            ...(ghFields
+              ? {
+                  githubOwner: ghFields.githubOwner,
+                  githubName: ghFields.githubName,
+                  nameWithOwner: payload.github!.nameWithOwner,
+                  ...(ghFields.remoteUrl ? { githubUrl: ghFields.remoteUrl } : {}),
+                }
+              : {}),
+          };
+          return { id: req.id, ok: true, data: result };
+        }
+
+        if (payload.github) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'INVALID_PAYLOAD',
+            message: 'Local attach with GitHub metadata is handled in the main process.',
+          };
+        }
+        if (findDuplicateLocalRepoByPath(project.repos, rootPath)) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'PROVIDER_ERROR',
+            message: DUPLICATE_LOCAL_PATH_MESSAGE,
+          };
+        }
+        const addResult = await window.electronAPI.project.addRepo({ rootPath });
+        if ('error' in addResult) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'PROVIDER_ERROR',
+            message: addResult.error,
+          };
+        }
+        const added = addResult.repos.find((r) => r.rootPath === rootPath);
+        if (!added) {
+          return {
+            id: req.id,
+            ok: false,
+            code: 'PROVIDER_ERROR',
+            message: 'Repository was added but could not be resolved in config.',
+          };
+        }
+        const result: AutomationBridgeRepoAttachAtPathResult = {
+          repoId: added.id,
+          rootPath,
+          newlyAttached: true,
+        };
         return { id: req.id, ok: true, data: result };
       }
       case 'repo.branchDiscovery': {

@@ -13,7 +13,26 @@ export type FluxCliCommand =
   | { kind: 'validation'; action: 'ingest'; json: boolean; runId: string }
   | { kind: 'validation'; action: 'finish'; json: boolean; runId: string }
   | { kind: 'members'; action: 'list'; json: boolean }
-  | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string };
+  | { kind: 'repo'; action: 'branches'; json: boolean; repoId?: string; classifyBranch?: string }
+  | { kind: 'repo'; action: 'add-local'; json: boolean; path: string }
+  | { kind: 'repo'; action: 'github-list'; json: boolean; owner?: string; limit?: number }
+  | {
+      kind: 'repo';
+      action: 'github-add';
+      json: boolean;
+      repo: string;
+      cloneDir: string;
+    }
+  | {
+      kind: 'repo';
+      action: 'github-create';
+      json: boolean;
+      name: string;
+      cloneDir: string;
+      owner?: string;
+      visibility: 'public' | 'private' | 'internal';
+      description?: string;
+    };
 
 export type FluxCliParseResult =
   | { ok: true; command: FluxCliCommand }
@@ -295,6 +314,94 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
     };
   }
 
+  if (domain === 'repo' && action === 'add-local') {
+    const { value: folderPath, rest: r } = takeFlagAliases(rest, ['--path', '--folder']);
+    if (!folderPath || r.length > 0) {
+      return { ok: false, message: 'repo add-local requires --path <folder>' };
+    }
+    return { ok: true, command: { kind: 'repo', action: 'add-local', json, path: folderPath } };
+  }
+
+  if (domain === 'repo' && action === 'github') {
+    const [githubAction, ...githubRest] = rest;
+    if (githubAction === 'list') {
+      const { value: owner, rest: r1 } = takeFlag(githubRest, '--owner');
+      const { value: limitRaw, rest: r2 } = takeFlag(r1, '--limit');
+      if (r2.length > 0) {
+        return { ok: false, message: 'Unexpected arguments for repo github list' };
+      }
+      let limit: number | undefined;
+      if (limitRaw !== undefined) {
+        const n = Number(limitRaw);
+        if (!Number.isFinite(n) || n <= 0) {
+          return { ok: false, message: 'repo github list --limit must be a positive number' };
+        }
+        limit = Math.floor(n);
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'repo',
+          action: 'github-list',
+          json,
+          ...(owner !== undefined ? { owner } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+        },
+      };
+    }
+    if (githubAction === 'add') {
+      const { value: repo, rest: r1 } = takeFlag(githubRest, '--repo');
+      const { value: cloneDir, rest: r2 } = takeFlag(r1, '--clone-dir');
+      if (!repo || !cloneDir || r2.length > 0) {
+        return {
+          ok: false,
+          message: 'repo github add requires --repo <owner/name> and --clone-dir <path>',
+        };
+      }
+      return {
+        ok: true,
+        command: { kind: 'repo', action: 'github-add', json, repo, cloneDir },
+      };
+    }
+    if (githubAction === 'create') {
+      const { value: name, rest: r1 } = takeFlag(githubRest, '--name');
+      const { value: owner, rest: r2 } = takeFlag(r1, '--owner');
+      const { value: visibility, rest: r3 } = takeFlag(r2, '--visibility');
+      const { value: description, rest: r4 } = takeFlag(r3, '--description');
+      const { value: cloneDir, rest: r5 } = takeFlag(r4, '--clone-dir');
+      if (!name || !visibility || !cloneDir || r5.length > 0) {
+        return {
+          ok: false,
+          message:
+            'repo github create requires --name, --visibility <public|private|internal>, and --clone-dir <path>',
+        };
+      }
+      if (visibility !== 'public' && visibility !== 'private' && visibility !== 'internal') {
+        return {
+          ok: false,
+          message: 'repo github create --visibility must be public, private, or internal',
+        };
+      }
+      return {
+        ok: true,
+        command: {
+          kind: 'repo',
+          action: 'github-create',
+          json,
+          name,
+          cloneDir,
+          visibility,
+          ...(owner !== undefined ? { owner } : {}),
+          ...(description !== undefined ? { description } : {}),
+        },
+      };
+    }
+    return {
+      ok: false,
+      message: 'Unknown repo github subcommand. Try: list, add, create',
+    };
+  }
+
   if (domain === 'validation') {
     if (action === 'run') {
       const { value: taskId, rest: r1 } = takeFlagAliases(rest, ['--task-id', '--task']);
@@ -412,6 +519,6 @@ export function parseFluxCliArgs(argv: string[]): FluxCliParseResult {
   return {
     ok: false,
     message:
-      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx validation run|list|show|artifacts|ingest|finish, fluxx members list, fluxx repo branches',
+      'Unknown command. Try: fluxx project info, fluxx tasks list|create|update|start|delete, fluxx validation run|list|show|artifacts|ingest|finish, fluxx members list, fluxx repo branches|add-local|github list|add|create',
   };
 }
