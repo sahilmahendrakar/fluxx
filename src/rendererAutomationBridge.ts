@@ -21,7 +21,28 @@ export type AutomationBridgeOp =
   | 'tasks.delete'
   | 'projectInfo'
   | 'repo.branchDiscovery'
+  | 'repo.attachAtPath'
   | 'members.list';
+
+/** Attach a validated local clone to the active project (local config or cloud Firestore + bind). */
+export interface AutomationBridgeRepoAttachAtPathPayload {
+  rootPath: string;
+  github?: {
+    nameWithOwner: string;
+    url?: string;
+    defaultBranch?: string;
+  };
+}
+
+export interface AutomationBridgeRepoAttachAtPathResult {
+  repoId: string;
+  rootPath: string;
+  newlyAttached: boolean;
+  githubOwner?: string;
+  githubName?: string;
+  nameWithOwner?: string;
+  githubUrl?: string;
+}
 
 /** One project member row for `members.list` / `fluxx members list` (cloud). */
 export interface AutomationBridgeMember {

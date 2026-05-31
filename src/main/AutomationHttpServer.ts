@@ -2,6 +2,7 @@ import http from 'node:http';
 import type {
   GithubRepoOnboardingAutomationOp,
   GithubRepoOnboardingErrorCode,
+  RepoAttachAutomationOp,
 } from '../githubRepoOnboarding/types';
 import type { ActiveProjectKey } from '../types';
 import type { AutomationBridgeErrorCode, AutomationBridgeOp } from '../rendererAutomationBridge';
@@ -10,6 +11,7 @@ import { activeProjectKeysEqual } from './activeProjectKey';
 export type FluxAutomationHttpOp =
   | AutomationBridgeOp
   | GithubRepoOnboardingAutomationOp
+  | RepoAttachAutomationOp
   | 'tasks.start'
   | 'validation.run'
   | 'validation.launch'
@@ -35,7 +37,17 @@ export type FluxAutomationInvokeResponse =
         | GithubRepoOnboardingErrorCode
         | 'NO_ACTIVE_PROJECT'
         | 'UNAUTHORIZED'
-        | 'VALIDATION_DISABLED';
+        | 'VALIDATION_DISABLED'
+        | 'INVALID_INPUT'
+        | 'GIT_INTEGRATION_DISABLED'
+        | 'DUPLICATE_REPO'
+        | 'MISSING_PATH'
+        | 'NOT_WRITABLE'
+        | 'NOT_GIT_REPO'
+        | 'ATTACH_FAILED';
+      retryable?: boolean;
+      github?: { nameWithOwner: string; url?: string };
+      githubRepoCreated?: boolean;
     };
 
 function readJsonBody(req: http.IncomingMessage): Promise<string> {

@@ -57,11 +57,36 @@ export async function runFluxCli(argv: string[]): Promise<number> {
       op = 'members.list';
       break;
     case 'repo':
-      op = 'repo.branchDiscovery';
-      payload = {
-        ...(command.repoId !== undefined ? { repoId: command.repoId } : {}),
-        ...(command.classifyBranch !== undefined ? { classifyBranch: command.classifyBranch } : {}),
-      };
+      if (command.action === 'branches') {
+        op = 'repo.branchDiscovery';
+        payload = {
+          ...(command.repoId !== undefined ? { repoId: command.repoId } : {}),
+          ...(command.classifyBranch !== undefined
+            ? { classifyBranch: command.classifyBranch }
+            : {}),
+        };
+      } else if (command.action === 'add-local') {
+        op = 'repo.addLocal';
+        payload = { path: command.path };
+      } else if (command.action === 'github-list') {
+        op = 'repo.github.list';
+        payload = {
+          ...(command.owner !== undefined ? { owner: command.owner } : {}),
+          ...(command.limit !== undefined ? { limit: command.limit } : {}),
+        };
+      } else if (command.action === 'github-add') {
+        op = 'repo.github.add';
+        payload = { repo: command.repo, cloneDir: command.cloneDir };
+      } else {
+        op = 'repo.github.createAndAttach';
+        payload = {
+          name: command.name,
+          visibility: command.visibility,
+          cloneDir: command.cloneDir,
+          ...(command.owner !== undefined ? { owner: command.owner } : {}),
+          ...(command.description !== undefined ? { description: command.description } : {}),
+        };
+      }
       break;
     case 'validation':
       if (command.action === 'run') {

@@ -207,6 +207,48 @@ describe('runFluxCli', () => {
     expect(body.payload).toEqual({ taskId: 'task-1', packId: 'electron-playwright' });
   });
 
+  it('sends repo github add payload with cloneDir', async () => {
+    process.env.FLUX_AUTOMATION_URL = 'http://127.0.0.1:9';
+    process.env.FLUX_AUTOMATION_TOKEN = 'tok';
+    process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY = JSON.stringify({
+      kind: 'local',
+      id: 'p1',
+    });
+    const fetchMock = vi.fn(async () => ({
+      status: 200,
+      json: async () => ({
+        ok: true,
+        data: { repoId: 'r1', rootPath: '/tmp/clones/demo', githubRepoCreated: false },
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const code = await runFluxCli([
+      'repo',
+      'github',
+      'add',
+      '--json',
+      '--repo',
+      'acme/demo',
+      '--clone-dir',
+      '/tmp/clones/demo',
+    ]);
+
+    delete process.env.FLUX_AUTOMATION_URL;
+    delete process.env.FLUX_AUTOMATION_TOKEN;
+    delete process.env.FLUX_AUTOMATION_EXPECTED_ACTIVE_KEY;
+    expect(code).toBe(EXIT_OK);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      op: string;
+      payload: Record<string, unknown>;
+    };
+    expect(body.op).toBe('repo.github.add');
+    expect(body.payload).toEqual({
+      repo: 'acme/demo',
+      cloneDir: '/tmp/clones/demo',
+    });
+  });
+
   it('sends validation.finish payload with run id', async () => {
     process.env.FLUX_AUTOMATION_URL = 'http://127.0.0.1:9';
     process.env.FLUX_AUTOMATION_TOKEN = 'tok';

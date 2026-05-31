@@ -114,6 +114,64 @@ Required:
 Reads <artifactDir>/verdict.json, registers artifacts, and updates run status.
   --json`;
 
+const REPO_BRANCHES_FLAGS = `Usage: fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
+
+  --json`;
+
+const REPO_ADD_LOCAL_FLAGS = `Usage: fluxx repo add-local --path <folder> [--json]
+
+Required:
+  --path <folder>                Existing local git repository root to attach
+
+  --json`;
+
+const REPO_GITHUB_LIST_FLAGS = `Usage: fluxx repo github list [--owner <login>] [--limit <n>] [--json]
+
+Optional:
+  --owner <login>                GitHub user or org (default: authenticated user)
+  --limit <n>                    Max repositories to return (default: gh default)
+  --json`;
+
+const REPO_GITHUB_ADD_FLAGS = `Usage: fluxx repo github add --repo <owner/name> --clone-dir <path> [--json]
+
+Required:
+  --repo <owner/name>            Existing GitHub repository
+  --clone-dir <path>             Final clone destination directory (not a parent folder)
+
+Notes:
+  Requires authenticated \`gh\` and git integration enabled on the project.
+  --json`;
+
+const REPO_GITHUB_CREATE_FLAGS = `Usage: fluxx repo github create --name <name> [--owner <login>] --visibility <public|private|internal> [--description <text>] --clone-dir <path> [--json]
+
+Required:
+  --name <name>                  New repository short name (or owner/name)
+  --visibility <public|private|internal>
+  --clone-dir <path>             Final clone destination directory (not a parent folder)
+
+Optional:
+  --owner <login>                Owner when --name has no slash
+  --description <text>
+  --json`;
+
+const REPO_GITHUB_TOP = `Usage: fluxx repo github <list|add|create> [options]
+
+Subcommands:
+  list     List GitHub repositories visible to authenticated gh
+  add      Clone an existing GitHub repo and attach it to the active project
+  create   Create a GitHub repo, clone it, and attach it to the active project
+
+Run \`fluxx repo github <subcommand> --help\` for flags.`;
+
+const REPO_TOP = `Usage: fluxx repo <branches|add-local|github> [options]
+
+Subcommands:
+  branches    List local and remote branches for a project repository
+  add-local   Attach an existing local git folder to the active project
+  github      List, clone, or create GitHub repositories (requires gh)
+
+Run \`fluxx repo <subcommand> --help\` for flags.`;
+
 const VALIDATION_FINISH_FLAGS = `Usage: fluxx validation finish [--json] --run-id <runId>
 
 Required:
@@ -131,12 +189,29 @@ Usage:
   fluxx validation run|launch|list|show|artifacts|ingest|finish [--json] ...
   fluxx members list [--json]
   fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]
+  fluxx repo add-local --path <folder> [--json]
+  fluxx repo github list [--owner <login>] [--limit <n>] [--json]
+  fluxx repo github add --repo <owner/name> --clone-dir <path> [--json]
+  fluxx repo github create --name <name> [--owner <login>] --visibility <public|private|internal> [--description <text>] --clone-dir <path> [--json]
 
 Global:
   --json                         Print structured JSON on stdout
   -h, --help                     Show command help
 
 Run \`fluxx <command> --help\` for subcommand flags (e.g. fluxx tasks create --help).`;
+
+function helpForRepoGithubAction(action: string | undefined): string | null {
+  switch (action) {
+    case 'list':
+      return REPO_GITHUB_LIST_FLAGS;
+    case 'add':
+      return REPO_GITHUB_ADD_FLAGS;
+    case 'create':
+      return REPO_GITHUB_CREATE_FLAGS;
+    default:
+      return null;
+  }
+}
 
 function helpForValidationAction(action: string | undefined): string | null {
   switch (action) {
@@ -210,7 +285,7 @@ export function printFluxCliHelp(argv: string[]): boolean {
   }
 
   const positional = argv.filter((a) => a !== '--json' && a !== '--help' && a !== '-h');
-  const [domain, action] = positional;
+  const [domain, action, subAction] = positional;
 
   let text: string;
   if (!domain) {
@@ -220,8 +295,16 @@ export function printFluxCliHelp(argv: string[]): boolean {
   } else if (domain === 'members') {
     text = 'Usage: fluxx members list [--json]\n\n  --json';
   } else if (domain === 'repo') {
-    text =
-      'Usage: fluxx repo branches [--json] [--repo-id <id>] [--classify-branch <name>]\n\n  --json';
+    if (action === 'branches') {
+      text = REPO_BRANCHES_FLAGS;
+    } else if (action === 'add-local') {
+      text = REPO_ADD_LOCAL_FLAGS;
+    } else if (action === 'github') {
+      const sub = helpForRepoGithubAction(subAction);
+      text = sub ?? REPO_GITHUB_TOP;
+    } else {
+      text = REPO_TOP;
+    }
   } else if (domain === 'tasks') {
     const sub = helpForTasksAction(action);
     text = sub ?? `Unknown tasks subcommand. ${helpForTasksAction(undefined) ?? ''}`;

@@ -18,6 +18,15 @@ describe('flux CLI --help', () => {
     expect(out).not.toContain('requires --title');
   });
 
+  it('prints repo github create flags documenting final clone-dir', async () => {
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = await runFluxCli(['repo', 'github', 'create', '--help']);
+    expect(code).toBe(EXIT_OK);
+    const out = write.mock.calls.map((c) => String(c[0])).join('');
+    expect(out).toContain('--clone-dir');
+    expect(out).toContain('Final clone destination');
+  });
+
   it('prints tasks update flags including clear-dependencies', async () => {
     const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const code = await runFluxCli(['tasks', 'update', '--help']);
