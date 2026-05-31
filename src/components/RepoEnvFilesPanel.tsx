@@ -92,7 +92,6 @@ function EnvFileRow({
 export interface RepoEnvFilesPanelProps {
   repoId: string;
   rootPath: string;
-  legacyPastedEnvActive?: boolean;
   sharedRepos?: CloudSharedRepo[];
   disabled?: boolean;
   disabledReason?: string;
@@ -102,7 +101,6 @@ export interface RepoEnvFilesPanelProps {
 export function RepoEnvFilesPanel({
   repoId,
   rootPath,
-  legacyPastedEnvActive = false,
   sharedRepos,
   disabled = false,
   disabledReason,
@@ -177,7 +175,9 @@ export function RepoEnvFilesPanel({
     onReposChanged?.(result.repos);
   };
 
-  const foundCount = detection?.files.filter((f) => f.presence === 'found').length ?? 0;
+  const foundFiles =
+    detection?.files.filter((f) => f.presence === 'found') ?? [];
+  const foundCount = foundFiles.length;
   const busy = state === 'loading' || state === 'saving' || togglingFile !== null;
 
   return (
@@ -194,13 +194,6 @@ export function RepoEnvFilesPanel({
             new task worktree. This metadata is stored on this machine only and is not synced to
             teammates.
           </p>
-          {legacyPastedEnvActive ? (
-            <p className="mt-1.5 text-[11px] leading-snug text-status-needs-input">
-              Legacy pasted .env contents below are still active. Root{' '}
-              <span className="font-mono">.env</span> file copy stays off until you clear or migrate
-              that pasted value.
-            </p>
-          ) : null}
           {disabled && disabledReason ? (
             <p className="mt-1.5 text-[11px] leading-snug text-status-needs-input">
               {disabledReason}
@@ -223,7 +216,7 @@ export function RepoEnvFilesPanel({
         {state === 'loading' && !detection ? (
           <p className="text-[11px] text-muted-foreground">Scanning repository root…</p>
         ) : null}
-        {detection?.files.map((entry) => (
+        {foundFiles.map((entry) => (
           <EnvFileRow
             key={entry.fileName}
             entry={entry}

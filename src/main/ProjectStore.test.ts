@@ -312,6 +312,30 @@ describe('ProjectStore repo-id operations', () => {
     expect(added?.envFiles?.lastDetectedAt).toEqual(expect.any(String));
   });
 
+  it('addRepoAt does not auto-enable template or production env filenames', async () => {
+    const rootA = path.join(tmp, 'a');
+    const rootB = path.join(tmp, 'b-template');
+    const projectDir = path.join(tmp, 'project-template-env');
+    await fs.mkdir(rootA, { recursive: true });
+    await fs.mkdir(rootB, { recursive: true });
+    await touchGitRepo(rootA);
+    await touchGitRepo(rootB);
+    await fs.writeFile(path.join(rootB, '.env.example'), 'EXAMPLE=1\n', 'utf8');
+    await fs.writeFile(path.join(rootB, '.env.production'), 'PROD=1\n', 'utf8');
+    await fs.mkdir(path.join(rootB, 'apps/web'), { recursive: true });
+    await fs.writeFile(path.join(rootB, 'apps/web/.env.local'), 'NESTED=1\n', 'utf8');
+    await writeLegacyConfig(projectDir, rootA);
+
+    const store = new ProjectStore(tmp);
+    await store.init(projectDir);
+    const repos = await store.addRepoAt(projectDir, rootB);
+    const added = repos.find((r) => path.resolve(r.rootPath) === path.resolve(rootB));
+    expect(added?.envFiles?.sources?.every((s) => s.enablement === 'disabled')).toBe(true);
+
+    const configRaw = await fs.readFile(path.join(projectDir, 'config.json'), 'utf8');
+    expect(configRaw).not.toMatch(/EXAMPLE=1|PROD=1|NESTED=1/);
+  });
+
   it('preserves added repos after reopening the local project root', async () => {
     const rootA = path.join(tmp, 'a');
     const rootB = path.join(tmp, 'b');

@@ -2475,7 +2475,6 @@ function CloudRepoFields({
       <RepoEnvFilesPanel
         repoId={repo.id}
         rootPath={localRepoConfig?.rootPath ?? ''}
-        legacyPastedEnvActive={Boolean(localRepoConfig?.env && localRepoConfig.env.length > 0)}
         sharedRepos={project.sharedRepos}
         disabled={localRepoFieldsDisabled}
         disabledReason={localRepoFieldsDisabledReason}
@@ -2485,8 +2484,8 @@ function CloudRepoFields({
         }}
       />
       <FieldEditor
-        label=".env contents (legacy)"
-        description="Local to this machine only — not synced to teammates. Written verbatim to .env in each new worktree when env file copy is not used. Stored locally in plaintext."
+        label="Additional .env"
+        description="Optional variables merged into each new task worktree. Local to this machine only — not synced to teammates."
         repoId={repo.id}
         rootPath={localRepoConfig?.rootPath ?? ''}
         useRepoId
@@ -2495,6 +2494,7 @@ function CloudRepoFields({
         placeholder={'KEY=value\n'}
         multiline
         sensitive
+        defaultCollapsed
         disabled={localRepoFieldsDisabled}
         disabledReason={localRepoFieldsDisabledReason}
         onSaved={(repos) => {
@@ -2786,12 +2786,11 @@ function RepoFields({
       <RepoEnvFilesPanel
         repoId={repo.id}
         rootPath={repo.rootPath}
-        legacyPastedEnvActive={Boolean(repo.env && repo.env.length > 0)}
         onReposChanged={onSaved}
       />
       <FieldEditor
-        label=".env contents (legacy)"
-        description="Local to this machine only. Written verbatim to .env in each new worktree when env file copy is not used. Stored locally in plaintext."
+        label="Additional .env"
+        description="Optional variables merged into each new task worktree. Local to this machine only — not synced to teammates."
         repoId={repo.id}
         rootPath={repo.rootPath}
         useRepoId={multiRepoManagementEnabled}
@@ -2800,6 +2799,7 @@ function RepoFields({
         placeholder={'KEY=value\n'}
         multiline
         sensitive
+        defaultCollapsed
         onSaved={onSaved}
       />
       {multiRepoManagementEnabled ? (
@@ -2869,6 +2869,7 @@ interface FieldEditorProps {
   placeholder?: string;
   multiline?: boolean;
   sensitive?: boolean;
+  defaultCollapsed?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   onSaved: (repos: RepoConfig[]) => void;
@@ -2885,6 +2886,7 @@ function FieldEditor({
   placeholder,
   multiline,
   sensitive,
+  defaultCollapsed = false,
   disabled = false,
   disabledReason,
   onSaved,
@@ -2894,13 +2896,16 @@ function FieldEditor({
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(!sensitive || initialValue.length === 0);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
 
   useEffect(() => {
     setValue(initialValue);
     setSavedValue(initialValue);
     setState('idle');
     setError(null);
-  }, [initialValue]);
+    setExpanded(!defaultCollapsed);
+    setRevealed(!sensitive || initialValue.length === 0);
+  }, [defaultCollapsed, initialValue, repoId, sensitive]);
 
   const dirty = value !== savedValue;
 
@@ -2932,11 +2937,47 @@ function FieldEditor({
   };
 
   const showMasked = sensitive && !revealed;
+  const hasSavedContent = savedValue.trim().length > 0;
+
+  if (defaultCollapsed && !expanded) {
+    return (
+      <div className="mt-4 border-t border-border pt-4">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex w-full items-center gap-2 text-left"
+          aria-expanded={false}
+        >
+          <ChevronRight className="shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <span className="text-[12px] font-medium text-foreground">{label}</span>
+            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              {hasSavedContent
+                ? 'Configured — expand to view or edit.'
+                : 'Expand to add optional environment variables.'}
+            </p>
+          </div>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div>
+    <div className={defaultCollapsed ? 'mt-4 border-t border-border pt-4' : undefined}>
       <div className="flex items-baseline justify-between gap-3">
-        <label className="text-[12px] font-medium text-foreground">{label}</label>
+        {defaultCollapsed ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            aria-expanded
+          >
+            <ChevronRight className="shrink-0 rotate-90 text-muted-foreground transition-transform" />
+            <span className="text-[12px] font-medium text-foreground">{label}</span>
+          </button>
+        ) : (
+          <label className="text-[12px] font-medium text-foreground">{label}</label>
+        )}
         {sensitive ? (
           <button
             type="button"

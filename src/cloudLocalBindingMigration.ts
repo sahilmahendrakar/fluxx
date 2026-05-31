@@ -1,4 +1,4 @@
-import { parseRepoEnvFileSourcesConfig } from './repoEnvFiles';
+import { parseRepoEnvFileSourcesConfig } from './repoEnvFileConfig';
 import type {
   CloudProjectLocalBinding,
   CloudRepoMachineBinding,
