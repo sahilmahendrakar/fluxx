@@ -8,7 +8,7 @@ import {
   migrateLegacyCloudBinding,
   primaryRootPathFromCloudBinding,
 } from './cloudLocalBindingMigration';
-import { mergeRepoEnvFileSources } from './repoEnvFiles';
+import { mergeRepoEnvFileSources } from './repoEnvFileConfig';
 
 /**
  * Builds `repos[]` + primary root for `~/.fluxx/.../config.json` from Firestore

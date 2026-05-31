@@ -32,4 +32,33 @@ describe('repoConfigsFromCloudSharedAndBinding', () => {
     };
     expect(repoConfigsFromCloudSharedAndBinding(pid, shared, binding)).toBeNull();
   });
+
+  it('merges env file metadata from localBindings without secret bodies', () => {
+    const shared: CloudSharedRepo[] = [{ id: 'r-a', name: 'A', baseBranch: 'main' }];
+    const binding: CloudProjectLocalBinding = {
+      lastOpenedAt: '2020-01-01T00:00:00.000Z',
+      repoBindings: {
+        'r-a': {
+          rootPath: '/w/a',
+          lastOpenedAt: '2020-01-01T00:00:00.000Z',
+          envFiles: {
+            lastDetectedAt: '2026-05-30T00:00:00.000Z',
+            sources: [
+              { fileName: '.env', enablement: 'enabled' },
+              { fileName: '.env.local', enablement: 'enabled' },
+            ],
+          },
+        },
+      },
+    };
+    const out = repoConfigsFromCloudSharedAndBinding(pid, shared, binding);
+    expect(out!.repos[0].envFiles).toEqual({
+      lastDetectedAt: '2026-05-30T00:00:00.000Z',
+      sources: [
+        { fileName: '.env', enablement: 'enabled' },
+        { fileName: '.env.local', enablement: 'enabled' },
+      ],
+    });
+    expect(JSON.stringify(out)).not.toMatch(/SECRET=|API_KEY=/);
+  });
 });

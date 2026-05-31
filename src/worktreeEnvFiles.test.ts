@@ -35,6 +35,43 @@ describe('resolveEnabledEnvFileCopySources', () => {
       { fileName: '.env.local', sourcePath: path.join(tmp, '.env.local') },
     ]);
   });
+
+  it('auto-enables found allowlisted files when no prior config exists', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-auto-'));
+    await fs.writeFile(path.join(tmp, '.env'), 'AUTO=1\n', 'utf8');
+
+    const sources = await resolveEnabledEnvFileCopySources(tmp);
+    expect(sources).toEqual([{ fileName: '.env', sourcePath: path.join(tmp, '.env') }]);
+  });
+});
+
+describe('detect → copy env pipeline', () => {
+  let tmp = '';
+
+  afterEach(async () => {
+    if (tmp) await fs.rm(tmp, { recursive: true, force: true });
+    tmp = '';
+  });
+
+  it('copies regular files (not symlinks) into a new worktree', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'flux-wt-env-e2e-'));
+    const worktree = path.join(tmp, 'worktree');
+    await fs.mkdir(worktree, { recursive: true });
+    await fs.writeFile(path.join(tmp, '.env'), 'PIPELINE=1\n', 'utf8');
+    await fs.writeFile(path.join(tmp, '.env.local'), 'LOCAL=1\n', 'utf8');
+
+    const sources = await resolveEnabledEnvFileCopySources(tmp);
+    await copyEnabledEnvFilesIntoWorktree(worktree, sources);
+
+    for (const name of ['.env', '.env.local'] as const) {
+      const dest = path.join(worktree, name);
+      const st = await fs.lstat(dest);
+      expect(st.isFile()).toBe(true);
+      expect(st.isSymbolicLink()).toBe(false);
+    }
+    await expect(fs.readFile(path.join(worktree, '.env'), 'utf8')).resolves.toBe('PIPELINE=1\n');
+    await expect(fs.readFile(path.join(worktree, '.env.local'), 'utf8')).resolves.toBe('LOCAL=1\n');
+  });
 });
 
 describe('copyEnabledEnvFilesIntoWorktree', () => {

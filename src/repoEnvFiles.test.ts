@@ -14,6 +14,7 @@ import {
   isExcludedRepoEnvFileName,
   isRepoEnvFileName,
   isRepoRootEnvFilePath,
+  mergeRepoEnvFileSources,
   migrateLegacyPastedEnvIfSafe,
   migrateLegacyPastedEnvToEnvFiles,
   parseRepoEnvFileSourcesConfig,
@@ -129,6 +130,32 @@ describe('detectRepoRootEnvFiles', () => {
     expect(dotEnv?.enablement).toBe('disabled');
     expect(result.legacyPastedEnvActive).toBe(true);
   });
+
+  it('refreshes content hash on rescan while preserving configured enablement', async () => {
+    await fs.writeFile(path.join(tmp, '.env'), 'A=1\n', 'utf8');
+    const priorConfig = {
+      sources: [{ fileName: '.env' as const, enablement: 'disabled' as const }],
+      lastDetectedAt: '2026-05-30T00:00:00.000Z',
+    };
+    const first = await detectRepoRootEnvFiles(tmp, {
+      envFiles: priorConfig,
+      detectedAt: '2026-05-30T00:00:00.000Z',
+    });
+    const dotEnv1 = first.files.find((f) => f.fileName === '.env');
+    expect(dotEnv1?.enablement).toBe('disabled');
+    const hashBefore = dotEnv1?.contentHash;
+
+    await fs.writeFile(path.join(tmp, '.env'), 'A=changed\n', 'utf8');
+    const second = await detectRepoRootEnvFiles(tmp, {
+      envFiles: priorConfig,
+      detectedAt: '2026-05-30T01:00:00.000Z',
+    });
+    const dotEnv2 = second.files.find((f) => f.fileName === '.env');
+    expect(dotEnv2?.enablement).toBe('disabled');
+    expect(dotEnv2?.contentHash).not.toBe(hashBefore);
+    expect(dotEnv2?.contentHash).toBe(sha256Hex('A=changed\n'));
+    expect(second.detectedAt).toBe('2026-05-30T01:00:00.000Z');
+  });
 });
 
 describe('envFileSourcesConfigFromDetection', () => {
@@ -222,6 +249,36 @@ describe('legacy pasted env migration', () => {
       envFiles: { sources: [{ fileName: '.env.local', enablement: 'enabled' }] },
     };
     expect(migrateLegacyPastedEnvToEnvFiles(repo)).toEqual(repo);
+  });
+});
+
+describe('mergeRepoEnvFileSources', () => {
+  it('prefers machine binding enablement over shared repo config', () => {
+    const merged = mergeRepoEnvFileSources(
+      {
+        lastDetectedAt: '2026-05-30T00:00:00.000Z',
+        sources: [{ fileName: '.env', enablement: 'disabled' }],
+      },
+      {
+        lastDetectedAt: '2026-05-30T12:00:00.000Z',
+        sources: [{ fileName: '.env', enablement: 'enabled' }],
+      },
+    );
+    expect(merged).toEqual({
+      lastDetectedAt: '2026-05-30T12:00:00.000Z',
+      sources: [{ fileName: '.env', enablement: 'enabled' }],
+    });
+  });
+
+  it('falls back to repo config when binding has no sources', () => {
+    const merged = mergeRepoEnvFileSources(
+      {
+        sources: [{ fileName: '.env.local', enablement: 'enabled' }],
+      },
+      { lastDetectedAt: '2026-05-30T12:00:00.000Z' },
+    );
+    expect(merged?.sources).toEqual([{ fileName: '.env.local', enablement: 'enabled' }]);
+    expect(merged?.lastDetectedAt).toBe('2026-05-30T12:00:00.000Z');
   });
 });
 
