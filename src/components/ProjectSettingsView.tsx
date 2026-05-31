@@ -38,6 +38,8 @@ import { TeamView } from './TeamView';
 import { DevicesSettingsPane } from './DevicesSettingsPane';
 import { ValidationConfigSettingsSection } from './ValidationConfigSettingsSection';
 import { repoDirectoryPickErrorMessage } from '../projectCreate';
+import { AddRepoDropdown } from './githubRepoOnboarding/AddRepoDropdown';
+import { GithubRepoOnboardingModal } from './githubRepoOnboarding/GithubRepoOnboardingModal';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -500,6 +502,7 @@ function ProjectConfigPane({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addRepoState, setAddRepoState] = useState<SaveState>('idle');
   const [addRepoError, setAddRepoError] = useState<string | null>(null);
+  const [githubRepoModalOpen, setGithubRepoModalOpen] = useState(false);
   const [sshDevices, setSshDevices] = useState<ExecutionDeviceConfig[]>([]);
   const [autoStartEnabled, setAutoStartEnabled] = useState(false);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
@@ -1339,7 +1342,113 @@ function ProjectConfigPane({
     }, 1500);
   }, []);
 
-  const handleAddRepo = useCallback(async () => {
+  const attachLocalRepoAtPath = useCallback(
+    async (rootPath: string): Promise<{ error?: string }> => {
+      if (!multiRepoLocalManagementEnabled) {
+        return { error: 'Local repository management is not available.' };
+      }
+      try {
+        const result = await window.electronAPI.project.addRepo({ rootPath });
+        if ('error' in result) {
+          setAddRepoState('error');
+          setAddRepoError(result.error);
+          return { error: result.error };
+        }
+        setRepos(result.repos);
+        await refreshRepoStates(result.repos);
+        await onProjectAgentPrefsRefresh?.();
+        const added = result.repos.find((r) => r.rootPath === rootPath);
+        if (added) {
+          setExpanded((prev) => ({ ...prev, [added.id]: true }));
+        }
+        setAddRepoState('saved');
+        window.setTimeout(() => {
+          setAddRepoState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+        return {};
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setAddRepoState('error');
+        setAddRepoError(message);
+        return { error: message };
+      }
+    },
+    [multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates],
+  );
+
+  const attachCloudRepoAtPath = useCallback(
+    async (rootPath: string): Promise<{ error?: string }> => {
+      if (!multiRepoCloudBindingsEnabled || project.kind !== 'cloud') {
+        return { error: 'Cloud repository bindings are not available.' };
+      }
+      try {
+        const existingRoot = project.sharedRepos.find((sr) => {
+          const bound = project.repoMachineBindings[sr.id]?.rootPath;
+          return bound === rootPath;
+        });
+        if (existingRoot) {
+          return { error: 'That local folder is already bound to this cloud project.' };
+        }
+
+        const existingIds = new Set(project.sharedRepos.map((r) => r.id));
+        let repoId = deriveRepoIdForRootPath({
+          projectId: project.id,
+          rootPath,
+        });
+        let salt = 1;
+        while (existingIds.has(repoId)) {
+          repoId = deriveRepoIdForRootPath({
+            projectId: project.id,
+            rootPath,
+            salt: `dup-${salt}`,
+          });
+          salt += 1;
+        }
+
+        const nextRepo: CloudSharedRepo = {
+          id: repoId,
+          name: repoRootBasename(rootPath) || `repo:${repoId.slice(0, 7)}`,
+          baseBranch: 'main',
+        };
+        const nextSharedRepos = [...project.sharedRepos, nextRepo];
+        await updateCloudProjectRepos(project.id, nextSharedRepos);
+        onCloudSharedReposChanged?.(nextSharedRepos);
+
+        const bindResult = await window.electronAPI.project.bindCloudSharedRepo({
+          repoId,
+          rootPath,
+          sharedRepos: nextSharedRepos,
+        });
+        if ('error' in bindResult) {
+          setAddRepoState('error');
+          setAddRepoError(bindResult.error);
+          return { error: bindResult.error };
+        }
+
+        await refresh();
+        await onProjectAgentPrefsRefresh?.();
+        setAddRepoState('saved');
+        window.setTimeout(() => {
+          setAddRepoState((state) => (state === 'saved' ? 'idle' : state));
+        }, 1500);
+        return {};
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setAddRepoState('error');
+        setAddRepoError(message);
+        return { error: message };
+      }
+    },
+    [
+      multiRepoCloudBindingsEnabled,
+      onCloudSharedReposChanged,
+      onProjectAgentPrefsRefresh,
+      project,
+      refresh,
+    ],
+  );
+
+  const handleAddRepoFromLocalFolder = useCallback(async () => {
     if (!multiRepoLocalManagementEnabled) return;
     setAddRepoState('saving');
     setAddRepoError(null);
@@ -1356,34 +1465,18 @@ function ProjectConfigPane({
         setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
-
-      const result = await window.electronAPI.project.addRepo({
-        rootPath: picked.rootPath,
-      });
-      if ('error' in result) {
+      const attach = await attachLocalRepoAtPath(picked.rootPath);
+      if (attach.error) {
         setAddRepoState('error');
-        setAddRepoError(result.error);
-        return;
+        setAddRepoError(attach.error);
       }
-
-      setRepos(result.repos);
-      await refreshRepoStates(result.repos);
-      await onProjectAgentPrefsRefresh?.();
-      const added = result.repos.find((r) => r.rootPath === picked.rootPath);
-      if (added) {
-        setExpanded((prev) => ({ ...prev, [added.id]: true }));
-      }
-      setAddRepoState('saved');
-      window.setTimeout(() => {
-        setAddRepoState((state) => (state === 'saved' ? 'idle' : state));
-      }, 1500);
     } catch (err) {
       setAddRepoState('error');
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
-  }, [gitIntegrationEnabled, multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates]);
+  }, [attachLocalRepoAtPath, gitIntegrationEnabled, multiRepoLocalManagementEnabled]);
 
-  const handleAddCloudRepo = useCallback(async () => {
+  const handleAddCloudRepoFromLocalFolder = useCallback(async () => {
     if (!multiRepoCloudBindingsEnabled || project.kind !== 'cloud') return;
     setAddRepoState('saving');
     setAddRepoError(null);
@@ -1400,70 +1493,33 @@ function ProjectConfigPane({
         setAddRepoError(repoDirectoryPickErrorMessage(picked.error));
         return;
       }
-
-      const existingRoot = project.sharedRepos.find((sr) => {
-        const bound = project.repoMachineBindings[sr.id]?.rootPath;
-        return bound === picked.rootPath;
-      });
-      if (existingRoot) {
+      const attach = await attachCloudRepoAtPath(picked.rootPath);
+      if (attach.error) {
         setAddRepoState('error');
-        setAddRepoError('That local folder is already bound to this cloud project.');
-        return;
+        setAddRepoError(attach.error);
       }
-
-      const existingIds = new Set(project.sharedRepos.map((r) => r.id));
-      let repoId = deriveRepoIdForRootPath({
-        projectId: project.id,
-        rootPath: picked.rootPath,
-      });
-      let salt = 1;
-      while (existingIds.has(repoId)) {
-        repoId = deriveRepoIdForRootPath({
-          projectId: project.id,
-          rootPath: picked.rootPath,
-          salt: `dup-${salt}`,
-        });
-        salt += 1;
-      }
-
-      const nextRepo: CloudSharedRepo = {
-        id: repoId,
-        name: repoRootBasename(picked.rootPath) || `repo:${repoId.slice(0, 7)}`,
-        baseBranch: 'main',
-      };
-      const nextSharedRepos = [...project.sharedRepos, nextRepo];
-      await updateCloudProjectRepos(project.id, nextSharedRepos);
-      onCloudSharedReposChanged?.(nextSharedRepos);
-
-      const bindResult = await window.electronAPI.project.bindCloudSharedRepo({
-        repoId,
-        rootPath: picked.rootPath,
-        sharedRepos: nextSharedRepos,
-      });
-      if ('error' in bindResult) {
-        setAddRepoState('error');
-        setAddRepoError(bindResult.error);
-        return;
-      }
-
-      await refresh();
-      await onProjectAgentPrefsRefresh?.();
-      setAddRepoState('saved');
-      window.setTimeout(() => {
-        setAddRepoState((state) => (state === 'saved' ? 'idle' : state));
-      }, 1500);
     } catch (err) {
       setAddRepoState('error');
       setAddRepoError(err instanceof Error ? err.message : String(err));
     }
-  }, [
-    gitIntegrationEnabled,
-    multiRepoCloudBindingsEnabled,
-    onCloudSharedReposChanged,
-    onProjectAgentPrefsRefresh,
-    project,
-    refresh,
-  ]);
+  }, [attachCloudRepoAtPath, gitIntegrationEnabled, multiRepoCloudBindingsEnabled, project.kind]);
+
+  const handleGithubRepoAttached = useCallback(
+    async (rootPath: string) => {
+      setAddRepoState('saving');
+      setAddRepoError(null);
+      if (multiRepoCloudBindingsEnabled && project.kind === 'cloud') {
+        return attachCloudRepoAtPath(rootPath);
+      }
+      return attachLocalRepoAtPath(rootPath);
+    },
+    [
+      attachCloudRepoAtPath,
+      attachLocalRepoAtPath,
+      multiRepoCloudBindingsEnabled,
+      project.kind,
+    ],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -2102,24 +2158,19 @@ function ProjectConfigPane({
                   ? `${project.kind === 'cloud' ? project.sharedRepos.length : 0} shared`
                   : `${repos?.length ?? 0} ${repos?.length === 1 ? 'repo' : 'repos'}`}
               </span>
-              {multiRepoLocalManagementEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => void handleAddRepo()}
-                  disabled={addRepoState === 'saving'}
-                  className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {addRepoState === 'saving' ? 'Adding…' : 'Add repo'}
-                </button>
-              ) : multiRepoCloudBindingsEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => void handleAddCloudRepo()}
-                  disabled={addRepoState === 'saving'}
-                  className="rounded-md border border-border bg-muted px-2.5 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
-                >
-                  {addRepoState === 'saving' ? 'Adding…' : 'Add repo'}
-                </button>
+              {multiRepoLocalManagementEnabled || multiRepoCloudBindingsEnabled ? (
+                <AddRepoDropdown
+                  busy={addRepoState === 'saving'}
+                  gitIntegrationEnabled={gitIntegrationEnabled}
+                  onFromLocalFolder={() => {
+                    if (multiRepoCloudBindingsEnabled && project.kind === 'cloud') {
+                      void handleAddCloudRepoFromLocalFolder();
+                      return;
+                    }
+                    void handleAddRepoFromLocalFolder();
+                  }}
+                  onFromGithub={() => setGithubRepoModalOpen(true)}
+                />
               ) : null}
             </div>
           </div>
@@ -2196,6 +2247,12 @@ function ProjectConfigPane({
             </>
           )}
         </section>
+
+        <GithubRepoOnboardingModal
+          open={githubRepoModalOpen}
+          onOpenChange={setGithubRepoModalOpen}
+          onAttachClone={handleGithubRepoAttached}
+        />
 
         <section
           className="mt-4 rounded-xl border border-border bg-card px-4"
