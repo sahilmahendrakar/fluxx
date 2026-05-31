@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GlobalOnboardingCliId } from '../globalOnboarding/types';
 import {
   GLOBAL_ONBOARDING_CLI_COMMANDS,
@@ -23,6 +23,10 @@ function stubRunner(
 }
 
 describe('globalOnboardingCliProbe', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('probes all standard commands', async () => {
     const results = await probeAllGlobalOnboardingClis(
       100,
@@ -93,5 +97,54 @@ describe('globalOnboardingCliProbe', () => {
       command: 'agent',
       status: 'missing',
     });
+  });
+
+  it('maps spawn non-ENOENT errors to error status', async () => {
+    const { spawn } = await import('node:child_process');
+    const spawnMock = vi.mocked(spawn);
+
+    const makeStream = () => {
+      const stream = new EventEmitter() as EventEmitter & { setEncoding: () => void };
+      stream.setEncoding = vi.fn();
+      return stream;
+    };
+    const errorChild = Object.assign(new EventEmitter(), {
+      stdout: makeStream(),
+      stderr: makeStream(),
+      kill: vi.fn(),
+    });
+    spawnMock.mockImplementationOnce(() => errorChild as never);
+    const errorPromise = probeGlobalOnboardingCli('codex', 500);
+    errorChild.emit('error', Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+    await expect(errorPromise).resolves.toMatchObject({
+      command: 'codex',
+      status: 'error',
+    });
+  });
+
+  it('times out the default runner when the child never exits', async () => {
+    vi.useFakeTimers();
+    const { spawn } = await import('node:child_process');
+    const spawnMock = vi.mocked(spawn);
+
+    const makeStream = () => {
+      const stream = new EventEmitter() as EventEmitter & { setEncoding: () => void };
+      stream.setEncoding = vi.fn();
+      return stream;
+    };
+    const hangingChild = Object.assign(new EventEmitter(), {
+      stdout: makeStream(),
+      stderr: makeStream(),
+      kill: vi.fn(),
+    });
+    spawnMock.mockImplementationOnce(() => hangingChild as never);
+    const timeoutPromise = probeGlobalOnboardingCli('gh', 50);
+    await vi.advanceTimersByTimeAsync(60);
+    await expect(timeoutPromise).resolves.toMatchObject({
+      command: 'gh',
+      status: 'timeout',
+      message: expect.stringContaining('Timed out'),
+    });
+    expect(hangingChild.kill).toHaveBeenCalled();
   });
 });
