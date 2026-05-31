@@ -329,6 +329,8 @@ import {
   cloudBindingAgentPrefsIfUnset,
   mergeProjectPlanningDefaultsWithGlobal,
   readGlobalOnboardingDefaultAgent,
+  readGlobalOnboardingGithubFeaturesEnabled,
+  resolveGitIntegrationEnabledForNewProject,
   syncGlobalOnboardingAgentToActiveProject,
 } from './globalOnboarding/globalDefaultAgent';
 import { registerValidationPackProjectConfigIpc } from './main/validationPackProjectConfigIpc';
@@ -2969,7 +2971,11 @@ app.whenReady().then(async () => {
       if (normalized.gitIntegrationEnabled === undefined) {
         normalized = {
           ...normalized,
-          gitIntegrationEnabled: await inferGitIntegrationEnabledForProjectCreate(normalized),
+          gitIntegrationEnabled: await resolveGitIntegrationEnabledForNewProject(
+            normalized,
+            readGlobalOnboardingGithubFeaturesEnabled(appStateStore.get()),
+            inferGitIntegrationEnabledForProjectCreate,
+          ),
         };
       }
       const validated = await validateLocalProjectCreateInput(normalized, {

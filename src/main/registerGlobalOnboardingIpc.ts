@@ -51,9 +51,18 @@ export function registerGlobalOnboardingIpc(
     return { ok: true };
   });
 
-  ipcMain.handle('globalOnboarding:complete', async (): Promise<{ ok: true }> => {
+  ipcMain.handle('globalOnboarding:complete', async (
+    _event,
+    rawGithubFeaturesEnabled: unknown,
+  ): Promise<{ ok: true }> => {
     const stored = readStoredGlobalOnboarding(appStateStore);
-    const next = buildGlobalOnboardingPatch(stored, { status: 'completed' });
+    const patch: Partial<
+      Pick<GlobalOnboardingStateV1, 'status' | 'githubFeaturesEnabled'>
+    > = { status: 'completed' };
+    if (typeof rawGithubFeaturesEnabled === 'boolean') {
+      patch.githubFeaturesEnabled = rawGithubFeaturesEnabled;
+    }
+    const next = buildGlobalOnboardingPatch(stored, patch);
     await appStateStore.set({ globalOnboarding: next });
     return { ok: true };
   });

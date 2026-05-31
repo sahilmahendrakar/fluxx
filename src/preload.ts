@@ -1055,8 +1055,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       >,
     skip: () =>
       ipcRenderer.invoke('globalOnboarding:skip') as Promise<{ ok: true }>,
-    complete: () =>
-      ipcRenderer.invoke('globalOnboarding:complete') as Promise<{ ok: true }>,
+    complete: (githubFeaturesEnabled: boolean) =>
+      ipcRenderer.invoke('globalOnboarding:complete', githubFeaturesEnabled) as Promise<{
+        ok: true;
+      }>,
     selectAgent: (agent: Agent) =>
       ipcRenderer.invoke('globalOnboarding:selectAgent', agent) as Promise<
         { ok: true } | { error: string }

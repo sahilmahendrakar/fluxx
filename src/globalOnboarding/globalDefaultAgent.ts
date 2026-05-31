@@ -16,6 +16,27 @@ export function readGlobalOnboardingDefaultAgent(snapshot: {
   return isAgent(agent) ? agent : undefined;
 }
 
+/** Global GitHub/git preference from onboarding; undefined when unset (infer at create time). */
+export function readGlobalOnboardingGithubFeaturesEnabled(snapshot: {
+  globalOnboarding?: GlobalOnboardingStateV1;
+}): boolean | undefined {
+  const value = snapshot.globalOnboarding?.githubFeaturesEnabled;
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/**
+ * Resolves git integration for new projects: explicit global opt-out wins;
+ * otherwise infer from the primary folder (git repo vs plain folder).
+ */
+export async function resolveGitIntegrationEnabledForNewProject(
+  input: import('../projectCreate').ProjectCreateInput,
+  globalGithubFeaturesEnabled: boolean | undefined,
+  infer: (input: import('../projectCreate').ProjectCreateInput) => Promise<boolean>,
+): Promise<boolean> {
+  if (globalGithubFeaturesEnabled === false) return false;
+  return infer(input);
+}
+
 /**
  * Fills planning/task agent on create when the payload omits them.
  * Explicit project-specific defaults win.

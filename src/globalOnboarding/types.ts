@@ -12,6 +12,8 @@ export interface GlobalOnboardingStateV1 {
   updatedAt?: string;
   /** Global default agent chosen during onboarding. */
   selectedAgent?: Agent;
+  /** When false, new projects default to gitless (folder-only) mode. */
+  githubFeaturesEnabled?: boolean;
 }
 
 export type GlobalOnboardingCliId = 'claude' | 'agent' | 'codex' | 'gh';
@@ -31,4 +33,5 @@ export interface ResolvedGlobalOnboardingState {
   /** True when `FLUXX_FORCE_GLOBAL_ONBOARDING` treats the user as new. */
   forced: boolean;
   selectedAgent?: Agent;
+  githubFeaturesEnabled?: boolean;
 }

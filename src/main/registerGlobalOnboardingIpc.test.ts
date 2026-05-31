@@ -118,8 +118,11 @@ describe('registerGlobalOnboardingIpc', () => {
     expect(store.get().globalOnboarding?.status).toBe('skipped');
     expect(store.get().globalOnboarding?.updatedAt).toMatch(/^\d{4}-/);
 
-    await expect(invokeIpc('globalOnboarding:complete')).resolves.toEqual({ ok: true });
+    await expect(invokeIpc('globalOnboarding:complete', null, false)).resolves.toEqual({
+      ok: true,
+    });
     expect(store.get().globalOnboarding?.status).toBe('completed');
+    expect(store.get().globalOnboarding?.githubFeaturesEnabled).toBe(false);
   });
 
   it('selectAgent rejects invalid agents and syncs valid selections', async () => {

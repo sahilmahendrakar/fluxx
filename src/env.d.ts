@@ -739,7 +739,7 @@ declare global {
           import('./globalOnboarding/types').GlobalOnboardingCliProbeResult[]
         >;
         skip: () => Promise<{ ok: true }>;
-        complete: () => Promise<{ ok: true }>;
+        complete: (githubFeaturesEnabled: boolean) => Promise<{ ok: true }>;
         selectAgent: (agent: Agent) => Promise<{ ok: true } | { error: string }>;
       };
       window: {

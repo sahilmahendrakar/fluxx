@@ -117,6 +117,27 @@ describe('globalOnboardingState', () => {
     expect(next.updatedAt).toMatch(/^\d{4}-/);
   });
 
+  it('buildGlobalOnboardingPatch persists githubFeaturesEnabled', () => {
+    const stored = { version: 1 as const, status: 'pending' as const };
+    expect(
+      buildGlobalOnboardingPatch(stored, { githubFeaturesEnabled: false }).githubFeaturesEnabled,
+    ).toBe(false);
+  });
+
+  it('normalizes githubFeaturesEnabled when present', () => {
+    expect(
+      normalizeGlobalOnboardingState({
+        version: GLOBAL_ONBOARDING_STATE_VERSION,
+        status: 'completed',
+        githubFeaturesEnabled: false,
+      }),
+    ).toEqual({
+      version: 1,
+      status: 'completed',
+      githubFeaturesEnabled: false,
+    });
+  });
+
   it('resolveGlobalOnboardingState exposes renderer-facing fields', () => {
     expect(
       resolveGlobalOnboardingState({
@@ -125,6 +146,13 @@ describe('globalOnboardingState', () => {
         selectedAgent: 'codex',
       }),
     ).toEqual({ status: 'completed', forced: false, selectedAgent: 'codex' });
+    expect(
+      resolveGlobalOnboardingState({
+        version: 1,
+        status: 'completed',
+        githubFeaturesEnabled: false,
+      }),
+    ).toEqual({ status: 'completed', forced: false, githubFeaturesEnabled: false });
     expect(
       resolveGlobalOnboardingState({ version: 1, status: 'skipped' }, { force: true }),
     ).toEqual({ status: 'pending', forced: true });

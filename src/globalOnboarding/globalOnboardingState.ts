@@ -59,6 +59,9 @@ export function normalizeGlobalOnboardingState(
     if (!isAgent(o.selectedAgent)) return undefined;
     out.selectedAgent = o.selectedAgent;
   }
+  if (typeof o.githubFeaturesEnabled === 'boolean') {
+    out.githubFeaturesEnabled = o.githubFeaturesEnabled;
+  }
   return out;
 }
 
@@ -98,12 +101,17 @@ export function resolveGlobalOnboardingState(
     status: resolveEffectiveGlobalOnboardingStatus(stored, { force: forced }),
     forced,
     ...(stored.selectedAgent ? { selectedAgent: stored.selectedAgent } : {}),
+    ...(typeof stored.githubFeaturesEnabled === 'boolean'
+      ? { githubFeaturesEnabled: stored.githubFeaturesEnabled }
+      : {}),
   };
 }
 
 export function buildGlobalOnboardingPatch(
   stored: GlobalOnboardingStateV1,
-  patch: Partial<Pick<GlobalOnboardingStateV1, 'status' | 'selectedAgent'>>,
+  patch: Partial<
+    Pick<GlobalOnboardingStateV1, 'status' | 'selectedAgent' | 'githubFeaturesEnabled'>
+  >,
 ): GlobalOnboardingStateV1 {
   const next: GlobalOnboardingStateV1 = {
     version: GLOBAL_ONBOARDING_STATE_VERSION,
@@ -112,5 +120,10 @@ export function buildGlobalOnboardingPatch(
   };
   const agent = patch.selectedAgent ?? stored.selectedAgent;
   if (agent) next.selectedAgent = agent;
+  const githubFeaturesEnabled =
+    patch.githubFeaturesEnabled ?? stored.githubFeaturesEnabled;
+  if (typeof githubFeaturesEnabled === 'boolean') {
+    next.githubFeaturesEnabled = githubFeaturesEnabled;
+  }
   return next;
 }

@@ -275,10 +275,13 @@ function GitHubStepHeader() {
   );
 }
 
-function GitHubStepBody(props: { ghProbe: GlobalOnboardingCliProbeResult | undefined; probeLoading: boolean }) {
-  const { ghProbe, probeLoading } = props;
-  /** UI-only until GitHub feature prefs are wired in main. */
-  const [githubFeaturesEnabled, setGithubFeaturesEnabled] = useState(true);
+function GitHubStepBody(props: {
+  ghProbe: GlobalOnboardingCliProbeResult | undefined;
+  probeLoading: boolean;
+  githubFeaturesEnabled: boolean;
+  onGithubFeaturesEnabledChange: (enabled: boolean) => void;
+}) {
+  const { ghProbe, probeLoading, githubFeaturesEnabled, onGithubFeaturesEnabledChange } = props;
 
   const header = <GitHubStepHeader />;
 
@@ -342,7 +345,7 @@ function GitHubStepBody(props: { ghProbe: GlobalOnboardingCliProbeResult | undef
           <Switch
             id="global-onboarding-github-features"
             checked={githubFeaturesEnabled}
-            onCheckedChange={setGithubFeaturesEnabled}
+            onCheckedChange={onGithubFeaturesEnabledChange}
           />
         </div>
       </div>
@@ -401,6 +404,7 @@ export function GlobalOnboardingDialog() {
   const [step, setStep] = useState<OnboardingStep>('welcome');
   const [cliProbes, setCliProbes] = useState<GlobalOnboardingCliProbeResult[] | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [githubFeaturesEnabled, setGithubFeaturesEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -431,6 +435,9 @@ export function GlobalOnboardingDialog() {
           setSelectedAgent(firstDetected.id);
         } else {
           setSelectedAgent(null);
+        }
+        if (typeof state.githubFeaturesEnabled === 'boolean') {
+          setGithubFeaturesEnabled(state.githubFeaturesEnabled);
         }
       } catch (err) {
         if (cancelled) return;
@@ -503,14 +510,14 @@ export function GlobalOnboardingDialog() {
     setError(null);
     setBusy(true);
     try {
-      await window.electronAPI.globalOnboarding.complete();
+      await window.electronAPI.globalOnboarding.complete(githubFeaturesEnabled);
       setFlowPhase('hidden');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not finish onboarding.');
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [githubFeaturesEnabled]);
 
   if (flowPhase !== 'active') {
     return null;
@@ -540,7 +547,12 @@ export function GlobalOnboardingDialog() {
               onSelectAgent={setSelectedAgent}
             />
           ) : (
-            <GitHubStepBody ghProbe={ghProbe} probeLoading={cliProbes == null} />
+            <GitHubStepBody
+              ghProbe={ghProbe}
+              probeLoading={cliProbes == null}
+              githubFeaturesEnabled={githubFeaturesEnabled}
+              onGithubFeaturesEnabledChange={setGithubFeaturesEnabled}
+            />
           )}
 
           {error ? (

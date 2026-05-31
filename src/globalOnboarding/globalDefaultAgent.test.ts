@@ -3,6 +3,8 @@ import {
   cloudBindingAgentPrefsIfUnset,
   mergeProjectPlanningDefaultsWithGlobal,
   readGlobalOnboardingDefaultAgent,
+  readGlobalOnboardingGithubFeaturesEnabled,
+  resolveGitIntegrationEnabledForNewProject,
   syncGlobalOnboardingAgentToActiveProject,
 } from './globalDefaultAgent';
 import { GLOBAL_ONBOARDING_STATE_VERSION } from './types';
@@ -30,6 +32,51 @@ describe('readGlobalOnboardingDefaultAgent', () => {
         },
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('readGlobalOnboardingGithubFeaturesEnabled', () => {
+  it('returns stored preference when boolean', () => {
+    expect(
+      readGlobalOnboardingGithubFeaturesEnabled({
+        globalOnboarding: {
+          version: GLOBAL_ONBOARDING_STATE_VERSION,
+          status: 'completed',
+          githubFeaturesEnabled: false,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('returns undefined when unset', () => {
+    expect(readGlobalOnboardingGithubFeaturesEnabled({})).toBeUndefined();
+  });
+});
+
+describe('resolveGitIntegrationEnabledForNewProject', () => {
+  const input = {
+    name: 'Test',
+    repos: [{ rootPath: '/tmp/repo' }],
+    syncMode: 'local-only' as const,
+  };
+
+  it('forces gitless mode when global GitHub features are disabled', async () => {
+    const infer = vi.fn(async () => true);
+    await expect(
+      resolveGitIntegrationEnabledForNewProject(input, false, infer),
+    ).resolves.toBe(false);
+    expect(infer).not.toHaveBeenCalled();
+  });
+
+  it('infers when global preference is true or unset', async () => {
+    const infer = vi.fn(async () => true);
+    await expect(
+      resolveGitIntegrationEnabledForNewProject(input, true, infer),
+    ).resolves.toBe(true);
+    await expect(
+      resolveGitIntegrationEnabledForNewProject(input, undefined, infer),
+    ).resolves.toBe(true);
+    expect(infer).toHaveBeenCalledTimes(2);
   });
 });
 
