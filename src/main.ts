@@ -332,6 +332,7 @@ import {
   syncGlobalOnboardingAgentToActiveProject,
 } from './globalOnboarding/globalDefaultAgent';
 import { registerValidationPackProjectConfigIpc } from './main/validationPackProjectConfigIpc';
+import { registerGithubRepoOnboardingIpc } from './main/githubRepoOnboardingIpc';
 import {
   applyInitialAppearanceChrome,
   registerAppearanceIpc,
@@ -6552,6 +6553,7 @@ app.whenReady().then(async () => {
   );
 
   registerValidationPackProjectConfigIpc(activeProjectDir);
+  registerGithubRepoOnboardingIpc();
 
   const planningDocsBundle = createPlanningDocsProviderBundle(resolvePlanningDocsDir);
 

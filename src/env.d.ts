@@ -620,6 +620,25 @@ declare global {
           task: Task;
         }) => Promise<{ ok: true } | { error: string }>;
       };
+      githubRepoOnboarding: {
+        checkPrerequisites: () => Promise<
+          import('./githubRepoOnboarding/types').GithubCliPrerequisitesResult
+        >;
+        listRepos: (
+          payload?: import('./githubRepoOnboarding/types').GithubRepoListInput,
+        ) => Promise<import('./githubRepoOnboarding/types').GithubRepoListResult>;
+        createRepo: (
+          payload: import('./githubRepoOnboarding/types').GithubRepoCreateInput,
+        ) => Promise<import('./githubRepoOnboarding/types').GithubRepoCreateResult>;
+        cloneRepo: (
+          payload: import('./githubRepoOnboarding/types').GithubRepoCloneInput,
+        ) => Promise<import('./githubRepoOnboarding/types').GithubRepoCloneResult>;
+        checkCloneDestination: (
+          payload: import('./githubRepoOnboarding/types').GithubCloneDestinationCheckInput,
+        ) => Promise<
+          import('./githubRepoOnboarding/types').GithubCloneDestinationCheckResult
+        >;
+      };
       validationPacks: {
         list: () => Promise<{ ok: true; packs: ValidationPackSummary[] } | { error: string }>;
         get: (

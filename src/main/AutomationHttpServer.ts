@@ -1,10 +1,15 @@
 import http from 'node:http';
+import type {
+  GithubRepoOnboardingAutomationOp,
+  GithubRepoOnboardingErrorCode,
+} from '../githubRepoOnboarding/types';
 import type { ActiveProjectKey } from '../types';
 import type { AutomationBridgeErrorCode, AutomationBridgeOp } from '../rendererAutomationBridge';
 import { activeProjectKeysEqual } from './activeProjectKey';
 
 export type FluxAutomationHttpOp =
   | AutomationBridgeOp
+  | GithubRepoOnboardingAutomationOp
   | 'tasks.start'
   | 'validation.run'
   | 'validation.launch'
@@ -25,7 +30,12 @@ export type FluxAutomationInvokeResponse =
   | {
       ok: false;
       error: string;
-      code?: AutomationBridgeErrorCode | 'NO_ACTIVE_PROJECT' | 'UNAUTHORIZED' | 'VALIDATION_DISABLED';
+      code?:
+        | AutomationBridgeErrorCode
+        | GithubRepoOnboardingErrorCode
+        | 'NO_ACTIVE_PROJECT'
+        | 'UNAUTHORIZED'
+        | 'VALIDATION_DISABLED';
     };
 
 function readJsonBody(req: http.IncomingMessage): Promise<string> {

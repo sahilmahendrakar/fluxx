@@ -895,6 +895,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
         { ok: true } | { error: string }
       >,
   },
+  githubRepoOnboarding: {
+    checkPrerequisites: () =>
+      ipcRenderer.invoke('githubRepoOnboarding:checkPrerequisites') as Promise<
+        import('./githubRepoOnboarding/types').GithubCliPrerequisitesResult
+      >,
+    listRepos: (payload?: import('./githubRepoOnboarding/types').GithubRepoListInput) =>
+      ipcRenderer.invoke('githubRepoOnboarding:listRepos', payload ?? {}) as Promise<
+        import('./githubRepoOnboarding/types').GithubRepoListResult
+      >,
+    createRepo: (payload: import('./githubRepoOnboarding/types').GithubRepoCreateInput) =>
+      ipcRenderer.invoke('githubRepoOnboarding:createRepo', payload) as Promise<
+        import('./githubRepoOnboarding/types').GithubRepoCreateResult
+      >,
+    cloneRepo: (payload: import('./githubRepoOnboarding/types').GithubRepoCloneInput) =>
+      ipcRenderer.invoke('githubRepoOnboarding:cloneRepo', payload) as Promise<
+        import('./githubRepoOnboarding/types').GithubRepoCloneResult
+      >,
+    checkCloneDestination: (
+      payload: import('./githubRepoOnboarding/types').GithubCloneDestinationCheckInput,
+    ) =>
+      ipcRenderer.invoke('githubRepoOnboarding:checkCloneDestination', payload) as Promise<
+        import('./githubRepoOnboarding/types').GithubCloneDestinationCheckResult
+      >,
+  },
   validationPacks: {
     list: () =>
       ipcRenderer.invoke('validationPacks:list') as Promise<

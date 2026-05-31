@@ -48,6 +48,10 @@ import type { TaskStore } from './TaskStore';
 import type { LocalBindingStore } from './LocalBindingStore';
 import type { FluxAutomationHttpOp, FluxAutomationInvokeResponse } from './AutomationHttpServer';
 import {
+  isGithubRepoOnboardingAutomationOp,
+  runGithubRepoOnboardingAutomation,
+} from './githubRepoOnboardingAutomation';
+import {
   automationRunValidationArtifacts,
   automationRunValidationFinish,
   automationRunValidationIngest,
@@ -967,6 +971,9 @@ export async function runFluxAutomationInvocation(
       return automationRunValidationFinish(vh, { runId: p.runId });
     }
     default:
+      if (isGithubRepoOnboardingAutomationOp(op)) {
+        return runGithubRepoOnboardingAutomation(op, payload);
+      }
       return { ok: false, error: `Unknown op: ${String(op)}` };
   }
 }
