@@ -17,6 +17,10 @@ import {
   deriveStablePrimaryRepoIdForProject,
 } from '../repoIdentity';
 import {
+  DUPLICATE_GITHUB_REPO_MESSAGE,
+  findDuplicateLocalRepoByGithubSlug,
+} from '../githubRepoOnboarding/githubRepoAttach';
+import {
   canonicalCloudProjectDir,
   canonicalLocalProjectDir,
   FLUXX_PROJECTS_SUBDIR,
@@ -187,6 +191,12 @@ function parseRepoConfig(value: unknown): ParsedRepoConfig | null {
       : DEFAULT_BASE_BRANCH,
     setupScript: typeof r.setupScript === 'string' ? r.setupScript : undefined,
     env: typeof r.env === 'string' ? r.env : undefined,
+    ...(typeof r.githubOwner === 'string' && r.githubOwner.trim()
+      ? { githubOwner: r.githubOwner.trim() }
+      : {}),
+    ...(typeof r.githubName === 'string' && r.githubName.trim()
+      ? { githubName: r.githubName.trim() }
+      : {}),
   };
 }
 
@@ -245,6 +255,8 @@ export function backfillRepoIdentities(params: {
       baseBranch: r.baseBranch,
       ...(r.setupScript !== undefined ? { setupScript: r.setupScript } : {}),
       ...(r.env !== undefined ? { env: r.env } : {}),
+      ...(r.githubOwner !== undefined ? { githubOwner: r.githubOwner } : {}),
+      ...(r.githubName !== undefined ? { githubName: r.githubName } : {}),
     } satisfies RepoConfig;
   });
   return { repos: out, mutated };
@@ -603,7 +615,16 @@ export class ProjectStore {
    * Append a git working tree to `repos[]`. Id/name are assigned via
    * {@link backfillRepoIdentities}.
    */
-  async addRepoAt(projectDir: string, rootPath: string): Promise<RepoConfig[]> {
+  async addRepoAt(
+    projectDir: string,
+    rootPath: string,
+    options?: {
+      githubOwner?: string;
+      githubName?: string;
+      name?: string;
+      baseBranch?: string;
+    },
+  ): Promise<RepoConfig[]> {
     const resolved = path.resolve(rootPath);
     await assertGitRepoRoot(resolved);
     const configPath = path.join(projectDir, 'config.json');
@@ -613,10 +634,28 @@ export class ProjectStore {
     if (parsed.repos.some((r) => path.resolve(r.rootPath) === resolved)) {
       throw new Error('That git repository is already part of this project');
     }
+    const githubOwner = options?.githubOwner?.trim().toLowerCase();
+    const githubName = options?.githubName?.trim().toLowerCase().replace(/\.git$/i, '');
+    if (githubOwner && githubName) {
+      const slug = { owner: githubOwner, repo: githubName };
+      const { repos: existingRepos } = backfillRepoIdentities({
+        projectId: parsed.id,
+        primaryRootPath: parsed.rootPath,
+        repos: parsed.repos,
+      });
+      if (findDuplicateLocalRepoByGithubSlug(existingRepos, slug)) {
+        throw new Error(DUPLICATE_GITHUB_REPO_MESSAGE);
+      }
+    }
     const isFirstRepo = parsed.repos.length === 0;
+    const branch =
+      (options?.baseBranch ?? '').trim() || DEFAULT_BASE_BRANCH;
     const extra: ParsedRepoConfig = {
       rootPath: resolved,
-      baseBranch: DEFAULT_BASE_BRANCH,
+      baseBranch: branch,
+      ...(options?.name?.trim() ? { name: options.name.trim() } : {}),
+      ...(githubOwner ? { githubOwner } : {}),
+      ...(githubName ? { githubName } : {}),
     };
     const primaryRootPath = isFirstRepo ? resolved : parsed.rootPath;
     const { repos } = backfillRepoIdentities({

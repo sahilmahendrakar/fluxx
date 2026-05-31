@@ -99,3 +99,5 @@ export type GithubRepoOnboardingAutomationOp =
   | 'repo.github.create'
   | 'repo.github.clone'
   | 'repo.github.checkCloneDestination';
+
+export type { GithubRepoAttachInput, GithubRepoAttachMetadata } from './githubRepoAttach';

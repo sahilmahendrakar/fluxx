@@ -2535,7 +2535,13 @@ app.whenReady().then(async () => {
     'project:addRepo',
     async (
       _e,
-      payload: { rootPath: string },
+      payload: {
+        rootPath: string;
+        githubOwner?: string;
+        githubName?: string;
+        name?: string;
+        baseBranch?: string;
+      },
     ): Promise<
       | { ok: true; repos: RepoConfig[] }
       | { error: string }
@@ -2545,7 +2551,12 @@ app.whenReady().then(async () => {
         if (!root) {
           return { error: 'rootPath is required' };
         }
-        const repos = await projectStore.addRepoAt(activeProjectDir(), root);
+        const repos = await projectStore.addRepoAt(activeProjectDir(), root, {
+          githubOwner: payload.githubOwner,
+          githubName: payload.githubName,
+          name: payload.name,
+          baseBranch: payload.baseBranch,
+        });
         return { ok: true, repos };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

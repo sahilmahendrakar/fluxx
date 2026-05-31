@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import type {
   GithubCliPrerequisites,
   GithubCliRepoSummary,
+  GithubRepoAttachInput,
   GithubRepoVisibility,
 } from '../../githubRepoOnboarding/types';
 import { GitHubBrandIcon } from '../agentProviderIcons';
@@ -41,8 +42,8 @@ export function GithubRepoOnboardingModal({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Attach an existing local clone at `rootPath` (same path as the local folder picker). */
-  onAttachClone: (rootPath: string) => Promise<{ error?: string }>;
+  /** Attach a validated local clone (local `addRepo` or cloud shared repo + bind). */
+  onAttachClone: (input: GithubRepoAttachInput) => Promise<{ error?: string }>;
 }) {
   const [step, setStep] = useState<GithubRepoOnboardingModalStep>('prerequisites');
   const [prerequisites, setPrerequisites] = useState<GithubCliPrerequisites | null>(null);
@@ -188,8 +189,22 @@ export function GithubRepoOnboardingModal({
     }
   }, []);
 
+  const githubAttachMetadata = useCallback(
+    (repoSlug: string, url?: string, defaultBranch?: string) => ({
+      nameWithOwner: repoSlug,
+      ...(url?.trim() ? { url: url.trim() } : {}),
+      ...(defaultBranch?.trim() ? { defaultBranch: defaultBranch.trim() } : {}),
+    }),
+    [],
+  );
+
   const runCloneAndAttach = useCallback(
-    async (repoSlug: string, destination: string, mode: SourceMode) => {
+    async (
+      repoSlug: string,
+      destination: string,
+      mode: SourceMode,
+      attachMeta?: { url?: string; defaultBranch?: string },
+    ) => {
       setStep('progress');
       setProgressPhase('clone');
       setWorkingError(null);
@@ -204,7 +219,10 @@ export function GithubRepoOnboardingModal({
           return;
         }
         setProgressPhase('attach');
-        const attach = await onAttachClone(cloneResult.destination);
+        const attach = await onAttachClone({
+          rootPath: cloneResult.destination,
+          github: githubAttachMetadata(repoSlug, attachMeta?.url, attachMeta?.defaultBranch),
+        });
         if (attach.error) {
           setWorkingError(attach.error);
           setStep('error');
@@ -221,7 +239,7 @@ export function GithubRepoOnboardingModal({
         setStep('error');
       }
     },
-    [onAttachClone],
+    [githubAttachMetadata, onAttachClone],
   );
 
   const runWorkflow = useCallback(async () => {
@@ -239,7 +257,11 @@ export function GithubRepoOnboardingModal({
         setDestinationError('Select a GitHub repository.');
         return;
       }
-      await runCloneAndAttach(repoSlug, destination, 'existing');
+      const summary = repos.find((r) => r.nameWithOwner === repoSlug);
+      await runCloneAndAttach(repoSlug, destination, 'existing', {
+        url: summary?.url,
+        defaultBranch: summary?.defaultBranchRef?.name,
+      });
       return;
     }
 
@@ -253,6 +275,7 @@ export function GithubRepoOnboardingModal({
     setWorkingError(null);
 
     let repoSlug = createdRepoSlug;
+    let createdUrl: string | undefined;
     if (!repoSlug) {
       setProgressPhase('create');
       try {
@@ -265,6 +288,7 @@ export function GithubRepoOnboardingModal({
           return;
         }
         repoSlug = createResult.nameWithOwner;
+        createdUrl = createResult.url;
         setCreatedRepoSlug(repoSlug);
       } catch (err) {
         setWorkingError(err instanceof Error ? err.message : String(err));
@@ -273,12 +297,13 @@ export function GithubRepoOnboardingModal({
       }
     }
 
-    await runCloneAndAttach(repoSlug, destination, 'new');
+    await runCloneAndAttach(repoSlug, destination, 'new', { url: createdUrl });
   }, [
     checkDestination,
     cloneDestination,
     createdRepoSlug,
     newRepoForm,
+    repos,
     runCloneAndAttach,
     selectedRepo,
     sourceMode,

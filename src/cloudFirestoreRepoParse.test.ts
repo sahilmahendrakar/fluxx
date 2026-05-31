@@ -20,6 +20,28 @@ describe('parseFirestoreRepos', () => {
     ]);
   });
 
+  it('parses optional githubOwner and githubName', () => {
+    expect(
+      parseFirestoreRepos([
+        {
+          id: 'r1',
+          name: 'App',
+          baseBranch: 'main',
+          githubOwner: ' acme ',
+          githubName: ' app ',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'r1',
+        name: 'App',
+        baseBranch: 'main',
+        githubOwner: 'acme',
+        githubName: 'app',
+      },
+    ]);
+  });
+
   it('skips invalid entries and trims repo ids', () => {
     expect(
       parseFirestoreRepos([
