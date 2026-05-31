@@ -3517,9 +3517,9 @@ export default function App() {
     );
   }
 
-  if (!project) {
-    return (
-      <>
+  return (
+    <>
+      {!project ? (
         <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
           <MacTitleBarInset />
           <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -3532,12 +3532,7 @@ export default function App() {
             />
           </div>
         </div>
-        <GlobalOnboardingDialog />
-      </>
-    );
-  }
-
-  return (
+      ) : (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <MacTitleBarInset />
       <div className="app-window-no-drag flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -4067,8 +4062,10 @@ export default function App() {
         />
       ) : null}
       {cloudPlanningDocsSeedModal}
-      <GlobalOnboardingDialog />
     </div>
+      )}
+      <GlobalOnboardingDialog />
+    </>
   );
 }
 

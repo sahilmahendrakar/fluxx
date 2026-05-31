@@ -116,4 +116,17 @@ describe('globalOnboardingState', () => {
     expect(next.selectedAgent).toBe('claude-code');
     expect(next.updatedAt).toMatch(/^\d{4}-/);
   });
+
+  it('resolveGlobalOnboardingState exposes renderer-facing fields', () => {
+    expect(
+      resolveGlobalOnboardingState({
+        version: 1,
+        status: 'completed',
+        selectedAgent: 'codex',
+      }),
+    ).toEqual({ status: 'completed', forced: false, selectedAgent: 'codex' });
+    expect(
+      resolveGlobalOnboardingState({ version: 1, status: 'skipped' }, { force: true }),
+    ).toEqual({ status: 'pending', forced: true });
+  });
 });
