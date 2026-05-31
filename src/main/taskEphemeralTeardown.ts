@@ -7,6 +7,7 @@ import type { ProjectStore } from './ProjectStore';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
 import type { WorktreeService } from './WorktreeService';
 import type { ValidationRunStore } from './ValidationRunStore';
+import { isDirectWorkspaceKind } from './DirectFolderWorkspaceProvider';
 import { worktreePathSegmentsForFluxxBranch } from './fluxxTaskWorkBranchNaming';
 import { teardownValidationRunsForTask } from './teardownValidationRunsForTask';
 import type { DeviceStore } from './DeviceStore';
@@ -45,7 +46,7 @@ export async function deleteSessionWorkspaceAndStop(
 
   if (target.deviceKind === 'ssh' && target.deviceId && remote) {
     const device = remote.deviceStore.getDevice(target.deviceId);
-    if (device?.kind === 'ssh') {
+    if (device?.kind === 'ssh' && !isDirectWorkspaceKind(target.workspaceKind)) {
       const repoId = target.repoId?.trim();
       if (repoId) {
         const boundRepoPath = resolveBoundRemoteRepoPath(remote, target.projectId, device.id, repoId);
@@ -79,6 +80,10 @@ export async function deleteSessionWorkspaceAndStop(
         });
       }
     }
+    return;
+  }
+
+  if (isDirectWorkspaceKind(target.workspaceKind)) {
     return;
   }
 

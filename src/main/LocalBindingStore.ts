@@ -120,6 +120,9 @@ function copyBindingDevicePrefs(from: LocalBinding, to: LocalBinding): void {
   if (from.persistTerminalsWithTmux !== undefined) {
     to.persistTerminalsWithTmux = from.persistTerminalsWithTmux;
   }
+  if (from.gitlessSingleSessionPerFolder !== undefined) {
+    to.gitlessSingleSessionPerFolder = from.gitlessSingleSessionPerFolder;
+  }
 }
 
 function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): void {
@@ -151,6 +154,9 @@ function fillBindingPrefs(v: Record<string, unknown>, binding: LocalBinding): vo
   }
   if (typeof v.persistTerminalsWithTmux === 'boolean') {
     binding.persistTerminalsWithTmux = v.persistTerminalsWithTmux;
+  }
+  if (typeof v.gitlessSingleSessionPerFolder === 'boolean') {
+    binding.gitlessSingleSessionPerFolder = v.gitlessSingleSessionPerFolder;
   }
   if (typeof v.defaultDeviceId === 'string' && v.defaultDeviceId.trim()) {
     binding.defaultDeviceId = v.defaultDeviceId.trim();
@@ -370,6 +376,7 @@ export class LocalBindingStore {
       autoMarkDoneWhenPrMerged: boolean;
       autoMoveToReviewWhenPrOpen: boolean;
       persistTerminalsWithTmux: boolean;
+      gitlessSingleSessionPerFolder: boolean;
       defaultDeviceId: string | null;
     }>,
   ): Promise<void> {
@@ -425,6 +432,9 @@ export class LocalBindingStore {
     }
     if (prefs.persistTerminalsWithTmux !== undefined) {
       existing.persistTerminalsWithTmux = prefs.persistTerminalsWithTmux;
+    }
+    if (prefs.gitlessSingleSessionPerFolder !== undefined) {
+      existing.gitlessSingleSessionPerFolder = prefs.gitlessSingleSessionPerFolder;
     }
     if (prefs.defaultDeviceId !== undefined) {
       if (prefs.defaultDeviceId === null || prefs.defaultDeviceId === '') {

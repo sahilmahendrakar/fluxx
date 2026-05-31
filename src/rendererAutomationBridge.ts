@@ -156,6 +156,10 @@ export interface AutomationBridgeProjectInfoResult {
   primaryRepoId?: string;
   /** Electron Playwright validation opt-in for this project. */
   validationEnabled: boolean;
+  /** Git worktrees/branches/PR integrations enabled for this project. */
+  gitIntegrationEnabled: boolean;
+  /** Gitless concurrency guard when git integration is off. */
+  gitlessSingleSessionPerFolder: boolean;
 }
 
 export interface AutomationBridgeRepoBranchDiscoveryPayload {

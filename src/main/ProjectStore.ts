@@ -44,6 +44,17 @@ import {
   DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
 } from '../cloudBindingPrefs';
 import { normalizeValidationEnabled } from '../validation/validationEnabled';
+import {
+  DEFAULT_GIT_INTEGRATION_ENABLED,
+  DEFAULT_GITLESS_SINGLE_SESSION_PER_FOLDER,
+  normalizeGitIntegrationEnabled,
+  normalizeGitlessSingleSessionPerFolder,
+} from '../gitIntegration';
+
+export {
+  DEFAULT_GIT_INTEGRATION_ENABLED,
+  DEFAULT_GITLESS_SINGLE_SESSION_PER_FOLDER,
+} from '../gitIntegration';
 import { ensurePlanningAssistantMarkdownFiles } from './planningAssistantInstructions';
 import type { ProjectPlanningDefaultsInput } from '../projectCreate';
 
@@ -73,6 +84,8 @@ export interface ConfigFile {
   defaultDeviceId?: string;
   remoteRepoBindings?: RemoteRepoBindingsByDevice;
   validationEnabled?: boolean;
+  gitIntegrationEnabled?: boolean;
+  gitlessSingleSessionPerFolder?: boolean;
   repos: RepoConfig[];
 }
 
@@ -131,6 +144,10 @@ function configToLocalProject(c: ConfigFile): LocalProject {
     autoMoveToReviewWhenPrOpen: c.autoMoveToReviewWhenPrOpen === true,
     persistTerminalsWithTmux: c.persistTerminalsWithTmux === true,
     validationEnabled: normalizeValidationEnabled(c.validationEnabled),
+    gitIntegrationEnabled: normalizeGitIntegrationEnabled(c.gitIntegrationEnabled),
+    gitlessSingleSessionPerFolder: normalizeGitlessSingleSessionPerFolder(
+      c.gitlessSingleSessionPerFolder,
+    ),
     repos: c.repos,
   };
   if (typeof c.defaultDeviceId === 'string' && c.defaultDeviceId.trim()) {
@@ -307,6 +324,12 @@ function parseConfig(raw: string): ConfigFile | null {
     persistTerminalsWithTmux: p.persistTerminalsWithTmux === true,
     validationEnabled: normalizeValidationEnabled(
       (p as { validationEnabled?: unknown }).validationEnabled,
+    ),
+    gitIntegrationEnabled: normalizeGitIntegrationEnabled(
+      (p as { gitIntegrationEnabled?: unknown }).gitIntegrationEnabled,
+    ),
+    gitlessSingleSessionPerFolder: normalizeGitlessSingleSessionPerFolder(
+      (p as { gitlessSingleSessionPerFolder?: unknown }).gitlessSingleSessionPerFolder,
     ),
     repos,
     ...(typeof p.defaultDeviceId === 'string' && p.defaultDeviceId.trim()
@@ -899,6 +922,60 @@ export class ProjectStore {
     return normalizeValidationEnabled(next.validationEnabled);
   }
 
+  async getGitIntegrationEnabledAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return normalizeGitIntegrationEnabled(parsed.gitIntegrationEnabled);
+  }
+
+  async setGitIntegrationEnabledAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      gitIntegrationEnabled: enabled !== false,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return normalizeGitIntegrationEnabled(next.gitIntegrationEnabled);
+  }
+
+  async getGitlessSingleSessionPerFolderAt(projectDir: string): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    return normalizeGitlessSingleSessionPerFolder(parsed.gitlessSingleSessionPerFolder);
+  }
+
+  async setGitlessSingleSessionPerFolderAt(
+    projectDir: string,
+    enabled: boolean,
+  ): Promise<boolean> {
+    const configPath = path.join(projectDir, 'config.json');
+    const raw = await fs.readFile(configPath, 'utf8');
+    const parsed = parseConfig(raw);
+    if (!parsed) throw new Error(`Invalid config.json at ${configPath}`);
+    const next: ConfigFile = {
+      ...parsed,
+      gitlessSingleSessionPerFolder: enabled !== false,
+    };
+    await atomicWriteFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+    if (this.projectDir === projectDir && this.project) {
+      this.project = configToLocalProject(next);
+    }
+    return normalizeGitlessSingleSessionPerFolder(next.gitlessSingleSessionPerFolder);
+  }
+
   async getRemoteRepoBindingsAt(projectDir: string): Promise<RemoteRepoBindingsByDevice | undefined> {
     const configPath = path.join(projectDir, 'config.json');
     const raw = await fs.readFile(configPath, 'utf8');
@@ -1078,8 +1155,17 @@ export class ProjectStore {
     name: string;
     repos: RepoConfig[];
     planningDefaults?: ProjectPlanningDefaultsInput;
+    gitIntegrationEnabled?: boolean;
+    gitlessSingleSessionPerFolder?: boolean;
   }): Promise<{ project: LocalProject; projectDir: string }> {
-    const { projectId, name, repos, planningDefaults } = params;
+    const {
+      projectId,
+      name,
+      repos,
+      planningDefaults,
+      gitIntegrationEnabled,
+      gitlessSingleSessionPerFolder,
+    } = params;
     const primaryRoot = repos[0]?.rootPath;
     const projectDir =
       primaryRoot != null
@@ -1130,6 +1216,10 @@ export class ProjectStore {
             defaults.autoMoveToReviewWhenPrOpen ?? DEFAULT_AUTO_MOVE_TO_REVIEW_WHEN_PR_OPEN,
           persistTerminalsWithTmux: DEFAULT_PERSIST_TERMINALS_WITH_TMUX,
           validationEnabled: false,
+          gitIntegrationEnabled: normalizeGitIntegrationEnabled(gitIntegrationEnabled),
+          gitlessSingleSessionPerFolder: normalizeGitlessSingleSessionPerFolder(
+            gitlessSingleSessionPerFolder,
+          ),
           repos,
           ...(defaults.planningModels && Object.keys(defaults.planningModels).length > 0
             ? { planningModels: defaults.planningModels }

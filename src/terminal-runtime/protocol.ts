@@ -4,7 +4,7 @@
  * describe warm reattach (`replay`, optional `snapshot`, `streamSeq`).
  */
 
-import type { Agent, PlanningSession, Session, Shell } from '../types';
+import type { Agent, PlanningSession, Session, Shell, SessionWorkspaceKind } from '../types';
 
 // --- Params / results (RPC-shaped surface implemented in-process today) ---
 
@@ -38,6 +38,9 @@ export interface CreateSessionParams {
   trustPromptAutorespondRoots?: string[];
   /** Extra environment for task agent PTYs, e.g. the Fluxx CLI loopback bridge. */
   ptyEnv?: Record<string, string>;
+  workspaceKind?: SessionWorkspaceKind;
+  deviceId?: string;
+  deviceKind?: import('../types').TaskExecutionDeviceKind;
 }
 
 export type CreateSessionResult =

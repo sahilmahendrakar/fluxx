@@ -33,6 +33,8 @@ function sharedRepoForId(project: CloudProject, repoId: string): CloudSharedRepo
 
 export type ResolveRemoteRepoDeps = {
   readOriginUrl?: (repoRootPath: string) => Promise<string | null>;
+  /** When false, remoteUrl is optional (gitless SSH uses a bound folder only). */
+  gitEnabled?: boolean;
 };
 
 /**
@@ -47,11 +49,14 @@ export async function resolveRemoteRepoForTaskSession(
   deps: ResolveRemoteRepoDeps = {},
 ): Promise<RemoteRepoSessionContext> {
   const readOrigin = deps.readOriginUrl ?? readOriginUrl;
+  const gitEnabled = deps.gitEnabled !== false;
   const primaryId = resolvePrimaryRepoId(repos);
   if (!primaryId) {
     throw new WorktreeCreateError(
-      'REMOTE_NON_GIT_UNSUPPORTED',
-      'SSH task execution requires a git-backed project with at least one repository.',
+      gitEnabled ? 'REMOTE_NON_GIT_UNSUPPORTED' : 'WORKTREE_REPO_INVALID_STATE',
+      gitEnabled
+        ? 'SSH task execution requires a git-backed project with at least one repository.'
+        : 'No repository is configured for this project.',
     );
   }
 
@@ -82,7 +87,7 @@ export async function resolveRemoteRepoForTaskSession(
     }
   }
 
-  if (!remoteUrl) {
+  if (!remoteUrl && gitEnabled) {
     throw new WorktreeCreateError(
       'REMOTE_NON_GIT_UNSUPPORTED',
       `Repository "${label}" has no git remote URL for SSH execution. Configure git remotes on this machine or add a remote URL in project settings.`,
@@ -92,7 +97,7 @@ export async function resolveRemoteRepoForTaskSession(
   return {
     repoId: repoCfg.id,
     label,
-    remoteUrl,
+    remoteUrl: remoteUrl ?? '',
     baseBranch: repoCfg.baseBranch,
     setupScript: repoCfg.setupScript,
   };

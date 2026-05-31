@@ -30,6 +30,10 @@ import {
   effectiveTaskSourceBranchShort,
   resolveCreateSourceBranchIfMissingForStart,
 } from '../../taskBranches';
+import {
+  DirectRemoteFolderWorkspaceProvider,
+  remoteFolderRequiredMessage,
+} from './DirectRemoteFolderWorkspaceProvider';
 import { GitRemoteWorkspaceProvider, type RemoteContextFile } from './GitRemoteWorkspaceProvider';
 import { mapRemoteHelperCodeToSessionStart } from './remoteSessionErrors';
 import { resolveRemoteRepoForTaskSession } from './resolveRemoteRepoForTask';
@@ -39,6 +43,11 @@ import type { LocalBindingStore } from '../LocalBindingStore';
 import type { ProjectStore } from '../ProjectStore';
 import { trustPromptAutorespondRootsForRemoteWorktree } from '../trustPromptAutorespondRoots';
 import { resolveRemoteRepoBindingForSession } from './RemoteRepoBindingService';
+import {
+  buildGitlessWorkspaceBusyKey,
+  findGitlessWorkspaceBusyHolder,
+  workspaceBusyErrorMessage,
+} from '../gitlessWorkspaceBusy';
 
 export type StartSshTaskSessionDeps = {
   deviceStore: DeviceStore;
@@ -46,10 +55,15 @@ export type StartSshTaskSessionDeps = {
   bindingStore: LocalBindingStore;
   sshTerminalBackend: SshTerminalBackend;
   gitRemoteWorkspace: GitRemoteWorkspaceProvider;
+  directRemoteWorkspace: DirectRemoteFolderWorkspaceProvider;
   taskAgentSessionRecordStore: TaskAgentSessionRecordStore;
   terminalSessionRecordStore: TerminalSessionRecordStore;
   resolvePlanningDocsDir: () => string | null;
   activeProjectDir: () => string;
+  gitEnabledForProject: () => Promise<boolean>;
+  gitlessSingleSessionPerFolderForProject: () => Promise<boolean>;
+  listRunningSessions: () => Promise<Session[]>;
+  resolveTaskTitle?: (taskId: string) => string | undefined;
 };
 
 export type StartSshTaskSessionInput = {
@@ -105,6 +119,7 @@ export async function startSshTaskSession(
     return existing;
   }
 
+  const gitEnabled = await deps.gitEnabledForProject();
   const projectDir = deps.activeProjectDir();
   let projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
   try {
@@ -120,13 +135,55 @@ export async function startSshTaskSession(
   const repos = await deps.projectStore.getReposAt(projectDir);
   let remoteRepo;
   try {
-    remoteRepo = await resolveRemoteRepoForTaskSession(project, task, repos, cloudProject);
+    remoteRepo = await resolveRemoteRepoForTaskSession(project, task, repos, cloudProject, {
+      gitEnabled,
+    });
   } catch (err: unknown) {
     if (isWorktreeCreateError(err)) {
       return { error: err.code, message: err.message };
     }
     const message = err instanceof Error ? err.message : String(err);
     return { error: 'INTERNAL', message };
+  }
+
+  const boundRepoPath = resolveRemoteRepoBindingForSession(
+    project,
+    device.id,
+    remoteRepo.repoId,
+    deps.bindingStore,
+    project.kind === 'local' ? project.remoteRepoBindings : undefined,
+  );
+
+  if (!gitEnabled) {
+    if (!boundRepoPath?.trim()) {
+      return {
+        error: 'REMOTE_FOLDER_REQUIRED',
+        message: remoteFolderRequiredMessage(device.displayName),
+      };
+    }
+
+    const busyKey = buildGitlessWorkspaceBusyKey(boundRepoPath, device.id);
+    const runningSessions = await deps.listRunningSessions();
+    const busyHolder = findGitlessWorkspaceBusyHolder(runningSessions, busyKey, task.id);
+    const singlePerFolder = await deps.gitlessSingleSessionPerFolderForProject();
+    if (busyHolder && singlePerFolder) {
+      const holderTitle = deps.resolveTaskTitle?.(busyHolder.taskId);
+      return {
+        error: 'WORKSPACE_BUSY',
+        message: workspaceBusyErrorMessage(busyHolder.taskId, holderTitle),
+      };
+    }
+
+    return startGitlessSshTaskSession(deps, {
+      task,
+      project,
+      device,
+      remoteRepo,
+      boundRepoPath: boundRepoPath.trim(),
+      projectMcpConfig,
+      projectDir,
+      options,
+    });
   }
 
   const sourceOpts = await resolveRemoteSourceBranchOpts(task, repos, remoteRepo.baseBranch);
@@ -155,14 +212,6 @@ export async function startSshTaskSession(
 
   const contextFiles = buildRemoteAgentContextFiles(task.agent, projectMcpConfig.config);
 
-  const boundRepoPath = resolveRemoteRepoBindingForSession(
-    project,
-    device.id,
-    remoteRepo.repoId,
-    deps.bindingStore,
-    project.kind === 'local' ? project.remoteRepoBindings : undefined,
-  );
-
   const started = await deps.gitRemoteWorkspace.createTaskWorkspaceAndStart({
     device,
     projectId: project.id,
@@ -189,6 +238,109 @@ export async function startSshTaskSession(
     };
   }
 
+  return registerSshTaskSession(deps, {
+    task,
+    project,
+    device,
+    remoteRepo,
+    started,
+    command,
+    args,
+    sourceBranchShort: sourceOpts.sourceBranchShort || undefined,
+  });
+}
+
+async function startGitlessSshTaskSession(
+  deps: StartSshTaskSessionDeps,
+  input: {
+    task: Task;
+    project: Project;
+    device: Extract<
+      ReturnType<DeviceStore['getDevice']>,
+      { kind: 'ssh'; enabled: true }
+    >;
+    remoteRepo: Awaited<ReturnType<typeof resolveRemoteRepoForTaskSession>>;
+    boundRepoPath: string;
+    projectMcpConfig: Awaited<ReturnType<typeof ensureProjectMcpConfig>>;
+    projectDir: string;
+    options?: { resume?: boolean };
+  },
+): Promise<SessionStartResult> {
+  const { task, project, device, remoteRepo, boundRepoPath, projectMcpConfig, projectDir, options } =
+    input;
+
+  let resumeConversationId: string | undefined;
+  if (options?.resume) {
+    resumeConversationId = await deps.taskAgentSessionRecordStore.getResumeConversationId(
+      task.id,
+      task.agent!,
+    );
+  }
+
+  const { command, args } = options?.resume
+    ? agentSpawnResumeSpec(task, {
+        agentConversationId: resumeConversationId,
+        mcpConfigPath: path.join('.cursor', PROJECT_MCP_CONFIG_BASENAME),
+      })
+    : agentSpawnSpec(
+        task,
+        await composeTaskSessionInitialPrompt(
+          task,
+          deps.resolvePlanningDocsDir() ?? path.join(projectDir, 'planning'),
+        ),
+        { mcpConfigPath: path.join('.cursor', PROJECT_MCP_CONFIG_BASENAME) },
+      );
+
+  const contextFiles = buildRemoteAgentContextFiles(task.agent!, projectMcpConfig.config);
+
+  const started = await deps.directRemoteWorkspace.createTaskWorkspaceAndStart({
+    device,
+    projectId: project.id,
+    task: { id: task.id, agent: task.agent },
+    repoId: remoteRepo.repoId,
+    folderPath: boundRepoPath,
+    command,
+    args,
+    contextFiles,
+  });
+
+  if (!started.ok) {
+    return {
+      error: mapRemoteHelperCodeToSessionStart(started.code),
+      message: started.message,
+    };
+  }
+
+  return registerSshTaskSession(deps, {
+    task,
+    project,
+    device,
+    remoteRepo,
+    started,
+    command,
+    args,
+  });
+}
+
+function registerSshTaskSession(
+  deps: StartSshTaskSessionDeps,
+  input: {
+    task: Task;
+    project: Project;
+    device: { id: string; displayName: string };
+    remoteRepo: { repoId: string };
+    started: {
+      session: Session;
+      tmuxSessionName: string;
+      manifestRow: { hostLabel?: string };
+    };
+    command: string;
+    args: string[];
+    sourceBranchShort?: string;
+  },
+): Session {
+  const { task, project, device, remoteRepo, started, command, args, sourceBranchShort } = input;
+
   deps.sshTerminalBackend.registerTaskSession({
     session: started.session,
     deviceId: device.id,
@@ -196,17 +348,16 @@ export async function startSshTaskSession(
     agent: task.agent ?? undefined,
     cols: 80,
     rows: 24,
-  ...(project.autoRespondToTrustPrompts === true
-    ? {
-        trustPromptAutorespond: true,
-        trustPromptAutorespondRoots: trustPromptAutorespondRootsForRemoteWorktree(
-          started.session.worktreePath,
-        ),
-      }
-    : {}),
+    ...(project.autoRespondToTrustPrompts === true
+      ? {
+          trustPromptAutorespond: true,
+          trustPromptAutorespondRoots: trustPromptAutorespondRootsForRemoteWorktree(
+            started.session.worktreePath,
+          ),
+        }
+      : {}),
   });
 
-  const sourceBranchShort = sourceOpts.sourceBranchShort || undefined;
   void deps.taskAgentSessionRecordStore.recordSessionStart({
     fluxxSessionId: started.session.id,
     taskId: task.id,
@@ -215,6 +366,7 @@ export async function startSshTaskSession(
     agent: task.agent,
     worktreePath: started.session.worktreePath,
     fluxxWorkBranch: started.session.branch,
+    workspaceKind: started.session.workspaceKind,
     ...(sourceBranchShort ? { sourceBranchShort } : {}),
     startedAt: started.session.startedAt,
     deviceId: device.id,

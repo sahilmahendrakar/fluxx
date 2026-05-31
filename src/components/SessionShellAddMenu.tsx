@@ -12,15 +12,40 @@ import {
 export interface SessionShellAddMenuProps {
   running: boolean;
   localWorktreeAvailable: boolean;
+  /** When false, only the remote SSH shell option is offered (gitless direct sessions). */
+  showLocalShellOption?: boolean;
   onOpenShell: (placement: ShellPlacement) => void | Promise<void>;
 }
 
 export function SessionShellAddMenu({
   running,
   localWorktreeAvailable,
+  showLocalShellOption = true,
   onOpenShell,
 }: SessionShellAddMenuProps) {
   const disabled = !running;
+
+  if (!showLocalShellOption) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={disabled}
+        onClick={() => running && void onOpenShell('remote')}
+        title={running ? 'Open SSH terminal in remote folder' : 'Session is not running'}
+        aria-label="Open SSH terminal"
+        className={cn(
+          'ml-1 size-6 shrink-0 text-base leading-none',
+          running
+            ? 'text-status-terminal-foreground/70 hover:bg-status-terminal-foreground/10 hover:text-status-terminal-foreground'
+            : 'text-status-terminal-foreground/30',
+        )}
+      >
+        +
+      </Button>
+    );
+  }
 
   return (
     <div className="ml-1 flex shrink-0 items-stretch">

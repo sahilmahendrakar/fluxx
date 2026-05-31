@@ -23,6 +23,8 @@ function localStub(overrides: Partial<LocalProject> & { id: string; name: string
     autoMoveToReviewWhenPrOpen: false,
     persistTerminalsWithTmux: false,
     validationEnabled: false,
+    gitIntegrationEnabled: true,
+    gitlessSingleSessionPerFolder: true,
     repos: [{ id: 'r1', rootPath: '/tmp/app', baseBranch: 'main' }],
     ...overrides,
   };

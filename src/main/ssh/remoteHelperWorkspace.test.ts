@@ -131,6 +131,38 @@ describe('fluxx-remote-helper workspace RPCs', () => {
     expect(envelope.error.code).toBe('REMOTE_REPO_MISMATCH');
   });
 
+  it('probe-repo-path accepts a writable non-git directory when gitless', () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-probe-gitless-'));
+    const folder = path.join(tempRoot, 'scratch');
+    fs.mkdirSync(folder, { recursive: true });
+    const result = runHelper('probe-repo-path', {
+      remotePath: folder,
+      gitless: true,
+    });
+    expect(result.status).toBe(0);
+    const envelope = JSON.parse(result.stdout.trim());
+    expect(envelope.ok).toBe(true);
+    expect(envelope.data.resolvedPath).toBe(folder);
+    expect(envelope.data.writable).toBe(true);
+  });
+
+  it('prepare-direct-folder writes context files into a non-git directory', () => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-prepare-'));
+    const folder = path.join(tempRoot, 'workspace');
+    fs.mkdirSync(folder, { recursive: true });
+    const result = runHelper('prepare-direct-folder', {
+      folderPath: folder,
+      contextFiles: [
+        {
+          relativePath: '.cursor/mcp.json',
+          content: '{"mcpServers":{}}',
+        },
+      ],
+    });
+    expect(result.status).toBe(0);
+    expect(fs.existsSync(path.join(folder, '.cursor', 'mcp.json'))).toBe(true);
+  });
+
   it('writes and lists terminal manifest rows', () => {
     tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxx-helper-manifest-'));
     const manifestDir = path.join(tempRoot, '.fluxx', 'devices', 'device-1');
