@@ -27,6 +27,12 @@ export function parseFirestoreRepos(raw: unknown): CloudSharedRepo[] | undefined
     if (typeof o.remoteUrl === 'string' && o.remoteUrl.trim() !== '') {
       repo.remoteUrl = o.remoteUrl.trim();
     }
+    if (typeof o.githubOwner === 'string' && o.githubOwner.trim() !== '') {
+      repo.githubOwner = o.githubOwner.trim();
+    }
+    if (typeof o.githubName === 'string' && o.githubName.trim() !== '') {
+      repo.githubName = o.githubName.trim();
+    }
     out.push(repo);
   }
   return out.length > 0 ? out : undefined;

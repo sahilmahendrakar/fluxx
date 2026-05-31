@@ -189,7 +189,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         | { ok: true; repos: RepoConfig[] }
         | { error: string }
       >,
-    addRepo: (payload: { rootPath: string }) =>
+    addRepo: (payload: {
+      rootPath: string;
+      githubOwner?: string;
+      githubName?: string;
+      name?: string;
+      baseBranch?: string;
+    }) =>
       ipcRenderer.invoke('project:addRepo', payload) as Promise<
         | { ok: true; repos: RepoConfig[] }
         | { error: string }

@@ -175,6 +175,10 @@ declare global {
         >;
         addRepo: (payload: {
           rootPath: string;
+          githubOwner?: string;
+          githubName?: string;
+          name?: string;
+          baseBranch?: string;
         }) => Promise<
           | { ok: true; repos: RepoConfig[] }
           | { error: string }

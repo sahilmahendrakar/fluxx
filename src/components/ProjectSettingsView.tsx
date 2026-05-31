@@ -40,6 +40,16 @@ import { ValidationConfigSettingsSection } from './ValidationConfigSettingsSecti
 import { repoDirectoryPickErrorMessage } from '../projectCreate';
 import { AddRepoDropdown } from './githubRepoOnboarding/AddRepoDropdown';
 import { GithubRepoOnboardingModal } from './githubRepoOnboarding/GithubRepoOnboardingModal';
+import type { GithubRepoAttachInput } from '../githubRepoOnboarding/githubRepoAttach';
+import {
+  DUPLICATE_CLOUD_PATH_MESSAGE,
+  DUPLICATE_LOCAL_PATH_MESSAGE,
+  findDuplicateCloudRepoByPath,
+  findDuplicateLocalRepoByPath,
+  githubFieldsFromAttachMetadata,
+  validateGithubRepoAttachForCloud,
+  validateGithubRepoAttachForLocal,
+} from '../githubRepoOnboarding/githubRepoAttach';
 
 interface Props {
   project: LocalProject | CloudProject;
@@ -1343,12 +1353,40 @@ function ProjectConfigPane({
   }, []);
 
   const attachLocalRepoAtPath = useCallback(
-    async (rootPath: string): Promise<{ error?: string }> => {
+    async (rootPath: string, github?: GithubRepoAttachInput['github']): Promise<{ error?: string }> => {
       if (!multiRepoLocalManagementEnabled) {
         return { error: 'Local repository management is not available.' };
       }
       try {
-        const result = await window.electronAPI.project.addRepo({ rootPath });
+        if (github) {
+          const dup = validateGithubRepoAttachForLocal({
+            repos,
+            input: { rootPath, github },
+          });
+          if (!dup.ok) {
+            setAddRepoState('error');
+            setAddRepoError(dup.message);
+            return { error: dup.message };
+          }
+        } else if (findDuplicateLocalRepoByPath(repos, rootPath)) {
+          const message = DUPLICATE_LOCAL_PATH_MESSAGE;
+          setAddRepoState('error');
+          setAddRepoError(message);
+          return { error: message };
+        }
+
+        const ghFields = github ? githubFieldsFromAttachMetadata(github) : null;
+        const result = await window.electronAPI.project.addRepo({
+          rootPath,
+          ...(ghFields
+            ? {
+                githubOwner: ghFields.githubOwner,
+                githubName: ghFields.githubName,
+                name: github.nameWithOwner.split('/').pop(),
+                baseBranch: github.defaultBranch,
+              }
+            : {}),
+        });
         if ('error' in result) {
           setAddRepoState('error');
           setAddRepoError(result.error);
@@ -1373,49 +1411,74 @@ function ProjectConfigPane({
         return { error: message };
       }
     },
-    [multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates],
+    [multiRepoLocalManagementEnabled, onProjectAgentPrefsRefresh, refreshRepoStates, repos],
   );
 
   const attachCloudRepoAtPath = useCallback(
-    async (rootPath: string): Promise<{ error?: string }> => {
+    async (
+      rootPath: string,
+      github?: GithubRepoAttachInput['github'],
+    ): Promise<{ error?: string }> => {
       if (!multiRepoCloudBindingsEnabled || project.kind !== 'cloud') {
         return { error: 'Cloud repository bindings are not available.' };
       }
       try {
-        const existingRoot = project.sharedRepos.find((sr) => {
-          const bound = project.repoMachineBindings[sr.id]?.rootPath;
-          return bound === rootPath;
-        });
-        if (existingRoot) {
-          return { error: 'That local folder is already bound to this cloud project.' };
-        }
+        let nextRepo: CloudSharedRepo;
 
-        const existingIds = new Set(project.sharedRepos.map((r) => r.id));
-        let repoId = deriveRepoIdForRootPath({
-          projectId: project.id,
-          rootPath,
-        });
-        let salt = 1;
-        while (existingIds.has(repoId)) {
-          repoId = deriveRepoIdForRootPath({
+        if (github) {
+          const validated = validateGithubRepoAttachForCloud({
+            projectId: project.id,
+            sharedRepos: project.sharedRepos,
+            repoMachineBindings: project.repoMachineBindings,
+            input: { rootPath, github },
+          });
+          if (!validated.ok) {
+            setAddRepoState('error');
+            setAddRepoError(validated.message);
+            return { error: validated.message };
+          }
+          nextRepo = validated.sharedRepo;
+        } else {
+          if (
+            findDuplicateCloudRepoByPath({
+              repoMachineBindings: project.repoMachineBindings,
+              rootPath,
+            })
+          ) {
+            const message = DUPLICATE_CLOUD_PATH_MESSAGE;
+            setAddRepoState('error');
+            setAddRepoError(message);
+            return { error: message };
+          }
+
+          const existingIds = new Set(project.sharedRepos.map((r) => r.id));
+          let repoId = deriveRepoIdForRootPath({
             projectId: project.id,
             rootPath,
-            salt: `dup-${salt}`,
           });
-          salt += 1;
+          let salt = 1;
+          while (existingIds.has(repoId)) {
+            repoId = deriveRepoIdForRootPath({
+              projectId: project.id,
+              rootPath,
+              salt: `dup-${salt}`,
+            });
+            salt += 1;
+          }
+
+          nextRepo = {
+            id: repoId,
+            name: repoRootBasename(rootPath) || `repo:${repoId.slice(0, 7)}`,
+            baseBranch: 'main',
+          };
         }
 
-        const nextRepo: CloudSharedRepo = {
-          id: repoId,
-          name: repoRootBasename(rootPath) || `repo:${repoId.slice(0, 7)}`,
-          baseBranch: 'main',
-        };
         const nextSharedRepos = [...project.sharedRepos, nextRepo];
         await updateCloudProjectRepos(project.id, nextSharedRepos);
         onCloudSharedReposChanged?.(nextSharedRepos);
 
         const bindResult = await window.electronAPI.project.bindCloudSharedRepo({
-          repoId,
+          repoId: nextRepo.id,
           rootPath,
           sharedRepos: nextSharedRepos,
         });
@@ -1505,13 +1568,13 @@ function ProjectConfigPane({
   }, [attachCloudRepoAtPath, gitIntegrationEnabled, multiRepoCloudBindingsEnabled, project.kind]);
 
   const handleGithubRepoAttached = useCallback(
-    async (rootPath: string) => {
+    async (input: GithubRepoAttachInput) => {
       setAddRepoState('saving');
       setAddRepoError(null);
       if (multiRepoCloudBindingsEnabled && project.kind === 'cloud') {
-        return attachCloudRepoAtPath(rootPath);
+        return attachCloudRepoAtPath(input.rootPath, input.github);
       }
-      return attachLocalRepoAtPath(rootPath);
+      return attachLocalRepoAtPath(input.rootPath, input.github);
     },
     [
       attachCloudRepoAtPath,

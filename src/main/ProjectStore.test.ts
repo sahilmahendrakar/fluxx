@@ -274,6 +274,58 @@ describe('ProjectStore repo-id operations', () => {
     await expect(store.addRepoAt(projectDir, rootB)).rejects.toThrow(/already part of this project/);
   });
 
+  it('addRepoAt stores github metadata and rejects duplicate github slugs', async () => {
+    const rootA = path.join(tmp, 'a');
+    const rootB = path.join(tmp, 'b');
+    const rootC = path.join(tmp, 'c');
+    const projectDir = path.join(tmp, 'project-gh');
+    await fs.mkdir(rootA, { recursive: true });
+    await fs.mkdir(rootB, { recursive: true });
+    await fs.mkdir(rootC, { recursive: true });
+    await touchGitRepo(rootA);
+    await touchGitRepo(rootB);
+    await touchGitRepo(rootC);
+    await writeLegacyConfig(projectDir, rootA);
+
+    const store = new ProjectStore(tmp);
+    await store.init(projectDir);
+
+    const added = await store.addRepoAt(projectDir, rootB, {
+      githubOwner: 'acme',
+      githubName: 'widget',
+      name: 'widget',
+      baseBranch: 'develop',
+    });
+    const ghRepo = added.find((r) => path.resolve(r.rootPath) === path.resolve(rootB));
+    expect(ghRepo).toMatchObject({
+      githubOwner: 'acme',
+      githubName: 'widget',
+      baseBranch: 'develop',
+      name: 'widget',
+    });
+
+    await expect(
+      store.addRepoAt(projectDir, rootC, {
+        githubOwner: 'acme',
+        githubName: 'widget',
+      }),
+    ).rejects.toThrow(/already attached to this project/i);
+  });
+
+  it('addRepoAt sets primary rootPath when project has zero repos', async () => {
+    const rootA = path.join(tmp, 'first-only');
+    await fs.mkdir(rootA, { recursive: true });
+    await touchGitRepo(rootA);
+
+    const store = new ProjectStore(tmp);
+    const { projectDir } = await store.create(rootA);
+    const config = JSON.parse(
+      await fs.readFile(path.join(projectDir, 'config.json'), 'utf8'),
+    ) as { rootPath: string; repos: { rootPath: string }[] };
+    expect(config.repos).toHaveLength(1);
+    expect(path.resolve(config.rootPath)).toBe(path.resolve(rootA));
+  });
+
   it('preserves added repos after reopening the local project root', async () => {
     const rootA = path.join(tmp, 'a');
     const rootB = path.join(tmp, 'b');

@@ -126,6 +126,10 @@ export interface RepoConfig {
   setupScript?: string;
   /** Optional .env contents written to `<worktree>/.env` for each new task. */
   env?: string;
+  /** GitHub owner login when attached via GitHub onboarding (duplicate detection / display). */
+  githubOwner?: string;
+  /** GitHub repository name when attached via GitHub onboarding. */
+  githubName?: string;
 }
 
 export type RepoPathStatus = 'valid' | 'missing' | 'not_git';
@@ -246,6 +250,10 @@ export interface CloudSharedRepo {
   baseBranch: string;
   /** Optional origin URL for display / validation. */
   remoteUrl?: string;
+  /** GitHub owner login when the shared repo was added from GitHub. */
+  githubOwner?: string;
+  /** GitHub repository name when the shared repo was added from GitHub. */
+  githubName?: string;
 }
 
 /**
