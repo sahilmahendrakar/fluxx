@@ -1,12 +1,26 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import {
   readCollapsedRepoIdsForProject,
   writeCollapsedRepoIdsForProject,
 } from './sidebarRepoSectionCollapse';
 
 describe('sidebarRepoSectionCollapse', () => {
+  const store = new Map<string, string>();
+
   beforeEach(() => {
-    localStorage.clear();
+    store.clear();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      clear: () => {
+        store.clear();
+      },
+    });
   });
 
   it('round-trips collapsed repo ids per project', () => {
