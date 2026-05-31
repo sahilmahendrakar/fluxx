@@ -115,6 +115,9 @@ export interface TerminalBackend {
   resizePlanning(id: string, cols: number, rows: number): void;
   stopPlanning(id: string): Promise<void>;
 
+  /** Notify running local PTYs that terminal fg/bg changed (appearance toggle). */
+  notifyAppearanceChange?(resolved: import('../theme/appearance').ResolvedAppearance): void;
+
   /**
    * Local tmux persistence: reattach open manifest rows after relaunch (in-process backend only).
    */

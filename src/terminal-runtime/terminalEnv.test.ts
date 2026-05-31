@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPtyEnv, normalizeUtf8Locale, PTY_TERM_NAME } from './terminalEnv';
+import { buildPtyEnv, colorFgBgForAppearance, normalizeUtf8Locale, PTY_TERM_NAME } from './terminalEnv';
 
 describe('normalizeUtf8Locale', () => {
   it('prefers LC_ALL when it is a UTF-8 locale', () => {
@@ -27,6 +27,13 @@ describe('normalizeUtf8Locale', () => {
   });
 });
 
+describe('colorFgBgForAppearance', () => {
+  it('maps dark to white-on-black and light to black-on-white', () => {
+    expect(colorFgBgForAppearance('dark')).toBe('15;0');
+    expect(colorFgBgForAppearance('light')).toBe('0;15');
+  });
+});
+
 describe('buildPtyEnv', () => {
   it('forces deterministic terminal-shape vars regardless of base env', () => {
     const env = buildPtyEnv({});
@@ -36,6 +43,13 @@ describe('buildPtyEnv', () => {
     expect(env.CLICOLOR).toBe('1');
     expect(env.FORCE_COLOR).toBe('3');
     expect(env.LANG).toBe('en_US.UTF-8');
+  });
+
+  it('uses light COLORFGBG when appearance is light', () => {
+    const env = buildPtyEnv({}, { appearance: 'light' });
+    expect(env.COLORFGBG).toBe('0;15');
+    expect(env.TERM_THEME).toBe('light');
+    expect(env.VSCODE_THEME).toContain('Light');
   });
 
   it('does not set TERM_PROGRAM by default (safe for vim/neovim)', () => {

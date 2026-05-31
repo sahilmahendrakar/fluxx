@@ -51,9 +51,15 @@ function normalizeLegacyFluxxSessionRecord(r: unknown): TaskAgentSessionRecord |
       : typeof row.fluxWorkBranch === 'string'
         ? row.fluxWorkBranch
         : '';
-  if (!fluxxWorkBranch.trim()) return null;
+  const workspaceKind = row.workspaceKind === 'direct' ? ('direct' as const) : undefined;
+  if (!fluxxWorkBranch.trim() && workspaceKind !== 'direct') return null;
   const { fluxSessionId: _s, fluxWorkBranch: _w, ...rest } = row;
-  return { ...rest, fluxxSessionId, fluxxWorkBranch };
+  return {
+    ...rest,
+    fluxxSessionId,
+    fluxxWorkBranch,
+    ...(workspaceKind ? { workspaceKind } : {}),
+  };
 }
 
 export type TaskAgentSessionRecordStoreDeps = {
@@ -294,6 +300,7 @@ export class TaskAgentSessionRecordStore {
       ...(r.repoId != null && r.repoId.length > 0 ? { repoId: r.repoId } : {}),
       worktreePath: r.worktreePath,
       branch: r.fluxxWorkBranch,
+      ...(r.workspaceKind ? { workspaceKind: r.workspaceKind } : {}),
       status: 'interrupted',
       startedAt: r.startedAt,
       stoppedAt,

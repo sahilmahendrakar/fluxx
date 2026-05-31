@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Session, Task } from '../types';
+import { saveValidationPacksProjectConfig } from '../validationPacks/projectConfig';
 import { ValidationRunStore } from './ValidationRunStore';
 import { startValidatorSession } from './startValidatorSession';
 import type { TerminalBackend } from './terminalBackend/TerminalBackend';
@@ -106,6 +107,112 @@ describe('startValidatorSession', () => {
         await fs.readFile(path.join(result.run.artifactDir, 'guardrails.json'), 'utf8'),
       );
       expect(guardrails.preValidationGitStatus).toBeDefined();
+    }
+  });
+
+  it('starts validation when project config is empty', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-start-empty-'));
+    worktree = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-wt-empty-'));
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: task.id,
+      projectId: 'proj-1',
+      validatorAgent: 'cursor',
+    });
+
+    const session: Session = {
+      id: 'validator-sess-empty',
+      taskId: task.id,
+      projectId: 'proj-1',
+      worktreePath: worktree,
+      branch: 'fluxx/task-1',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    };
+
+    const result = await startValidatorSession(
+      {
+        validationRunStore: store,
+        terminalBackend: { createSession: vi.fn(async () => session) } as unknown as TerminalBackend,
+        listTerminalSessions: async () => [],
+        getProjectDir: () => tmp,
+        resolveWorktreePath: async () => ({
+          worktreePath: worktree,
+          branch: 'fluxx/task-1',
+        }),
+        buildSpawnContext: async () => ({}),
+      },
+      { task, runId: run.id },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const prompt = await fs.readFile(
+        path.join(result.run.artifactDir, 'validator-prompt.md'),
+        'utf8',
+      );
+      expect(prompt).toContain('Infer launch from the project');
+      expect(prompt).toContain('package.json');
+    }
+  });
+
+  it('loads saved appendPrompt into instructions when starting validator', async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-start-config-'));
+    worktree = await fs.mkdtemp(path.join(os.tmpdir(), 'fluxx-val-wt-config-'));
+    saveValidationPacksProjectConfig(tmp, 'electron-playwright', {
+      launchCommand: 'pnpm start:aux',
+      appendPrompt: 'Always open Settings first.',
+    });
+
+    const store = new ValidationRunStore({ getProjectDir: () => tmp });
+    const run = await store.create({
+      taskId: task.id,
+      projectId: 'proj-1',
+      validatorAgent: 'cursor',
+    });
+
+    const session: Session = {
+      id: 'validator-sess-config',
+      taskId: task.id,
+      projectId: 'proj-1',
+      worktreePath: worktree,
+      branch: 'fluxx/task-1',
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    };
+
+    const result = await startValidatorSession(
+      {
+        validationRunStore: store,
+        terminalBackend: { createSession: vi.fn(async () => session) } as unknown as TerminalBackend,
+        listTerminalSessions: async () => [],
+        getProjectDir: () => tmp,
+        resolveWorktreePath: async () => ({
+          worktreePath: worktree,
+          branch: 'fluxx/task-1',
+        }),
+        buildSpawnContext: async () => ({}),
+      },
+      { task, runId: run.id },
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const instructions = await fs.readFile(
+        path.join(result.run.artifactDir, 'instructions.md'),
+        'utf8',
+      );
+      expect(instructions).toContain('Always open Settings first.');
+      expect(instructions).toContain('pnpm start:aux');
+
+      const prompt = await fs.readFile(
+        path.join(result.run.artifactDir, 'validator-prompt.md'),
+        'utf8',
+      );
+      expect(prompt).toContain('## Project validation notes');
+      expect(prompt).toContain('Always open Settings first.');
+      expect(prompt).toContain('pnpm start:aux');
+      expect(prompt).not.toContain('Infer launch from the project');
     }
   });
 });

@@ -63,6 +63,14 @@ describe('prepareLocalProjectCreateInput', () => {
     );
     expect(input.syncMode).toBe('local-only');
   });
+
+  it('does not set gitIntegrationEnabled; main process infers it at create time', () => {
+    const input = prepareLocalProjectCreateInput({
+      name: 'Plain folder',
+      repos: [{ rootPath: '/tmp/plain' }],
+    });
+    expect(input.gitIntegrationEnabled).toBeUndefined();
+  });
 });
 
 describe('normalizeTeamInviteEmails', () => {

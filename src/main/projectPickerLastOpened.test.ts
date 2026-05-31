@@ -19,6 +19,8 @@ function localStub(id: string, addedAt: string): LocalProject {
     autoMoveToReviewWhenPrOpen: false,
     persistTerminalsWithTmux: false,
     validationEnabled: false,
+    gitIntegrationEnabled: true,
+    gitlessSingleSessionPerFolder: true,
     repos: [],
   };
 }

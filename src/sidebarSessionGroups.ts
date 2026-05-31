@@ -1,7 +1,6 @@
 import type { SessionTabMeta } from './components/TabBar';
 import {
   effectiveTaskRepoId,
-  findRepoByIdOrPrimary,
   repoDisplayLabel,
   resolvePrimaryRepoId,
 } from './repoIdentity';
@@ -92,7 +91,7 @@ export function buildSidebarSessionLayout(params: {
     if (seen.has(repoId)) continue;
     const items = buckets.get(repoId);
     if (!items || items.length === 0) continue;
-    const repo = findRepoByIdOrPrimary(repos, repoId);
+    const repo = repos.find((r) => r.id === repoId);
     groups.push({
       repoId,
       label: repo

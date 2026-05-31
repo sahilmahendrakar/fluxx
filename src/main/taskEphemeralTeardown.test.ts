@@ -98,6 +98,38 @@ describe('taskEphemeralTeardown', () => {
     expect(worktreeService.remove).not.toHaveBeenCalled();
   });
 
+  it('deleteSessionWorkspaceAndStop does not remove worktree for direct workspace', async () => {
+    const session = {
+      id: 'sess-direct',
+      taskId: 'task-1',
+      projectId: 'proj-1',
+      repoId: 'repo-a',
+      worktreePath: '/Users/me/real-project',
+      branch: '',
+      workspaceKind: 'direct' as const,
+      status: 'running' as const,
+      startedAt: '2026-01-01T00:00:00.000Z',
+    };
+    const terminalBackend = {
+      listSessions: vi.fn(async () => [session]),
+      closeShellsForSession: vi.fn(async () => undefined),
+      stopSession: vi.fn(async () => undefined),
+    };
+    const worktreeService = {
+      getProjectDir: () => '/local/project',
+      remove: vi.fn(),
+    } satisfies Pick<WorktreeService, 'getProjectDir' | 'remove'>;
+
+    await deleteSessionWorkspaceAndStop(
+      terminalBackend as never,
+      worktreeService as WorktreeService,
+      session.id,
+      async () => '/git',
+    );
+
+    expect(worktreeService.remove).not.toHaveBeenCalled();
+  });
+
   it('teardownEphemeralResourcesForTask removes local synced copy when no sessions remain', async () => {
     const terminalBackend = {
       listSessions: vi.fn(async () => []),

@@ -1,3 +1,10 @@
+import type { ResolvedAppearance } from '../theme/appearance';
+
+/** COLORFGBG hint for TUIs (vim, fzf, cursor agent) that auto-pick palettes. */
+export function colorFgBgForAppearance(appearance: ResolvedAppearance): string {
+  return appearance === 'light' ? '0;15' : '15;0';
+}
+
 /**
  * Curated environment variables for every PTY the main process spawns.
  *
@@ -48,9 +55,8 @@ export function normalizeUtf8Locale(
  *   xterm.js already emits the right bytes; claiming kitty means they get
  *   parsed instead of submitted as plain Enter. Lifted verbatim from
  *   Superset; their comment on this is the canonical reference.
- * - `COLORFGBG=15;0` — Flux's window chrome is always dark, so hint white
- *   foreground on black background so TUIs that auto-pick palettes
- *   (vim, fzf) choose dark-mode variants.
+ * - `COLORFGBG` — hints foreground/background indices so TUIs that auto-pick
+ *   palettes (vim, fzf, cursor agent) match the user's resolved appearance.
  * - color opt-ins / no-color cleanup — Electron can inherit `NO_COLOR=1`
  *   or `FORCE_COLOR=0` from the launching environment (notably dev tools).
  *   Agent TUIs honor those over `COLORTERM`, which flattens Claude/Cursor
@@ -64,7 +70,7 @@ export function normalizeUtf8Locale(
  */
 export function buildPtyEnv(
   baseEnv: NodeJS.ProcessEnv | Record<string, string>,
-  opts?: { termProgram?: string },
+  opts?: { termProgram?: string; appearance?: ResolvedAppearance },
 ): NodeJS.ProcessEnv {
   // Copy so we never mutate the caller's env. Keeps `process.env` intact
   // for any other concurrent spawn.
@@ -76,7 +82,10 @@ export function buildPtyEnv(
   if (opts?.termProgram !== undefined) {
     env.TERM_PROGRAM = opts.termProgram;
   }
-  env.COLORFGBG = '15;0';
+  const appearance = opts?.appearance ?? 'dark';
+  env.COLORFGBG = colorFgBgForAppearance(appearance);
+  env.TERM_THEME = appearance;
+  env.VSCODE_THEME = appearance === 'light' ? 'Default Light Modern' : 'Default Dark Modern';
   env.CLICOLOR = '1';
   env.FORCE_COLOR = '3';
   return env;

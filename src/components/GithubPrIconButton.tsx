@@ -1,12 +1,17 @@
 import { GitMerge, GitPullRequest, GitPullRequestCreate, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { TaskGithubPr } from '../types';
+import type { TaskGithubPr, TaskStatus } from '../types';
+import { shouldShowGithubPrIconButton } from '../gitUiGating';
 
 export interface GithubPrIconButtonProps {
   githubPr?: TaskGithubPr | null;
   taskId: string;
+  /** When `review` and PR is open, icon uses review column styling instead of success green. */
+  taskStatus?: TaskStatus;
   /** Same gate as board `TaskCard` (session path or resolved disk worktree). */
   hasWorktree: boolean;
+  /** When false, the control is hidden (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
   onTaskPrClick?: (taskId: string) => void;
   prLoading?: boolean;
   /** After delegating PR creation to the agent; amber styling until a PR URL is linked (icon stays create). */
@@ -20,12 +25,15 @@ export interface GithubPrIconButtonProps {
 export function GithubPrIconButton({
   githubPr,
   taskId,
+  taskStatus,
   hasWorktree,
+  gitEnabled = true,
   onTaskPrClick,
   prLoading = false,
   prAgentAwaiting = false,
 }: GithubPrIconButtonProps) {
-  if (!hasWorktree || typeof onTaskPrClick !== 'function') return null;
+  if (!shouldShowGithubPrIconButton({ gitEnabled, hasWorktree, onTaskPrClick })) return null;
+  const onPrClick = onTaskPrClick!;
 
   const prUrl = githubPr?.url?.trim() ?? '';
   const prState = githubPr?.state;
@@ -35,19 +43,22 @@ export function GithubPrIconButton({
   const prIsClosed = prState === 'closed';
   const prLinked = Boolean(prUrl) && !prMerged;
   const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
+  const prOpenUsesReviewStyling = prIsOpen && taskStatus === 'review';
 
   return (
     <button
       type="button"
       disabled={prLoading}
-      onClick={() => onTaskPrClick(taskId)}
+      onClick={() => onPrClick(taskId)}
       className={cn(
         '-m-0.5 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded transition disabled:cursor-not-allowed disabled:opacity-60',
         prMerged
           ? 'text-purple-600 hover:bg-purple-500/12 hover:text-purple-700 dark:text-purple-400/85 dark:hover:text-purple-300/90'
-          : prIsOpen
-            ? 'text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-500/75 dark:hover:text-emerald-400/85'
-            : prLinked
+          : prOpenUsesReviewStyling
+            ? 'text-status-review hover:bg-status-review/10 hover:text-status-review'
+            : prIsOpen
+              ? 'text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-500/75 dark:hover:text-emerald-400/85'
+              : prLinked
               ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
               : prAwaitingAgent
                 ? 'text-amber-600 hover:bg-amber-500/10 hover:text-amber-700 dark:text-amber-400/80 dark:hover:text-amber-300/85'

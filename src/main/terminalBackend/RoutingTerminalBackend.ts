@@ -253,6 +253,10 @@ export class RoutingTerminalBackend implements TerminalBackend {
     return this.local.stopPlanning(id);
   }
 
+  notifyAppearanceChange(resolved: import('../../theme/appearance').ResolvedAppearance): void {
+    this.local.notifyAppearanceChange(resolved);
+  }
+
   reconcileTmuxPersistedTerminals(
     params: NonNullable<Parameters<NonNullable<TerminalBackend['reconcileTmuxPersistedTerminals']>>[0]>,
   ) {

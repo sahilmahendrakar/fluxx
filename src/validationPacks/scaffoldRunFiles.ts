@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getValidationPackById } from './registry';
-import { loadValidationPacksProjectConfig } from './projectConfig';
+import { resolveValidationPackConfig } from './resolveValidationPackConfig';
 import { buildValidationPackInstructions } from './buildInstructions';
 import { renderValidateElectronTemplate } from './renderValidateElectronTemplate';
 import type { ValidationPackId, ValidationPackScaffoldContext } from './types';
@@ -38,14 +38,21 @@ export async function scaffoldValidationRunFiles(
   if (!pack) {
     throw new Error(`Unknown validation pack: ${input.packId}`);
   }
-  const projectConfig = loadValidationPacksProjectConfig(input.projectDir, input.packId);
+  const projectConfig = resolveValidationPackConfig({
+    projectDir: input.projectDir,
+    packId: input.packId,
+  });
+  const hasProjectConfig = Object.keys(projectConfig).length > 0;
   const ctx: ValidationPackScaffoldContext = {
     runId: input.runId,
     runDir: input.runDir,
     ...(input.worktreeCwd ? { worktreeCwd: input.worktreeCwd } : {}),
-    ...(projectConfig ? { projectConfig } : {}),
+    ...(hasProjectConfig ? { projectConfig } : {}),
   };
-  const instructionsMarkdown = buildValidationPackInstructions(pack, projectConfig);
+  const instructionsMarkdown = buildValidationPackInstructions(
+    pack,
+    hasProjectConfig ? projectConfig : undefined,
+  );
   const scriptBody = renderValidateElectronTemplate(pack.validateElectronTemplate, ctx);
 
   await writeIfMissing(path.join(input.runDir, 'plan.json'), '{}\n');

@@ -48,6 +48,7 @@ import {
 } from '../projectRepoReadiness';
 
 interface Props {
+  gitEnabled?: boolean;
   onClose: () => void;
   onCreate: (
     title: string,
@@ -77,6 +78,7 @@ interface Props {
 }
 
 export default function NewTaskModal({
+  gitEnabled = true,
   onClose,
   onCreate,
   labelCatalog,
@@ -123,6 +125,13 @@ export default function NewTaskModal({
   }, []);
 
   useEffect(() => {
+    if (!gitEnabled) {
+      setBranchDiscovery(null);
+      setBranchDiscoveryLoading(false);
+      setBranchDiscoveryError(null);
+      setBranchInput('');
+      return;
+    }
     let cancelled = false;
     setBranchDiscoveryLoading(true);
     setBranchDiscoveryError(null);
@@ -143,7 +152,7 @@ export default function NewTaskModal({
     return () => {
       cancelled = true;
     };
-  }, [showRepoPicker, selectedRepoId]);
+  }, [gitEnabled, showRepoPicker, selectedRepoId]);
 
   useEffect(() => {
     setAgent(defaultAgent);
@@ -252,6 +261,7 @@ export default function NewTaskModal({
           ) : null}
 
           <TaskSourceBranchPicker
+            gitEnabled={gitEnabled}
             idPrefix="new-task"
             branchInput={branchInput}
             onBranchInputChange={setBranchInput}

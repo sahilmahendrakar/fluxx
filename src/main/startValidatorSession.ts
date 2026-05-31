@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Agent, Session, Task } from '../types';
 import { getValidationPackById } from '../validationPacks/registry';
-import { loadValidationPacksProjectConfig } from '../validationPacks/projectConfig';
+import { resolveValidationPackConfig } from '../validationPacks/resolveValidationPackConfig';
 import { buildValidationPackInstructions } from '../validationPacks/buildInstructions';
 import type { ValidationRun } from '../validationRuns/types';
 import { agentNotFoundMessage, agentSpawnSpec } from './agentSpawn';
@@ -174,10 +174,11 @@ export async function startValidatorSession(
     };
   }
 
-  const projectConfig = loadValidationPacksProjectConfig(projectDir, run.packId);
+  const projectConfig = resolveValidationPackConfig({ projectDir, packId: run.packId });
+  const hasProjectConfig = Object.keys(projectConfig).length > 0;
   const instructionsMarkdown =
     (await readInstructionsMarkdown(run.artifactDir)) ||
-    buildValidationPackInstructions(pack, projectConfig);
+    buildValidationPackInstructions(pack, hasProjectConfig ? projectConfig : undefined);
   const changeSummary = await captureWorktreeChangeSummary(worktree.worktreePath);
   const preStatus = await captureGitStatusPorcelain(worktree.worktreePath);
   const planSnapshot = await snapshotValidationPlanToRunDir(
@@ -190,6 +191,7 @@ export async function startValidatorSession(
     worktreeCwd: worktree.worktreePath,
     instructionsMarkdown,
     verdictSchemaJson: pack.verdictSchemaJson,
+    projectConfig,
     changeSummary,
     planJsonPath: path.join(run.artifactDir, 'plan.json'),
     ...(planSnapshot.ok ? { validationPlan: planSnapshot.plan } : {}),

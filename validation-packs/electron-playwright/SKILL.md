@@ -41,14 +41,33 @@ Paths in `verdict.json` must be **run-relative** (e.g. `artifacts/screenshots/fo
 
 ## Prerequisites (task worktree)
 
-Before `electron.launch` or running `validate-electron.mjs`:
-
-1. **`pnpm install`** — Playwright is a root **devDependency** (`node_modules/playwright`). Do **not** install Playwright under `validation-runs/<id>/`.
-2. **`pnpm run build:validation`** — builds main + preload into `.vite/build/` (required for `electron.launch({ args: ['.'] })`; `package.json` `"main"` is `.vite/build/main.js`). Idempotent and safe to re-run.
+Playwright is a root **devDependency** (`node_modules/playwright`). Run **`pnpm install`** in the task worktree first. Do **not** install Playwright under `validation-runs/<id>/`.
 
 Playwright's `_electron` API drives the app's bundled Electron binary — **browser binaries** (`pnpm exec playwright install chromium`) are **not** required for Electron validation.
 
-For UI that needs the Vite dev server, use the configured `launchCommand` (e.g. `pnpm start:aux`) instead of bare `electron.launch`, or run the dev server separately before connecting.
+### When `launchCommand` is saved in project config
+
+Use the saved values from `instructions.md` / `validation-packs.json`. Typical flow:
+
+1. **`pnpm install`** in the task worktree.
+2. **Spawn the saved `launchCommand`** (e.g. `pnpm start:aux`) as a long-running process with `cwd` = task worktree.
+3. **Wait for readiness** using the saved `ready` config (selector, timeout, or log-line).
+4. **Connect Playwright** to the running Electron app (CDP or the pattern documented below).
+
+When `cleanUserData: true`, use an **isolated user-data dir** (`--user-data-dir=...` under the validation run directory, not the developer profile).
+
+### When no `launchCommand` is saved (infer from the repo)
+
+Do **not** assume a generic build + bare `electron.launch` path. Instead:
+
+1. Read **`package.json`** in the task worktree: `scripts`, `"main"`, and dependencies.
+2. Pick a long-running dev script (`start`, `start:aux`, `dev`, `electron-forge start`, etc.) when the UI needs a dev server.
+3. Run `pnpm install`, spawn your chosen command, wait for the app shell, then connect Playwright.
+4. Document the chosen command and reasoning in `verdict.json` `risks` if inference was required.
+
+Examples: Flux-style Forge + Vite → `pnpm start:aux` or `pnpm start`; generic Electron Forge → `pnpm start`.
+
+Some stacks also support a **direct `electron.launch`** after a one-off build (e.g. `pnpm run build:validation` when `"main"` points at a built artifact). Only use that when `package.json` and project docs indicate it is the normal entrypoint — not as a silent default.
 
 ## Launching Electron with Playwright
 
@@ -63,13 +82,17 @@ Two common patterns:
 
 ### A. Launch via configured shell command (recommended for dev servers)
 
-When `launchCommand` is set in project config (see `instructions.md`), start the app as a subprocess from the **task worktree** `cwd`, then connect Playwright to the running app if your stack supports it, or use `electron.launch` with the same env the command would set.
-
-For many Fluxx-style repos the command is a long-running dev server (e.g. `pnpm start:aux`). Typical approach:
+When `launchCommand` is set in project config (see `instructions.md`), start the app as a subprocess from the **task worktree** `cwd`:
 
 1. Spawn `launchCommand` with `cwd` = task worktree.
 2. Wait for readiness (`ready` selector, log line, or fixed timeout with retry).
 3. Use `_electron.connectOverCDP` only if the project documents a debug port; otherwise prefer `electron.launch` with `executablePath` / `args` matching how the project starts Electron.
+
+For many Fluxx-style repos the command is a long-running dev server (e.g. `pnpm start:aux`).
+
+### A′. Infer launch when config is empty
+
+When no `launchCommand` is saved, read `package.json` scripts and dependencies, choose a dev entrypoint, spawn it from the task worktree, wait for readiness, then connect Playwright. Record the chosen command in `verdict.json` `risks` if uncertain.
 
 ### B. Direct `electron.launch`
 

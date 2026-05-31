@@ -75,6 +75,7 @@ import type {
   ValidationPackDetail,
   ValidationPackResolvedInstructions,
   ValidationPackSummary,
+  ElectronPlaywrightPackProjectConfig,
 } from './validationPacks/types';
 import type {
   ValidationArtifactRegisterInput,
@@ -169,10 +170,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
         | Record<string, RepoManagementState>
         | { error: string }
       >,
-    pickRepoDirectory: () =>
-      ipcRenderer.invoke('project:pickRepoDirectory') as Promise<
+    pickRepoDirectory: (options?: {
+      gitIntegrationEnabled?: boolean;
+      forProjectCreate?: boolean;
+    }) =>
+      ipcRenderer.invoke('project:pickRepoDirectory', options) as Promise<
         | { rootPath: string }
-        | { error: 'NOT_GIT_REPO' }
+        | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
         | { error: string }
         | null
       >,
@@ -302,6 +306,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:getValidationEnabled') as Promise<boolean>,
     setValidationEnabled: (enabled: boolean) =>
       ipcRenderer.invoke('project:setValidationEnabled', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
+    getGitIntegrationEnabled: () =>
+      ipcRenderer.invoke('project:getGitIntegrationEnabled') as Promise<boolean>,
+    setGitIntegrationEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setGitIntegrationEnabled', enabled) as Promise<
+        { ok: true; enabled: boolean } | { error: string }
+      >,
+    getGitlessSingleSessionPerFolder: () =>
+      ipcRenderer.invoke('project:getGitlessSingleSessionPerFolder') as Promise<boolean>,
+    setGitlessSingleSessionPerFolder: (enabled: boolean) =>
+      ipcRenderer.invoke('project:setGitlessSingleSessionPerFolder', enabled) as Promise<
         { ok: true; enabled: boolean } | { error: string }
       >,
   },
@@ -891,6 +907,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resolveInstructions: (payload: { packId: string; projectDir?: string }) =>
       ipcRenderer.invoke('validationPacks:resolveInstructions', payload) as Promise<
         { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+      >,
+    getProjectConfig: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:getProjectConfig', packId) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
+      >,
+    saveProjectConfig: (payload: { packId: string; config: ElectronPlaywrightPackProjectConfig }) =>
+      ipcRenderer.invoke('validationPacks:saveProjectConfig', payload) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
+      >,
+    clearProjectConfig: (packId: string) =>
+      ipcRenderer.invoke('validationPacks:clearProjectConfig', packId) as Promise<
+        | {
+            ok: true;
+            path: string;
+            config: ElectronPlaywrightPackProjectConfig | undefined;
+          }
+        | { error: string }
       >,
   },
   planningDocs: {

@@ -39,6 +39,8 @@ export interface CloudProjectSummary {
   repos?: CloudSharedRepo[];
   /** Team-wide Electron Playwright validation opt-in (default off). */
   validationEnabled?: boolean;
+  /** Team-wide git integration toggle (default on). */
+  gitIntegrationEnabled?: boolean;
 }
 
 export function subscribeToCloudProjects(
@@ -78,6 +80,7 @@ function toCloudProjectSummary(
     createdAt: tsToIso(data.createdAt),
     ...(repos ? { repos } : {}),
     ...(data.validationEnabled === true ? { validationEnabled: true } : {}),
+    ...(data.gitIntegrationEnabled === false ? { gitIntegrationEnabled: false } : {}),
   };
 }
 
@@ -90,6 +93,18 @@ export async function updateCloudProjectValidationEnabled(
   const db = getFirebaseFirestore();
   await updateDoc(doc(db, 'projects', trimmed), {
     validationEnabled: enabled === true,
+  });
+}
+
+export async function updateCloudProjectGitIntegrationEnabled(
+  projectId: string,
+  enabled: boolean,
+): Promise<void> {
+  const trimmed = projectId.trim();
+  if (!trimmed) throw new Error('projectId is required');
+  const db = getFirebaseFirestore();
+  await updateDoc(doc(db, 'projects', trimmed), {
+    gitIntegrationEnabled: enabled !== false,
   });
 }
 

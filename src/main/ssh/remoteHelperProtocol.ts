@@ -207,6 +207,10 @@ export type RemoteHelperWorktreeCreateData = {
   setupWarning?: string;
 };
 
+export type RemoteHelperPrepareDirectFolderData = {
+  folderPath: string;
+};
+
 export type RemoteHelperStartTerminalData = {
   terminalId: string;
   tmuxSessionName: string;

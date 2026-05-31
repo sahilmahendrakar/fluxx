@@ -46,6 +46,8 @@ export interface ElectronPlaywrightPackProjectConfig {
   ready?: ValidationReadyConfig;
   cleanUserData?: boolean;
   artifactPolicy?: ValidationArtifactPolicy;
+  /** Trimmed free text appended to validator session prompt when non-empty (prompt-only). */
+  appendPrompt?: string;
 }
 
 export type ValidationPacksProjectFile = {

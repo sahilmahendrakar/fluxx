@@ -142,6 +142,9 @@ export async function runFluxCli(argv: string[]): Promise<number> {
     } else {
       printJson(result.data);
     }
+    if (result.stderrNote) {
+      printError(result.stderrNote);
+    }
     return EXIT_OK;
   } catch (err) {
     const message = err instanceof FluxCliConnectionError ? err.message : String(err);

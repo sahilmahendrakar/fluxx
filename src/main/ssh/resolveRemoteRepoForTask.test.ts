@@ -18,6 +18,9 @@ describe('resolveRemoteRepoForTaskSession', () => {
     autoMarkDoneWhenPrMerged: false,
     autoMoveToReviewWhenPrOpen: false,
     persistTerminalsWithTmux: false,
+    validationEnabled: false,
+    gitIntegrationEnabled: true,
+    gitlessSingleSessionPerFolder: true,
     repos: [
       {
         id: 'repo-a',
@@ -47,13 +50,24 @@ describe('resolveRemoteRepoForTaskSession', () => {
     expect(result.repoId).toBe('repo-a');
   });
 
-  it('fails clearly when no remote URL is available', async () => {
+  it('fails clearly when no remote URL is available with git enabled', async () => {
     const project = baseLocalProject();
     await expect(
       resolveRemoteRepoForTaskSession(project, baseTask(), project.repos, null, {
         readOriginUrl: async () => null,
+        gitEnabled: true,
       }),
     ).rejects.toMatchObject({ code: 'REMOTE_NON_GIT_UNSUPPORTED' });
+  });
+
+  it('allows missing remote URL when git is disabled', async () => {
+    const project = { ...baseLocalProject(), gitIntegrationEnabled: false };
+    const result = await resolveRemoteRepoForTaskSession(project, baseTask(), project.repos, null, {
+      readOriginUrl: async () => null,
+      gitEnabled: false,
+    });
+    expect(result.remoteUrl).toBe('');
+    expect(result.repoId).toBe('repo-a');
   });
 
   it('uses cloud shared remoteUrl when local clone is unbound', async () => {

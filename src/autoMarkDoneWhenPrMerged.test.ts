@@ -48,6 +48,19 @@ describe('shouldAutoMarkDoneAfterPrMergeRefresh', () => {
     ).toBe(false);
   });
 
+  it('returns false when git integration is off', () => {
+    const task = baseTask({});
+    expect(
+      shouldAutoMarkDoneAfterPrMergeRefresh({
+        task,
+        refreshedGithubPr: mergedPr,
+        prefEnabled: true,
+        allTasks: [task],
+        gitIntegrationEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
   it('returns false for backlog', () => {
     const task = baseTask({ status: 'backlog' });
     expect(

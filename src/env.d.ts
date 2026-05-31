@@ -71,6 +71,7 @@ import type {
   ValidationPackDetail,
   ValidationPackResolvedInstructions,
   ValidationPackSummary,
+  ElectronPlaywrightPackProjectConfig,
 } from './validationPacks/types';
 import type {
   ValidationArtifactRegisterInput,
@@ -156,9 +157,12 @@ declare global {
           | Record<string, RepoManagementState>
           | { error: string }
         >;
-        pickRepoDirectory: () => Promise<
+        pickRepoDirectory: (options?: {
+          gitIntegrationEnabled?: boolean;
+          forProjectCreate?: boolean;
+        }) => Promise<
           | { rootPath: string }
-          | { error: 'NOT_GIT_REPO' }
+          | { error: 'NOT_GIT_REPO' | 'NOT_WRITABLE' }
           | { error: string }
           | null
         >;
@@ -263,6 +267,14 @@ declare global {
         setDefaultDeviceId: (deviceId: string | null) => Promise<string | null>;
         getValidationEnabled: () => Promise<boolean>;
         setValidationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitIntegrationEnabled: () => Promise<boolean>;
+        setGitIntegrationEnabled: (
+          enabled: boolean,
+        ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
+        getGitlessSingleSessionPerFolder: () => Promise<boolean>;
+        setGitlessSingleSessionPerFolder: (
           enabled: boolean,
         ) => Promise<{ ok: true; enabled: boolean } | { error: string }>;
       };
@@ -618,6 +630,33 @@ declare global {
           projectDir?: string;
         }) => Promise<
           { ok: true; resolved: ValidationPackResolvedInstructions } | { error: string }
+        >;
+        getProjectConfig: (packId: string) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
+        >;
+        saveProjectConfig: (payload: {
+          packId: string;
+          config: ElectronPlaywrightPackProjectConfig;
+        }) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
+        >;
+        clearProjectConfig: (packId: string) => Promise<
+          | {
+              ok: true;
+              path: string;
+              config: ElectronPlaywrightPackProjectConfig | undefined;
+            }
+          | { error: string }
         >;
       };
       planningDocs: {

@@ -282,6 +282,8 @@ interface Props {
   cloudUnblockAutostartClientUid?: string;
   /** When false, the GitHub PR control is hidden (no local/session worktree). */
   hasWorktree?: boolean;
+  /** When false, hides PR control and branch chip (gitless project). Defaults to on. */
+  gitEnabled?: boolean;
   /** Persist agent / model / YOLO for this task (same fields as task detail & `fluxx tasks update`). */
   onTaskAgentSpawnPrefsChange: (taskId: string, patch: TaskAgentSpawnPatch) => void;
   /** Persist execution device for this task (same path as task detail picker). */
@@ -320,6 +322,7 @@ export default function TaskCard({
   repoChip,
   cloudUnblockAutostartClientUid,
   hasWorktree = false,
+  gitEnabled = true,
   onTaskAgentSpawnPrefsChange,
   onTaskExecutionDeviceChange,
   taskWorkspaceSessionStatus,
@@ -354,7 +357,7 @@ export default function TaskCard({
   const prLinked = Boolean(prUrl) && !prMerged;
   const prAwaitingAgent = Boolean(prAgentAwaiting) && !prUrl && !prLoading;
   const branchCompareShort = branchChipCompareShort ?? repoDefaultBranchShort;
-  const showBranchChip = taskCardShouldShowSourceBranchChip(task, branchCompareShort);
+  const showBranchChip = gitEnabled && taskCardShouldShowSourceBranchChip(task, branchCompareShort);
   const branchChipLabel = effectiveTaskSourceBranchShort(task, branchCompareShort);
   const branchChipTitle =
     task.createSourceBranchIfMissing === true
@@ -588,7 +591,7 @@ export default function TaskCard({
                       )}
                     </Button>
                   ) : null}
-                  {onTaskPrClick && hasWorktree ? (
+                  {onTaskPrClick && gitEnabled && hasWorktree ? (
                     <Button
                       type="button"
                       variant="ghost"
@@ -602,7 +605,10 @@ export default function TaskCard({
                       className={cn(
                         '-m-0.5 size-6 shrink-0',
                         prMerged && 'text-status-validation hover:bg-status-validation/10 hover:text-status-validation',
-                        prIsOpen && 'text-status-success hover:bg-status-success/10 hover:text-status-success',
+                        prIsOpen &&
+                          (isReview
+                            ? 'text-status-review hover:bg-status-review/10 hover:text-status-review'
+                            : 'text-status-success hover:bg-status-success/10 hover:text-status-success'),
                         prLinked && 'text-muted-foreground hover:bg-accent hover:text-foreground',
                         prAwaitingAgent && 'text-status-needs-input hover:bg-status-needs-input/10 hover:text-status-needs-input',
                         !prMerged && !prIsOpen && !prLinked && !prAwaitingAgent && 'text-muted-foreground',
@@ -681,10 +687,22 @@ export default function TaskCard({
                         className="-m-0.5 size-6 shrink-0 text-muted-foreground"
                         aria-label={
                           cleanupLoading
-                            ? 'Cleaning up workspace…'
-                            : 'Clean up workspace for this task'
+                            ? gitEnabled
+                              ? 'Cleaning up workspace…'
+                              : 'Stopping sessions…'
+                            : gitEnabled
+                              ? 'Clean up workspace for this task'
+                              : 'Stop running sessions for this task'
                         }
-                        title={cleanupLoading ? 'Cleaning up…' : 'Clean up workspace'}
+                        title={
+                          cleanupLoading
+                            ? gitEnabled
+                              ? 'Cleaning up…'
+                              : 'Stopping sessions…'
+                            : gitEnabled
+                              ? 'Clean up workspace'
+                              : 'Stop running sessions'
+                        }
                       >
                         {cleanupLoading ? (
                           <Loader2
