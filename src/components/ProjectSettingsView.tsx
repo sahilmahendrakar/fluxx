@@ -3127,7 +3127,8 @@ function FieldEditor({
   const [savedValue, setSavedValue] = useState(initialValue);
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState(!sensitive || initialValue.length === 0);
+  // Default to revealed so repo settings fields stay editable; Hide is opt-in for shoulder-surfing.
+  const [revealed, setRevealed] = useState(true);
 
   useEffect(() => {
     setValue(initialValue);
@@ -3135,6 +3136,10 @@ function FieldEditor({
     setState('idle');
     setError(null);
   }, [initialValue]);
+
+  const revealForEditing = () => {
+    if (sensitive && !revealed) setRevealed(true);
+  };
 
   const dirty = value !== savedValue;
 
@@ -3190,8 +3195,11 @@ function FieldEditor({
           <Textarea
             value={showMasked ? maskValue(value) : value}
             onChange={(e) => setValue(e.target.value)}
+            onFocus={revealForEditing}
+            onClick={revealForEditing}
             placeholder={placeholder}
-            disabled={showMasked || disabled}
+            readOnly={showMasked}
+            disabled={disabled}
             rows={Math.min(10, Math.max(4, value.split('\n').length + 1))}
             className="font-mono text-xs"
           />
@@ -3217,7 +3225,7 @@ function FieldEditor({
           type="button"
           size="sm"
           onClick={() => void handleSave()}
-          disabled={!dirty || state === 'saving' || showMasked || disabled}
+          disabled={!dirty || state === 'saving' || disabled}
         >
           {state === 'saving' ? 'Saving…' : 'Save'}
         </Button>
