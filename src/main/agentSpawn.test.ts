@@ -61,9 +61,9 @@ describe('planningSpawnSpec', () => {
   });
 
   it('codex passes model, yolo, and optional prompt', () => {
-    expect(planningSpawnSpec('codex', 'gpt-5.4', true, 'plan this')).toEqual({
+    expect(planningSpawnSpec('codex', 'gpt-5.6-sol', true, 'plan this')).toEqual({
       command: 'codex',
-      args: ['--model', 'gpt-5.4', '--yolo', 'plan this'],
+      args: ['--model', 'gpt-5.6-sol', '--yolo', 'plan this'],
     });
   });
 });
@@ -80,10 +80,10 @@ describe('agentSpawnSpec codex', () => {
 
   it('passes model and yolo when set', () => {
     const { args } = agentSpawnSpec(
-      task({ agent: 'codex', agentModel: 'gpt-5.4', agentYolo: true }),
+      task({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentYolo: true }),
       'do work',
     );
-    expect(args).toEqual(['--model', 'gpt-5.4', '--yolo', 'do work']);
+    expect(args).toEqual(['--model', 'gpt-5.6-sol', '--yolo', 'do work']);
   });
 });
 
@@ -100,12 +100,12 @@ describe('codexSpawnArgs', () => {
   it('resume with session id omits --last', () => {
     expect(
       codexSpawnArgs({
-        model: 'gpt-5.4',
+        model: 'gpt-5.6-sol',
         resume: { sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' },
       }),
     ).toEqual([
       '--model',
-      'gpt-5.4',
+      'gpt-5.6-sol',
       '--sandbox',
       'workspace-write',
       'resume',
@@ -195,14 +195,14 @@ describe('planningSpawnResumeSpec', () => {
       args: ['--sandbox', 'workspace-write', 'resume', '--last'],
     });
     expect(
-      planningSpawnResumeSpec('codex', 'gpt-5.4', true, {
+      planningSpawnResumeSpec('codex', 'gpt-5.6-sol', true, {
         agentConversationId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       }),
     ).toEqual({
       command: 'codex',
       args: [
         '--model',
-        'gpt-5.4',
+        'gpt-5.6-sol',
         '--yolo',
         'resume',
         'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -248,13 +248,13 @@ describe('agentSpawnResumeSpec conversation ids', () => {
       args: ['--sandbox', 'workspace-write', 'resume', '--last'],
     });
     const { command, args } = agentSpawnResumeSpec(
-      task({ agent: 'codex', agentModel: 'gpt-5.4', agentYolo: true }),
+      task({ agent: 'codex', agentModel: 'gpt-5.6-sol', agentYolo: true }),
       'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     );
     expect(command).toBe('codex');
     expect(args).toEqual([
       '--model',
-      'gpt-5.4',
+      'gpt-5.6-sol',
       '--yolo',
       'resume',
       'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',

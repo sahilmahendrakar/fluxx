@@ -7,8 +7,8 @@ import {
 
 const modelIds = {
   cursor: 'auto',
-  'claude-code': 'claude-sonnet-4-6',
-  codex: 'gpt-5.4',
+  'claude-code': 'claude-sonnet-5',
+  codex: 'gpt-5.6-sol',
 };
 
 describe('buildPlanningStartPayload', () => {
@@ -21,7 +21,7 @@ describe('buildPlanningStartPayload', () => {
       }),
     ).toEqual({
       agent: 'codex',
-      agentModel: 'gpt-5.4',
+      agentModel: 'gpt-5.6-sol',
       agentYolo: true,
     });
   });
@@ -69,7 +69,7 @@ describe('buildPlanningResumePayload', () => {
       }),
     ).toEqual({
       agent: 'codex',
-      agentModel: 'gpt-5.4',
+      agentModel: 'gpt-5.6-sol',
       agentYolo: true,
       resume: true,
       sessionId: 'sess-1',

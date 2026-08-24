@@ -4,10 +4,11 @@ import { DEFAULT_CURSOR_AGENT_MODEL } from '../types';
 /** Shown when `agent models` is missing, errors, or returns nothing useful. */
 const FALLBACK_CURSOR_MODELS = [
   DEFAULT_CURSOR_AGENT_MODEL,
-  'gpt-5',
-  'gpt-5.5-high',
-  'sonnet-4',
-  'sonnet-4-thinking',
+  'claude-fable-5-thinking-high',
+  'claude-opus-5-thinking-high',
+  'claude-sonnet-5-thinking-high',
+  'gpt-5.6-sol-high',
+  'composer-2.5',
 ];
 
 const LIST_TIMEOUT_MS = 15_000;

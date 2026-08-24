@@ -7,26 +7,31 @@ export type AgentModelPreset = { id: string; label: string };
 
 /** Shown in the task detail model picker for Claude Code (`claude --model`). */
 export const CLAUDE_MODEL_PRESETS: AgentModelPreset[] = [
-  { id: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { id: 'claude-fable-5', label: 'Fable 5' },
+  { id: 'claude-opus-5', label: 'Opus 5' },
+  { id: 'claude-sonnet-5', label: 'Sonnet 5' },
   { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
 ];
 
-/** Shown in the task detail model picker for Codex (`codex --model`). */
+/**
+ * Shown in the task detail model picker for Codex (`codex --model`).
+ * Reasoning effort is a separate `model_reasoning_effort` setting, so these
+ * ids carry no effort suffix.
+ */
 export const CODEX_MODEL_PRESETS: AgentModelPreset[] = [
-  { id: 'gpt-5.4', label: 'GPT 5.4' },
-  { id: 'gpt-5.4-mini', label: 'GPT 5.4 Mini' },
-  { id: 'o4-mini', label: 'o4 Mini' },
+  { id: 'gpt-5.6-sol', label: 'GPT 5.6 Sol' },
+  { id: 'gpt-5.6-terra', label: 'GPT 5.6 Terra' },
+  { id: 'gpt-5.6-luna', label: 'GPT 5.6 Luna' },
 ];
 
 /** Shown in the task detail model picker for Cursor Agent (`agent --model`). */
 export const CURSOR_MODEL_PRESETS: AgentModelPreset[] = [
   { id: 'auto', label: 'Auto' },
-  { id: 'claude-opus-4-7-low', label: 'Opus 4.7' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'gpt-5.4-high', label: 'GPT 5.4' },
-  { id: 'gpt-5.5-high', label: 'GPT 5.5' },
-  { id: 'composer-2', label: 'Composer 2' },
+  { id: 'claude-fable-5-thinking-high', label: 'Fable 5 Thinking' },
+  { id: 'claude-opus-5-thinking-high', label: 'Opus 5 Thinking' },
+  { id: 'claude-sonnet-5-thinking-high', label: 'Sonnet 5 Thinking' },
+  { id: 'gpt-5.6-sol-high', label: 'GPT 5.6 Sol' },
+  { id: 'composer-2.5', label: 'Composer 2.5' },
 ];
 
 const EXTRAS_STORAGE_KEY = 'flux.agentModelExtras.v1';
